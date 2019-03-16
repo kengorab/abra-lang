@@ -1,48 +1,39 @@
 use crate::lexer::tokens::Token;
-use std::cmp::Ordering;
+use crate::typechecker::types::Type;
 
-pub enum Precedence {
-    None,
-    // =
-    Assignment,
-    // ||
-    Or,
-    // &&
-    And,
-    // == !=
-    Equality,
-    // < > <= >=
-    Comparison,
-    // + -
-    Addition,
-    // * /
-    Multiplication,
-    // ! - +
-    Unary,
-    // . () []
-    Call,
+#[derive(Debug, PartialEq)]
+pub enum AstNode {
+    Literal(Token, AstLiteralNode),
+    Unary(Token, UnaryNode),
+    Binary(Token, BinaryNode),
 }
 
-impl Into<u8> for Precedence {
-    fn into(self) -> u8 {
+impl AstNode {
+    pub fn get_token(&self) -> Token {
         match self {
-            Precedence::None => 0,
-            Precedence::Assignment => 1,
-            Precedence::Or => 2,
-            Precedence::And => 3,
-            Precedence::Equality => 4,
-            Precedence::Comparison => 5,
-            Precedence::Addition => 6,
-            Precedence::Multiplication => 7,
-            Precedence::Unary => 8,
-            Precedence::Call => 9,
+            AstNode::Literal(token, _) => token.clone(),
+            AstNode::Unary(token, _) => token.clone(),
+            AstNode::Binary(token, _) => token.clone(),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
+pub enum AstLiteralNode {
+    IntLiteral(i64),
+    FloatLiteral(f64),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum UnaryOp {
     Minus
+}
+
+#[derive(Debug, PartialEq)]
+pub struct UnaryNode {
+    pub typ: Option<Type>,
+    pub op: UnaryOp,
+    pub expr: Box<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -54,14 +45,9 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum AstNode {
-    Literal(Token, AstLiteralNode),
-    Unary(Token, UnaryOp, Box<AstNode>),
-    Binary(Token, Box<AstNode>, BinaryOp, Box<AstNode>),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum AstLiteralNode {
-    IntLiteral(i64),
-    FloatLiteral(f64),
+pub struct BinaryNode {
+    pub typ: Option<Type>,
+    pub right: Box<AstNode>,
+    pub op: BinaryOp,
+    pub left: Box<AstNode>,
 }

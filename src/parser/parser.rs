@@ -1,10 +1,9 @@
-use crate::lexer::tokens::{Token, Position};
+use crate::lexer::tokens::Token;
 use std::iter::Peekable;
 use std::vec::IntoIter;
-use crate::parser::ast::{AstNode, Precedence, AstLiteralNode, UnaryOp, BinaryOp};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode};
+use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
-use std::collections::HashMap;
-use std::path::Component::Prefix;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut parser = Parser::new(tokens);
@@ -48,7 +47,7 @@ impl Parser {
 
     fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseError> {
         let prefix_token = self.peek().expect("There should still be tokens by now").clone();
-        let (prefix_fn, infix_fn) = self.get_rules_for_token(&prefix_token);
+        let (prefix_fn, _) = self.get_rules_for_token(&prefix_token);
         match prefix_fn {
             None => Err(ParseError::Raw("Expected prefix fn".to_string())),
             Some(prefix_fn) => {
@@ -92,7 +91,6 @@ impl Parser {
             Token::Float(_, _) => (Some(Box::new(Parser::parse_literal)), None),
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) => (None, Some(Box::new(Parser::parse_binary))),
             Token::Minus(_) => (Some(Box::new(Parser::parse_unary)), Some(Box::new(Parser::parse_binary))),
-            _ => unimplemented!()
         }
     }
 
@@ -101,44 +99,44 @@ impl Parser {
             Token::Int(_, _) | Token::Float(_, _) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
-            _ => unimplemented!()
         }
     }
 
     fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
         match &token {
-            Token::Int(pos, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::IntLiteral(*val))),
-            Token::Float(pos, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
+            Token::Int(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::IntLiteral(*val))),
+            Token::Float(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
             _ => Err(ParseError::Raw(format!("Unknown literal: {:?}", token)))
         }
     }
 
     fn parse_unary(&mut self, token: Token) -> Result<AstNode, ParseError> {
         let expr = self.parse_precedence(Precedence::Unary)?;
-        let unary_op = match token {
+        let op = match token {
             Token::Minus(_) => UnaryOp::Minus,
             _ => unimplemented!()
         };
-        Ok(AstNode::Unary(token, unary_op, Box::new(expr)))
+        Ok(AstNode::Unary(token, UnaryNode { typ: None, op, expr: Box::new(expr) }))
     }
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
         let prec = Parser::get_precedence_for_token(&token);
         let right = self.parse_precedence(prec)?;
-        let binary_op = match token {
+        let op = match token {
             Token::Plus(_) => BinaryOp::Add,
             Token::Minus(_) => BinaryOp::Sub,
             Token::Star(_) => BinaryOp::Mul,
             Token::Slash(_) => BinaryOp::Div,
             _ => unimplemented!()
         };
-        Ok(AstNode::Binary(token, Box::new(left), binary_op, Box::new(right)))
+        Ok(AstNode::Binary(token, BinaryNode { typ: None, left: Box::new(left), op, right: Box::new(right) }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::tokens::{Token, Position};
     use crate::parser::ast::AstNode::*;
     use crate::parser::ast::AstLiteralNode::*;
     use crate::lexer::lexer::tokenize;
@@ -165,10 +163,13 @@ mod tests {
         let expected = vec![
             Unary(
                 Token::Minus(Position::new(1, 1)),
-                UnaryOp::Minus,
-                Box::new(
-                    Literal(Token::Int(Position::new(1, 2), 123), IntLiteral(123))
-                ),
+                UnaryNode {
+                    typ: None,
+                    op: UnaryOp::Minus,
+                    expr: Box::new(
+                        Literal(Token::Int(Position::new(1, 2), 123), IntLiteral(123))
+                    ),
+                },
             )
         ];
         assert_eq!(expected, ast);
@@ -180,13 +181,16 @@ mod tests {
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 5)),
-                Box::new(
-                    Literal(Token::Float(Position::new(1, 1), 1.2), FloatLiteral(1.2))
-                ),
-                BinaryOp::Add,
-                Box::new(
-                    Literal(Token::Int(Position::new(1, 7), 3), IntLiteral(3))
-                ),
+                BinaryNode {
+                    typ: None,
+                    left: Box::new(
+                        Literal(Token::Float(Position::new(1, 1), 1.2), FloatLiteral(1.2))
+                    ),
+                    op: BinaryOp::Add,
+                    right: Box::new(
+                        Literal(Token::Int(Position::new(1, 7), 3), IntLiteral(3))
+                    ),
+                },
             )
         ];
         assert_eq!(expected, ast);
@@ -198,19 +202,25 @@ mod tests {
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
-                Box::new(
-                    Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                ),
-                BinaryOp::Add,
-                Box::new(
-                    Unary(
-                        Token::Minus(Position::new(1, 5)),
-                        UnaryOp::Minus,
-                        Box::new(
-                            Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
-                        ),
-                    )
-                ),
+                BinaryNode {
+                    typ: None,
+                    left: Box::new(
+                        Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
+                    ),
+                    op: BinaryOp::Add,
+                    right: Box::new(
+                        Unary(
+                            Token::Minus(Position::new(1, 5)),
+                            UnaryNode {
+                                typ: None,
+                                op: UnaryOp::Minus,
+                                expr: Box::new(
+                                    Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
+                                ),
+                            },
+                        )
+                    ),
+                },
             )
         ];
         assert_eq!(expected, ast);
@@ -222,22 +232,28 @@ mod tests {
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
-                Box::new(
-                    Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                ),
-                BinaryOp::Add,
-                Box::new(
-                    Binary(
-                        Token::Star(Position::new(1, 7)),
-                        Box::new(
-                            Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
-                        ),
-                        BinaryOp::Mul,
-                        Box::new(
-                            Literal(Token::Int(Position::new(1, 9), 3), IntLiteral(3))
-                        ),
-                    )
-                ),
+                BinaryNode {
+                    typ: None,
+                    left: Box::new(
+                        Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
+                    ),
+                    op: BinaryOp::Add,
+                    right: Box::new(
+                        Binary(
+                            Token::Star(Position::new(1, 7)),
+                            BinaryNode {
+                                typ: None,
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
+                                ),
+                                op: BinaryOp::Mul,
+                                right: Box::new(
+                                    Literal(Token::Int(Position::new(1, 9), 3), IntLiteral(3))
+                                ),
+                            },
+                        )
+                    ),
+                },
             )
         ];
         assert_eq!(expected, ast);
