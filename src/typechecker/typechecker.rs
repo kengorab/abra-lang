@@ -237,6 +237,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn typecheck_binary_arithmetic_failure() -> TestResult {
         // TODO: Add when there are non-numeric types
         unimplemented!()

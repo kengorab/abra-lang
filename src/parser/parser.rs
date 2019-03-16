@@ -33,7 +33,6 @@ type InfixFn = Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError>;
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         let tokens = tokens.into_iter().peekable();
-
         Parser { tokens }
     }
 
@@ -45,14 +44,19 @@ impl Parser {
         self.tokens.peek()
     }
 
+    // Begin Pratt plumbing
+
     fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseError> {
-        let prefix_token = self.peek().expect("There should still be tokens by now").clone();
-        let (prefix_fn, _) = self.get_rules_for_token(&prefix_token);
-        match prefix_fn {
-            None => Err(ParseError::Raw("Expected prefix fn".to_string())),
+        let prefix_token = match self.peek() {
+            Some(token) => Ok(token.clone()),
+            None => Err(ParseError::UnexpectedEof),
+        }?;
+
+        match self.get_prefix_rule(&prefix_token) {
+            None => Err(ParseError::UnexpectedToken(prefix_token)),
             Some(prefix_fn) => {
                 // Cursor sits on token AFTER the match token; in-/prefix fns always start on token AFTER the one they match
-                let prefix_token = self.advance().unwrap();
+                let prefix_token = self.advance().expect("Safe, since peek above is Some");
 
                 let mut left: AstNode = (*prefix_fn)(self, prefix_token)?;
 
@@ -62,10 +66,9 @@ impl Parser {
                     let next_prec: u8 = next_prec.into();
                     while prec < next_prec {
                         if let Some(_) = self.peek() {
-                            let infix_token = self.advance().unwrap();
+                            let infix_token = self.advance().expect("Safe, since peek above is Some");
 
-                            let (_, infix_fn) = self.get_rules_for_token(&infix_token);
-                            if let Some(infix_fn) = infix_fn {
+                            if let Some(infix_fn) = self.get_infix_rule(&infix_token) {
                                 left = (*infix_fn)(self, infix_token, left)?
                             }
                         } else {
@@ -79,18 +82,23 @@ impl Parser {
         }
     }
 
-    fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
-        self.parse_precedence(Precedence::None)
-    }
-
-    fn get_rules_for_token(&mut self, tok: &Token) -> (Option<Box<PrefixFn>>, Option<Box<InfixFn>>) {
+    fn get_prefix_rule(&self, tok: &Token) -> Option<Box<PrefixFn>> {
         use self::Parser;
 
         match tok {
-            Token::Int(_, _) => (Some(Box::new(Parser::parse_literal)), None),
-            Token::Float(_, _) => (Some(Box::new(Parser::parse_literal)), None),
-            Token::Plus(_) | Token::Star(_) | Token::Slash(_) => (None, Some(Box::new(Parser::parse_binary))),
-            Token::Minus(_) => (Some(Box::new(Parser::parse_unary)), Some(Box::new(Parser::parse_binary))),
+            Token::Int(_, _) | Token::Float(_, _) => Some(Box::new(Parser::parse_literal)),
+            Token::Plus(_) | Token::Star(_) | Token::Slash(_) => None,
+            Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
+        }
+    }
+
+    fn get_infix_rule(&self, tok: &Token) -> Option<Box<InfixFn>> {
+        use self::Parser;
+
+        match tok {
+            Token::Int(_, _) | Token::Float(_, _) => None,
+            Token::Plus(_) | Token::Star(_) | Token::Slash(_) | Token::Minus(_) =>
+                Some(Box::new(Parser::parse_binary)),
         }
     }
 
@@ -100,6 +108,12 @@ impl Parser {
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
         }
+    }
+
+    // End Pratt plumbing
+
+    fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
+        self.parse_precedence(Precedence::None)
     }
 
     fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -141,25 +155,27 @@ mod tests {
     use crate::parser::ast::AstLiteralNode::*;
     use crate::lexer::lexer::tokenize;
 
-    fn parse(input: &str) -> Vec<AstNode> {
+    type TestResult = Result<(), ParseError>;
+
+    fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
         let tokens = tokenize(&input.to_string());
-        super::parse(tokens).unwrap()
+        super::parse(tokens)
     }
 
     #[test]
-    fn parse_literals() {
-        let ast = parse("123 4.56 0.789");
+    fn parse_literals() -> TestResult {
+        let ast = parse("123 4.56 0.789")?;
         let expected = vec![
             Literal(Token::Int(Position::new(1, 1), 123), IntLiteral(123)),
             Literal(Token::Float(Position::new(1, 5), 4.56), FloatLiteral(4.56)),
             Literal(Token::Float(Position::new(1, 10), 0.789), FloatLiteral(0.789)),
         ];
-        assert_eq!(expected, ast);
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
-    fn parse_unary() {
-        let ast = parse("-123");
+    fn parse_unary() -> TestResult {
+        let ast = parse("-123")?;
         let expected = vec![
             Unary(
                 Token::Minus(Position::new(1, 1)),
@@ -172,12 +188,21 @@ mod tests {
                 },
             )
         ];
-        assert_eq!(expected, ast);
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
-    fn parse_binary() {
-        let ast = parse("1.2 + 3");
+    fn parse_unary_errors() -> TestResult {
+        let err = parse("-").unwrap_err();
+        assert_eq!(ParseError::UnexpectedEof, err);
+
+        let err = parse("-   +").unwrap_err();
+        Ok(assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err))
+    }
+
+    #[test]
+    fn parse_binary() -> TestResult {
+        let ast = parse("1.2 + 3")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 5)),
@@ -193,12 +218,12 @@ mod tests {
                 },
             )
         ];
-        assert_eq!(expected, ast);
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
-    fn parse_binary_and_unary() {
-        let ast = parse("1 + -2");
+    fn parse_binary_and_unary() -> TestResult {
+        let ast = parse("1 + -2")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
@@ -223,12 +248,12 @@ mod tests {
                 },
             )
         ];
-        assert_eq!(expected, ast);
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
-    fn parse_binary_precedence() {
-        let ast = parse("1 + 2 * 3");
+    fn parse_binary_precedence() -> TestResult {
+        let ast = parse("1 + 2 * 3")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
@@ -256,6 +281,12 @@ mod tests {
                 },
             )
         ];
-        assert_eq!(expected, ast);
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_errors() -> TestResult {
+        let err = parse("-5 +").unwrap_err();
+        Ok(assert_eq!(ParseError::UnexpectedEof, err))
     }
 }

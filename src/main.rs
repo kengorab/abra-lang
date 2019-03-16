@@ -6,12 +6,17 @@ mod parser;
 mod typechecker;
 
 fn main() {
-    let input = "-4.56 + 12 / 4".to_string();
+    let input = "-+".to_string();
     let tokens = lexer::lexer::tokenize(&input);
 
-    let res = parser::parser::parse(tokens);
-
-    let typechecker = Typechecker {};
-    let nodes = typechecker.typecheck(res.unwrap()).unwrap();
-    println!("{:?}", nodes);
+    match parser::parser::parse(tokens) {
+        Ok(ast) => {
+            let typechecker = Typechecker {};
+            match typechecker.typecheck(ast) {
+                Ok(nodes) => println!("{:?}", nodes),
+                Err(e) => println!("{:?}", e)
+            }
+        }
+        Err(e) => println!("{:?}", e)
+    }
 }
