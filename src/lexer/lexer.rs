@@ -17,8 +17,8 @@ pub fn tokenize(input: &String) -> Vec<Token> {
 
 struct Lexer<'a> {
     input: Peekable<Chars<'a>>,
-    line: u32,
-    col: u32,
+    line: usize,
+    col: usize,
 }
 
 impl<'a> Lexer<'a> {

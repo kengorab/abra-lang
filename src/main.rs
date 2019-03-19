@@ -1,4 +1,6 @@
 use crate::typechecker::typechecker::Typechecker;
+use crate::typechecker::typechecker_error::TypecheckerError;
+use crate::common::display_error::DisplayError;
 
 mod common;
 mod lexer;
@@ -14,9 +16,9 @@ fn main() {
             let typechecker = Typechecker {};
             match typechecker.typecheck(ast) {
                 Ok(nodes) => println!("{:?}", nodes),
-                Err(e) => println!("{:?}", e)
+                Err(e) => eprintln!("{}", e.get_message(&input))
             }
         }
-        Err(e) => println!("{:?}", e)
+        Err(e) => eprintln!("{}", e.get_message(&input))
     }
 }
