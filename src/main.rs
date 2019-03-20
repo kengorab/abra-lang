@@ -1,24 +1,26 @@
-use crate::typechecker::typechecker::Typechecker;
-use crate::typechecker::typechecker_error::TypecheckerError;
 use crate::common::display_error::DisplayError;
 
 mod common;
 mod lexer;
 mod parser;
 mod typechecker;
+mod vm;
 
 fn main() {
-    let input = "-+".to_string();
+    let input = "1".to_string();
     let tokens = lexer::lexer::tokenize(&input);
 
     match parser::parser::parse(tokens) {
+        Err(e) => eprintln!("{}", e.get_message(&input)),
         Ok(ast) => {
-            let typechecker = Typechecker {};
-            match typechecker.typecheck(ast) {
-                Ok(nodes) => println!("{:?}", nodes),
-                Err(e) => eprintln!("{}", e.get_message(&input))
+            match typechecker::typechecker::typecheck(ast) {
+                Err(e) => eprintln!("{}", e.get_message(&input)),
+                Ok(nodes) => {
+                    let chunk = vm::compiler::compile(nodes).unwrap();
+
+                    println!("{:?}", chunk);
+                }
             }
         }
-        Err(e) => eprintln!("{}", e.get_message(&input))
     }
 }

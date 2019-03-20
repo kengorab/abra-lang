@@ -1,5 +1,5 @@
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp};
-use crate::common::visitor::AstVisitor;
+use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode};
@@ -7,13 +7,13 @@ use crate::typechecker::typechecker_error::TypecheckerError;
 
 pub struct Typechecker;
 
-impl Typechecker {
-    pub fn typecheck(&self, ast: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
-        let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
-            .map(|node| self.visit(node))
-            .collect();
-        results
-    }
+pub fn typecheck(ast: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+    let typechecker = Typechecker {};
+
+    let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
+        .map(|node| typechecker.visit(node))
+        .collect();
+    results
 }
 
 impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
@@ -103,8 +103,7 @@ mod tests {
         let tokens = tokenize(&input.to_string());
         let ast = parse(tokens).unwrap();
 
-        let typechecker = Typechecker {};
-        typechecker.typecheck(ast)
+        super::typecheck(ast)
     }
 
     #[test]

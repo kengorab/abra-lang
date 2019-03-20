@@ -10,6 +10,14 @@ pub enum TypedAstNode {
 }
 
 impl TypedAstNode {
+    pub fn get_token(&self) -> &Token {
+        match self {
+            TypedAstNode::Literal(token, _) => token,
+            TypedAstNode::Unary(token, _) => token,
+            TypedAstNode::Binary(token, _) => token,
+        }
+    }
+
     pub fn get_type(&self) -> Type {
         match &self {
             TypedAstNode::Literal(_, node) => match node {
