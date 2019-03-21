@@ -7,10 +7,11 @@ pub enum Value {
     Float(f64),
 }
 
+#[derive(PartialEq)]
 pub struct Chunk {
-    lines: Vec<usize>,
-    code: Vec<u8>,
-    constants: Vec<Value>,
+    pub(crate) lines: Vec<usize>,
+    pub(crate) code: Vec<u8>,
+    pub(crate) constants: Vec<Value>,
 }
 
 impl Chunk {
@@ -19,7 +20,7 @@ impl Chunk {
     }
 
     fn add_line(&mut self, line_num: usize) {
-        if !self.lines.is_empty() && self.lines.len() == line_num - 1 {
+        if !self.lines.is_empty() && self.lines.len() == line_num {
             self.lines[line_num - 1] += 1;
         } else {
             self.lines.push(1);
@@ -39,23 +40,26 @@ impl Chunk {
 
 impl Debug for Chunk {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "Chunk(code: [");
+        write!(f, "Chunk(lines: {:?}, code: [", self.lines);
 
         let mut bytecode = self.code.iter().peekable();
         loop {
             match bytecode.next() {
                 Some(&byte) => {
                     write!(f, "{:?}", Opcode::from(byte));
-                    if byte == Opcode::Constant.into() {
+                    if byte == Opcode::Constant as u8 {
                         match bytecode.next() {
                             None => panic!("Byte expected after Constant opcode!"),
                             Some(&byte) => write!(f, ", {:?}", byte)
-                        }
-                    } else { continue; }
+                        };
+                    }
                 }
                 None => break
             };
-            write!(f, ", ");
+
+            if let Some(_) = bytecode.peek() {
+                write!(f, ", ");
+            }
         }
 
         write!(f, "], constants: {:?})", self.constants)

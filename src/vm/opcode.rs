@@ -1,38 +1,37 @@
 #[derive(Debug, PartialEq)]
+#[repr(u8)]
 pub enum Opcode {
-    Constant,
-    Add,
-    Sub,
-    Mul,
-    Div,
+    Constant = 0,
+    IAdd,
+    ISub,
+    IMul,
+    IDiv,
+    FAdd,
+    FSub,
+    FMul,
+    FDiv,
+    I2F,
+    F2I,
     Negate,
     Return,
-}
-
-impl Into<u8> for Opcode {
-    fn into(self) -> u8 {
-        match &self {
-            Opcode::Constant => 0,
-            Opcode::Add => 1,
-            Opcode::Sub => 2,
-            Opcode::Mul => 3,
-            Opcode::Div => 4,
-            Opcode::Negate => 5,
-            Opcode::Return => 6,
-        }
-    }
 }
 
 impl From<u8> for Opcode {
     fn from(i: u8) -> Self {
         match i {
             0 => Opcode::Constant,
-            1 => Opcode::Add,
-            2 => Opcode::Sub,
-            3 => Opcode::Mul,
-            4 => Opcode::Div,
-            5 => Opcode::Negate,
-            6 => Opcode::Return,
+            1 => Opcode::IAdd,
+            2 => Opcode::ISub,
+            3 => Opcode::IMul,
+            4 => Opcode::IDiv,
+            5 => Opcode::FAdd,
+            6 => Opcode::FSub,
+            7 => Opcode::FMul,
+            8 => Opcode::FDiv,
+            9 => Opcode::I2F,
+            10 => Opcode::F2I,
+            11 => Opcode::Negate,
+            12 => Opcode::Return,
             _ => unimplemented!()
         }
     }
