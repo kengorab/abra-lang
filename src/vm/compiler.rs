@@ -1,10 +1,11 @@
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode};
-use crate::vm::chunk::{Chunk, Value};
+use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
 use crate::parser::ast::{UnaryOp, BinaryOp};
 use crate::typechecker::types::Type;
+use crate::vm::value::Value;
 
 pub struct Compiler<'a> {
     chunk: &'a mut Chunk
@@ -18,7 +19,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
     let last_line = ast.into_iter()
         .map(|node| {
             let line = node.get_token().get_position().line;
-            compiler.visit(node);
+            compiler.visit(node).unwrap();
             line
         })
         .last()
@@ -46,10 +47,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_unary(&mut self, token: Token, node: TypedUnaryNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        self.visit(*node.expr);
+        self.visit(*node.expr)?;
         match node.op {
             UnaryOp::Minus => self.chunk.write(Opcode::Negate as u8, line),
-            _ => unimplemented!()
         }
 
         Ok(())
@@ -75,7 +75,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let line = left.get_token().get_position().line;
         let ltype = left.get_type();
-        self.visit(left);
+        self.visit(left)?;
         match (node_type, ltype) {
             (Type::Int, Type::Float) => self.chunk.write(Opcode::F2I as u8, line),
             (Type::Float, Type::Int) => self.chunk.write(Opcode::I2F as u8, line),
@@ -84,7 +84,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let line = right.get_token().get_position().line;
         let rtype = right.get_type();
-        self.visit(right);
+        self.visit(right)?;
         match (node_type, rtype) {
             (Type::Int, Type::Float) => self.chunk.write(Opcode::F2I as u8, line),
             (Type::Float, Type::Int) => self.chunk.write(Opcode::I2F as u8, line),

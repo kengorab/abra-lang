@@ -1,11 +1,6 @@
 use std::fmt::{Debug, Formatter, Error};
 use crate::vm::opcode::Opcode;
-
-#[derive(Debug, PartialEq)]
-pub enum Value {
-    Int(i64),
-    Float(f64),
-}
+use crate::vm::value::Value;
 
 #[derive(PartialEq)]
 pub struct Chunk {
@@ -40,17 +35,17 @@ impl Chunk {
 
 impl Debug for Chunk {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "Chunk(lines: {:?}, code: [", self.lines);
+        write!(f, "Chunk(lines: {:?}, code: [", self.lines)?;
 
         let mut bytecode = self.code.iter().peekable();
         loop {
             match bytecode.next() {
                 Some(&byte) => {
-                    write!(f, "{:?}", Opcode::from(byte));
+                    write!(f, "{:?}", Opcode::from(byte))?;
                     if byte == Opcode::Constant as u8 {
                         match bytecode.next() {
                             None => panic!("Byte expected after Constant opcode!"),
-                            Some(&byte) => write!(f, ", {:?}", byte)
+                            Some(&byte) => write!(f, ", {:?}", byte)?
                         };
                     }
                 }
@@ -58,7 +53,7 @@ impl Debug for Chunk {
             };
 
             if let Some(_) = bytecode.peek() {
-                write!(f, ", ");
+                write!(f, ", ")?;
             }
         }
 

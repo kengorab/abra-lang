@@ -7,7 +7,7 @@ mod typechecker;
 mod vm;
 
 fn main() {
-    let input = "1".to_string();
+    let input = "1 + 2 * 3.4 / 5".to_string();
     let tokens = lexer::lexer::tokenize(&input);
 
     match parser::parser::parse(tokens) {
@@ -18,7 +18,12 @@ fn main() {
                 Ok(nodes) => {
                     let chunk = vm::compiler::compile(nodes).unwrap();
 
-                    println!("{:?}", chunk);
+                    let mut vm = vm::vm::VM::new(&chunk);
+                    match vm.run() {
+                        Ok(Some(v)) => println!("{}", v),
+                        Ok(None) => println!(),
+                        Err(e) => eprintln!("{:?}", e)
+                    }
                 }
             }
         }
