@@ -22,6 +22,11 @@ mod tests {
     }
 
     #[test]
+    fn interpret_nothing() {
+        assert!(interpret("").is_none());
+    }
+
+    #[test]
     fn interpret_constants() {
         let result = interpret("1").unwrap();
         let expected = Value::Int(1);
