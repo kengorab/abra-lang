@@ -100,7 +100,7 @@ mod tests {
     type TestResult = Result<(), TypecheckerError>;
 
     fn typecheck(input: &str) -> Result<Vec<TypedAstNode>, TypecheckerError> {
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
 
         super::typecheck(ast)

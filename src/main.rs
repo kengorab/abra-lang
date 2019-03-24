@@ -8,21 +8,23 @@ mod vm;
 
 fn main() {
     let input = "1 + 2 * 3.4 / 5".to_string();
-    let tokens = lexer::lexer::tokenize(&input);
 
-    match parser::parser::parse(tokens) {
-        Err(e) => eprintln!("{}", e.get_message(&input)),
-        Ok(ast) => {
-            match typechecker::typechecker::typecheck(ast) {
-                Err(e) => eprintln!("{}", e.get_message(&input)),
-                Ok(nodes) => {
-                    let chunk = vm::compiler::compile(nodes).unwrap();
+    match lexer::lexer::tokenize(&input) {
+        Err(e) => eprintln!("{:?}", e),
+        Ok(tokens) => match parser::parser::parse(tokens) {
+            Err(e) => eprintln!("{}", e.get_message(&input)),
+            Ok(ast) => {
+                match typechecker::typechecker::typecheck(ast) {
+                    Err(e) => eprintln!("{}", e.get_message(&input)),
+                    Ok(nodes) => {
+                        let chunk = vm::compiler::compile(nodes).unwrap();
 
-                    let mut vm = vm::vm::VM::new(&chunk);
-                    match vm.run() {
-                        Ok(Some(v)) => println!("{}", v),
-                        Ok(None) => println!(),
-                        Err(e) => eprintln!("{:?}", e)
+                        let mut vm = vm::vm::VM::new(&chunk);
+                        match vm.run() {
+                            Ok(Some(v)) => println!("{}", v),
+                            Ok(None) => println!(),
+                            Err(e) => eprintln!("{:?}", e)
+                        }
                     }
                 }
             }

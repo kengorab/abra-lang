@@ -1,18 +1,21 @@
 use crate::lexer::tokens::{Token, Position};
 use std::str::Chars;
 use std::iter::Peekable;
+use crate::lexer::lexer_error::LexerError;
 
-pub fn tokenize(input: &String) -> Vec<Token> {
+pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
     let mut lexer = Lexer::new(input);
 
     let mut tokens: Vec<Token> = vec![];
 
     loop {
-        match lexer.next_token() {
+        match lexer.next_token()? {
             Some(tok) => tokens.push(tok),
-            None => break tokens
+            None => break
         }
-    }
+    };
+
+    Ok(tokens)
 }
 
 struct Lexer<'a> {
@@ -35,6 +38,11 @@ impl<'a> Lexer<'a> {
     fn advance(&mut self) -> Option<char> {
         self.col += 1;
         self.input.next()
+    }
+
+    fn expect_next(&mut self) -> Result<char, LexerError> {
+        self.col += 1;
+        self.input.next().ok_or(LexerError::UnexpectedEof(Position::new(self.line, self.col)))
     }
 
     fn peek(&mut self) -> Option<&char> {
@@ -66,10 +74,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn next_token(&mut self) -> Option<Token> {
+    fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
         self.skip_whitespace();
 
-        let ch = self.advance()?;
+        let ch = match self.advance() {
+            None => return Ok(None),
+            Some(ch) => ch
+        };
 
         if ch.is_digit(10) {
             let pos = Position::new(self.line, self.col);
@@ -79,14 +90,15 @@ impl<'a> Lexer<'a> {
             loop {
                 if let Some(&ch) = self.peek() {
                     if ch.is_digit(10) {
-                        chars.push(self.advance()?);
+                        chars.push(self.expect_next()?);
                         continue;
                     } else if ch == '.' {
                         if is_float {
-                            panic!("Unexpected '.'");
+                            let pos = Position::new(self.line, self.col + 1);
+                            return Err(LexerError::UnexpectedChar(pos, ch.to_string()));
                         }
                         is_float = true;
-                        chars.push(self.advance()?);
+                        chars.push(self.expect_next()?);
                         continue;
                     }
                 }
@@ -96,21 +108,21 @@ impl<'a> Lexer<'a> {
             let s: String = chars.into_iter().collect();
             if is_float {
                 let f: f64 = s.parse().expect("Parsing string of digits (with '.') into float");
-                return Some(Token::Float(pos, f));
+                return Ok(Some(Token::Float(pos, f)));
             } else {
                 let i: i64 = s.parse().expect("Parsing string of digits into int");
-                return Some(Token::Int(pos, i));
+                return Ok(Some(Token::Int(pos, i)));
             }
         }
 
         let pos = Position::new(self.line, self.col);
-        match ch {
+        Ok(match ch {
             '+' => Some(Token::Plus(pos)),
             '-' => Some(Token::Minus(pos)),
             '*' => Some(Token::Star(pos)),
             '/' => Some(Token::Slash(pos)),
             _ => None
-        }
+        })
     }
 }
 
@@ -121,7 +133,7 @@ mod tests {
     #[test]
     fn test_tokenize_ints() {
         let input = "123\n 456";
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
             Token::Int(Position::new(2, 2), 456),
@@ -132,7 +144,7 @@ mod tests {
     #[test]
     fn test_tokenize_floats() {
         let input = "1.23\n 0.456";
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Float(Position::new(1, 1), 1.23),
             Token::Float(Position::new(2, 2), 0.456),
@@ -141,9 +153,17 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_floats_error() {
+        let input = "1..23";
+        let e = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 3), ".".to_string());
+        assert_eq!(expected, e);
+    }
+
+    #[test]
     fn test_tokenize_single_char_operators() {
         let input = "+ - * /";
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
             Token::Minus(Position::new(1, 3)),

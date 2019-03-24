@@ -158,7 +158,7 @@ mod tests {
     type TestResult = Result<(), ParseError>;
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         super::parse(tokens)
     }
 

@@ -12,7 +12,7 @@ mod tests {
     use crate::vm::vm::VM;
 
     fn interpret(input: &str) -> Option<Value> {
-        let tokens = tokenize(&input.to_string());
+        let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let typed_ast = typecheck(ast).unwrap();
         let chunk = compile(typed_ast).unwrap();
