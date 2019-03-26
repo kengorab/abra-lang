@@ -89,6 +89,7 @@ impl Parser {
             Token::Int(_, _) | Token::Float(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) => None,
             Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
+            _ => unimplemented!()
         }
     }
 
@@ -99,6 +100,7 @@ impl Parser {
             Token::Int(_, _) | Token::Float(_, _) => None,
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) | Token::Minus(_) =>
                 Some(Box::new(Parser::parse_binary)),
+            _ => unimplemented!()
         }
     }
 
@@ -107,6 +109,7 @@ impl Parser {
             Token::Int(_, _) | Token::Float(_, _) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
+            _ => unimplemented!()
         }
     }
 
