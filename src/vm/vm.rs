@@ -5,7 +5,7 @@ use crate::vm::value::Value;
 #[derive(Debug)]
 pub enum InterpretError {
     StackEmpty,
-    TypeMismatch,
+//    TypeMismatch,
     ConstIdxOutOfBounds,
     EndOfBytes,
 }

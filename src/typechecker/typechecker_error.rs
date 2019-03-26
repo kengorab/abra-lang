@@ -5,7 +5,6 @@ use crate::typechecker::types::Type;
 #[derive(Debug, PartialEq)]
 pub enum TypecheckerError {
     Mismatch { token: Token, expected: Type, actual: Type },
-    Placeholder,
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -19,7 +18,6 @@ fn type_repr(t: &Type) -> String {
                 .collect();
             format!("one of ({})", type_opts.join(", "))
         }
-        Type::Unknown => "Unknown".to_string()
     }
 }
 
@@ -38,7 +36,6 @@ impl DisplayError for TypecheckerError {
 
                 format!("Type mismatch ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
             }
-            _ => "".to_string()
         }
     }
 }
