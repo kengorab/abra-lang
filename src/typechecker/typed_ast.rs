@@ -22,7 +22,8 @@ impl TypedAstNode {
         match &self {
             TypedAstNode::Literal(_, node) => match node {
                 TypedLiteralNode::IntLiteral(_) => Type::Int,
-                TypedLiteralNode::FloatLiteral(_) => Type::Float
+                TypedLiteralNode::FloatLiteral(_) => Type::Float,
+                TypedLiteralNode::StringLiteral(_) => Type::String,
             },
             TypedAstNode::Unary(_, node) => node.typ.clone(),
             TypedAstNode::Binary(_, node) => node.typ.clone(),
@@ -34,6 +35,7 @@ impl TypedAstNode {
 pub enum TypedLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
+    StringLiteral(String),
 }
 
 #[derive(Debug, PartialEq)]

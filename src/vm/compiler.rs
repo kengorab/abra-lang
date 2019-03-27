@@ -5,7 +5,7 @@ use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
 use crate::parser::ast::{UnaryOp, BinaryOp};
 use crate::typechecker::types::Type;
-use crate::vm::value::Value;
+use crate::vm::value::{Value, Obj};
 
 pub struct Compiler<'a> {
     chunk: &'a mut Chunk
@@ -33,8 +33,12 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
 impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_literal(&mut self, token: Token, node: TypedLiteralNode) -> Result<(), ()> {
         let const_idx = match node {
-            TypedLiteralNode::IntLiteral(val) => self.chunk.add_constant(Value::Int(val)),
-            TypedLiteralNode::FloatLiteral(val) => self.chunk.add_constant(Value::Float(val))
+            TypedLiteralNode::IntLiteral(val) =>
+                self.chunk.add_constant(Value::Int(val)),
+            TypedLiteralNode::FloatLiteral(val) =>
+                self.chunk.add_constant(Value::Float(val)),
+            TypedLiteralNode::StringLiteral(val) =>
+                self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
         };
 
         let line = token.get_position().line;
@@ -51,7 +55,6 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         match node.op {
             UnaryOp::Minus => self.chunk.write(Opcode::Negate as u8, line),
         }
-
         Ok(())
     }
 
@@ -59,6 +62,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let node_type = &node.typ;
 
         let opcode = match (node.op, node_type) {
+            (BinaryOp::Add, Type::String) => Opcode::StrConcat,
+
             (BinaryOp::Add, Type::Int) => Opcode::IAdd,
             (BinaryOp::Add, Type::Float) => Opcode::FAdd,
             (BinaryOp::Sub, Type::Int) => Opcode::ISub,
@@ -67,7 +72,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             (BinaryOp::Mul, Type::Float) => Opcode::FMul,
             (BinaryOp::Div, Type::Int) => Opcode::IDiv,
             (BinaryOp::Div, Type::Float) => Opcode::FDiv,
-            _ => unimplemented!()
+            _ => unreachable!()
         };
 
         let left = *node.left;
@@ -127,15 +132,22 @@ mod tests {
 
     #[test]
     fn compile_literals() {
-        let chunk = compile("1 2.3 4 5.6");
+        let chunk = compile("1 2.3 4 5.6 \"hello\"");
         let expected = Chunk {
-            lines: vec![8, 1],
-            constants: vec![Value::Int(1), Value::Float(2.3), Value::Int(4), Value::Float(5.6)],
+            lines: vec![10, 1],
+            constants: vec![
+                Value::Int(1),
+                Value::Float(2.3),
+                Value::Int(4),
+                Value::Float(5.6),
+                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
+            ],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 2,
                 Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, 4,
                 Opcode::Return as u8
             ],
         };
@@ -170,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_binary() {
+    fn compile_binary_numeric() {
         let chunk = compile("1 + 2");
         let expected = Chunk {
             lines: vec![5, 1],
@@ -201,6 +213,44 @@ mod tests {
                 Opcode::I2F as u8,
                 Opcode::FDiv as u8,
                 Opcode::FSub as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_str_concat() {
+        let chunk = compile("\"abc\" + \"def\"");
+        let expected = Chunk {
+            lines: vec![5, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::StrConcat as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("1 + \"a\" + 3.4");
+        let expected = Chunk {
+            lines: vec![8, 1],
+            constants: vec![
+                Value::Int(1),
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Float(3.4)
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::StrConcat as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::StrConcat as u8,
                 Opcode::Return as u8
             ],
         };
