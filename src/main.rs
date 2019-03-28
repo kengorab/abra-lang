@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate lazy_static;
+
 use crate::common::display_error::DisplayError;
 
 mod common;

@@ -1,6 +1,7 @@
-use crate::lexer::tokens::{Token, Position};
 use std::str::Chars;
 use std::iter::Peekable;
+use std::collections::HashMap;
+use crate::lexer::tokens::{Token, Position, Keyword};
 use crate::lexer::lexer_error::LexerError;
 
 pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
@@ -16,6 +17,15 @@ pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
     };
 
     Ok(tokens)
+}
+
+lazy_static! {
+    static ref KEYWORDS: HashMap<&'static str, Keyword> = {
+        let mut keywords = HashMap::new();
+        keywords.insert("true", Keyword::True);
+        keywords.insert("false", Keyword::False);
+        keywords
+    };
 }
 
 struct Lexer<'a> {
@@ -141,6 +151,28 @@ impl<'a> Lexer<'a> {
             return Ok(Some(Token::String(pos, s)));
         }
 
+        if ch.is_alphabetic() {
+            let pos = Position::new(self.line, self.col);
+            let mut chars = vec![ch];
+
+            while let Some(ch) = self.peek() {
+                if ch.is_alphanumeric() {
+                    chars.push(self.expect_next()?);
+                } else {
+                    break;
+                }
+            }
+
+            let s: String = chars.into_iter().collect();
+            return match KEYWORDS.get(&*s) {
+                Some(keyword) => match keyword {
+                    Keyword::True => Ok(Some(Token::Bool(pos, true))),
+                    Keyword::False => Ok(Some(Token::Bool(pos, false))),
+                }
+                None => unimplemented!()
+            };
+        }
+
         let pos = Position::new(self.line, self.col);
         Ok(match ch {
             '+' => Some(Token::Plus(pos)),
@@ -229,6 +261,17 @@ mod tests {
         let input = "\"\n\"";
         let tokens = tokenize(&input.to_string()).unwrap_err();
         let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_keywords() {
+        let input = "true false";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Bool(Position::new(1, 1), true),
+            Token::Bool(Position::new(1, 6), false),
+        ];
         assert_eq!(expected, tokens);
     }
 }

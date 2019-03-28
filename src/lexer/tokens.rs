@@ -7,6 +7,12 @@ impl Position {
     pub fn new(line: usize, col: usize) -> Self { Position { line, col } }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Keyword {
+    True,
+    False,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Int(Position, i64),
@@ -17,6 +23,8 @@ pub enum Token {
     Minus(Position),
     Star(Position),
     Slash(Position),
+
+    Bool(Position, bool),
 }
 
 impl Token {
@@ -24,7 +32,8 @@ impl Token {
         let pos = match self {
             Token::Int(pos, _) |
             Token::Float(pos, _) |
-            Token::String(pos, _) => pos,
+            Token::String(pos, _) |
+            Token::Bool(pos, _) => pos,
 
             Token::Plus(pos) |
             Token::Minus(pos) |
@@ -41,6 +50,7 @@ impl Display for Token {
             Token::Int(_, val) => write!(f, "{}", val),
             Token::Float(_, val) => write!(f, "{}", val),
             Token::String(_, val) => write!(f, "\"{}\"", val),
+            Token::Bool(_, val) => write!(f, "{}", val),
 
             Token::Plus(_) => write!(f, "+"),
             Token::Minus(_) => write!(f, "-"),
