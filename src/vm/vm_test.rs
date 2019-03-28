@@ -8,7 +8,7 @@ mod tests {
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
     use crate::vm::chunk::Chunk;
-    use crate::vm::value::Value;
+    use crate::vm::value::{Value, Obj};
     use crate::vm::vm::VM;
 
     fn interpret(input: &str) -> Option<Value> {
@@ -52,6 +52,10 @@ mod tests {
     fn interpret_binary() {
         let result = interpret("1 + 2 * 3.4 / 5").unwrap();
         let expected = Value::Float(2.36);
+        assert_eq!(expected, result);
+
+        let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
         assert_eq!(expected, result);
     }
 }

@@ -115,6 +115,32 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        if ch == '"' {
+            let pos = Position::new(self.line, self.col);
+            let mut chars: Vec<char> = vec![];
+
+            loop {
+                if let Some(&ch) = self.peek() {
+                    if ch == '\n' {
+                        return Err(LexerError::UnterminatedString(pos, Position::new(self.line, self.col + 1)));
+                    } else if ch == '"' {
+                        // Consume closing quote
+                        self.expect_next()?;
+                        break;
+                    } else if ch == '\\' {
+                        // TODO: Address escaped characters
+                    }
+
+                    chars.push(self.expect_next()?);
+                } else {
+                    return Err(LexerError::UnterminatedString(pos, Position::new(self.line, self.col + 1)));
+                }
+            }
+
+            let s: String = chars.into_iter().collect();
+            return Ok(Some(Token::String(pos, s)));
+        }
+
         let pos = Position::new(self.line, self.col);
         Ok(match ch {
             '+' => Some(Token::Plus(pos)),
@@ -170,6 +196,39 @@ mod tests {
             Token::Star(Position::new(1, 5)),
             Token::Slash(Position::new(1, 7)),
         ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_strings_empty() {
+        let input = "\"\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::String(Position::new(1, 1), "".to_string())
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_strings() {
+        let input = "\"hello wörld: 1 + 2   ! 👩🏻‍⚕️\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::String(Position::new(1, 1), "hello wörld: 1 + 2   ! 👩🏻‍⚕️".to_string())
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_strings_error() {
+        let input = "\"";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        assert_eq!(expected, tokens);
+
+        let input = "\"\n\"";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
         assert_eq!(expected, tokens);
     }
 }

@@ -1,11 +1,10 @@
 use crate::vm::chunk::Chunk;
 use crate::vm::opcode::Opcode;
-use crate::vm::value::Value;
+use crate::vm::value::{Value, Obj};
 
 #[derive(Debug)]
 pub enum InterpretError {
     StackEmpty,
-    TypeMismatch,
     ConstIdxOutOfBounds,
     EndOfBytes,
 }
@@ -29,6 +28,10 @@ impl<'a> VM<'a> {
         self.stack.pop()
     }
 
+    fn pop_expect(&mut self) -> Result<Value, InterpretError> {
+        self.stack.pop().ok_or(InterpretError::StackEmpty)
+    }
+
     fn read_byte(&mut self) -> Option<u8> {
         if self.chunk.code.len() == self.ip {
             None
@@ -46,8 +49,8 @@ impl<'a> VM<'a> {
     fn int_op<F>(&mut self, f: F) -> Result<(), InterpretError>
         where F: FnOnce(i64, i64) -> i64
     {
-        let b = self.pop().ok_or(InterpretError::StackEmpty)?;
-        let a = self.pop().ok_or(InterpretError::StackEmpty)?;
+        let b = self.pop_expect()?;
+        let a = self.pop_expect()?;
 
         match (a, b) {
             (Value::Int(a), Value::Int(b)) => {
@@ -61,8 +64,8 @@ impl<'a> VM<'a> {
     fn float_op<F>(&mut self, f: F) -> Result<(), InterpretError>
         where F: FnOnce(f64, f64) -> f64
     {
-        let b = self.pop().ok_or(InterpretError::StackEmpty)?;
-        let a = self.pop().ok_or(InterpretError::StackEmpty)?;
+        let b = self.pop_expect()?;
+        let a = self.pop_expect()?;
 
         match (a, b) {
             (Value::Float(a), Value::Float(b)) => {
@@ -95,7 +98,7 @@ impl<'a> VM<'a> {
                 Opcode::FMul => self.float_op(|a, b| a * b)?,
                 Opcode::FDiv => self.float_op(|a, b| a / b)?,
                 Opcode::I2F => {
-                    let val = self.pop().ok_or(InterpretError::StackEmpty)?;
+                    let val = self.pop_expect()?;
                     let val = match val {
                         Value::Int(v) => Value::Float(v as f64),
                         _ => unreachable!()
@@ -103,22 +106,32 @@ impl<'a> VM<'a> {
                     self.push(val)
                 }
                 Opcode::F2I => {
-                    let val = self.pop().ok_or(InterpretError::StackEmpty)?;
+                    let val = self.pop_expect()?;
                     let val = match val {
                         Value::Float(v) => Value::Int(v as i64),
                         _ => unreachable!()
                     };
                     self.push(val)
                 }
+                Opcode::StrConcat => {
+                    let b = self.pop_expect()?;
+                    let a = self.pop_expect()?;
+
+                    let a = a.to_string();
+                    let b = b.to_string();
+                    let concat = a + &b;
+                    self.push(Value::Obj(Obj::StringObj { value: Box::new(concat) }))
+                }
                 Opcode::Negate => {
-                    let val = self.pop().ok_or(InterpretError::StackEmpty)?;
+                    let val = self.pop_expect()?;
                     let val = match val {
                         Value::Int(v) => Value::Int(-v),
                         Value::Float(v) => Value::Float(-v),
+                        _ => unreachable!()
                     };
                     self.push(val)
                 }
-                Opcode::Return => break Ok(self.pop())
+                Opcode::Return => break Ok(self.pop()),
             }
         }
     }

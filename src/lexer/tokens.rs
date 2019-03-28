@@ -11,6 +11,7 @@ impl Position {
 pub enum Token {
     Int(Position, i64),
     Float(Position, f64),
+    String(Position, String),
 
     Plus(Position),
     Minus(Position),
@@ -21,7 +22,10 @@ pub enum Token {
 impl Token {
     pub fn get_position(&self) -> Position {
         let pos = match self {
-            Token::Int(pos, _) | Token::Float(pos, _) => pos,
+            Token::Int(pos, _) |
+            Token::Float(pos, _) |
+            Token::String(pos, _) => pos,
+
             Token::Plus(pos) |
             Token::Minus(pos) |
             Token::Star(pos) |
@@ -36,6 +40,8 @@ impl Display for Token {
         match self {
             Token::Int(_, val) => write!(f, "{}", val),
             Token::Float(_, val) => write!(f, "{}", val),
+            Token::String(_, val) => write!(f, "\"{}\"", val),
+
             Token::Plus(_) => write!(f, "+"),
             Token::Minus(_) => write!(f, "-"),
             Token::Star(_) => write!(f, "*"),

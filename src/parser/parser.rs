@@ -86,7 +86,9 @@ impl Parser {
         use self::Parser;
 
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) => Some(Box::new(Parser::parse_literal)),
+            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => {
+                Some(Box::new(Parser::parse_literal))
+            }
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) => None,
             Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
         }
@@ -96,7 +98,7 @@ impl Parser {
         use self::Parser;
 
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) => None,
+            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => None,
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) | Token::Minus(_) =>
                 Some(Box::new(Parser::parse_binary)),
         }
@@ -104,7 +106,7 @@ impl Parser {
 
     fn get_precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) => Precedence::None,
+            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
         }
@@ -120,6 +122,7 @@ impl Parser {
         match &token {
             Token::Int(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::IntLiteral(*val))),
             Token::Float(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
+            Token::String(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::StringLiteral(val.clone()))),
             _ => Err(ParseError::Raw(format!("Unknown literal: {:?}", token)))
         }
     }
@@ -128,7 +131,7 @@ impl Parser {
         let expr = self.parse_precedence(Precedence::Unary)?;
         let op = match token {
             Token::Minus(_) => UnaryOp::Minus,
-            _ => unimplemented!()
+            _ => unreachable!()
         };
         Ok(AstNode::Unary(token, UnaryNode { typ: None, op, expr: Box::new(expr) }))
     }
@@ -141,7 +144,7 @@ impl Parser {
             Token::Minus(_) => BinaryOp::Sub,
             Token::Star(_) => BinaryOp::Mul,
             Token::Slash(_) => BinaryOp::Div,
-            _ => unimplemented!()
+            _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { typ: None, left: Box::new(left), op, right: Box::new(right) }))
     }
@@ -164,11 +167,12 @@ mod tests {
 
     #[test]
     fn parse_literals() -> TestResult {
-        let ast = parse("123 4.56 0.789")?;
+        let ast = parse("123 4.56 0.789 \"hello world\"")?;
         let expected = vec![
             Literal(Token::Int(Position::new(1, 1), 123), IntLiteral(123)),
             Literal(Token::Float(Position::new(1, 5), 4.56), FloatLiteral(4.56)),
             Literal(Token::Float(Position::new(1, 10), 0.789), FloatLiteral(0.789)),
+            Literal(Token::String(Position::new(1, 16), "hello world".to_string()), StringLiteral("hello world".to_string())),
         ];
         Ok(assert_eq!(expected, ast))
     }
@@ -214,6 +218,30 @@ mod tests {
                     op: BinaryOp::Add,
                     right: Box::new(
                         Literal(Token::Int(Position::new(1, 7), 3), IntLiteral(3))
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("\"hello \" + \"world\"")?;
+        let expected = vec![
+            Binary(
+                Token::Plus(Position::new(1, 10)),
+                BinaryNode {
+                    typ: None,
+                    left: Box::new(
+                        Literal(
+                            Token::String(Position::new(1, 1), "hello ".to_string()),
+                            StringLiteral("hello ".to_string()),
+                        )
+                    ),
+                    op: BinaryOp::Add,
+                    right: Box::new(
+                        Literal(
+                            Token::String(Position::new(1, 12), "world".to_string()),
+                            StringLiteral("world".to_string()),
+                        )
                     ),
                 },
             )

@@ -8,20 +8,11 @@ pub enum AstNode {
     Binary(Token, BinaryNode),
 }
 
-impl AstNode {
-    pub fn get_token(&self) -> Token {
-        match self {
-            AstNode::Literal(token, _) => token.clone(),
-            AstNode::Unary(token, _) => token.clone(),
-            AstNode::Binary(token, _) => token.clone(),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub enum AstLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
+    StringLiteral(String),
 }
 
 #[derive(Debug, PartialEq)]

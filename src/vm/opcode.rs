@@ -12,6 +12,7 @@ pub enum Opcode {
     FDiv,
     I2F,
     F2I,
+    StrConcat,
     Negate,
     Return,
 }
@@ -30,9 +31,10 @@ impl From<u8> for Opcode {
             8 => Opcode::FDiv,
             9 => Opcode::I2F,
             10 => Opcode::F2I,
-            11 => Opcode::Negate,
-            12 => Opcode::Return,
-            _ => unimplemented!()
+            11 => Opcode::StrConcat,
+            12 => Opcode::Negate,
+            13 => Opcode::Return,
+            _ => unreachable!()
         }
     }
 }
