@@ -86,12 +86,12 @@ impl Parser {
         use self::Parser;
 
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => {
-                Some(Box::new(Parser::parse_literal))
-            }
+            Token::Int(_, _) |
+            Token::Float(_, _) |
+            Token::String(_, _) |
+            Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) => None,
             Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
-            _ => unimplemented!()
         }
     }
 
@@ -99,19 +99,23 @@ impl Parser {
         use self::Parser;
 
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => None,
+            Token::Int(_, _) |
+            Token::Float(_, _) |
+            Token::String(_, _) |
+            Token::Bool(_, _) => None,
             Token::Plus(_) | Token::Star(_) | Token::Slash(_) | Token::Minus(_) =>
                 Some(Box::new(Parser::parse_binary)),
-            _ => unimplemented!()
         }
     }
 
     fn get_precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) => Precedence::None,
+            Token::Int(_, _) |
+            Token::Float(_, _) |
+            Token::String(_, _) |
+            Token::Bool(_, _) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
-            _ => unimplemented!()
         }
     }
 
@@ -126,6 +130,7 @@ impl Parser {
             Token::Int(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::IntLiteral(*val))),
             Token::Float(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
             Token::String(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::StringLiteral(val.clone()))),
+            Token::Bool(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::BoolLiteral(*val))),
             _ => Err(ParseError::Raw(format!("Unknown literal: {:?}", token)))
         }
     }
@@ -170,12 +175,14 @@ mod tests {
 
     #[test]
     fn parse_literals() -> TestResult {
-        let ast = parse("123 4.56 0.789 \"hello world\"")?;
+        let ast = parse("123 4.56 0.789 \"hello world\" true false")?;
         let expected = vec![
             Literal(Token::Int(Position::new(1, 1), 123), IntLiteral(123)),
             Literal(Token::Float(Position::new(1, 5), 4.56), FloatLiteral(4.56)),
             Literal(Token::Float(Position::new(1, 10), 0.789), FloatLiteral(0.789)),
             Literal(Token::String(Position::new(1, 16), "hello world".to_string()), StringLiteral("hello world".to_string())),
+            Literal(Token::Bool(Position::new(1, 30), true), BoolLiteral(true)),
+            Literal(Token::Bool(Position::new(1, 35), false), BoolLiteral(false)),
         ];
         Ok(assert_eq!(expected, ast))
     }

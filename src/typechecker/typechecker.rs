@@ -25,6 +25,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Ok(TypedAstNode::Literal(token, TypedLiteralNode::FloatLiteral(val))),
             AstLiteralNode::StringLiteral(val) =>
                 Ok(TypedAstNode::Literal(token, TypedLiteralNode::StringLiteral(val))),
+            _ => unimplemented!()
         }
     }
 

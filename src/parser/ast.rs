@@ -13,6 +13,7 @@ pub enum AstLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
+    BoolLiteral(bool),
 }
 
 #[derive(Debug, PartialEq)]
