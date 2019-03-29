@@ -7,7 +7,6 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
-    use crate::vm::chunk::Chunk;
     use crate::vm::value::{Value, Obj};
     use crate::vm::vm::VM;
 

@@ -28,7 +28,7 @@ pub struct UnaryNode {
     pub expr: Box<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,

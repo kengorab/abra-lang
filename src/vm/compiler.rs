@@ -39,6 +39,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 self.chunk.add_constant(Value::Float(val)),
             TypedLiteralNode::StringLiteral(val) =>
                 self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
+            _ => unimplemented!()
         };
 
         let line = token.get_position().line;

@@ -24,6 +24,7 @@ impl TypedAstNode {
                 TypedLiteralNode::IntLiteral(_) => Type::Int,
                 TypedLiteralNode::FloatLiteral(_) => Type::Float,
                 TypedLiteralNode::StringLiteral(_) => Type::String,
+                TypedLiteralNode::BoolLiteral(_) => Type::Bool,
             },
             TypedAstNode::Unary(_, node) => node.typ.clone(),
             TypedAstNode::Binary(_, node) => node.typ.clone(),
@@ -36,6 +37,7 @@ pub enum TypedLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
+    BoolLiteral(bool),
 }
 
 #[derive(Debug, PartialEq)]
