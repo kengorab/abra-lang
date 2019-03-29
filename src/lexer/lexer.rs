@@ -169,7 +169,7 @@ impl<'a> Lexer<'a> {
                     Keyword::True => Ok(Some(Token::Bool(pos, true))),
                     Keyword::False => Ok(Some(Token::Bool(pos, false))),
                 }
-                None => unimplemented!()
+                None => unimplemented!() // TODO: Identifiers
             };
         }
 

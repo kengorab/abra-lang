@@ -34,6 +34,14 @@ mod tests {
         let result = interpret("1.23").unwrap();
         let expected = Value::Float(1.23);
         assert_eq!(expected, result);
+
+        let result = interpret("true").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let result = interpret("false").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
     }
 
     #[test]

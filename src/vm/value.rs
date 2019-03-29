@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter, Error};
 pub enum Value {
     Int(i64),
     Float(f64),
+    Bool(bool),
     Obj(Obj),
 }
 
@@ -12,6 +13,7 @@ impl Value {
         match self {
             Value::Int(val) => format!("{}", val),
             Value::Float(val) => format!("{}", val),
+            Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
         }
     }
@@ -35,6 +37,7 @@ impl Display for Value {
         match self {
             Value::Int(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
+            Value::Bool(v) => write!(f, "{}", v),
             Value::Obj(o) => match o {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value)
             }

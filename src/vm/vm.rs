@@ -122,6 +122,8 @@ impl<'a> VM<'a> {
                     let concat = a + &b;
                     self.push(Value::Obj(Obj::StringObj { value: Box::new(concat) }))
                 }
+                Opcode::T => self.push(Value::Bool(true)),
+                Opcode::F => self.push(Value::Bool(false)),
                 Opcode::Negate => {
                     let val = self.pop_expect()?;
                     let val = match val {

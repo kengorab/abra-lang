@@ -32,6 +32,8 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
 
 impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_literal(&mut self, token: Token, node: TypedLiteralNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
         let const_idx = match node {
             TypedLiteralNode::IntLiteral(val) =>
                 self.chunk.add_constant(Value::Int(val)),
@@ -39,13 +41,16 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 self.chunk.add_constant(Value::Float(val)),
             TypedLiteralNode::StringLiteral(val) =>
                 self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
-            _ => unimplemented!()
+            TypedLiteralNode::BoolLiteral(val) => {
+                let opcode = if val { Opcode::T } else { Opcode::F } as u8;
+                self.chunk.write(opcode, line);
+                return Ok(());
+            }
         };
-
-        let line = token.get_position().line;
 
         self.chunk.write(Opcode::Constant as u8, line);
         self.chunk.write(const_idx, line);
+
         Ok(())
     }
 
@@ -133,9 +138,9 @@ mod tests {
 
     #[test]
     fn compile_literals() {
-        let chunk = compile("1 2.3 4 5.6 \"hello\"");
+        let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Chunk {
-            lines: vec![10, 1],
+            lines: vec![12, 1],
             constants: vec![
                 Value::Int(1),
                 Value::Float(2.3),
@@ -149,6 +154,8 @@ mod tests {
                 Opcode::Constant as u8, 2,
                 Opcode::Constant as u8, 3,
                 Opcode::Constant as u8, 4,
+                Opcode::T as u8,
+                Opcode::F as u8,
                 Opcode::Return as u8
             ],
         };

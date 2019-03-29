@@ -10,7 +10,7 @@ mod typechecker;
 mod vm;
 
 fn main() {
-    let input = "\"hello\" + 3.14 + \"world\" + 4 + \"!\"".to_string();
+    let input = "\"hello\" + 3.14 + \"world\" + 4 + \"!\" + false".to_string();
 
     match lexer::lexer::tokenize(&input) {
         Err(e) => eprintln!("{}", e.get_message(&input)),
