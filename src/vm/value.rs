@@ -19,19 +19,6 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Obj {
-    StringObj { value: Box<String> }
-}
-
-impl Obj {
-    pub fn to_string(&self) -> String {
-        match self {
-            Obj::StringObj { value } => *value.clone(),
-        }
-    }
-}
-
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
@@ -41,6 +28,19 @@ impl Display for Value {
             Value::Obj(o) => match o {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value)
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Obj {
+    StringObj { value: Box<String> }
+}
+
+impl Obj {
+    pub fn to_string(&self) -> String {
+        match self {
+            Obj::StringObj { value } => *value.clone(),
         }
     }
 }
