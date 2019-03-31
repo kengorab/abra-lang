@@ -80,4 +80,59 @@ mod tests {
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_binary_comparisons() {
+        let cases = vec![
+            // Testing <
+            ("1 < 3", true), ("1 < 1", false),
+            ("1 < 3.0", true), ("1 < 1.0", false),
+            ("1.0 < 3.0", true), ("1.0 < 1.0", false),
+            ("1.0 < 3", true), ("1.0 < 1", false),
+            ("\"a\" < \"b\"", true), ("\"a\" < \"a\"", false),
+            // Testing <=
+            ("1 <= 3", true), ("3 <= 1", false),
+            ("3 <= 3.0", true), ("3 <= 1.0", false),
+            ("1.0 <= 3.0", true), ("3.0 <= 1.0", false),
+            ("1.0 <= 3", true), ("3.0 <= 1", false),
+            ("\"a\" <= \"b\"", true), ("\"b\" <= \"a\"", false),
+            ("\"a\" <= \"a\"", true),
+            // Testing >
+            ("3 > 1", true), ("1 > 1", false),
+            ("3.0 > 1", true), ("1.0 > 1", false),
+            ("3.0 > 1.0", true), ("1.0 > 3.0", false),
+            ("3 > 1.0", true), ("1.0 > 1", false),
+            ("\"b\" > \"a\"", true), ("\"a\" > \"a\"", false),
+            // Testing >=
+            ("3 >= 1", true), ("1 >= 3", false),
+            ("3 >= 3.0", true), ("1.0 >= 3", false),
+            ("3.0 >= 1.0", true), ("1.0 >= 3.0", false),
+            ("3 >= 1.0", true), ("1 >= 3.0", false),
+            ("\"b\" >= \"a\"", true), ("\"a\" >= \"b\"", false),
+            ("\"b\" >= \"b\"", true),
+            // Testing ==
+            ("3 == 3", true), ("3 == 1", false),
+            ("3 == 3.0", true), ("3 == 1.0", false),
+            ("3.0 == 3.0", true), ("3.0 == 1.0", false),
+            ("3.0 == 3", true), ("3.0 == 1", false),
+            ("true == true", true), ("true == false", false),
+            ("\"abc\" == \"abc\"", true), ("\"abc\" == \"def\"", false),
+            ("\"abc\" == true", false), ("\"abc\" == false", false),
+            ("\"abc\" == 3.14", false), ("\"abc\" == 4", false),
+            // Testing !=
+            ("3 != 1", true), ("3 != 3", false),
+            ("3 != 1.0", true), ("3 != 3.0", false),
+            ("3.0 != 1.0", true), ("3.0 != 3.0", false),
+            ("3.0 != 1", true), ("3.0 != 3", false),
+            ("true != false", true), ("true != true", false),
+            ("\"abc\" != \"def\"", true), ("\"abc\" != \"abc\"", false),
+            ("\"abc\" != true", true), ("\"abc\" != false", true),
+            ("\"abc\" != 3.14", true), ("\"abc\" != 4", true),
+        ];
+
+        for (input, expected) in cases {
+            let result = interpret(input).unwrap();
+            assert_eq!(Value::Bool(expected), result, "Interpreting {} should be {}", input, expected);
+        }
+    }
 }

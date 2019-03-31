@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, Error};
+use std::cmp::Ordering;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -32,7 +33,7 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Obj {
     StringObj { value: Box<String> }
 }
@@ -41,6 +42,16 @@ impl Obj {
     pub fn to_string(&self) -> String {
         match self {
             Obj::StringObj { value } => *value.clone(),
+        }
+    }
+}
+
+impl PartialOrd for Obj {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Obj::StringObj { value: v1 }, Obj::StringObj { value: v2 }) => {
+                Some(v1.cmp(v2))
+            }
         }
     }
 }

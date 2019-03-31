@@ -6,7 +6,7 @@ pub enum Precedence {
     Or,
     // &&
     And,
-    //    // == !=
+    // == !=
     Equality,
     // < > <= >=
     Comparison,
