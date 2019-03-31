@@ -124,6 +124,18 @@ impl<'a> VM<'a> {
                 }
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
+                Opcode::And | Opcode::Or => {
+                    if let Value::Bool(b) = self.pop_expect()? {
+                        if let Value::Bool(a) = self.pop_expect()? {
+                            let res = if let Opcode::And = instr {
+                                a && b
+                            } else {
+                                a || b
+                            };
+                            self.push(Value::Bool(res));
+                        }
+                    }
+                }
                 Opcode::Negate => {
                     let val = self.pop_expect()?;
                     let val = match val {

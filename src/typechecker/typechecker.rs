@@ -87,7 +87,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
                 }
             }
-            _ => unimplemented!()
+            BinaryOp::And | BinaryOp::Or => {
+                match (&ltype, &rtype) {
+                    (Type::Bool, Type::Bool) => Ok(Type::Bool),
+                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
+                }
+            }
         };
 
         Ok(TypedAstNode::Binary(token.clone(), TypedBinaryNode {
@@ -382,6 +387,71 @@ mod tests {
             ("true / 1.0", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Float),
             ("true / \"str\"", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::String),
             ("true / false", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Bool),
+        ];
+
+        for (input, token, op, ltype, rtype) in cases {
+            let expected = TypecheckerError::InvalidOperator { token, op, ltype, rtype };
+            let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
+
+            let err = typecheck(input).expect_err(&*msg);
+            assert_eq!(expected, err, "{}", msg);
+        }
+    }
+
+    #[test]
+    fn typecheck_binary_boolean() -> TestResult {
+        let typed_ast = typecheck("true && true || false")?;
+        let expected = TypedAstNode::Binary(
+            Token::Or(Position::new(1, 14)),
+            TypedBinaryNode {
+                typ: Type::Bool,
+                left: Box::new(
+                    TypedAstNode::Binary(
+                        Token::And(Position::new(1, 6)),
+                        TypedBinaryNode {
+                            typ: Type::Bool,
+                            left: Box::new(
+                                TypedAstNode::Literal(
+                                    Token::Bool(Position::new(1, 1), true),
+                                    TypedLiteralNode::BoolLiteral(true))
+                            ),
+                            op: BinaryOp::And,
+                            right: Box::new(
+                                TypedAstNode::Literal(
+                                    Token::Bool(Position::new(1, 9), true),
+                                    TypedLiteralNode::BoolLiteral(true))
+                            ),
+                        },
+                    ),
+                ),
+                op: BinaryOp::Or,
+                right: Box::new(
+                    TypedAstNode::Literal(
+                        Token::Bool(Position::new(1, 17), false),
+                        TypedLiteralNode::BoolLiteral(false),
+                    ),
+                ),
+            },
+        );
+        Ok(assert_eq!(expected, typed_ast[0]))
+    }
+
+    #[test]
+    fn typecheck_binary_boolean_errors() {
+        let cases = vec![
+            ("true && 1", Token::And(Position::new(1, 6)), BinaryOp::And, Type::Bool, Type::Int),
+            ("true && 3.14", Token::And(Position::new(1, 6)), BinaryOp::And, Type::Bool, Type::Float),
+            ("true && \"str\"", Token::And(Position::new(1, 6)), BinaryOp::And, Type::Bool, Type::String),
+            ("false && 1", Token::And(Position::new(1, 7)), BinaryOp::And, Type::Bool, Type::Int),
+            ("false && 3.14", Token::And(Position::new(1, 7)), BinaryOp::And, Type::Bool, Type::Float),
+            ("false && \"str\"", Token::And(Position::new(1, 7)), BinaryOp::And, Type::Bool, Type::String),
+            //
+            ("true || 1", Token::Or(Position::new(1, 6)), BinaryOp::Or, Type::Bool, Type::Int),
+            ("true || 3.14", Token::Or(Position::new(1, 6)), BinaryOp::Or, Type::Bool, Type::Float),
+            ("true || \"str\"", Token::Or(Position::new(1, 6)), BinaryOp::Or, Type::Bool, Type::String),
+            ("false || 1", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Int),
+            ("false || 3.14", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Float),
+            ("false || \"str\"", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::String),
         ];
 
         for (input, token, op, ltype, rtype) in cases {

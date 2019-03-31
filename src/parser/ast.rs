@@ -1,5 +1,4 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::Type;
 
 #[derive(Debug, PartialEq)]
 pub enum AstNode {

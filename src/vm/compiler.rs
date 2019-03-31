@@ -69,6 +69,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let opcode = match (node.op, node_type) {
             (BinaryOp::Add, Type::String) => Opcode::StrConcat,
+            (BinaryOp::And, Type::Bool) => Opcode::And,
+            (BinaryOp::Or, Type::Bool) => Opcode::Or,
 
             (BinaryOp::Add, Type::Int) => Opcode::IAdd,
             (BinaryOp::Add, Type::Float) => Opcode::FAdd,
@@ -259,6 +261,24 @@ mod tests {
                 Opcode::StrConcat as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::StrConcat as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_boolean() {
+        let chunk = compile("true && true || false");
+        let expected = Chunk {
+            lines: vec![5, 1],
+            constants: vec![],
+            code: vec![
+                Opcode::T as u8,
+                Opcode::T as u8,
+                Opcode::And as u8,
+                Opcode::F as u8,
+                Opcode::Or as u8,
                 Opcode::Return as u8
             ],
         };

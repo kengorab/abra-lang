@@ -65,4 +65,19 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_binary_boolean() {
+        let result = interpret("true || false").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let result = interpret("true && false").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
+
+        let result = interpret("true && false || true && true").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
 }

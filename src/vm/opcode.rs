@@ -15,6 +15,8 @@ pub enum Opcode {
     StrConcat,
     T,
     F,
+    And,
+    Or,
     Negate,
     Return,
 }
@@ -36,8 +38,10 @@ impl From<u8> for Opcode {
             11 => Opcode::StrConcat,
             12 => Opcode::T,
             13 => Opcode::F,
-            14 => Opcode::Negate,
-            15 => Opcode::Return,
+            14 => Opcode::And,
+            15 => Opcode::Or,
+            16 => Opcode::Negate,
+            17 => Opcode::Return,
             _ => unreachable!()
         }
     }
