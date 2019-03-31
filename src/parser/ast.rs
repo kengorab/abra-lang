@@ -17,7 +17,8 @@ pub enum AstLiteralNode {
 
 #[derive(Debug, PartialEq)]
 pub enum UnaryOp {
-    Minus
+    Minus,
+    Negate,
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,6 +35,12 @@ pub enum BinaryOp {
     Div,
     And,
     Or,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Neq,
+    Eq
 }
 
 #[derive(Debug, PartialEq)]

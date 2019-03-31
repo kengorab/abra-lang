@@ -60,6 +60,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.visit(*node.expr)?;
         match node.op {
             UnaryOp::Minus => self.chunk.write(Opcode::Negate as u8, line),
+            _ => unimplemented!()
         }
         Ok(())
     }

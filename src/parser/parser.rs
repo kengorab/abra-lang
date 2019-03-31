@@ -90,31 +90,40 @@ impl Parser {
             Token::Float(_, _) |
             Token::String(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
-            Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
+            Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::Plus(_) |
             Token::Star(_) |
             Token::Slash(_) |
             Token::And(_) |
-            Token::Or(_) => None,
-            _ => unimplemented!()
+            Token::Or(_) |
+            Token::GT(_) |
+            Token::GTE(_) |
+            Token::LT(_) |
+            Token::LTE(_) |
+            Token::Neq(_) |
+            Token::Eq(_) => None,
         }
     }
 
     fn get_infix_rule(&self, tok: &Token) -> Option<Box<InfixFn>> {
-        use self::Parser;
-
         match tok {
             Token::Int(_, _) |
             Token::Float(_, _) |
             Token::String(_, _) |
-            Token::Bool(_, _) => None,
+            Token::Bool(_, _) |
+            Token::Bang(_) => None,
             Token::Plus(_) |
             Token::Star(_) |
             Token::Slash(_) |
             Token::Minus(_) |
             Token::And(_) |
-            Token::Or(_) => Some(Box::new(Parser::parse_binary)),
-            _ => unimplemented!()
+            Token::Or(_) |
+            Token::GT(_) |
+            Token::GTE(_) |
+            Token::LT(_) |
+            Token::LTE(_) |
+            Token::Neq(_) |
+            Token::Eq(_) => Some(Box::new(Parser::parse_binary)),
         }
     }
 
@@ -123,12 +132,14 @@ impl Parser {
             Token::Int(_, _) |
             Token::Float(_, _) |
             Token::String(_, _) |
-            Token::Bool(_, _) => Precedence::None,
+            Token::Bool(_, _) |
+            Token::Bang(_) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
-            _ => unimplemented!()
+            Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
+            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison
         }
     }
 
@@ -152,6 +163,7 @@ impl Parser {
         let expr = self.parse_precedence(Precedence::Unary)?;
         let op = match token {
             Token::Minus(_) => UnaryOp::Minus,
+            Token::Bang(_) => UnaryOp::Negate,
             _ => unreachable!()
         };
         Ok(AstNode::Unary(token, UnaryNode { op, expr: Box::new(expr) }))
@@ -167,6 +179,12 @@ impl Parser {
             Token::Slash(_) => BinaryOp::Div,
             Token::And(_) => BinaryOp::And,
             Token::Or(_) => BinaryOp::Or,
+            Token::GT(_) => BinaryOp::Gt,
+            Token::GTE(_) => BinaryOp::Gte,
+            Token::LT(_) => BinaryOp::Lt,
+            Token::LTE(_) => BinaryOp::Lte,
+            Token::Neq(_) => BinaryOp::Neq,
+            Token::Eq(_) => BinaryOp::Eq,
             _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
@@ -216,6 +234,20 @@ mod tests {
                 },
             )
         ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("!true")?;
+        let expected = vec![
+            Unary(
+                Token::Bang(Position::new(1, 1)),
+                UnaryNode {
+                    op: UnaryOp::Negate,
+                    expr: Box::new(
+                        Literal(Token::Bool(Position::new(1, 2), true), BoolLiteral(true))
+                    ),
+                },
+            )
+        ];
         Ok(assert_eq!(expected, ast))
     }
 
@@ -225,6 +257,12 @@ mod tests {
         assert_eq!(ParseError::UnexpectedEof, err);
 
         let err = parse("-   +").unwrap_err();
+        assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err);
+
+        let err = parse("!").unwrap_err();
+        assert_eq!(ParseError::UnexpectedEof, err);
+
+        let err = parse("!   +").unwrap_err();
         Ok(assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err))
     }
 
@@ -300,6 +338,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_binary_and_unary_boolean() -> TestResult {
+        let ast = parse("true && !false")?;
+        let expected = vec![
+            Binary(
+                Token::And(Position::new(1, 6)),
+                BinaryNode {
+                    left: Box::new(
+                        Literal(Token::Bool(Position::new(1, 1), true), BoolLiteral(true))
+                    ),
+                    op: BinaryOp::And,
+                    right: Box::new(
+                        Unary(
+                            Token::Bang(Position::new(1, 9)),
+                            UnaryNode {
+                                op: UnaryOp::Negate,
+                                expr: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 10), false), BoolLiteral(false))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
     fn parse_binary_precedence_numeric() -> TestResult {
         let ast = parse("1 + 2 * 3")?;
         let expected = vec![
@@ -347,8 +413,8 @@ mod tests {
                                 op: BinaryOp::And,
                                 right: Box::new(
                                     Literal(Token::Bool(Position::new(1, 9), true), BoolLiteral(true))
-                                )
-                            }
+                                ),
+                            },
                         )
                     ),
                     op: BinaryOp::Or,
@@ -362,8 +428,58 @@ mod tests {
                                 op: BinaryOp::And,
                                 right: Box::new(
                                     Literal(Token::Bool(Position::new(1, 26), false), BoolLiteral(false))
-                                )
-                            }
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 + 2 <= 3 != 11 >= 13")?;
+        let expected = vec![
+            Binary(
+                Token::Neq(Position::new(1, 12)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::LTE(Position::new(1, 7)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Binary(
+                                        Token::Plus(Position::new(1, 3)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
+                                            ),
+                                            op: BinaryOp::Add,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
+                                            ),
+                                        },
+                                    )
+                                ),
+                                op: BinaryOp::Lte,
+                                right: Box::new(
+                                    Literal(Token::Int(Position::new(1, 10), 3), IntLiteral(3))
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Neq,
+                    right: Box::new(
+                        Binary(
+                            Token::GTE(Position::new(1, 18)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 15), 11), IntLiteral(11))
+                                ),
+                                op: BinaryOp::Gte,
+                                right: Box::new(
+                                    Literal(Token::Int(Position::new(1, 21), 13), IntLiteral(13))
+                                ),
+                            },
                         )
                     ),
                 },
@@ -373,8 +489,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary_errors() -> TestResult {
-        let err = parse("-5 +").unwrap_err();
-        Ok(assert_eq!(ParseError::UnexpectedEof, err))
+    fn parse_binary_errors_eof() {
+        let cases = vec![
+            "-5 +", "-5 -", "-5 *", "-5 /",
+            "5 >", "5 >=", "5 <", "5 <=", "5 ==", "5 !=",
+        ];
+
+        for input in cases {
+            let error = parse(input).unwrap_err();
+            assert_eq!(ParseError::UnexpectedEof, error, "Parsing {} should have UnexpectedEof error", input);
+        }
+    }
+
+    #[test]
+    fn parse_binary_errors_unexpected_token() {
+        let cases = vec![
+            ("5 > + 4", ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
+            ("5 >> 4", ParseError::UnexpectedToken(Token::GT(Position::new(1, 4)))),
+            ("5 < + 4", ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
+            ("5 << 4", ParseError::UnexpectedToken(Token::LT(Position::new(1, 4)))),
+            ("5 <> 6", ParseError::UnexpectedToken(Token::GT(Position::new(1, 4)))),
+        ];
+
+        for (input, err) in cases {
+            let error = parse(input).unwrap_err();
+            assert_eq!(err, error, "Parsing {} should have error: {:?}", input, err);
+        }
     }
 }

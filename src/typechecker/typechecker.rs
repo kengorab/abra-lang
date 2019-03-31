@@ -93,6 +93,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
                 }
             }
+            _ => unimplemented!()
         };
 
         Ok(TypedAstNode::Binary(token.clone(), TypedBinaryNode {

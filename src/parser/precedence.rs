@@ -7,9 +7,9 @@ pub enum Precedence {
     // &&
     And,
     //    // == !=
-//    Equality,
-//    // < > <= >=
-//    Comparison,
+    Equality,
+    // < > <= >=
+    Comparison,
     // + -
     Addition,
     // * /
@@ -27,8 +27,8 @@ impl Into<u8> for Precedence {
 //            Precedence::Assignment => 1,
             Precedence::Or => 2,
             Precedence::And => 3,
-//            Precedence::Equality => 4,
-//            Precedence::Comparison => 5,
+            Precedence::Equality => 4,
+            Precedence::Comparison => 5,
             Precedence::Addition => 6,
             Precedence::Multiplication => 7,
             Precedence::Unary => 8,
