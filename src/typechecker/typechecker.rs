@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -34,20 +34,20 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let expr = *node.expr;
         let typed_expr = self.visit(expr)?;
         let expr_type = typed_expr.get_type();
-        match expr_type {
-            Type::Int | Type::Float => {
-                let node = TypedUnaryNode {
-                    typ: expr_type,
-                    op: node.op,
-                    expr: Box::new(typed_expr),
-                };
+        match (&node.op, &expr_type) {
+            (UnaryOp::Minus, Type::Int) | (UnaryOp::Minus, Type::Float) |
+            (UnaryOp::Negate, Type::Bool) => {
+                let node = TypedUnaryNode { typ: expr_type, op: node.op, expr: Box::new(typed_expr) };
                 Ok(TypedAstNode::Unary(token, node))
             }
-            _ => Err(TypecheckerError::Mismatch {
-                token,
-                expected: Type::Or(vec![Type::Int, Type::Float]),
-                actual: expr_type,
-            })
+            (op @ UnaryOp::Minus, _) | (op @ UnaryOp::Negate, _) => {
+                let expected = if op == &UnaryOp::Minus {
+                    Type::Or(vec![Type::Int, Type::Float])
+                } else {
+                    Type::Bool
+                };
+                Err(TypecheckerError::Mismatch { token, expected, actual: expr_type })
+            }
         }
     }
 
@@ -60,40 +60,37 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let typed_right = self.visit(right)?;
         let rtype = typed_right.get_type();
 
-        if ltype == Type::String || rtype == Type::String {
-            return if node.op != BinaryOp::Add {
-                Err(TypecheckerError::InvalidOperator { token, op: node.op, ltype, rtype })
-            } else {
-                Ok(TypedAstNode::Binary(token, TypedBinaryNode {
-                    typ: Type::String,
-                    left: Box::new(typed_left),
-                    op: node.op,
-                    right: Box::new(typed_right),
-                }))
-            };
-        }
-
         let typ = match node.op {
-            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+            BinaryOp::Add =>
+                match (&ltype, &rtype) {
+                    (Type::String, _) | (_, Type::String) => Ok(Type::String),
+                    (Type::Int, Type::Int) => Ok(Type::Int),
+                    (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
+                }
+            BinaryOp::Sub | BinaryOp::Mul =>
                 match (&ltype, &rtype) {
                     (Type::Int, Type::Int) => Ok(Type::Int),
                     (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                     (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
                 }
-            }
-            BinaryOp::Div => {
+            BinaryOp::Div =>
                 match (&ltype, &rtype) {
                     (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                     (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
                 }
-            }
-            BinaryOp::And | BinaryOp::Or => {
+            BinaryOp::And | BinaryOp::Or =>
                 match (&ltype, &rtype) {
                     (Type::Bool, Type::Bool) => Ok(Type::Bool),
                     (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
                 }
-            }
-            _ => unimplemented!()
+            BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte =>
+                match (&ltype, &rtype) {
+                    (Type::String, Type::String) => Ok(Type::Bool),
+                    (Type::Int, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) | (Type::Float, Type::Int) => Ok(Type::Bool),
+                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
+                }
+            BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
         };
 
         Ok(TypedAstNode::Binary(token.clone(), TypedBinaryNode {
@@ -178,6 +175,24 @@ mod tests {
                 },
             ),
         ];
+        assert_eq!(expected, typed_ast);
+
+        let typed_ast = typecheck("!true")?;
+        let expected = vec![
+            TypedAstNode::Unary(
+                Token::Bang(Position::new(1, 1)),
+                TypedUnaryNode {
+                    typ: Type::Bool,
+                    op: UnaryOp::Negate,
+                    expr: Box::new(
+                        TypedAstNode::Literal(
+                            Token::Bool(Position::new(1, 2), true),
+                            TypedLiteralNode::BoolLiteral(true),
+                        ),
+                    ),
+                },
+            ),
+        ];
         Ok(assert_eq!(expected, typed_ast))
     }
 
@@ -196,6 +211,22 @@ mod tests {
             token: Token::Minus(Position::new(1, 1)),
             expected: Type::Or(vec![Type::Int, Type::Float]),
             actual: Type::Bool,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("!4.5").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Bang(Position::new(1, 1)),
+            expected: Type::Bool,
+            actual: Type::Float,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("!\"abc\"").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Bang(Position::new(1, 1)),
+            expected: Type::Bool,
+            actual: Type::String,
         };
         Ok(assert_eq!(expected, err))
     }
@@ -453,6 +484,119 @@ mod tests {
             ("false || 1", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Int),
             ("false || 3.14", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Float),
             ("false || \"str\"", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::String),
+        ];
+
+        for (input, token, op, ltype, rtype) in cases {
+            let expected = TypecheckerError::InvalidOperator { token, op, ltype, rtype };
+            let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
+
+            let err = typecheck(input).expect_err(&*msg);
+            assert_eq!(expected, err, "{}", msg);
+        }
+    }
+
+    #[test]
+    fn typecheck_binary_comparisons() -> TestResult {
+        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+            ("1 <  2", Box::new(Token::LT), BinaryOp::Lt),
+            ("1 <= 2", Box::new(Token::LTE), BinaryOp::Lte),
+            ("1 >  2", Box::new(Token::GT), BinaryOp::Gt),
+            ("1 >= 2", Box::new(Token::GTE), BinaryOp::Gte),
+            ("1 != 2", Box::new(Token::Neq), BinaryOp::Neq),
+            ("1 == 2", Box::new(Token::Eq), BinaryOp::Eq),
+        ];
+        for (input, token, op) in cases {
+            let typed_ast = typecheck(input)?;
+            let expected = TypedAstNode::Binary(
+                token(Position::new(1, 3)),
+                TypedBinaryNode {
+                    typ: Type::Bool,
+                    left: Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 1), 1),
+                            TypedLiteralNode::IntLiteral(1))
+                    ),
+                    op,
+                    right: Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 6), 2),
+                            TypedLiteralNode::IntLiteral(2))
+                    ),
+                },
+            );
+            assert_eq!(expected, typed_ast[0]);
+        };
+
+        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+            ("\"abc\" <  \"def\"", Box::new(Token::LT), BinaryOp::Lt),
+            ("\"abc\" <= \"def\"", Box::new(Token::LTE), BinaryOp::Lte),
+            ("\"abc\" >  \"def\"", Box::new(Token::GT), BinaryOp::Gt),
+            ("\"abc\" >= \"def\"", Box::new(Token::GTE), BinaryOp::Gte),
+            ("\"abc\" == \"def\"", Box::new(Token::Eq), BinaryOp::Eq),
+            ("\"abc\" != \"def\"", Box::new(Token::Neq), BinaryOp::Neq),
+        ];
+        for (input, token, op) in cases {
+            let typed_ast = typecheck(input)?;
+            let expected = TypedAstNode::Binary(
+                token(Position::new(1, 7)),
+                TypedBinaryNode {
+                    typ: Type::Bool,
+                    left: Box::new(
+                        TypedAstNode::Literal(
+                            Token::String(Position::new(1, 1), "abc".to_string()),
+                            TypedLiteralNode::StringLiteral("abc".to_string()))
+                    ),
+                    op,
+                    right: Box::new(
+                        TypedAstNode::Literal(
+                            Token::String(Position::new(1, 10), "def".to_string()),
+                            TypedLiteralNode::StringLiteral("def".to_string()))
+                    ),
+                },
+            );
+            assert_eq!(expected, typed_ast[0]);
+        }
+
+        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+            ("\"abc\" == 3", Box::new(Token::Eq), BinaryOp::Eq),
+            ("\"abc\" != 3", Box::new(Token::Neq), BinaryOp::Neq),
+        ];
+        for (input, token, op) in cases {
+            let typed_ast = typecheck(input)?;
+            let expected = TypedAstNode::Binary(
+                token(Position::new(1, 7)),
+                TypedBinaryNode {
+                    typ: Type::Bool,
+                    left: Box::new(
+                        TypedAstNode::Literal(
+                            Token::String(Position::new(1, 1), "abc".to_string()),
+                            TypedLiteralNode::StringLiteral("abc".to_string()))
+                    ),
+                    op,
+                    right: Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 10), 3),
+                            TypedLiteralNode::IntLiteral(3))
+                    ),
+                },
+            );
+            assert_eq!(expected, typed_ast[0]);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_binary_comparison_errors() {
+        let cases = vec![
+            ("\"str\" <  3", Token::LT(Position::new(1, 7)), BinaryOp::Lt, Type::String, Type::Int),
+            ("\"str\" <  3.0", Token::LT(Position::new(1, 7)), BinaryOp::Lt, Type::String, Type::Float),
+            ("\"str\" <= 3", Token::LTE(Position::new(1, 7)), BinaryOp::Lte, Type::String, Type::Int),
+            ("\"str\" <= 3.0", Token::LTE(Position::new(1, 7)), BinaryOp::Lte, Type::String, Type::Float),
+            ("\"str\" >  3", Token::GT(Position::new(1, 7)), BinaryOp::Gt, Type::String, Type::Int),
+            ("\"str\" >  3.0", Token::GT(Position::new(1, 7)), BinaryOp::Gt, Type::String, Type::Float),
+            ("\"str\" >= 3", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Int),
+            ("\"str\" >= 3.0", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Float),
         ];
 
         for (input, token, op, ltype, rtype) in cases {
