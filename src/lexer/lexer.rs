@@ -197,6 +197,39 @@ impl<'a> Lexer<'a> {
                     Ok(Some(Token::Or(pos)))
                 }
             }
+            '>' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::GTE(pos)))
+                } else {
+                    Ok(Some(Token::GT(pos)))
+                }
+            }
+            '<' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::LTE(pos)))
+                } else {
+                    Ok(Some(Token::LT(pos)))
+                }
+            }
+            '!' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::Neq(pos)))
+                } else {
+                    Ok(Some(Token::Bang(pos)))
+                }
+            }
+            '=' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::Eq(pos)))
+                } else {
+                    // TODO: Assignment token
+                    Ok(None)
+                }
+            }
             _ => Ok(None)
         }
     }
@@ -238,24 +271,31 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_operators() {
-        let input = "+ - * /";
+        let input = "+ - * / < > !";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
             Token::Minus(Position::new(1, 3)),
             Token::Star(Position::new(1, 5)),
             Token::Slash(Position::new(1, 7)),
+            Token::LT(Position::new(1, 9)),
+            Token::GT(Position::new(1, 11)),
+            Token::Bang(Position::new(1, 13)),
         ];
         assert_eq!(expected, tokens);
     }
 
     #[test]
     fn test_tokenize_multi_char_operators() {
-        let input = "&& ||";
+        let input = "&& || <= >= != ==";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::And(Position::new(1, 1)),
             Token::Or(Position::new(1, 4)),
+            Token::LTE(Position::new(1, 7)),
+            Token::GTE(Position::new(1, 10)),
+            Token::Neq(Position::new(1, 13)),
+            Token::Eq(Position::new(1, 16)),
         ];
         assert_eq!(expected, tokens);
     }

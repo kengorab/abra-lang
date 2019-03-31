@@ -96,6 +96,7 @@ impl Parser {
             Token::Slash(_) |
             Token::And(_) |
             Token::Or(_) => None,
+            _ => unimplemented!()
         }
     }
 
@@ -113,6 +114,7 @@ impl Parser {
             Token::Minus(_) |
             Token::And(_) |
             Token::Or(_) => Some(Box::new(Parser::parse_binary)),
+            _ => unimplemented!()
         }
     }
 
@@ -126,6 +128,7 @@ impl Parser {
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
+            _ => unimplemented!()
         }
     }
 

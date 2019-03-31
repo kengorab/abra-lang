@@ -26,6 +26,13 @@ pub enum Token {
     Slash(Position),
     And(Position),
     Or(Position),
+    GT(Position),
+    GTE(Position),
+    LT(Position),
+    LTE(Position),
+    Eq(Position),
+    Neq(Position),
+    Bang(Position),
 }
 
 impl Token {
@@ -41,7 +48,14 @@ impl Token {
             Token::Star(pos) |
             Token::Slash(pos) |
             Token::And(pos) |
-            Token::Or(pos) => pos
+            Token::Or(pos) |
+            Token::GT(pos) |
+            Token::GTE(pos) |
+            Token::LT(pos) |
+            Token::LTE(pos) |
+            Token::Eq(pos) |
+            Token::Neq(pos) |
+            Token::Bang(pos) => pos
         };
         pos.clone()
     }
@@ -61,6 +75,13 @@ impl Display for Token {
             Token::Slash(_) => write!(f, "/"),
             Token::And(_) => write!(f, "&&"),
             Token::Or(_) => write!(f, "||"),
+            Token::GT(_) => write!(f, ">"),
+            Token::GTE(_) => write!(f, ">="),
+            Token::LT(_) => write!(f, "<"),
+            Token::LTE(_) => write!(f, "<="),
+            Token::Eq(_) => write!(f, "=="),
+            Token::Neq(_) => write!(f, "!="),
+            Token::Bang(_) => write!(f, "!"),
         }
     }
 }
