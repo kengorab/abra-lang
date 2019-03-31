@@ -18,13 +18,14 @@ pub enum Token {
     Int(Position, i64),
     Float(Position, f64),
     String(Position, String),
+    Bool(Position, bool),
 
     Plus(Position),
     Minus(Position),
     Star(Position),
     Slash(Position),
-
-    Bool(Position, bool),
+    And(Position),
+    Or(Position),
 }
 
 impl Token {
@@ -38,7 +39,9 @@ impl Token {
             Token::Plus(pos) |
             Token::Minus(pos) |
             Token::Star(pos) |
-            Token::Slash(pos) => pos
+            Token::Slash(pos) |
+            Token::And(pos) |
+            Token::Or(pos) => pos
         };
         pos.clone()
     }
@@ -56,6 +59,8 @@ impl Display for Token {
             Token::Minus(_) => write!(f, "-"),
             Token::Star(_) => write!(f, "*"),
             Token::Slash(_) => write!(f, "/"),
+            Token::And(_) => write!(f, "&&"),
+            Token::Or(_) => write!(f, "||"),
         }
     }
 }

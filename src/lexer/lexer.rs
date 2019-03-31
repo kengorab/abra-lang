@@ -174,13 +174,31 @@ impl<'a> Lexer<'a> {
         }
 
         let pos = Position::new(self.line, self.col);
-        Ok(match ch {
-            '+' => Some(Token::Plus(pos)),
-            '-' => Some(Token::Minus(pos)),
-            '*' => Some(Token::Star(pos)),
-            '/' => Some(Token::Slash(pos)),
-            _ => None
-        })
+        match ch {
+            '+' => Ok(Some(Token::Plus(pos))),
+            '-' => Ok(Some(Token::Minus(pos))),
+            '*' => Ok(Some(Token::Star(pos))),
+            '/' => Ok(Some(Token::Slash(pos))),
+            '&' => {
+                let ch = self.expect_next()?;
+                if ch != '&' {
+                    let pos = Position::new(self.line, self.col);
+                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                } else {
+                    Ok(Some(Token::And(pos)))
+                }
+            }
+            '|' => {
+                let ch = self.expect_next()?;
+                if ch != '|' {
+                    let pos = Position::new(self.line, self.col);
+                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                } else {
+                    Ok(Some(Token::Or(pos)))
+                }
+            }
+            _ => Ok(None)
+        }
     }
 }
 
@@ -229,6 +247,50 @@ mod tests {
             Token::Slash(Position::new(1, 7)),
         ];
         assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_operators() {
+        let input = "&& ||";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::And(Position::new(1, 1)),
+            Token::Or(Position::new(1, 4)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_operators_error() {
+        let input = "&";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        assert_eq!(expected, error);
+
+        let input = "&+";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "+".to_string());
+        assert_eq!(expected, error);
+
+        let input = "& &";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
+        assert_eq!(expected, error);
+
+        let input = "|";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        assert_eq!(expected, error);
+
+        let input = "|-";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "-".to_string());
+        assert_eq!(expected, error);
+
+        let input = "| |";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
+        assert_eq!(expected, error);
     }
 
     #[test]
