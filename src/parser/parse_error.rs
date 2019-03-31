@@ -41,7 +41,6 @@ impl DisplayError for ParseError {
 mod tests {
     use super::ParseError;
     use crate::lexer::tokens::{Token, Position};
-    use crate::typechecker::types::Type;
     use crate::common::display_error::DisplayError;
 
     #[test]

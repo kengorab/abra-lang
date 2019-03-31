@@ -32,6 +32,14 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
 
 impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_literal(&mut self, token: Token, node: TypedLiteralNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        if let TypedLiteralNode::BoolLiteral(val) = node {
+            let opcode = if val { Opcode::T } else { Opcode::F } as u8;
+            self.chunk.write(opcode, line);
+            return Ok(());
+        }
+
         let const_idx = match node {
             TypedLiteralNode::IntLiteral(val) =>
                 self.chunk.add_constant(Value::Int(val)),
@@ -39,12 +47,12 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 self.chunk.add_constant(Value::Float(val)),
             TypedLiteralNode::StringLiteral(val) =>
                 self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
+            TypedLiteralNode::BoolLiteral(_) => unreachable!() // Handled in if-let above
         };
-
-        let line = token.get_position().line;
 
         self.chunk.write(Opcode::Constant as u8, line);
         self.chunk.write(const_idx, line);
+
         Ok(())
     }
 
@@ -53,7 +61,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.visit(*node.expr)?;
         match node.op {
-            UnaryOp::Minus => self.chunk.write(Opcode::Negate as u8, line),
+            UnaryOp::Minus => self.chunk.write(Opcode::Invert as u8, line),
+            UnaryOp::Negate => self.chunk.write(Opcode::Negate as u8, line),
         }
         Ok(())
     }
@@ -63,6 +72,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let opcode = match (node.op, node_type) {
             (BinaryOp::Add, Type::String) => Opcode::StrConcat,
+            (BinaryOp::And, Type::Bool) => Opcode::And,
+            (BinaryOp::Or, Type::Bool) => Opcode::Or,
+            (BinaryOp::Lt, Type::Bool) => Opcode::LT,
+            (BinaryOp::Lte, Type::Bool) => Opcode::LTE,
+            (BinaryOp::Gt, Type::Bool) => Opcode::GT,
+            (BinaryOp::Gte, Type::Bool) => Opcode::GTE,
+            (BinaryOp::Eq, _) => Opcode::Eq,
+            (BinaryOp::Neq, _) => Opcode::Neq,
 
             (BinaryOp::Add, Type::Int) => Opcode::IAdd,
             (BinaryOp::Add, Type::Float) => Opcode::FAdd,
@@ -132,9 +149,9 @@ mod tests {
 
     #[test]
     fn compile_literals() {
-        let chunk = compile("1 2.3 4 5.6 \"hello\"");
+        let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Chunk {
-            lines: vec![10, 1],
+            lines: vec![12, 1],
             constants: vec![
                 Value::Int(1),
                 Value::Float(2.3),
@@ -148,6 +165,8 @@ mod tests {
                 Opcode::Constant as u8, 2,
                 Opcode::Constant as u8, 3,
                 Opcode::Constant as u8, 4,
+                Opcode::T as u8,
+                Opcode::F as u8,
                 Opcode::Return as u8
             ],
         };
@@ -162,7 +181,7 @@ mod tests {
             constants: vec![Value::Int(1)],
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::Negate as u8,
+                Opcode::Invert as u8,
                 Opcode::Return as u8
             ],
         };
@@ -174,6 +193,18 @@ mod tests {
             constants: vec![Value::Float(2.3)],
             code: vec![
                 Opcode::Constant as u8, 0,
+                Opcode::Invert as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("!false");
+        let expected = Chunk {
+            lines: vec![2, 1],
+            constants: vec![],
+            code: vec![
+                Opcode::F as u8,
                 Opcode::Negate as u8,
                 Opcode::Return as u8
             ],
@@ -196,7 +227,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        // Testing i2f and order of op
+        // Testing i2f and order of ops
         let chunk = compile("1 - -2 * 3.4 / 5");
         let expected = Chunk {
             lines: vec![15, 1],
@@ -205,7 +236,7 @@ mod tests {
                 Opcode::Constant as u8, 0,
                 Opcode::I2F as u8,
                 Opcode::Constant as u8, 1,
-                Opcode::Negate as u8,
+                Opcode::Invert as u8,
                 Opcode::I2F as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::FMul as u8,
@@ -251,6 +282,63 @@ mod tests {
                 Opcode::StrConcat as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::StrConcat as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_boolean() {
+        let chunk = compile("true && true || false");
+        let expected = Chunk {
+            lines: vec![5, 1],
+            constants: vec![],
+            code: vec![
+                Opcode::T as u8,
+                Opcode::T as u8,
+                Opcode::And as u8,
+                Opcode::F as u8,
+                Opcode::Or as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_comparisons() {
+        let chunk = compile("1 <= 2 == 3.4 >= 5.6");
+        let expected = Chunk {
+            lines: vec![11, 1],
+            constants: vec![Value::Int(1), Value::Int(2), Value::Float(3.4), Value::Float(5.6)],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::LTE as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 3,
+                Opcode::GTE as u8,
+                Opcode::Eq as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\"a\" < \"b\" != 4");
+        let expected = Chunk {
+            lines: vec![8, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Int(4)
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::LT as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Neq as u8,
                 Opcode::Return as u8
             ],
         };

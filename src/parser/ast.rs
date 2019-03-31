@@ -1,5 +1,4 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::Type;
 
 #[derive(Debug, PartialEq)]
 pub enum AstNode {
@@ -13,31 +12,39 @@ pub enum AstLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
+    BoolLiteral(bool),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum UnaryOp {
-    Minus
+    Minus,
+    Negate,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct UnaryNode {
-    pub typ: Option<Type>,
     pub op: UnaryOp,
     pub expr: Box<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
     Mul,
     Div,
+    And,
+    Or,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+    Neq,
+    Eq
 }
 
 #[derive(Debug, PartialEq)]
 pub struct BinaryNode {
-    pub typ: Option<Type>,
     pub right: Box<AstNode>,
     pub op: BinaryOp,
     pub left: Box<AstNode>,

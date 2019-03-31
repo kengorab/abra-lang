@@ -1,6 +1,7 @@
-use crate::lexer::tokens::{Token, Position};
 use std::str::Chars;
 use std::iter::Peekable;
+use std::collections::HashMap;
+use crate::lexer::tokens::{Token, Position, Keyword};
 use crate::lexer::lexer_error::LexerError;
 
 pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
@@ -16,6 +17,15 @@ pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
     };
 
     Ok(tokens)
+}
+
+lazy_static! {
+    static ref KEYWORDS: HashMap<&'static str, Keyword> = {
+        let mut keywords = HashMap::new();
+        keywords.insert("true", Keyword::True);
+        keywords.insert("false", Keyword::False);
+        keywords
+    };
 }
 
 struct Lexer<'a> {
@@ -141,14 +151,87 @@ impl<'a> Lexer<'a> {
             return Ok(Some(Token::String(pos, s)));
         }
 
+        if ch.is_alphabetic() {
+            let pos = Position::new(self.line, self.col);
+            let mut chars = vec![ch];
+
+            while let Some(ch) = self.peek() {
+                if ch.is_alphanumeric() {
+                    chars.push(self.expect_next()?);
+                } else {
+                    break;
+                }
+            }
+
+            let s: String = chars.into_iter().collect();
+            return match KEYWORDS.get(&*s) {
+                Some(keyword) => match keyword {
+                    Keyword::True => Ok(Some(Token::Bool(pos, true))),
+                    Keyword::False => Ok(Some(Token::Bool(pos, false))),
+                }
+                None => unimplemented!() // TODO: Identifiers
+            };
+        }
+
         let pos = Position::new(self.line, self.col);
-        Ok(match ch {
-            '+' => Some(Token::Plus(pos)),
-            '-' => Some(Token::Minus(pos)),
-            '*' => Some(Token::Star(pos)),
-            '/' => Some(Token::Slash(pos)),
-            _ => None
-        })
+        match ch {
+            '+' => Ok(Some(Token::Plus(pos))),
+            '-' => Ok(Some(Token::Minus(pos))),
+            '*' => Ok(Some(Token::Star(pos))),
+            '/' => Ok(Some(Token::Slash(pos))),
+            '&' => {
+                let ch = self.expect_next()?;
+                if ch != '&' {
+                    let pos = Position::new(self.line, self.col);
+                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                } else {
+                    Ok(Some(Token::And(pos)))
+                }
+            }
+            '|' => {
+                let ch = self.expect_next()?;
+                if ch != '|' {
+                    let pos = Position::new(self.line, self.col);
+                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                } else {
+                    Ok(Some(Token::Or(pos)))
+                }
+            }
+            '>' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::GTE(pos)))
+                } else {
+                    Ok(Some(Token::GT(pos)))
+                }
+            }
+            '<' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::LTE(pos)))
+                } else {
+                    Ok(Some(Token::LT(pos)))
+                }
+            }
+            '!' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::Neq(pos)))
+                } else {
+                    Ok(Some(Token::Bang(pos)))
+                }
+            }
+            '=' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::Eq(pos)))
+                } else {
+                    // TODO: Assignment token
+                    Ok(None)
+                }
+            }
+            _ => Ok(None)
+        }
     }
 }
 
@@ -188,15 +271,66 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_operators() {
-        let input = "+ - * /";
+        let input = "+ - * / < > !";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
             Token::Minus(Position::new(1, 3)),
             Token::Star(Position::new(1, 5)),
             Token::Slash(Position::new(1, 7)),
+            Token::LT(Position::new(1, 9)),
+            Token::GT(Position::new(1, 11)),
+            Token::Bang(Position::new(1, 13)),
         ];
         assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_operators() {
+        let input = "&& || <= >= != ==";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::And(Position::new(1, 1)),
+            Token::Or(Position::new(1, 4)),
+            Token::LTE(Position::new(1, 7)),
+            Token::GTE(Position::new(1, 10)),
+            Token::Neq(Position::new(1, 13)),
+            Token::Eq(Position::new(1, 16)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_operators_error() {
+        let input = "&";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        assert_eq!(expected, error);
+
+        let input = "&+";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "+".to_string());
+        assert_eq!(expected, error);
+
+        let input = "& &";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
+        assert_eq!(expected, error);
+
+        let input = "|";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        assert_eq!(expected, error);
+
+        let input = "|-";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "-".to_string());
+        assert_eq!(expected, error);
+
+        let input = "| |";
+        let error = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -229,6 +363,17 @@ mod tests {
         let input = "\"\n\"";
         let tokens = tokenize(&input.to_string()).unwrap_err();
         let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_keywords() {
+        let input = "true false";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Bool(Position::new(1, 1), true),
+            Token::Bool(Position::new(1, 6), false),
+        ];
         assert_eq!(expected, tokens);
     }
 }

@@ -7,7 +7,6 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
-    use crate::vm::chunk::Chunk;
     use crate::vm::value::{Value, Obj};
     use crate::vm::vm::VM;
 
@@ -35,6 +34,14 @@ mod tests {
         let result = interpret("1.23").unwrap();
         let expected = Value::Float(1.23);
         assert_eq!(expected, result);
+
+        let result = interpret("true").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let result = interpret("false").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -57,5 +64,75 @@ mod tests {
         let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
         let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_binary_boolean() {
+        let result = interpret("true || false").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let result = interpret("true && false").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
+
+        let result = interpret("true && false || true && true").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_binary_comparisons() {
+        let cases = vec![
+            // Testing <
+            ("1 < 3", true), ("1 < 1", false),
+            ("1 < 3.0", true), ("1 < 1.0", false),
+            ("1.0 < 3.0", true), ("1.0 < 1.0", false),
+            ("1.0 < 3", true), ("1.0 < 1", false),
+            ("\"a\" < \"b\"", true), ("\"a\" < \"a\"", false),
+            // Testing <=
+            ("1 <= 3", true), ("3 <= 1", false),
+            ("3 <= 3.0", true), ("3 <= 1.0", false),
+            ("1.0 <= 3.0", true), ("3.0 <= 1.0", false),
+            ("1.0 <= 3", true), ("3.0 <= 1", false),
+            ("\"a\" <= \"b\"", true), ("\"b\" <= \"a\"", false),
+            ("\"a\" <= \"a\"", true),
+            // Testing >
+            ("3 > 1", true), ("1 > 1", false),
+            ("3.0 > 1", true), ("1.0 > 1", false),
+            ("3.0 > 1.0", true), ("1.0 > 3.0", false),
+            ("3 > 1.0", true), ("1.0 > 1", false),
+            ("\"b\" > \"a\"", true), ("\"a\" > \"a\"", false),
+            // Testing >=
+            ("3 >= 1", true), ("1 >= 3", false),
+            ("3 >= 3.0", true), ("1.0 >= 3", false),
+            ("3.0 >= 1.0", true), ("1.0 >= 3.0", false),
+            ("3 >= 1.0", true), ("1 >= 3.0", false),
+            ("\"b\" >= \"a\"", true), ("\"a\" >= \"b\"", false),
+            ("\"b\" >= \"b\"", true),
+            // Testing ==
+            ("3 == 3", true), ("3 == 1", false),
+            ("3 == 3.0", true), ("3 == 1.0", false),
+            ("3.0 == 3.0", true), ("3.0 == 1.0", false),
+            ("3.0 == 3", true), ("3.0 == 1", false),
+            ("true == true", true), ("true == false", false),
+            ("\"abc\" == \"abc\"", true), ("\"abc\" == \"def\"", false),
+            ("\"abc\" == true", false), ("\"abc\" == false", false),
+            ("\"abc\" == 3.14", false), ("\"abc\" == 4", false),
+            // Testing !=
+            ("3 != 1", true), ("3 != 3", false),
+            ("3 != 1.0", true), ("3 != 3.0", false),
+            ("3.0 != 1.0", true), ("3.0 != 3.0", false),
+            ("3.0 != 1", true), ("3.0 != 3", false),
+            ("true != false", true), ("true != true", false),
+            ("\"abc\" != \"def\"", true), ("\"abc\" != \"abc\"", false),
+            ("\"abc\" != true", true), ("\"abc\" != false", true),
+            ("\"abc\" != 3.14", true), ("\"abc\" != 4", true),
+        ];
+
+        for (input, expected) in cases {
+            let result = interpret(input).unwrap();
+            assert_eq!(Value::Bool(expected), result, "Interpreting {} should be {}", input, expected);
+        }
     }
 }
