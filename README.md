@@ -1,7 +1,7 @@
 # Abra
 A small programming language, written in Rust
 
-[![Build Status](https://travis-ci.org/kengorab/abra.svg?branch=master)](https://travis-ci.org/kengorab/abra)
+[![Build Status](https://travis-ci.org/kengorab/abra-lang.svg?branch=master)](https://travis-ci.org/kengorab/abra-lang)
 
 Right now, it's in its very early stages: code flows all the way from the lexer, to the parser, to the
 typechecker, to the bytecode compiler, through the interpreter. However, the only datatypes implemented are
