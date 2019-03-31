@@ -90,9 +90,12 @@ impl Parser {
             Token::Float(_, _) |
             Token::String(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
-            Token::Plus(_) | Token::Star(_) | Token::Slash(_) => None,
             Token::Minus(_) => Some(Box::new(Parser::parse_unary)),
-            _ => unimplemented!()
+            Token::Plus(_) |
+            Token::Star(_) |
+            Token::Slash(_) |
+            Token::And(_) |
+            Token::Or(_) => None,
         }
     }
 
@@ -104,9 +107,12 @@ impl Parser {
             Token::Float(_, _) |
             Token::String(_, _) |
             Token::Bool(_, _) => None,
-            Token::Plus(_) | Token::Star(_) | Token::Slash(_) | Token::Minus(_) =>
-                Some(Box::new(Parser::parse_binary)),
-            _ => unimplemented!()
+            Token::Plus(_) |
+            Token::Star(_) |
+            Token::Slash(_) |
+            Token::Minus(_) |
+            Token::And(_) |
+            Token::Or(_) => Some(Box::new(Parser::parse_binary)),
         }
     }
 
@@ -118,7 +124,8 @@ impl Parser {
             Token::Bool(_, _) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
-            _ => unimplemented!()
+            Token::And(_) => Precedence::And,
+            Token::Or(_) => Precedence::Or,
         }
     }
 
@@ -144,7 +151,7 @@ impl Parser {
             Token::Minus(_) => UnaryOp::Minus,
             _ => unreachable!()
         };
-        Ok(AstNode::Unary(token, UnaryNode { typ: None, op, expr: Box::new(expr) }))
+        Ok(AstNode::Unary(token, UnaryNode { op, expr: Box::new(expr) }))
     }
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
@@ -155,9 +162,11 @@ impl Parser {
             Token::Minus(_) => BinaryOp::Sub,
             Token::Star(_) => BinaryOp::Mul,
             Token::Slash(_) => BinaryOp::Div,
+            Token::And(_) => BinaryOp::And,
+            Token::Or(_) => BinaryOp::Or,
             _ => unreachable!()
         };
-        Ok(AstNode::Binary(token, BinaryNode { typ: None, left: Box::new(left), op, right: Box::new(right) }))
+        Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
     }
 }
 
@@ -197,7 +206,6 @@ mod tests {
             Unary(
                 Token::Minus(Position::new(1, 1)),
                 UnaryNode {
-                    typ: None,
                     op: UnaryOp::Minus,
                     expr: Box::new(
                         Literal(Token::Int(Position::new(1, 2), 123), IntLiteral(123))
@@ -218,13 +226,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary() -> TestResult {
+    fn parse_binary_numeric() -> TestResult {
         let ast = parse("1.2 + 3")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 5)),
                 BinaryNode {
-                    typ: None,
                     left: Box::new(
                         Literal(Token::Float(Position::new(1, 1), 1.2), FloatLiteral(1.2))
                     ),
@@ -242,7 +249,6 @@ mod tests {
             Binary(
                 Token::Plus(Position::new(1, 10)),
                 BinaryNode {
-                    typ: None,
                     left: Box::new(
                         Literal(
                             Token::String(Position::new(1, 1), "hello ".to_string()),
@@ -263,13 +269,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary_and_unary() -> TestResult {
+    fn parse_binary_and_unary_numeric() -> TestResult {
         let ast = parse("1 + -2")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
                 BinaryNode {
-                    typ: None,
                     left: Box::new(
                         Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
                     ),
@@ -278,7 +283,6 @@ mod tests {
                         Unary(
                             Token::Minus(Position::new(1, 5)),
                             UnaryNode {
-                                typ: None,
                                 op: UnaryOp::Minus,
                                 expr: Box::new(
                                     Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
@@ -293,13 +297,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_binary_precedence() -> TestResult {
+    fn parse_binary_precedence_numeric() -> TestResult {
         let ast = parse("1 + 2 * 3")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
                 BinaryNode {
-                    typ: None,
                     left: Box::new(
                         Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
                     ),
@@ -308,7 +311,6 @@ mod tests {
                         Binary(
                             Token::Star(Position::new(1, 7)),
                             BinaryNode {
-                                typ: None,
                                 left: Box::new(
                                     Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
                                 ),
@@ -317,6 +319,48 @@ mod tests {
                                     Literal(Token::Int(Position::new(1, 9), 3), IntLiteral(3))
                                 ),
                             },
+                        )
+                    ),
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_precedence_boolean() -> TestResult {
+        let ast = parse("true && true || false && false")?;
+        let expected = vec![
+            Binary(
+                Token::Or(Position::new(1, 14)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::And(Position::new(1, 6)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 1), true), BoolLiteral(true))
+                                ),
+                                op: BinaryOp::And,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 9), true), BoolLiteral(true))
+                                )
+                            }
+                        )
+                    ),
+                    op: BinaryOp::Or,
+                    right: Box::new(
+                        Binary(
+                            Token::And(Position::new(1, 23)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 17), false), BoolLiteral(false))
+                                ),
+                                op: BinaryOp::And,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 26), false), BoolLiteral(false))
+                                )
+                            }
                         )
                     ),
                 },

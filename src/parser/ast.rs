@@ -23,7 +23,6 @@ pub enum UnaryOp {
 
 #[derive(Debug, PartialEq)]
 pub struct UnaryNode {
-    pub typ: Option<Type>,
     pub op: UnaryOp,
     pub expr: Box<AstNode>,
 }
@@ -34,11 +33,12 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    And,
+    Or,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct BinaryNode {
-    pub typ: Option<Type>,
     pub right: Box<AstNode>,
     pub op: BinaryOp,
     pub left: Box<AstNode>,

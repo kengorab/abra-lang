@@ -32,6 +32,7 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Sub => "-",
         BinaryOp::Mul => "*",
         BinaryOp::Div => "/",
+        _ => unimplemented!()
     }.to_string()
 }
 

@@ -2,11 +2,11 @@ pub enum Precedence {
     None,
     // =
 //    Assignment,
-//    // ||
-//    Or,
-//    // &&
-//    And,
-//    // == !=
+    // ||
+    Or,
+    // &&
+    And,
+    //    // == !=
 //    Equality,
 //    // < > <= >=
 //    Comparison,
@@ -25,8 +25,8 @@ impl Into<u8> for Precedence {
         match self {
             Precedence::None => 0,
 //            Precedence::Assignment => 1,
-//            Precedence::Or => 2,
-//            Precedence::And => 3,
+            Precedence::Or => 2,
+            Precedence::And => 3,
 //            Precedence::Equality => 4,
 //            Precedence::Comparison => 5,
             Precedence::Addition => 6,
