@@ -102,6 +102,7 @@ impl Parser {
             Token::LTE(_) |
             Token::Neq(_) |
             Token::Eq(_) => None,
+            _ => unimplemented!()
         }
     }
 
@@ -124,6 +125,7 @@ impl Parser {
             Token::LTE(_) |
             Token::Neq(_) |
             Token::Eq(_) => Some(Box::new(Parser::parse_binary)),
+            _ => unimplemented!()
         }
     }
 
@@ -139,7 +141,8 @@ impl Parser {
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
-            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison
+            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
+            _ => unimplemented!()
         }
     }
 
