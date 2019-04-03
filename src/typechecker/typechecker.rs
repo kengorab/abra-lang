@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -99,6 +99,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             op: node.op,
             right: Box::new(typed_right),
         }))
+    }
+
+    fn visit_array(&self, _token: Token, _node: ArrayNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
     }
 }
 

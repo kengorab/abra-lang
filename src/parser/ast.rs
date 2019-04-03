@@ -5,6 +5,7 @@ pub enum AstNode {
     Literal(Token, AstLiteralNode),
     Unary(Token, UnaryNode),
     Binary(Token, BinaryNode),
+    Array(Token, ArrayNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -48,4 +49,9 @@ pub struct BinaryNode {
     pub right: Box<AstNode>,
     pub op: BinaryOp,
     pub left: Box<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ArrayNode {
+    pub items: Vec<Box<AstNode>>,
 }
