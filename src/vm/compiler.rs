@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -116,6 +116,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.chunk.write(opcode as u8, token.get_position().line);
 
         Ok(())
+    }
+
+    fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<(), ()> {
+        unimplemented!()
     }
 }
 

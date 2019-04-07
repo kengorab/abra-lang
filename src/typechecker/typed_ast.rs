@@ -7,6 +7,7 @@ pub enum TypedAstNode {
     Literal(Token, TypedLiteralNode),
     Unary(Token, TypedUnaryNode),
     Binary(Token, TypedBinaryNode),
+    Array(Token, TypedArrayNode),
 }
 
 impl TypedAstNode {
@@ -15,6 +16,7 @@ impl TypedAstNode {
             TypedAstNode::Literal(token, _) => token,
             TypedAstNode::Unary(token, _) => token,
             TypedAstNode::Binary(token, _) => token,
+            TypedAstNode::Array(token, _) => token,
         }
     }
 
@@ -28,6 +30,7 @@ impl TypedAstNode {
             },
             TypedAstNode::Unary(_, node) => node.typ.clone(),
             TypedAstNode::Binary(_, node) => node.typ.clone(),
+            TypedAstNode::Array(_, node) => node.typ.clone(),
         }
     }
 }
@@ -53,4 +56,10 @@ pub struct TypedBinaryNode {
     pub right: Box<TypedAstNode>,
     pub op: BinaryOp,
     pub left: Box<TypedAstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedArrayNode {
+    pub typ: Type,
+    pub items: Vec<Box<TypedAstNode>>,
 }

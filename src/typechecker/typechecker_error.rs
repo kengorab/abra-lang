@@ -22,6 +22,10 @@ fn type_repr(t: &Type) -> String {
                 .collect();
             format!("one of ({})", type_opts.join(", "))
         }
+        Type::Array(typ) => match typ {
+            Some(typ) => format!("{}[]", type_repr(typ)),
+            None => "Unknown[]".to_string(),
+        }
     }
 }
 
