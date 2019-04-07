@@ -118,8 +118,21 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<(), ()> {
+        let num_items = node.items.len();
+        for arr_item in node.items {
+            self.visit(*arr_item);
+        }
+
+        let line = token.get_position().line;
+
+        let const_idx = self.chunk.add_constant(Value::Int(num_items as i64));
+        self.chunk.write(Opcode::Constant as u8, line);
+        self.chunk.write(const_idx, line);
+
+        self.chunk.write(Opcode::MkArr as u8, line);
+
+        Ok(())
     }
 }
 
@@ -343,6 +356,74 @@ mod tests {
                 Opcode::LT as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::Neq as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_array_primitives() {
+        let chunk = compile("[1, 2]");
+        let expected = Chunk {
+            lines: vec![7, 1],
+            constants: vec![Value::Int(1), Value::Int(2), Value::Int(2)],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 2,
+                Opcode::MkArr as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("[\"a\", \"b\", \"c\"]");
+        let expected = Chunk {
+            lines: vec![9, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Int(3),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 3,
+                Opcode::MkArr as u8,
+                Opcode::Return as u8
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_array_nested() {
+        let chunk = compile("[[1, 2], [3, 4]]");
+        let expected = Chunk {
+            lines: vec![17, 1],
+            constants: vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(2),
+                Value::Int(3),
+                Value::Int(4),
+                Value::Int(2),
+                Value::Int(2),
+           ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 2,
+                Opcode::MkArr as u8,
+                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 5,
+                Opcode::MkArr as u8,
+                Opcode::Constant as u8, 6,
+                Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
         };

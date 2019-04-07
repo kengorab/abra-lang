@@ -186,6 +186,7 @@ impl<'a> VM<'a> {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
+                Opcode::MkArr => unimplemented!(),
                 Opcode::Return => break Ok(self.pop()),
             }
         }

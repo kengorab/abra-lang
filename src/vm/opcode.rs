@@ -25,6 +25,7 @@ pub enum Opcode {
     GTE,
     Eq,
     Neq,
+    MkArr,
     Return,
 }
 
@@ -55,7 +56,8 @@ impl From<u8> for Opcode {
             21 => Opcode::GTE,
             22 => Opcode::Eq,
             23 => Opcode::Neq,
-            24 => Opcode::Return,
+            24 => Opcode::MkArr,
+            25 => Opcode::Return,
             _ => unreachable!()
         }
     }
