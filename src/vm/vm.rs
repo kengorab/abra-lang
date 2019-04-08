@@ -2,6 +2,7 @@ use crate::vm::chunk::Chunk;
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
 use std::cmp::Ordering;
+use std::collections::vec_deque::VecDeque;
 
 #[derive(Debug)]
 pub enum InterpretError {
@@ -186,7 +187,17 @@ impl<'a> VM<'a> {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
-                Opcode::MkArr => unimplemented!(),
+                Opcode::MkArr => {
+                    if let Value::Int(mut size) = self.pop_expect()? {
+                        // Array items are on the stack in reverse order, pop them off in reverse
+                        let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
+                        while size > 0 {
+                            size -= 1;
+                            arr_items.push_front(Box::new(self.pop_expect()?));
+                        }
+                        self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
+                    }
+                }
                 Opcode::Return => break Ok(self.pop()),
             }
         }

@@ -121,7 +121,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<(), ()> {
         let num_items = node.items.len();
         for arr_item in node.items {
-            self.visit(*arr_item);
+            self.visit(*arr_item)?;
         }
 
         let line = token.get_position().line;
@@ -412,7 +412,7 @@ mod tests {
                 Value::Int(4),
                 Value::Int(2),
                 Value::Int(2),
-           ],
+            ],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,

@@ -135,4 +135,64 @@ mod tests {
             assert_eq!(Value::Bool(expected), result, "Interpreting {} should be {}", input, expected);
         }
     }
+
+    #[test]
+    fn interpret_array() {
+        let result = interpret("[1, 2, 3]").unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(2)),
+                Box::new(Value::Int(3)),
+            ]
+        });
+        assert_eq!(expected, result);
+
+        let result = interpret("[0, -1, true, 3.4, \"5\"]").unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(0)),
+                Box::new(Value::Int(-1)),
+                Box::new(Value::Bool(true)),
+                Box::new(Value::Float(3.4)),
+                Box::new(Value::Obj(Obj::StringObj { value: Box::new("5".to_string()) })),
+            ]
+        });
+        assert_eq!(expected, result);
+
+        let result = interpret("[[0, -1], [true, false], [\"a\"]]").unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Obj(Obj::ArrayObj {
+                    value: vec![Box::new(Value::Int(0)), Box::new(Value::Int(-1))]
+                })),
+                Box::new(Value::Obj(Obj::ArrayObj {
+                    value: vec![Box::new(Value::Bool(true)), Box::new(Value::Bool(false))]
+                })),
+                Box::new(Value::Obj(Obj::ArrayObj {
+                    value: vec![Box::new(Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }))]
+                })),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_array_equality() {
+        let result = interpret("[1, 2] == [1, 2]").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let result = interpret("[1, 3] == [1, 2]").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
+
+        let result = interpret("[[0, 1]] == [[1, 2]]").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
+
+        let result = interpret("[[0, 1], [2, 3]] == [[0, 1], [2, 3]]").unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
 }

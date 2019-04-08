@@ -27,21 +27,30 @@ impl Display for Value {
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
             Value::Obj(o) => match o {
-                Obj::StringObj { value } => write!(f, "\"{}\"", *value)
+                Obj::StringObj { value } => write!(f, "\"{}\"", *value),
+                o @ Obj::ArrayObj { .. } => write!(f, "{}", o.to_string()),
             }
         }
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Obj {
-    StringObj { value: Box<String> }
+    StringObj { value: Box<String> },
+    ArrayObj { value: Vec<Box<Value>> },
 }
 
 impl Obj {
     pub fn to_string(&self) -> String {
         match self {
             Obj::StringObj { value } => *value.clone(),
+            Obj::ArrayObj { value } => {
+                let items = value.iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("[{}]", items)
+            }
         }
     }
 }
@@ -52,6 +61,23 @@ impl PartialOrd for Obj {
             (Obj::StringObj { value: v1 }, Obj::StringObj { value: v2 }) => {
                 Some(v1.cmp(v2))
             }
+            (Obj::ArrayObj { value: v1 }, Obj::ArrayObj { value: v2 }) => {
+                if v1.len() < v2.len() {
+                    Some(Ordering::Less)
+                } else if v1.len() > v2.len() {
+                    Some(Ordering::Greater)
+                } else {
+                    for (i1, i2) in v1.iter().zip(v2.iter()) {
+                        if let Some(o) = i1.partial_cmp(&i2) {
+                            if o != Ordering::Equal {
+                                return Some(o);
+                            }
+                        }
+                    }
+                    Some(Ordering::Equal)
+                }
+            }
+            (_, _) => None
         }
     }
 }
