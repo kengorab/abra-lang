@@ -33,6 +33,10 @@ pub enum Token {
     Eq(Position),
     Neq(Position),
     Bang(Position),
+
+    LBrack(Position),
+    RBrack(Position),
+    Comma(Position),
 }
 
 impl Token {
@@ -55,7 +59,10 @@ impl Token {
             Token::LTE(pos) |
             Token::Eq(pos) |
             Token::Neq(pos) |
-            Token::Bang(pos) => pos
+            Token::Bang(pos) |
+            Token::LBrack(pos) |
+            Token::RBrack(pos) |
+            Token::Comma(pos) => pos
         };
         pos.clone()
     }
@@ -82,6 +89,10 @@ impl Display for Token {
             Token::Eq(_) => write!(f, "=="),
             Token::Neq(_) => write!(f, "!="),
             Token::Bang(_) => write!(f, "!"),
+
+            Token::LBrack(_) => write!(f, "["),
+            Token::RBrack(_) => write!(f, "]"),
+            Token::Comma(_) => write!(f, ","),
         }
     }
 }

@@ -1,9 +1,11 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
+use std::collections::HashSet;
+use std::iter::FromIterator;
 
 pub struct Typechecker;
 
@@ -99,6 +101,33 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             op: node.op,
             right: Box::new(typed_right),
         }))
+    }
+
+    fn visit_array(&self, token: Token, node: ArrayNode) -> Result<TypedAstNode, TypecheckerError> {
+        let items: Result<Vec<TypedAstNode>, TypecheckerError> = node.items.into_iter()
+            .map(|n| self.visit(*n))
+            .collect();
+        let items = items?;
+
+        let item_types: HashSet<Type> = HashSet::from_iter(
+            items.iter().map(|node| node.get_type())
+        );
+        let typ = if item_types.len() == 1 {
+            let typ = item_types.into_iter()
+                .nth(0)
+                .expect("We know the size is 1");
+            Some(Box::new(typ))
+        } else if !item_types.is_empty() {
+            Some(Box::new(Type::Or(item_types.into_iter().collect())))
+        } else {
+            None
+        };
+
+        let items = items.into_iter()
+            .map(Box::new)
+            .collect();
+
+        Ok(TypedAstNode::Array(token.clone(), TypedArrayNode { typ: Type::Array(typ), items }))
     }
 }
 
@@ -597,6 +626,11 @@ mod tests {
             ("\"str\" >  3.0", Token::GT(Position::new(1, 7)), BinaryOp::Gt, Type::String, Type::Float),
             ("\"str\" >= 3", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Int),
             ("\"str\" >= 3.0", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Float),
+            //
+            ("[1, 2] < 3", Token::LT(Position::new(1, 8)), BinaryOp::Lt, Type::Array(Some(Box::new(Type::Int))), Type::Int),
+            ("[1, 2] <= 3", Token::LTE(Position::new(1, 8)), BinaryOp::Lte, Type::Array(Some(Box::new(Type::Int))), Type::Int),
+            ("[1, 2] > 3", Token::GT(Position::new(1, 8)), BinaryOp::Gt, Type::Array(Some(Box::new(Type::Int))), Type::Int),
+            ("[1, 2] >= 3", Token::GTE(Position::new(1, 8)), BinaryOp::Gte, Type::Array(Some(Box::new(Type::Int))), Type::Int),
         ];
 
         for (input, token, op, ltype, rtype) in cases {
@@ -606,5 +640,101 @@ mod tests {
             let err = typecheck(input).expect_err(&*msg);
             assert_eq!(expected, err, "{}", msg);
         }
+    }
+
+    #[test]
+    fn typecheck_array_empty() -> TestResult {
+        let typed_ast = typecheck("[]")?;
+        let expected = TypedAstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            TypedArrayNode { typ: Type::Array(None), items: vec![] },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_array_homogeneous() -> TestResult {
+        let typed_ast = typecheck("[1, 2, 3]")?;
+        let expected = TypedAstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            TypedArrayNode {
+                typ: Type::Array(Some(Box::new(Type::Int))),
+                items: vec![
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 2), 1),
+                            TypedLiteralNode::IntLiteral(1))
+                    ),
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 5), 2),
+                            TypedLiteralNode::IntLiteral(2))
+                    ),
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 8), 3),
+                            TypedLiteralNode::IntLiteral(3))
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("[\"a\", \"b\"]")?;
+        let expected = TypedAstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            TypedArrayNode {
+                typ: Type::Array(Some(Box::new(Type::String))),
+                items: vec![
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::String(Position::new(1, 2), "a".to_string()),
+                            TypedLiteralNode::StringLiteral("a".to_string()))
+                    ),
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::String(Position::new(1, 7), "b".to_string()),
+                            TypedLiteralNode::StringLiteral("b".to_string()))
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("[true, false]")?;
+        let expected = TypedAstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            TypedArrayNode {
+                typ: Type::Array(Some(Box::new(Type::Bool))),
+                items: vec![
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::Bool(Position::new(1, 2), true),
+                            TypedLiteralNode::BoolLiteral(true))
+                    ),
+                    Box::new(
+                        TypedAstNode::Literal(
+                            Token::Bool(Position::new(1, 8), false),
+                            TypedLiteralNode::BoolLiteral(false))
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_array_nested() -> TestResult {
+        let typed_ast = typecheck("[[1, 2], [3, 4]]")?;
+        let expected_type = Type::Array(Some(Box::new(Type::Array(Some(Box::new(Type::Int))))));
+        assert_eq!(expected_type, typed_ast[0].get_type());
+
+        // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]]
+
+        Ok(())
     }
 }

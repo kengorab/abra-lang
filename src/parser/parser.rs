@@ -1,7 +1,7 @@
 use crate::lexer::tokens::Token;
 use std::iter::Peekable;
 use std::vec::IntoIter;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -40,6 +40,10 @@ impl Parser {
         self.tokens.next()
     }
 
+    fn expect_next(&mut self) -> Result<Token, ParseError> {
+        self.advance().ok_or(ParseError::UnexpectedEof)
+    }
+
     fn peek(&mut self) -> Option<&Token> {
         self.tokens.peek()
     }
@@ -56,7 +60,7 @@ impl Parser {
             None => Err(ParseError::UnexpectedToken(prefix_token)),
             Some(prefix_fn) => {
                 // Cursor sits on token AFTER the match token; in-/prefix fns always start on token AFTER the one they match
-                let prefix_token = self.advance().expect("Safe, since peek above is Some");
+                let prefix_token = self.expect_next()?;
 
                 let mut left: AstNode = (*prefix_fn)(self, prefix_token)?;
 
@@ -66,7 +70,7 @@ impl Parser {
                     let next_prec: u8 = next_prec.into();
                     while prec < next_prec {
                         if let Some(_) = self.peek() {
-                            let infix_token = self.advance().expect("Safe, since peek above is Some");
+                            let infix_token = self.expect_next()?;
 
                             if let Some(infix_fn) = self.get_infix_rule(&infix_token) {
                                 left = (*infix_fn)(self, infix_token, left)?
@@ -91,6 +95,7 @@ impl Parser {
             Token::String(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
+            Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
             Token::Plus(_) |
             Token::Star(_) |
             Token::Slash(_) |
@@ -101,7 +106,9 @@ impl Parser {
             Token::LT(_) |
             Token::LTE(_) |
             Token::Neq(_) |
-            Token::Eq(_) => None,
+            Token::Eq(_) |
+            Token::RBrack(_) |
+            Token::Comma(_) => None,
         }
     }
 
@@ -123,7 +130,10 @@ impl Parser {
             Token::LT(_) |
             Token::LTE(_) |
             Token::Neq(_) |
-            Token::Eq(_) => Some(Box::new(Parser::parse_binary)),
+            Token::Eq(_) |
+            Token::LBrack(_) |
+            Token::RBrack(_) |
+            Token::Comma(_) => Some(Box::new(Parser::parse_binary)),
         }
     }
 
@@ -133,13 +143,16 @@ impl Parser {
             Token::Float(_, _) |
             Token::String(_, _) |
             Token::Bool(_, _) |
-            Token::Bang(_) => Precedence::None,
+            Token::Bang(_) |
+            Token::LBrack(_) |
+            Token::RBrack(_) |
+            Token::Comma(_) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
-            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison
+            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
         }
     }
 
@@ -188,6 +201,35 @@ impl Parser {
             _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
+    }
+
+    fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        let mut item_expected = true;
+        let mut items: Vec<Box<AstNode>> = vec![];
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::RBrack(_) = token {
+                self.expect_next()?; // Consume ']' before ending loop
+                break;
+            } else if !item_expected {
+                return match self.peek() {
+                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    None => Err(ParseError::UnexpectedEof)
+                };
+            }
+
+            let expr = self.parse_expr()?;
+            items.push(Box::new(expr));
+
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::Comma(_) = token {
+                self.expect_next()?; // Consume comma
+            } else {
+                item_expected = false;
+            }
+        }
+
+        Ok(AstNode::Array(token, ArrayNode { items }))
     }
 }
 
@@ -515,5 +557,109 @@ mod tests {
             let error = parse(input).unwrap_err();
             assert_eq!(err, error, "Parsing {} should have error: {:?}", input, err);
         }
+    }
+
+    #[test]
+    fn parse_array_empty() -> TestResult {
+        let ast = parse("[]")?;
+        let expected = AstNode::Array(Token::LBrack(Position::new(1, 1)), ArrayNode {
+            items: vec![]
+        });
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_array_with_items() -> TestResult {
+        let ast = parse("[1, true, \"a\", 3.14]")?;
+        let expected = AstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            ArrayNode {
+                items: vec![
+                    Box::new(AstNode::Literal(
+                        Token::Int(Position::new(1, 2), 1),
+                        AstLiteralNode::IntLiteral(1),
+                    )),
+                    Box::new(AstNode::Literal(
+                        Token::Bool(Position::new(1, 5), true),
+                        AstLiteralNode::BoolLiteral(true),
+                    )),
+                    Box::new(AstNode::Literal(
+                        Token::String(Position::new(1, 11), "a".to_string()),
+                        AstLiteralNode::StringLiteral("a".to_string()),
+                    )),
+                    Box::new(AstNode::Literal(
+                        Token::Float(Position::new(1, 16), 3.14),
+                        AstLiteralNode::FloatLiteral(3.14),
+                    ))
+                ]
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_array_nested() -> TestResult {
+        let ast = parse("[[1, 2], [3, 4]]")?;
+        let expected = AstNode::Array(
+            Token::LBrack(Position::new(1, 1)),
+            ArrayNode {
+                items: vec![
+                    Box::new(AstNode::Array(
+                        Token::LBrack(Position::new(1, 2)),
+                        ArrayNode {
+                            items: vec![
+                                Box::new(AstNode::Literal(
+                                    Token::Int(Position::new(1, 3), 1),
+                                    AstLiteralNode::IntLiteral(1),
+                                )),
+                                Box::new(AstNode::Literal(
+                                    Token::Int(Position::new(1, 6), 2),
+                                    AstLiteralNode::IntLiteral(2),
+                                )),
+                            ]
+                        },
+                    )),
+                    Box::new(AstNode::Array(
+                        Token::LBrack(Position::new(1, 10)),
+                        ArrayNode {
+                            items: vec![
+                                Box::new(AstNode::Literal(
+                                    Token::Int(Position::new(1, 11), 3),
+                                    AstLiteralNode::IntLiteral(3),
+                                )),
+                                Box::new(AstNode::Literal(
+                                    Token::Int(Position::new(1, 14), 4),
+                                    AstLiteralNode::IntLiteral(4),
+                                )),
+                            ]
+                        },
+                    ))
+                ]
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_array_error() {
+        let error = parse("[").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("[1").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("[1,").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("[,").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Comma(Position::new(1, 2)));
+        assert_eq!(expected, error);
+
+        let error = parse("[1, 2 true").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Bool(Position::new(1, 7), true));
+        assert_eq!(expected, error);
     }
 }

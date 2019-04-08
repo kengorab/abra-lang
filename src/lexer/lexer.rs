@@ -230,6 +230,9 @@ impl<'a> Lexer<'a> {
                     Ok(None)
                 }
             }
+            '[' => Ok(Some(Token::LBrack(pos))),
+            ']' => Ok(Some(Token::RBrack(pos))),
+            ',' => Ok(Some(Token::Comma(pos))),
             _ => Ok(None)
         }
     }
@@ -296,6 +299,18 @@ mod tests {
             Token::GTE(Position::new(1, 10)),
             Token::Neq(Position::new(1, 13)),
             Token::Eq(Position::new(1, 16)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_single_char_separators() {
+        let input = "[ ] ,";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::LBrack(Position::new(1, 1)),
+            Token::RBrack(Position::new(1, 3)),
+            Token::Comma(Position::new(1, 5)),
         ];
         assert_eq!(expected, tokens);
     }
