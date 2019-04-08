@@ -24,6 +24,8 @@ lazy_static! {
         let mut keywords = HashMap::new();
         keywords.insert("true", Keyword::True);
         keywords.insert("false", Keyword::False);
+        keywords.insert("val", Keyword::Val);
+        keywords.insert("var", Keyword::Var);
         keywords
     };
 }
@@ -151,12 +153,12 @@ impl<'a> Lexer<'a> {
             return Ok(Some(Token::String(pos, s)));
         }
 
-        if ch.is_alphabetic() {
+        if ch.is_alphabetic() || ch == '_' {
             let pos = Position::new(self.line, self.col);
             let mut chars = vec![ch];
 
             while let Some(ch) = self.peek() {
-                if ch.is_alphanumeric() {
+                if ch.is_alphanumeric() || ch == &'_' {
                     chars.push(self.expect_next()?);
                 } else {
                     break;
@@ -168,8 +170,10 @@ impl<'a> Lexer<'a> {
                 Some(keyword) => match keyword {
                     Keyword::True => Ok(Some(Token::Bool(pos, true))),
                     Keyword::False => Ok(Some(Token::Bool(pos, false))),
+                    Keyword::Val => Ok(Some(Token::Val(pos))),
+                    Keyword::Var => Ok(Some(Token::Var(pos))),
                 }
-                None => unimplemented!() // TODO: Identifiers
+                None => Ok(Some(Token::Ident(pos, s)))
             };
         }
 
@@ -226,8 +230,7 @@ impl<'a> Lexer<'a> {
                     self.expect_next()?; // Consume '=' token
                     Ok(Some(Token::Eq(pos)))
                 } else {
-                    // TODO: Assignment token
-                    Ok(None)
+                    Ok(Some(Token::Assign(pos)))
                 }
             }
             '[' => Ok(Some(Token::LBrack(pos))),
@@ -274,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_operators() {
-        let input = "+ - * / < > !";
+        let input = "+ - * / < > ! =";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
@@ -284,6 +287,7 @@ mod tests {
             Token::LT(Position::new(1, 9)),
             Token::GT(Position::new(1, 11)),
             Token::Bang(Position::new(1, 13)),
+            Token::Assign(Position::new(1, 15)),
         ];
         assert_eq!(expected, tokens);
     }
@@ -383,11 +387,25 @@ mod tests {
 
     #[test]
     fn test_tokenize_keywords() {
-        let input = "true false";
+        let input = "true false val var";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
             Token::Bool(Position::new(1, 6), false),
+            Token::Val(Position::new(1, 12)),
+            Token::Var(Position::new(1, 16)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_identifier() {
+        let input = "abc abc1 abC_2";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Ident(Position::new(1, 1), "abc".to_string()),
+            Token::Ident(Position::new(1, 5), "abc1".to_string()),
+            Token::Ident(Position::new(1, 10), "abC_2".to_string()),
         ];
         assert_eq!(expected, tokens);
     }
