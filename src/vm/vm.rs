@@ -83,24 +83,27 @@ impl<'a> VM<'a> {
         let a = self.pop_expect()?;
 
         // Rust can't natively compare floats and ints, so we provide that logic here via
-        // partial_cmp (expecting that it'll always be a Some and never None, potentially naively).
-        // Otherwise, defer to normal implementation of PartialOrd
+        // partial_cmp, deferring to normal implementation of PartialOrd for non-float comparison.
         let ord = match (a, b) {
             (Value::Int(a), Value::Float(b)) => (a as f64).partial_cmp(&b),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
             (a @ _, b @ _) => a.partial_cmp(&b),
         };
-        let ord = ord.expect("There shouldn't be any situations where this fails");
 
-        let res = match opcode {
-            Opcode::LT => ord == Ordering::Less,
-            Opcode::LTE => ord != Ordering::Greater,
-            Opcode::GT => ord == Ordering::Greater,
-            Opcode::GTE => ord != Ordering::Less,
-            Opcode::Eq => ord == Ordering::Equal,
-            Opcode::Neq => ord != Ordering::Equal,
-            _ => unreachable!()
+        // If the partial_cmp call above returns None, treat that as an equivalence value of false
+        let res = match ord {
+            None => false,
+            Some(ord) =>
+                match opcode {
+                    Opcode::LT => ord == Ordering::Less,
+                    Opcode::LTE => ord != Ordering::Greater,
+                    Opcode::GT => ord == Ordering::Greater,
+                    Opcode::GTE => ord != Ordering::Less,
+                    Opcode::Eq => ord == Ordering::Equal,
+                    Opcode::Neq => ord != Ordering::Equal,
+                    _ => unreachable!()
+                }
         };
         self.push(Value::Bool(res));
 

@@ -10,7 +10,7 @@ mod typechecker;
 mod vm;
 
 fn main() {
-    let input = "[[1, 2], [3, 4]] == [[1, 2], [3, 4], [5, 6]]".to_string();
+    let input = "[[1, 2], [3, 4]] == \"hello\"".to_string();
 
     match lexer::lexer::tokenize(&input) {
         Err(e) => eprintln!("{}", e.get_message(&input)),

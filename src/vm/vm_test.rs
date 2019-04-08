@@ -194,5 +194,9 @@ mod tests {
         let result = interpret("[[0, 1], [2, 3]] == [[0, 1], [2, 3]]").unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
+
+        let result = interpret("[1, 2] == \"hello\"").unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
     }
 }
