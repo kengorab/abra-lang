@@ -6,6 +6,7 @@ pub enum AstNode {
     Unary(Token, UnaryNode),
     Binary(Token, BinaryNode),
     Array(Token, ArrayNode),
+    BindingDecl(Token, BindingDeclNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,7 +42,7 @@ pub enum BinaryOp {
     Gt,
     Gte,
     Neq,
-    Eq
+    Eq,
 }
 
 #[derive(Debug, PartialEq)]
@@ -54,4 +55,12 @@ pub struct BinaryNode {
 #[derive(Debug, PartialEq)]
 pub struct ArrayNode {
     pub items: Vec<Box<AstNode>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BindingDeclNode {
+    // Must be a Token::Ident
+    pub ident: Token,
+    pub expr: Option<Box<AstNode>>,
+    pub is_mutable: bool,
 }

@@ -1,7 +1,7 @@
 use crate::lexer::tokens::Token;
 use std::iter::Peekable;
 use std::vec::IntoIter;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -13,7 +13,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
         match parser.peek() {
             Some(t) => {
                 match t {
-                    _ => nodes.push(parser.parse_expr()?)
+                    _ => nodes.push(parser.parse_stmt()?)
                 }
             }
             None => break
@@ -96,6 +96,8 @@ impl Parser {
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
+            Token::Val(_) |
+            Token::Var(_) |
             Token::Plus(_) |
             Token::Star(_) |
             Token::Slash(_) |
@@ -108,8 +110,9 @@ impl Parser {
             Token::Neq(_) |
             Token::Eq(_) |
             Token::RBrack(_) |
-            Token::Comma(_) => None,
-            _ => unimplemented!()
+            Token::Comma(_) |
+            Token::Assign(_) |
+            Token::Ident(_, _) => None,
         }
     }
 
@@ -119,7 +122,11 @@ impl Parser {
             Token::Float(_, _) |
             Token::String(_, _) |
             Token::Bool(_, _) |
-            Token::Bang(_) => None,
+            Token::Bang(_) |
+            Token::Val(_) |
+            Token::Var(_) |
+            Token::Ident(_, _) => None,
+            Token::Assign(_) => /* TODO: Assignment statements */None,
             Token::Plus(_) |
             Token::Star(_) |
             Token::Slash(_) |
@@ -135,7 +142,6 @@ impl Parser {
             Token::LBrack(_) |
             Token::RBrack(_) |
             Token::Comma(_) => Some(Box::new(Parser::parse_binary)),
-            _ => unimplemented!()
         }
     }
 
@@ -148,18 +154,57 @@ impl Parser {
             Token::Bang(_) |
             Token::LBrack(_) |
             Token::RBrack(_) |
-            Token::Comma(_) => Precedence::None,
+            Token::Comma(_) |
+            Token::Val(_) |
+            Token::Var(_) |
+            Token::Ident(_, _) |
+            Token::Assign(_) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
-            _ => unimplemented!()
         }
     }
 
     // End Pratt plumbing
+
+    fn parse_stmt(&mut self) -> Result<AstNode, ParseError> {
+        match self.peek() {
+            Some(Token::Val(_)) => self.parse_binding_decl(),
+            Some(Token::Var(_)) => self.parse_binding_decl(),
+            Some(_) => self.parse_expr(),
+            None => Err(ParseError::UnexpectedEof)
+        }
+    }
+
+    fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        let is_mutable = match &token {
+            Token::Val(_) => false,
+            Token::Var(_) => true,
+            _ => unreachable!()
+        };
+
+        let ident = self.expect_next().and_then(|tok| {
+            match tok {
+                Token::Ident(_, _) => Ok(tok),
+                _ => Err(ParseError::UnexpectedToken(tok))
+            }
+        })?;
+
+        let expr = match self.peek() {
+            Some(Token::Assign(_)) => {
+                self.expect_next()?; // Consume '='
+                let expr = self.parse_expr()?;
+                Some(Box::new(expr))
+            }
+            Some(_) | None => None
+        };
+
+        Ok(AstNode::BindingDecl(token, BindingDeclNode { ident, is_mutable, expr }))
+    }
 
     fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
         self.parse_precedence(Precedence::None)
@@ -664,5 +709,72 @@ mod tests {
         let error = parse("[1, 2 true").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Bool(Position::new(1, 7), true));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_binding_decls_no_assignment() -> TestResult {
+        let ast = parse("val abc\nvar abc")?;
+        let expected = vec![
+            AstNode::BindingDecl(
+                Token::Val(Position::new(1, 1)),
+                BindingDeclNode {
+                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    is_mutable: false,
+                    expr: None,
+                },
+            ),
+            AstNode::BindingDecl(
+                Token::Var(Position::new(2, 1)),
+                BindingDeclNode {
+                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    is_mutable: true,
+                    expr: None,
+                },
+            ),
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binding_decls_with_assignment() -> TestResult {
+        let ast = parse("val abc = 1\nvar abc = 1")?;
+        let expected = vec![
+            AstNode::BindingDecl(
+                Token::Val(Position::new(1, 1)),
+                BindingDeclNode {
+                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    is_mutable: false,
+                    expr: Some(Box::new(
+                        AstNode::Literal(Token::Int(Position::new(1, 11), 1), AstLiteralNode::IntLiteral(1))
+                    )),
+                },
+            ),
+            AstNode::BindingDecl(
+                Token::Var(Position::new(2, 1)),
+                BindingDeclNode {
+                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    is_mutable: true,
+                    expr: Some(Box::new(
+                        AstNode::Literal(Token::Int(Position::new(2, 11), 1), AstLiteralNode::IntLiteral(1))
+                    )),
+                },
+            ),
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binding_decls_error() {
+        let err = parse("val 123 = \"hello \" + \"world\"").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
+        assert_eq!(expected, err);
+
+        let err = parse("val _abc =").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, err);
+
+        let err = parse("val abc = val def = 3").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 11)));
+        assert_eq!(expected, err);
     }
 }
