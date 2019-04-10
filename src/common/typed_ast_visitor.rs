@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 
 pub trait TypedAstVisitor<V, E> {
@@ -9,6 +9,7 @@ pub trait TypedAstVisitor<V, E> {
             Unary(tok, node) => self.visit_unary(tok, node),
             Binary(tok, node) => self.visit_binary(tok, node),
             Array(tok, node) => self.visit_array(tok, node),
+            BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
         }
     }
 
@@ -16,4 +17,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_unary(&mut self, token: Token, node: TypedUnaryNode) -> Result<V, E>;
     fn visit_binary(&mut self, token: Token, node: TypedBinaryNode) -> Result<V, E>;
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<V, E>;
+    fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<V, E>;
 }

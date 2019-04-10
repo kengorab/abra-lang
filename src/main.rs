@@ -19,7 +19,7 @@ fn main() {
             Ok(ast) => {
                 match typechecker::typechecker::typecheck(ast) {
                     Err(e) => eprintln!("{}", e.get_message(&input)),
-                    Ok(nodes) => {
+                    Ok((_, nodes)) => {
                         let chunk = vm::compiler::compile(nodes).unwrap();
 
                         let mut vm = vm::vm::VM::new(&chunk);

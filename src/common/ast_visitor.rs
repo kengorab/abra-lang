@@ -3,7 +3,7 @@ use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 
 pub trait AstVisitor<V, E> {
-    fn visit(&self, node: AstNode) -> Result<V, E> {
+    fn visit(&mut self, node: AstNode) -> Result<V, E> {
         match node {
             Literal(tok, node) => self.visit_literal(tok, node),
             Unary(tok, node) => self.visit_unary(tok, node),
@@ -13,9 +13,9 @@ pub trait AstVisitor<V, E> {
         }
     }
 
-    fn visit_literal(&self, token: Token, node: AstLiteralNode) -> Result<V, E>;
-    fn visit_unary(&self, token: Token, node: UnaryNode) -> Result<V, E>;
-    fn visit_binary(&self, token: Token, node: BinaryNode) -> Result<V, E>;
-    fn visit_array(&self, token: Token, node: ArrayNode) -> Result<V, E>;
-    fn visit_binding_decl(&self, token: Token, node: BindingDeclNode) -> Result<V, E>;
+    fn visit_literal(&mut self, token: Token, node: AstLiteralNode) -> Result<V, E>;
+    fn visit_unary(&mut self, token: Token, node: UnaryNode) -> Result<V, E>;
+    fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<V, E>;
+    fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<V, E>;
+    fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<V, E>;
 }

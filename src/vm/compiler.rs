@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -134,6 +134,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         Ok(())
     }
+
+    fn visit_binding_decl(&mut self, _token: Token, _node: TypedBindingDeclNode) -> Result<(), ()> {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
@@ -146,7 +150,7 @@ mod tests {
     fn compile(input: &str) -> Chunk {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        let typed_ast = typecheck(ast).unwrap();
+        let (_, typed_ast) = typecheck(ast).unwrap();
 
         super::compile(typed_ast).unwrap()
     }

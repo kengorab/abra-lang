@@ -13,7 +13,7 @@ mod tests {
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        let typed_ast = typecheck(ast).unwrap();
+        let (_, typed_ast) = typecheck(ast).unwrap();
         let chunk = compile(typed_ast).unwrap();
 
         let mut vm = VM::new(&chunk);

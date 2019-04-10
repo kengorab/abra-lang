@@ -7,11 +7,14 @@ use crate::parser::ast::BinaryOp;
 pub enum TypecheckerError {
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
+    MissingRequiredAssignment { ident: Token },
+    DuplicateBinding { ident: Token, orig_ident: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
 fn type_repr(t: &Type) -> String {
     match t {
+        Type::Unit => "()".to_string(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
@@ -45,6 +48,7 @@ impl DisplayError for TypecheckerError {
         let pos = match self {
             TypecheckerError::Mismatch { token, .. } => token.get_position(),
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
+            _ => unimplemented!()
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -66,6 +70,7 @@ impl DisplayError for TypecheckerError {
 
                 format!("Invalid operator ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
             }
+            _ => unimplemented!()
         }
     }
 }
