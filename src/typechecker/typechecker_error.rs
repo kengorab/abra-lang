@@ -39,7 +39,14 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Sub => "-",
         BinaryOp::Mul => "*",
         BinaryOp::Div => "/",
-        _ => unimplemented!()
+        BinaryOp::And => "&&",
+        BinaryOp::Or => "||",
+        BinaryOp::Lt => "<",
+        BinaryOp::Lte => "<=",
+        BinaryOp::Gt => ">",
+        BinaryOp::Gte => ">=",
+        BinaryOp::Neq => "!=",
+        BinaryOp::Eq => "==",
     }.to_string()
 }
 
@@ -48,7 +55,8 @@ impl DisplayError for TypecheckerError {
         let pos = match self {
             TypecheckerError::Mismatch { token, .. } => token.get_position(),
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
-            _ => unimplemented!()
+            TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
+            TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -70,7 +78,38 @@ impl DisplayError for TypecheckerError {
 
                 format!("Invalid operator ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
             }
-            _ => unimplemented!()
+            TypecheckerError::MissingRequiredAssignment { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let message = format!("'val' bindings must be initialized");
+                format!(
+                    "Expected assignment for variable '{}' ({}:{})\n{}\n{}",
+                    ident, pos.line, pos.col, cursor_line, message
+                )
+            }
+            TypecheckerError::DuplicateBinding { ident, orig_ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let first_msg = format!("Duplicate variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let pos = orig_ident.get_position();
+                let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                let orig_ident = match orig_ident {
+                    Token::Ident(_, orig_ident) => orig_ident,
+                    _ => unreachable!()
+                };
+                let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+
+                format!("{}\n{}", first_msg, second_msg)
+            }
         }
     }
 }
@@ -125,6 +164,42 @@ Invalid operator (1:3)
        ^
   No operator exists to satisfy Int - String"
         );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_missing_required_assignment() {
+        let src = "val abc".to_string();
+        let err = TypecheckerError::MissingRequiredAssignment {
+            ident: Token::Ident(Position::new(1, 5), "abc".to_string())
+        };
+
+        let expected = format!("\
+Expected assignment for variable 'abc' (1:5)
+  |  val abc
+         ^
+'val' bindings must be initialized"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_duplicate_binding() {
+        let src = "val abc = 123\nval abc = 5".to_string();
+        let err = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string())
+        };
+
+        let expected = format!("\
+Duplicate variable 'abc' (2:5)
+  |  val abc = 5
+         ^
+Binding already declared in scope at (1:5)
+  |  val abc = 123
+         ^"
+        );
+
         assert_eq!(expected, err.get_message(&src));
     }
 }

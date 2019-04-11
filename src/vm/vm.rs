@@ -201,6 +201,7 @@ impl<'a> VM<'a> {
                         self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
                     }
                 }
+                Opcode::Store => unimplemented!(),
                 Opcode::Return => break Ok(self.pop()),
             }
         }

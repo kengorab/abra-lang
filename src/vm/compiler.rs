@@ -135,8 +135,29 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_binding_decl(&mut self, _token: Token, _node: TypedBindingDeclNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedBindingDeclNode { ident, expr, .. } = node;
+        let ident = match ident {
+            Token::Ident(_, ident) => ident,
+            _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
+        };
+
+        let binding_idx = self.chunk.bindings.len();
+        self.chunk.bindings.insert(ident, binding_idx);
+
+        if let Some(node) = expr {
+            self.visit(*node)?;
+
+            let const_idx = self.chunk.add_constant(Value::Int(binding_idx as i64));
+            self.chunk.write(Opcode::Constant as u8, line);
+            self.chunk.write(const_idx, line);
+
+            self.chunk.write(Opcode::Store as u8, line);
+        }
+
+        Ok(())
     }
 }
 
@@ -146,6 +167,7 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
+    use std::collections::HashMap;
 
     fn compile(input: &str) -> Chunk {
         let tokens = tokenize(&input.to_string()).unwrap();
@@ -164,6 +186,7 @@ mod tests {
             code: vec![
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -190,6 +213,7 @@ mod tests {
                 Opcode::F as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -205,6 +229,7 @@ mod tests {
                 Opcode::Invert as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -217,6 +242,7 @@ mod tests {
                 Opcode::Invert as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -229,6 +255,7 @@ mod tests {
                 Opcode::Negate as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -245,6 +272,7 @@ mod tests {
                 Opcode::IAdd as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -267,6 +295,7 @@ mod tests {
                 Opcode::FSub as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -286,6 +315,7 @@ mod tests {
                 Opcode::StrConcat as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -305,6 +335,7 @@ mod tests {
                 Opcode::StrConcat as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -323,6 +354,7 @@ mod tests {
                 Opcode::Or as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -343,6 +375,7 @@ mod tests {
                 Opcode::Eq as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -362,6 +395,7 @@ mod tests {
                 Opcode::Neq as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -379,6 +413,7 @@ mod tests {
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
@@ -399,6 +434,7 @@ mod tests {
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
@@ -430,6 +466,77 @@ mod tests {
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl() {
+        let chunk = compile("val abc = 123");
+        let expected = Chunk {
+            lines: vec![5, 1],
+            constants: vec![Value::Int(123), Value::Int(0)],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Store as u8,
+                Opcode::Return as u8
+            ],
+            bindings: {
+                let mut bindings = HashMap::<String, usize>::new();
+                bindings.insert("abc".to_string(), 0);
+                bindings
+            },
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("var unset\nvar set = true");
+        let expected = Chunk {
+            lines: vec![0, 4, 1],
+            constants: vec![Value::Int(1)],
+            code: vec![
+                Opcode::T as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::Store as u8,
+                Opcode::Return as u8
+            ],
+            bindings: {
+                let mut bindings = HashMap::<String, usize>::new();
+                bindings.insert("unset".to_string(), 0);
+                bindings.insert("set".to_string(), 1);
+                bindings
+            },
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("val abc = \"a\" + \"b\"\nval def = 4");
+        let expected = Chunk {
+            lines: vec![8, 5, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Int(0),
+                Value::Int(4),
+                Value::Int(1),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::StrConcat as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Store as u8,
+                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, 4,
+                Opcode::Store as u8,
+                Opcode::Return as u8
+            ],
+            bindings: {
+                let mut bindings = HashMap::<String, usize>::new();
+                bindings.insert("abc".to_string(), 0);
+                bindings.insert("def".to_string(), 1);
+                bindings
+            },
         };
         assert_eq!(expected, chunk);
     }

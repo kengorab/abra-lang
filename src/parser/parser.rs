@@ -64,12 +64,12 @@ impl Parser {
 
                 let mut left: AstNode = (*prefix_fn)(self, prefix_token)?;
 
-                if let Some(token) = self.peek() {
-                    let next_prec = Parser::get_precedence_for_token(&token);
-                    let prec: u8 = prec.into();
-                    let next_prec: u8 = next_prec.into();
-                    while prec < next_prec {
-                        if let Some(_) = self.peek() {
+                let prec: u8 = prec.into();
+                loop {
+                    if let Some(infix_token) = self.peek() {
+                        let next_prec = Parser::get_precedence_for_token(&infix_token);
+                        let next_prec: u8 = next_prec.into();
+                        if prec < next_prec {
                             let infix_token = self.expect_next()?;
 
                             if let Some(infix_fn) = self.get_infix_rule(&infix_token) {
@@ -78,6 +78,8 @@ impl Parser {
                         } else {
                             break;
                         }
+                    } else {
+                        break;
                     }
                 }
 
@@ -737,7 +739,7 @@ mod tests {
 
     #[test]
     fn parse_binding_decls_with_assignment() -> TestResult {
-        let ast = parse("val abc = 1\nvar abc = 1")?;
+        let ast = parse("val abc = 1 + \"a\"\nvar abc = 1")?;
         let expected = vec![
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
@@ -745,7 +747,18 @@ mod tests {
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                     is_mutable: false,
                     expr: Some(Box::new(
-                        AstNode::Literal(Token::Int(Position::new(1, 11), 1), AstLiteralNode::IntLiteral(1))
+                        AstNode::Binary(
+                            Token::Plus(Position::new(1, 13)),
+                            BinaryNode {
+                                left: Box::new(
+                                    AstNode::Literal(Token::Int(Position::new(1, 11), 1), AstLiteralNode::IntLiteral(1))
+                                ),
+                                op: BinaryOp::Add,
+                                right: Box::new(
+                                    AstNode::Literal(Token::String(Position::new(1, 15), "a".to_string()), AstLiteralNode::StringLiteral("a".to_string()))
+                                ),
+                            },
+                        ),
                     )),
                 },
             ),
