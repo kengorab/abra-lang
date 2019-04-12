@@ -159,6 +159,25 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         Ok(())
     }
+
+    fn visit_identifier(&mut self, token: Token, _typ: Type) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let ident = match token {
+            Token::Ident(_, ident) => ident,
+            _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
+        };
+
+        if let Some(binding_idx )= self.chunk.bindings.get(&ident) {
+            let const_idx = self.chunk.add_constant(Value::Int(*binding_idx as i64));
+            self.chunk.write(Opcode::Constant as u8, line);
+            self.chunk.write(const_idx, line);
+
+            self.chunk.write(Opcode::Load as u8, line);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -535,6 +554,29 @@ mod tests {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("abc".to_string(), 0);
                 bindings.insert("def".to_string(), 1);
+                bindings
+            },
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_ident() {
+        let chunk = compile("val abc = 123\nabc");
+        let expected = Chunk {
+            lines: vec![5, 3, 1],
+            constants: vec![Value::Int(123), Value::Int(0), Value::Int(0)],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Store as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Load as u8,
+                Opcode::Return as u8
+            ],
+            bindings: {
+                let mut bindings = HashMap::<String, usize>::new();
+                bindings.insert("abc".to_string(), 0);
                 bindings
             },
         };

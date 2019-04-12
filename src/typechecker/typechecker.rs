@@ -184,6 +184,19 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         };
         Ok(TypedAstNode::BindingDecl(token, node))
     }
+
+    fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+        let name = match &token {
+            Token::Ident(_, ident_name) => ident_name,
+            _ => unreachable!()
+        };
+
+        match self.scope.bindings.get(name) {
+            None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
+            Some((_, None)) => Err(TypecheckerError::UnknownIdentifierType { ident: token }),
+            Some((_, Some(typ))) => Ok(TypedAstNode::Identifier(token, typ.clone()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -857,6 +870,47 @@ mod tests {
         let expected = TypecheckerError::DuplicateBinding {
             ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
             orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_ident() -> TestResult {
+        let typed_ast = typecheck("val abc = 123\nabc")?;
+        let expected = vec![
+            TypedAstNode::BindingDecl(
+                Token::Val(Position::new(1, 1)),
+                TypedBindingDeclNode {
+                    is_mutable: false,
+                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    expr: Some(Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 11), 123),
+                            TypedLiteralNode::IntLiteral(123),
+                        )
+                    )),
+                },
+            ),
+            TypedAstNode::Identifier(
+                Token::Ident(Position::new(2, 1), "abc".to_string()),
+                Type::Int,
+            )
+        ];
+        assert_eq!(expected, typed_ast);
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_ident_errors() {
+        let err = typecheck("abc").unwrap_err();
+        let expected = TypecheckerError::UnknownIdentifier {
+            ident: Token::Ident(Position::new(1, 1), "abc".to_string())
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("var abc\nabc").unwrap_err();
+        let expected = TypecheckerError::UnknownIdentifierType {
+            ident: Token::Ident(Position::new(2, 1), "abc".to_string())
         };
         assert_eq!(expected, err);
     }

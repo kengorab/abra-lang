@@ -199,4 +199,34 @@ mod tests {
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_bindings() {
+        let input = "\n\
+          val a = 123\n
+          val b = 456\n
+          var c = a + b > b - a\n
+          c
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+
+        let input = "\n\
+          val a1 = 1\n
+          val a2 = 2\n
+          val a3 = 3\n
+          val a = [a1, a2 + a2, 3 * a3]\n
+          a
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(4)),
+                Box::new(Value::Int(9)),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
 }

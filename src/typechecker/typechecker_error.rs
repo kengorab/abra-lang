@@ -9,6 +9,8 @@ pub enum TypecheckerError {
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
+    UnknownIdentifier { ident: Token },
+    UnknownIdentifierType { ident: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -57,6 +59,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
+            TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
+            TypecheckerError::UnknownIdentifierType { ident } => ident.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -102,13 +106,31 @@ impl DisplayError for TypecheckerError {
                 let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
                 let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
 
-                let orig_ident = match orig_ident {
-                    Token::Ident(_, orig_ident) => orig_ident,
-                    _ => unreachable!()
-                };
                 let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::UnknownIdentifier { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                format!(
+                    "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name visible in current scope",
+                    ident, pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::UnknownIdentifierType { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let msg = "It's possible that it hasn't been initialized";
+
+                format!(
+                    "Could not determine type of identifier '{}' ({}:{})\n{}\n{}",
+                    ident, pos.line, pos.col, cursor_line, msg
+                )
             }
         }
     }
@@ -188,7 +210,7 @@ Expected assignment for variable 'abc' (1:5)
         let src = "val abc = 123\nval abc = 5".to_string();
         let err = TypecheckerError::DuplicateBinding {
             ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
-            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string())
+            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
         };
 
         let expected = format!("\
@@ -200,6 +222,38 @@ Binding already declared in scope at (1:5)
          ^"
         );
 
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_identifier() {
+        let src = "abcd".to_string();
+        let err = TypecheckerError::UnknownIdentifier {
+            ident: Token::Ident(Position::new(1, 1), "abcd".to_string())
+        };
+
+        let expected = format!("\
+Unknown identifier 'abcd' (1:1)
+  |  abcd
+     ^
+No binding with that name visible in current scope"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_identifier_type() {
+        let src = "abcd".to_string();
+        let err = TypecheckerError::UnknownIdentifierType {
+            ident: Token::Ident(Position::new(1, 1), "abcd".to_string())
+        };
+
+        let expected = format!("\
+Could not determine type of identifier 'abcd' (1:1)
+  |  abcd
+     ^
+It's possible that it hasn't been initialized"
+        );
         assert_eq!(expected, err.get_message(&src));
     }
 }

@@ -15,11 +15,12 @@ pub struct VM<'a> {
     ip: usize,
     chunk: &'a Chunk,
     stack: Vec<Value>,
+    vars: Vec<Value>,
 }
 
 impl<'a> VM<'a> {
     pub fn new(chunk: &'a Chunk) -> Self {
-        VM { ip: 0, chunk, stack: Vec::new() }
+        VM { ip: 0, chunk, stack: Vec::new(), vars: Vec::with_capacity(chunk.bindings.len()) }
     }
 
     fn push(&mut self, value: Value) {
@@ -201,7 +202,21 @@ impl<'a> VM<'a> {
                         self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
                     }
                 }
-                Opcode::Store => unimplemented!(),
+                Opcode::Store => {
+                    if let Value::Int(var_idx) = self.pop_expect()? {
+                        let var_idx = var_idx as usize;
+                        let val = self.pop_expect()?;
+                        self.vars.insert(var_idx, val);
+                    }
+                }
+                Opcode::Load => {
+                    if let Value::Int(var_idx) = self.pop_expect()? {
+                        let var_idx = var_idx as usize;
+                        if let Some(val) = self.vars.get(var_idx) {
+                            self.push(val.clone());
+                        }
+                    }
+                }
                 Opcode::Return => break Ok(self.pop()),
             }
         }

@@ -1,6 +1,6 @@
-use crate::lexer::tokens::Token;
 use std::iter::Peekable;
 use std::vec::IntoIter;
+use crate::lexer::tokens::Token;
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
@@ -11,11 +11,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut nodes: Vec<AstNode> = vec![];
     loop {
         match parser.peek() {
-            Some(t) => {
-                match t {
-                    _ => nodes.push(parser.parse_stmt()?)
-                }
-            }
+            Some(_) => nodes.push(parser.parse_stmt()?),
             None => break
         }
     }
@@ -98,23 +94,8 @@ impl Parser {
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
-            Token::Val(_) |
-            Token::Var(_) |
-            Token::Plus(_) |
-            Token::Star(_) |
-            Token::Slash(_) |
-            Token::And(_) |
-            Token::Or(_) |
-            Token::GT(_) |
-            Token::GTE(_) |
-            Token::LT(_) |
-            Token::LTE(_) |
-            Token::Neq(_) |
-            Token::Eq(_) |
-            Token::RBrack(_) |
-            Token::Comma(_) |
-            Token::Assign(_) |
-            Token::Ident(_, _) => None,
+            Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
+            _ => None,
         }
     }
 
@@ -127,46 +108,24 @@ impl Parser {
             Token::Bang(_) |
             Token::Val(_) |
             Token::Var(_) |
-            Token::Ident(_, _) => None,
-            Token::Assign(_) => /* TODO: Assignment statements */None,
-            Token::Plus(_) |
-            Token::Star(_) |
-            Token::Slash(_) |
-            Token::Minus(_) |
-            Token::And(_) |
-            Token::Or(_) |
-            Token::GT(_) |
-            Token::GTE(_) |
-            Token::LT(_) |
-            Token::LTE(_) |
-            Token::Neq(_) |
-            Token::Eq(_) |
             Token::LBrack(_) |
             Token::RBrack(_) |
-            Token::Comma(_) => Some(Box::new(Parser::parse_binary)),
+            Token::Comma(_) |
+            Token::Ident(_, _) => None,
+            Token::Assign(_) => /* TODO: Assignment statements */None,
+            _ => Some(Box::new(Parser::parse_binary)),
         }
     }
 
     fn get_precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Int(_, _) |
-            Token::Float(_, _) |
-            Token::String(_, _) |
-            Token::Bool(_, _) |
-            Token::Bang(_) |
-            Token::LBrack(_) |
-            Token::RBrack(_) |
-            Token::Comma(_) |
-            Token::Val(_) |
-            Token::Var(_) |
-            Token::Ident(_, _) |
-            Token::Assign(_) => Precedence::None,
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
+            _ => Precedence::None,
         }
     }
 
@@ -281,6 +240,13 @@ impl Parser {
 
         Ok(AstNode::Array(token, ArrayNode { items }))
     }
+
+    fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        match &token {
+            Token::Ident(_, _) => Ok(AstNode::Identifier(token)),
+            _ => Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
+        }
+    }
 }
 
 #[cfg(test)]
@@ -295,6 +261,7 @@ mod tests {
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
         let tokens = tokenize(&input.to_string()).unwrap();
+        println!("{:?}", tokens);
         super::parse(tokens)
     }
 
@@ -789,5 +756,12 @@ mod tests {
         let err = parse("val abc = val def = 3").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 11)));
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn parse_ident() -> TestResult {
+        let ast = parse("abcd")?;
+        let expected = AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()));
+        Ok(assert_eq!(expected, ast[0]))
     }
 }

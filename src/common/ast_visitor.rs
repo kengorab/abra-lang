@@ -10,6 +10,7 @@ pub trait AstVisitor<V, E> {
             Binary(tok, node) => self.visit_binary(tok, node),
             Array(tok, node) => self.visit_array(tok, node),
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
+            Identifier(tok) => self.visit_ident(tok),
         }
     }
 
@@ -18,4 +19,5 @@ pub trait AstVisitor<V, E> {
     fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<V, E>;
     fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<V, E>;
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<V, E>;
+    fn visit_ident(&mut self, token: Token) -> Result<V, E>;
 }

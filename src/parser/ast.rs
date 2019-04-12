@@ -7,6 +7,7 @@ pub enum AstNode {
     Binary(Token, BinaryNode),
     Array(Token, ArrayNode),
     BindingDecl(Token, BindingDeclNode),
+    Identifier(Token),
 }
 
 #[derive(Debug, PartialEq)]
