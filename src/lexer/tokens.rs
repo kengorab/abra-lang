@@ -11,6 +11,8 @@ impl Position {
 pub enum Keyword {
     True,
     False,
+    Val,
+    Var,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +22,11 @@ pub enum Token {
     String(Position, String),
     Bool(Position, bool),
 
+    Val(Position),
+    Var(Position),
+    Ident(Position, String),
+
+    Assign(Position),
     Plus(Position),
     Minus(Position),
     Star(Position),
@@ -45,8 +52,12 @@ impl Token {
             Token::Int(pos, _) |
             Token::Float(pos, _) |
             Token::String(pos, _) |
-            Token::Bool(pos, _) => pos,
+            Token::Bool(pos, _) |
+            Token::Ident(pos, _) => pos,
 
+            Token::Val(pos) |
+            Token::Var(pos) |
+            Token::Assign(pos) |
             Token::Plus(pos) |
             Token::Minus(pos) |
             Token::Star(pos) |
@@ -75,7 +86,11 @@ impl Display for Token {
             Token::Float(_, val) => write!(f, "{}", val),
             Token::String(_, val) => write!(f, "\"{}\"", val),
             Token::Bool(_, val) => write!(f, "{}", val),
+            Token::Ident(_, name) => write!(f, "{}", name),
 
+            Token::Val(_) => write!(f, "val"),
+            Token::Var(_) => write!(f, "var"),
+            Token::Assign(_) => write!(f, "="),
             Token::Plus(_) => write!(f, "+"),
             Token::Minus(_) => write!(f, "-"),
             Token::Star(_) => write!(f, "*"),

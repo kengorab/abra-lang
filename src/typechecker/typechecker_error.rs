@@ -7,11 +7,16 @@ use crate::parser::ast::BinaryOp;
 pub enum TypecheckerError {
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
+    MissingRequiredAssignment { ident: Token },
+    DuplicateBinding { ident: Token, orig_ident: Token },
+    UnknownIdentifier { ident: Token },
+    UnknownIdentifierType { ident: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
 fn type_repr(t: &Type) -> String {
     match t {
+        Type::Unit => "()".to_string(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
@@ -36,7 +41,14 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Sub => "-",
         BinaryOp::Mul => "*",
         BinaryOp::Div => "/",
-        _ => unimplemented!()
+        BinaryOp::And => "&&",
+        BinaryOp::Or => "||",
+        BinaryOp::Lt => "<",
+        BinaryOp::Lte => "<=",
+        BinaryOp::Gt => ">",
+        BinaryOp::Gte => ">=",
+        BinaryOp::Neq => "!=",
+        BinaryOp::Eq => "==",
     }.to_string()
 }
 
@@ -45,6 +57,10 @@ impl DisplayError for TypecheckerError {
         let pos = match self {
             TypecheckerError::Mismatch { token, .. } => token.get_position(),
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
+            TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
+            TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
+            TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
+            TypecheckerError::UnknownIdentifierType { ident } => ident.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -65,6 +81,56 @@ impl DisplayError for TypecheckerError {
                 );
 
                 format!("Invalid operator ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
+            }
+            TypecheckerError::MissingRequiredAssignment { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let message = format!("'val' bindings must be initialized");
+                format!(
+                    "Expected assignment for variable '{}' ({}:{})\n{}\n{}",
+                    ident, pos.line, pos.col, cursor_line, message
+                )
+            }
+            TypecheckerError::DuplicateBinding { ident, orig_ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let first_msg = format!("Duplicate variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let pos = orig_ident.get_position();
+                let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::UnknownIdentifier { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                format!(
+                    "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name visible in current scope",
+                    ident, pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::UnknownIdentifierType { ident } => {
+                let ident = match ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let msg = "It's possible that it hasn't been initialized";
+
+                format!(
+                    "Could not determine type of identifier '{}' ({}:{})\n{}\n{}",
+                    ident, pos.line, pos.col, cursor_line, msg
+                )
             }
         }
     }
@@ -119,6 +185,74 @@ Invalid operator (1:3)
   |  1 - \"some string\"
        ^
   No operator exists to satisfy Int - String"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_missing_required_assignment() {
+        let src = "val abc".to_string();
+        let err = TypecheckerError::MissingRequiredAssignment {
+            ident: Token::Ident(Position::new(1, 5), "abc".to_string())
+        };
+
+        let expected = format!("\
+Expected assignment for variable 'abc' (1:5)
+  |  val abc
+         ^
+'val' bindings must be initialized"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_duplicate_binding() {
+        let src = "val abc = 123\nval abc = 5".to_string();
+        let err = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+        };
+
+        let expected = format!("\
+Duplicate variable 'abc' (2:5)
+  |  val abc = 5
+         ^
+Binding already declared in scope at (1:5)
+  |  val abc = 123
+         ^"
+        );
+
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_identifier() {
+        let src = "abcd".to_string();
+        let err = TypecheckerError::UnknownIdentifier {
+            ident: Token::Ident(Position::new(1, 1), "abcd".to_string())
+        };
+
+        let expected = format!("\
+Unknown identifier 'abcd' (1:1)
+  |  abcd
+     ^
+No binding with that name visible in current scope"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_identifier_type() {
+        let src = "abcd".to_string();
+        let err = TypecheckerError::UnknownIdentifierType {
+            ident: Token::Ident(Position::new(1, 1), "abcd".to_string())
+        };
+
+        let expected = format!("\
+Could not determine type of identifier 'abcd' (1:1)
+  |  abcd
+     ^
+It's possible that it hasn't been initialized"
         );
         assert_eq!(expected, err.get_message(&src));
     }

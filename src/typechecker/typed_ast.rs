@@ -8,6 +8,8 @@ pub enum TypedAstNode {
     Unary(Token, TypedUnaryNode),
     Binary(Token, TypedBinaryNode),
     Array(Token, TypedArrayNode),
+    BindingDecl(Token, TypedBindingDeclNode),
+    Identifier(Token, Type),
 }
 
 impl TypedAstNode {
@@ -17,6 +19,8 @@ impl TypedAstNode {
             TypedAstNode::Unary(token, _) => token,
             TypedAstNode::Binary(token, _) => token,
             TypedAstNode::Array(token, _) => token,
+            TypedAstNode::BindingDecl(token, _) => token,
+            TypedAstNode::Identifier(token, _) => token,
         }
     }
 
@@ -31,6 +35,8 @@ impl TypedAstNode {
             TypedAstNode::Unary(_, node) => node.typ.clone(),
             TypedAstNode::Binary(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
+            TypedAstNode::BindingDecl(_, _) => Type::Unit,
+            TypedAstNode::Identifier(_, typ) => typ.clone(),
         }
     }
 }
@@ -62,4 +68,12 @@ pub struct TypedBinaryNode {
 pub struct TypedArrayNode {
     pub typ: Type,
     pub items: Vec<Box<TypedAstNode>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedBindingDeclNode {
+    // Must be a Token::Ident
+    pub ident: Token,
+    pub expr: Option<Box<TypedAstNode>>,
+    pub is_mutable: bool,
 }

@@ -33,6 +33,7 @@ impl Into<u8> for Precedence {
             Precedence::Multiplication => 7,
             Precedence::Unary => 8,
 //            Precedence::Call => 9,
+//            Precedence::Declaration => 10,
         }
     }
 }
