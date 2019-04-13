@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -112,7 +112,7 @@ impl Parser {
             Token::RBrack(_) |
             Token::Comma(_) |
             Token::Ident(_, _) => None,
-            Token::Assign(_) => /* TODO: Assignment statements */None,
+            Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
     }
@@ -125,6 +125,7 @@ impl Parser {
             Token::Or(_) => Precedence::Or,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
+            Token::Assign(_) => Precedence::Assignment,
             _ => Precedence::None,
         }
     }
@@ -212,6 +213,13 @@ impl Parser {
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
     }
 
+    fn parse_assignment(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+        let prec = Parser::get_precedence_for_token(&token);
+        let expr = self.parse_precedence(prec)?;
+        let node = AssignmentNode { target: Box::new(left), expr: Box::new(expr) };
+        Ok(AstNode::Assignment(token, node))
+    }
+
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
         let mut item_expected = true;
         let mut items: Vec<Box<AstNode>> = vec![];
@@ -261,7 +269,6 @@ mod tests {
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
         let tokens = tokenize(&input.to_string()).unwrap();
-        println!("{:?}", tokens);
         super::parse(tokens)
     }
 
@@ -764,4 +771,36 @@ mod tests {
         let expected = AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()));
         Ok(assert_eq!(expected, ast[0]))
     }
+
+    #[test]
+    fn parse_assignment() -> TestResult {
+        let ast = parse("abc = 123")?;
+        let expected = AstNode::Assignment(
+            Token::Assign(Position::new(1, 5)),
+            AssignmentNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                ),
+                expr: Box::new(
+                    AstNode::Literal(Token::Int(Position::new(1, 7), 123), AstLiteralNode::IntLiteral(123))
+                ),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc = def")?;
+        let expected = AstNode::Assignment(
+            Token::Assign(Position::new(1, 5)),
+            AssignmentNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                ),
+                expr: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 7), "def".to_string()))
+                ),
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
 }
+

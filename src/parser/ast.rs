@@ -8,6 +8,7 @@ pub enum AstNode {
     Array(Token, ArrayNode),
     BindingDecl(Token, BindingDeclNode),
     Identifier(Token),
+    Assignment(Token, AssignmentNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,4 +65,10 @@ pub struct BindingDeclNode {
     pub ident: Token,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AssignmentNode {
+    pub target: Box<AstNode>,
+    pub expr: Box<AstNode>,
 }

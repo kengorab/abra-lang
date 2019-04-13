@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -196,6 +196,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Some((_, None)) => Err(TypecheckerError::UnknownIdentifierType { ident: token }),
             Some((_, Some(typ))) => Ok(TypedAstNode::Identifier(token, typ.clone()))
         }
+    }
+
+    fn visit_assignment(&mut self, _token: Token, _node: AssignmentNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
     }
 }
 
