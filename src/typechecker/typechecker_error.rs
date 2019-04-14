@@ -87,10 +87,7 @@ impl DisplayError for TypecheckerError {
                 format!("Invalid operator ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
             }
             TypecheckerError::MissingRequiredAssignment { ident } => {
-                let ident = match ident {
-                    Token::Ident(_, ident) => ident,
-                    _ => unreachable!()
-                };
+                let ident = Token::get_ident_name(&ident);
                 let message = format!("'val' bindings must be initialized");
                 format!(
                     "Expected assignment for variable '{}' ({}:{})\n{}\n{}",
@@ -98,10 +95,7 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::DuplicateBinding { ident, orig_ident } => {
-                let ident = match ident {
-                    Token::Ident(_, ident) => ident,
-                    _ => unreachable!()
-                };
+                let ident = Token::get_ident_name(&ident);
                 let first_msg = format!("Duplicate variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
@@ -115,20 +109,14 @@ impl DisplayError for TypecheckerError {
                 format!("{}\n{}", first_msg, second_msg)
             }
             TypecheckerError::UnknownIdentifier { ident } => {
-                let ident = match ident {
-                    Token::Ident(_, ident) => ident,
-                    _ => unreachable!()
-                };
+                let ident = Token::get_ident_name(&ident);
                 format!(
                     "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name visible in current scope",
                     ident, pos.line, pos.col, cursor_line
                 )
             }
             TypecheckerError::UnknownIdentifierType { ident } => {
-                let ident = match ident {
-                    Token::Ident(_, ident) => ident,
-                    _ => unreachable!()
-                };
+                let ident = Token::get_ident_name(&ident);
                 let msg = "It's possible that it hasn't been initialized";
 
                 format!(
@@ -144,10 +132,7 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::AssignmentToImmutable { orig_ident, token: _ } => {
-                let ident = match orig_ident {
-                    Token::Ident(_, ident) => ident,
-                    _ => unreachable!()
-                };
+                let ident = Token::get_ident_name(&orig_ident);
                 let first_msg = format!("Cannot assign to variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();

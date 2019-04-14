@@ -77,6 +77,13 @@ impl Token {
         };
         pos.clone()
     }
+
+    pub fn get_ident_name(token: &Token) -> &String {
+        match token {
+            Token::Ident(_, ident) => ident,
+            _ => unreachable!()
+        }
+    }
 }
 
 impl Display for Token {
