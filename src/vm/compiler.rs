@@ -31,7 +31,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
 }
 
 impl<'a> Compiler<'a> {
-    fn write_int_constant(&mut self, number: u32, line: usize, const_idx: Option<u8>) -> Option<u8> {
+    fn write_int_constant(&mut self, number: u32, line: usize) {
         if number <= 4 {
             let opcode = match number {
                 0 => Opcode::IConst0,
@@ -42,14 +42,44 @@ impl<'a> Compiler<'a> {
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
             self.chunk.write(opcode as u8, line);
-            None
         } else {
-            let const_idx = const_idx.unwrap_or_else(|| {
-                self.chunk.add_constant(Value::Int(number as i64))
-            });
+            let const_idx = self.chunk.add_constant(Value::Int(number as i64));
             self.chunk.write(Opcode::Constant as u8, line);
             self.chunk.write(const_idx, line);
-            Some(const_idx)
+        }
+    }
+
+    fn write_store_instr(&mut self, binding_idx: u32, line: usize) {
+        if binding_idx <= 4 {
+            let opcode = match binding_idx {
+                0 => Opcode::Store0,
+                1 => Opcode::Store1,
+                2 => Opcode::Store2,
+                3 => Opcode::Store3,
+                4 => Opcode::Store4,
+                _ => unreachable!(), // Values greater than 4 are handled in the else-block
+            };
+            self.chunk.write(opcode as u8, line);
+        } else {
+            self.write_int_constant(binding_idx, line);
+            self.chunk.write(Opcode::Store as u8, line);
+        }
+    }
+
+    fn write_load_instr(&mut self, binding_idx: u32, line: usize) {
+        if binding_idx <= 4 {
+            let opcode = match binding_idx {
+                0 => Opcode::Load0,
+                1 => Opcode::Load1,
+                2 => Opcode::Load2,
+                3 => Opcode::Load3,
+                4 => Opcode::Load4,
+                _ => unreachable!(), // Values greater than 4 are handled in the else-block
+            };
+            self.chunk.write(opcode as u8, line);
+        } else {
+            self.write_int_constant(binding_idx, line);
+            self.chunk.write(Opcode::Load as u8, line);
         }
     }
 }
@@ -64,7 +94,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.chunk.write(opcode, line);
             return Ok(());
         } else if let TypedLiteralNode::IntLiteral(val) = node {
-            self.write_int_constant(val as u32, line, None);
+            self.write_int_constant(val as u32, line);
             return Ok(());
         }
 
@@ -152,7 +182,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let line = token.get_position().line;
 
-        self.write_int_constant(num_items as u32, line, None);
+        self.write_int_constant(num_items as u32, line);
         self.chunk.write(Opcode::MkArr as u8, line);
 
         Ok(())
@@ -170,8 +200,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         if let Some(node) = expr {
             self.visit(*node)?;
 
-            self.write_int_constant(binding_idx as u32, line, None);
-            self.chunk.write(Opcode::Store as u8, line);
+            self.write_store_instr(binding_idx as u32, line);
         }
 
         Ok(())
@@ -183,9 +212,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let ident = Token::get_ident_name(&token);
 
         if let Some(binding_idx) = self.chunk.bindings.get(ident) {
-            self.write_int_constant(*binding_idx as u32, line, None);
-
-            self.chunk.write(Opcode::Load as u8, line);
+            self.write_load_instr(*binding_idx as u32, line);
         }
 
         Ok(())
@@ -203,11 +230,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.visit(*expr)?;
 
         let binding_idx = self.chunk.bindings.get(&ident).unwrap().clone();
-        let const_idx = self.write_int_constant(binding_idx as u32, line, None);
-        self.chunk.write(Opcode::Store as u8, line);
-
-        self.write_int_constant(binding_idx as u32, line, const_idx);
-        self.chunk.write(Opcode::Load as u8, line);
+        self.write_store_instr(binding_idx as u32, line);
+        self.write_load_instr(binding_idx as u32, line);
 
         Ok(())
     }
@@ -330,7 +354,7 @@ mod tests {
         let chunk = compile("1 - -5 * 3.4 / 5");
         let expected = Chunk {
             lines: vec![14, 1],
-            constants: vec![Value::Int(5), Value::Float(3.4), Value::Int(5)],
+            constants: vec![Value::Int(5), Value::Float(3.4)],
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::I2F as u8,
@@ -339,7 +363,7 @@ mod tests {
                 Opcode::I2F as u8,
                 Opcode::Constant as u8, 1,
                 Opcode::FMul as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 0,
                 Opcode::I2F as u8,
                 Opcode::FDiv as u8,
                 Opcode::FSub as u8,
@@ -515,12 +539,11 @@ mod tests {
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
         let expected = Chunk {
-            lines: vec![4, 1],
+            lines: vec![3, 1],
             constants: vec![Value::Int(123)],
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::IConst0 as u8,
-                Opcode::Store as u8,
+                Opcode::Store0 as u8,
                 Opcode::Return as u8
             ],
             bindings: {
@@ -533,12 +556,11 @@ mod tests {
 
         let chunk = compile("var unset\nvar set = true");
         let expected = Chunk {
-            lines: vec![0, 3, 1],
+            lines: vec![0, 2, 1],
             constants: vec![],
             code: vec![
                 Opcode::T as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Store as u8,
+                Opcode::Store1 as u8,
                 Opcode::Return as u8
             ],
             bindings: {
@@ -552,7 +574,7 @@ mod tests {
 
         let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Chunk {
-            lines: vec![7, 4, 1],
+            lines: vec![6, 3, 1],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
@@ -562,11 +584,9 @@ mod tests {
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::StrConcat as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Store as u8,
+                Opcode::Store0 as u8,
                 Opcode::Constant as u8, 2,
-                Opcode::IConst1 as u8,
-                Opcode::Store as u8,
+                Opcode::Store1 as u8,
                 Opcode::Return as u8
             ],
             bindings: {
@@ -583,14 +603,12 @@ mod tests {
     fn compile_ident() {
         let chunk = compile("val abc = 123\nabc");
         let expected = Chunk {
-            lines: vec![4, 2, 1],
+            lines: vec![3, 1, 1],
             constants: vec![Value::Int(123)],
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::IConst0 as u8,
-                Opcode::Store as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Load as u8,
+                Opcode::Store0 as u8,
+                Opcode::Load0 as u8,
                 Opcode::Return as u8
             ],
             bindings: {
@@ -606,33 +624,26 @@ mod tests {
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Chunk {
-            lines: vec![3, 3, 11, 1],
+            lines: vec![2, 2, 6, 1],
             constants: vec![],
             code: vec![
                 // var a = 1
                 Opcode::IConst1 as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Store as u8,
+                Opcode::Store0 as u8,
                 // var b = 2
                 Opcode::IConst2 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Store as u8,
+                Opcode::Store1 as u8,
 
                 // val c = b = a = 3
                 //   a = 3
                 Opcode::IConst3 as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Store as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Load as u8,
+                Opcode::Store0 as u8,
+                Opcode::Load0 as u8,
                 //  b = <a = 3>
-                Opcode::IConst1 as u8,
-                Opcode::Store as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Load as u8,
+                Opcode::Store1 as u8,
+                Opcode::Load1 as u8,
                 //  c = <b = <a = 3>>
-                Opcode::IConst2 as u8,
-                Opcode::Store as u8,
+                Opcode::Store2 as u8,
                 Opcode::Return as u8
             ],
             bindings: {
