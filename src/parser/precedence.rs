@@ -1,7 +1,7 @@
 pub enum Precedence {
     None,
     // =
-//    Assignment,
+    Assignment,
     // ||
     Or,
     // &&
@@ -24,7 +24,7 @@ impl Into<u8> for Precedence {
     fn into(self) -> u8 {
         match self {
             Precedence::None => 0,
-//            Precedence::Assignment => 1,
+            Precedence::Assignment => 1,
             Precedence::Or => 2,
             Precedence::And => 3,
             Precedence::Equality => 4,

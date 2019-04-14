@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -160,7 +160,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_identifier(&mut self, token: Token, _typ: Type) -> Result<(), ()> {
+    fn visit_identifier(&mut self, token: Token, _typ: Type, _is_mutable: bool) -> Result<(), ()> {
         let line = token.get_position().line;
 
         let ident = match token {
@@ -168,13 +168,42 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
         };
 
-        if let Some(binding_idx )= self.chunk.bindings.get(&ident) {
+        if let Some(binding_idx) = self.chunk.bindings.get(&ident) {
             let const_idx = self.chunk.add_constant(Value::Int(*binding_idx as i64));
             self.chunk.write(Opcode::Constant as u8, line);
             self.chunk.write(const_idx, line);
 
             self.chunk.write(Opcode::Load as u8, line);
         }
+
+        Ok(())
+    }
+
+    fn visit_assignment(&mut self, token: Token, node: TypedAssignmentNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedAssignmentNode { target, expr, .. } = node;
+        let ident = match *target {
+            TypedAstNode::Identifier(ident, _, _) => match ident {
+                Token::Ident(_, ident) => ident,
+                _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
+            },
+            _ => unreachable!() // We can assume it's an Identifier; typechecking would have failed otherwise
+        };
+
+        self.visit(*expr)?;
+
+        let binding_idx = self.chunk.bindings.get(&ident).unwrap();
+        let const_idx = self.chunk.add_constant(Value::Int((binding_idx.clone()) as i64));
+        self.chunk.write(Opcode::Constant as u8, line);
+        self.chunk.write(const_idx, line);
+
+        self.chunk.write(Opcode::Store as u8, line);
+
+        self.chunk.write(Opcode::Constant as u8, line);
+        self.chunk.write(const_idx, line);
+
+        self.chunk.write(Opcode::Load as u8, line);
 
         Ok(())
     }
@@ -577,6 +606,59 @@ mod tests {
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("abc".to_string(), 0);
+                bindings
+            },
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_assignment() {
+        let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
+        let expected = Chunk {
+            lines: vec![5, 5, 17, 1],
+            constants: vec![
+                Value::Int(1),
+                Value::Int(0),
+                Value::Int(2),
+                Value::Int(1),
+                Value::Int(3),
+                Value::Int(0),
+                Value::Int(1),
+                Value::Int(2),
+            ],
+            code: vec![
+                // var a = 1
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::Store as u8,
+                // var b = 2
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 3,
+                Opcode::Store as u8,
+
+                // val c = b = a = 3
+                //   a = 3
+                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 5,
+                Opcode::Store as u8,
+                Opcode::Constant as u8, 5,
+                Opcode::Load as u8,
+                //  b = <a = 3>
+                Opcode::Constant as u8, 6,
+                Opcode::Store as u8,
+                Opcode::Constant as u8, 6,
+                Opcode::Load as u8,
+                //  c = <b = <a = 3>>
+                Opcode::Constant as u8, 7,
+                Opcode::Store as u8,
+                Opcode::Return as u8
+            ],
+            bindings: {
+                let mut bindings = HashMap::<String, usize>::new();
+                bindings.insert("a".to_string(), 0);
+                bindings.insert("b".to_string(), 1);
+                bindings.insert("c".to_string(), 2);
                 bindings
             },
         };

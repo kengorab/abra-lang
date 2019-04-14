@@ -229,4 +229,17 @@ mod tests {
         });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_assignments() {
+        let input = "\
+          var a = 1\n
+          var b = 2\n
+          val c = b = a = 3\n\
+          a + b + c
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(9);
+        assert_eq!(expected, result);
+    }
 }

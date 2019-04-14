@@ -1,15 +1,18 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
+#[derive(Debug, PartialEq)]
+pub(crate) struct ScopeBinding(Token, Option<Type>, bool);
+
 pub(crate) struct Scope {
     //    parent: Option<Box<&'a Scope<'a>>>,
-    pub(crate) bindings: HashMap<String, (Token, Option<Type>)>,
+    pub(crate) bindings: HashMap<String, ScopeBinding>,
 }
 
 impl Scope {
@@ -161,7 +164,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             _ => unreachable!()
         };
 
-        if let Some((orig_ident, _)) = self.scope.bindings.get(name) {
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.scope.bindings.get(name) {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident, orig_ident });
         }
@@ -172,10 +175,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         };
         let typ = match &typed_expr {
             Some(e) => Some(e.get_type()),
-            None => None
+            None => None // TODO: implement type annotations, and require them in this case; bindings should have an Optional<Type>, it should have a Type
         };
 
-        self.scope.bindings.insert(name.clone(), (ident.clone(), typ));
+        self.scope.bindings.insert(name.clone(), ScopeBinding(ident.clone(), typ, is_mutable));
 
         let node = TypedBindingDeclNode {
             is_mutable,
@@ -193,8 +196,49 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         match self.scope.bindings.get(name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
-            Some((_, None)) => Err(TypecheckerError::UnknownIdentifierType { ident: token }),
-            Some((_, Some(typ))) => Ok(TypedAstNode::Identifier(token, typ.clone()))
+            Some(ScopeBinding(_, Some(typ), is_mutable)) => Ok(TypedAstNode::Identifier(token, typ.clone(), is_mutable.clone())),
+            Some(ScopeBinding(_, _, _)) => Err(TypecheckerError::UnknownIdentifierType { ident: token }),
+        }
+    }
+
+    fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<TypedAstNode, TypecheckerError> {
+        let AssignmentNode { target, expr } = node;
+        if let AstNode::Identifier(ident_tok) = *target {
+            let ident = self.visit_ident(ident_tok.clone())?;
+            let (typ, is_mutable) = match &ident {
+                TypedAstNode::Identifier(_, typ, is_mutable) => (typ, is_mutable),
+                _ => unreachable!()
+            };
+            if !is_mutable {
+                let name = match &ident_tok {
+                    Token::Ident(_, ident_name) => ident_name,
+                    _ => unreachable!()
+                };
+                let orig_ident = match self.scope.bindings.get(name) {
+                    Some(ScopeBinding(orig_ident, _, _)) => orig_ident.clone(),
+                    None => unreachable!()
+                };
+                return Err(TypecheckerError::AssignmentToImmutable { token, orig_ident });
+            }
+
+            let expr = self.visit(*expr)?;
+            let expr_type = expr.get_type();
+            if typ != &expr_type {
+                Err(TypecheckerError::Mismatch {
+                    token: expr.get_token().clone(),
+                    expected: typ.clone(),
+                    actual: expr_type,
+                })
+            } else {
+                let node = TypedAssignmentNode {
+                    typ: expr_type,
+                    target: Box::new(ident),
+                    expr: Box::new(expr),
+                };
+                Ok(TypedAstNode::Assignment(token, node))
+            }
+        } else {
+            Err(TypecheckerError::InvalidAssignmentTarget { token })
         }
     }
 }
@@ -832,9 +876,10 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
         let binding = typechecker.scope.bindings.get("abc").unwrap();
-        let expected_binding = (
+        let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
-            Some(Type::Int)
+            Some(Type::Int),
+            false,
         );
         assert_eq!(&expected_binding, binding);
 
@@ -849,9 +894,10 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
         let binding = typechecker.scope.bindings.get("abc").unwrap();
-        let expected_binding = (
+        let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
-            None
+            None,
+            true,
         );
         assert_eq!(&expected_binding, binding);
 
@@ -894,6 +940,7 @@ mod tests {
             TypedAstNode::Identifier(
                 Token::Ident(Position::new(2, 1), "abc".to_string()),
                 Type::Int,
+                false,
             )
         ];
         assert_eq!(expected, typed_ast);
@@ -911,6 +958,67 @@ mod tests {
         let err = typecheck("var abc\nabc").unwrap_err();
         let expected = TypecheckerError::UnknownIdentifierType {
             ident: Token::Ident(Position::new(2, 1), "abc".to_string())
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_assignment() -> TestResult {
+        let typed_ast = typecheck("var abc = 123\nabc = 456")?;
+        let expected = vec![
+            TypedAstNode::BindingDecl(
+                Token::Var(Position::new(1, 1)),
+                TypedBindingDeclNode {
+                    is_mutable: true,
+                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    expr: Some(Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(1, 11), 123),
+                            TypedLiteralNode::IntLiteral(123),
+                        )
+                    )),
+                },
+            ),
+            TypedAstNode::Assignment(
+                Token::Assign(Position::new(2, 5)),
+                TypedAssignmentNode {
+                    typ: Type::Int,
+                    target: Box::new(TypedAstNode::Identifier(
+                        Token::Ident(Position::new(2, 1), "abc".to_string()),
+                        Type::Int,
+                        true,
+                    )),
+                    expr: Box::new(
+                        TypedAstNode::Literal(
+                            Token::Int(Position::new(2, 7), 456),
+                            TypedLiteralNode::IntLiteral(456),
+                        )
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, typed_ast);
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_assignment_errors() {
+        let err = typecheck("true = 345").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)) };
+        assert_eq!(expected, err);
+
+        let err = typecheck("val abc = 345\nabc = 67").unwrap_err();
+        let expected = TypecheckerError::AssignmentToImmutable {
+            token: Token::Assign(Position::new(2, 5)),
+            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("var abc = 345\nabc = \"str\"").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(2, 7), "str".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
         };
         assert_eq!(expected, err);
     }

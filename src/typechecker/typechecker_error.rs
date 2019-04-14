@@ -11,6 +11,8 @@ pub enum TypecheckerError {
     DuplicateBinding { ident: Token, orig_ident: Token },
     UnknownIdentifier { ident: Token },
     UnknownIdentifierType { ident: Token },
+    InvalidAssignmentTarget { token: Token },
+    AssignmentToImmutable { orig_ident: Token, token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -61,6 +63,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
             TypecheckerError::UnknownIdentifierType { ident } => ident.get_position(),
+            TypecheckerError::InvalidAssignmentTarget { token } => token.get_position(),
+            TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -131,6 +135,30 @@ impl DisplayError for TypecheckerError {
                     "Could not determine type of identifier '{}' ({}:{})\n{}\n{}",
                     ident, pos.line, pos.col, cursor_line, msg
                 )
+            }
+            TypecheckerError::InvalidAssignmentTarget { token: _ } => {
+                let msg = "Left-hand side of assignment must be a valid identifier";
+                format!(
+                    "Cannot perform assignment ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line, msg
+                )
+            }
+            TypecheckerError::AssignmentToImmutable { orig_ident, token: _ } => {
+                let ident = match orig_ident {
+                    Token::Ident(_, ident) => ident,
+                    _ => unreachable!()
+                };
+                let first_msg = format!("Cannot assign to variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let pos = orig_ident.get_position();
+                let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                let second_msg = format!("The binding has been declared in scope as immutable at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+
+                format!("{}\n{}\nUse 'var' instead of 'val' to create a mutable binding", first_msg, second_msg)
             }
         }
     }
@@ -254,6 +282,44 @@ Could not determine type of identifier 'abcd' (1:1)
      ^
 It's possible that it hasn't been initialized"
         );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_assignment_target() {
+        let src = "true = \"abc\"".to_string();
+        let err = TypecheckerError::InvalidAssignmentTarget {
+            token: Token::Assign(Position::new(1, 6))
+        };
+
+        let expected = format!("\
+Cannot perform assignment (1:6)
+  |  true = \"abc\"
+          ^
+Left-hand side of assignment must be a valid identifier"
+        );
+
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_assignment_to_immutable() {
+        let src = "val abc = 1\n\nabc = 3".to_string();
+        let err = TypecheckerError::AssignmentToImmutable {
+            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+            token: Token::Assign(Position::new(3, 5))
+        };
+
+        let expected = format!("\
+Cannot assign to variable 'abc' (3:5)
+  |  abc = 3
+         ^
+The binding has been declared in scope as immutable at (1:5)
+  |  val abc = 1
+         ^
+Use 'var' instead of 'val' to create a mutable binding"
+        );
+
         assert_eq!(expected, err.get_message(&src));
     }
 }
