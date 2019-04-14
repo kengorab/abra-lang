@@ -30,6 +30,31 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
     Ok(chunk)
 }
 
+impl<'a> Compiler<'a> {
+    fn write_int_constant(&mut self, number: u32, line: usize, const_idx: Option<u8>) -> Option<u8> {
+        if number <= 4 {
+            let opcode = match number {
+                0 => Opcode::IConst0,
+                1 => Opcode::IConst1,
+                2 => Opcode::IConst2,
+                3 => Opcode::IConst3,
+                4 => Opcode::IConst4,
+                _ => unreachable!(), // Values greater than 4 are handled in the else-block
+            };
+            self.chunk.write(opcode as u8, line);
+            None
+        } else {
+            let const_idx = const_idx.unwrap_or_else(|| {
+                self.chunk.add_constant(Value::Int(number as i64))
+            });
+            self.chunk.write(Opcode::Constant as u8, line);
+            self.chunk.write(const_idx, line);
+            Some(const_idx)
+        }
+    }
+}
+
+
 impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_literal(&mut self, token: Token, node: TypedLiteralNode) -> Result<(), ()> {
         let line = token.get_position().line;
@@ -38,16 +63,17 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             let opcode = if val { Opcode::T } else { Opcode::F } as u8;
             self.chunk.write(opcode, line);
             return Ok(());
+        } else if let TypedLiteralNode::IntLiteral(val) = node {
+            self.write_int_constant(val as u32, line, None);
+            return Ok(());
         }
 
         let const_idx = match node {
-            TypedLiteralNode::IntLiteral(val) =>
-                self.chunk.add_constant(Value::Int(val)),
             TypedLiteralNode::FloatLiteral(val) =>
                 self.chunk.add_constant(Value::Float(val)),
             TypedLiteralNode::StringLiteral(val) =>
                 self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
-            TypedLiteralNode::BoolLiteral(_) => unreachable!() // Handled in if-let above
+            TypedLiteralNode::IntLiteral(_) | TypedLiteralNode::BoolLiteral(_) => unreachable!() // Handled in if-let above
         };
 
         self.chunk.write(Opcode::Constant as u8, line);
@@ -126,10 +152,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let line = token.get_position().line;
 
-        let const_idx = self.chunk.add_constant(Value::Int(num_items as i64));
-        self.chunk.write(Opcode::Constant as u8, line);
-        self.chunk.write(const_idx, line);
-
+        self.write_int_constant(num_items as u32, line, None);
         self.chunk.write(Opcode::MkArr as u8, line);
 
         Ok(())
@@ -147,10 +170,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         if let Some(node) = expr {
             self.visit(*node)?;
 
-            let const_idx = self.chunk.add_constant(Value::Int(binding_idx as i64));
-            self.chunk.write(Opcode::Constant as u8, line);
-            self.chunk.write(const_idx, line);
-
+            self.write_int_constant(binding_idx as u32, line, None);
             self.chunk.write(Opcode::Store as u8, line);
         }
 
@@ -163,9 +183,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let ident = Token::get_ident_name(&token);
 
         if let Some(binding_idx) = self.chunk.bindings.get(ident) {
-            let const_idx = self.chunk.add_constant(Value::Int(*binding_idx as i64));
-            self.chunk.write(Opcode::Constant as u8, line);
-            self.chunk.write(const_idx, line);
+            self.write_int_constant(*binding_idx as u32, line, None);
 
             self.chunk.write(Opcode::Load as u8, line);
         }
@@ -184,16 +202,11 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.visit(*expr)?;
 
-        let binding_idx = self.chunk.bindings.get(&ident).unwrap();
-        let const_idx = self.chunk.add_constant(Value::Int((binding_idx.clone()) as i64));
-        self.chunk.write(Opcode::Constant as u8, line);
-        self.chunk.write(const_idx, line);
-
+        let binding_idx = self.chunk.bindings.get(&ident).unwrap().clone();
+        let const_idx = self.write_int_constant(binding_idx as u32, line, None);
         self.chunk.write(Opcode::Store as u8, line);
 
-        self.chunk.write(Opcode::Constant as u8, line);
-        self.chunk.write(const_idx, line);
-
+        self.write_int_constant(binding_idx as u32, line, const_idx);
         self.chunk.write(Opcode::Load as u8, line);
 
         Ok(())
@@ -234,20 +247,18 @@ mod tests {
     fn compile_literals() {
         let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Chunk {
-            lines: vec![12, 1],
+            lines: vec![10, 1],
             constants: vec![
-                Value::Int(1),
                 Value::Float(2.3),
-                Value::Int(4),
                 Value::Float(5.6),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
             ],
             code: vec![
+                Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
+                Opcode::IConst4 as u8,
                 Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
-                Opcode::Constant as u8, 4,
                 Opcode::T as u8,
                 Opcode::F as u8,
                 Opcode::Return as u8
@@ -259,10 +270,10 @@ mod tests {
 
     #[test]
     fn compile_unary() {
-        let chunk = compile("-1");
+        let chunk = compile("-5");
         let expected = Chunk {
             lines: vec![3, 1],
-            constants: vec![Value::Int(1)],
+            constants: vec![Value::Int(5)],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Invert as u8,
@@ -301,10 +312,10 @@ mod tests {
 
     #[test]
     fn compile_binary_numeric() {
-        let chunk = compile("1 + 2");
+        let chunk = compile("5 + 6");
         let expected = Chunk {
             lines: vec![5, 1],
-            constants: vec![Value::Int(1), Value::Int(2)],
+            constants: vec![Value::Int(5), Value::Int(6)],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -316,19 +327,19 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Testing i2f and order of ops
-        let chunk = compile("1 - -2 * 3.4 / 5");
+        let chunk = compile("1 - -5 * 3.4 / 5");
         let expected = Chunk {
-            lines: vec![15, 1],
-            constants: vec![Value::Int(1), Value::Int(2), Value::Float(3.4), Value::Int(5)],
+            lines: vec![14, 1],
+            constants: vec![Value::Int(5), Value::Float(3.4), Value::Int(5)],
             code: vec![
-                Opcode::Constant as u8, 0,
+                Opcode::IConst1 as u8,
                 Opcode::I2F as u8,
-                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
                 Opcode::Invert as u8,
                 Opcode::I2F as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 1,
                 Opcode::FMul as u8,
-                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, 2,
                 Opcode::I2F as u8,
                 Opcode::FDiv as u8,
                 Opcode::FSub as u8,
@@ -360,17 +371,16 @@ mod tests {
 
         let chunk = compile("1 + \"a\" + 3.4");
         let expected = Chunk {
-            lines: vec![8, 1],
+            lines: vec![7, 1],
             constants: vec![
-                Value::Int(1),
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Float(3.4)
             ],
             code: vec![
+                Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 1,
                 Opcode::StrConcat as u8,
                 Opcode::Return as u8
             ],
@@ -400,16 +410,16 @@ mod tests {
 
     #[test]
     fn compile_binary_comparisons() {
-        let chunk = compile("1 <= 2 == 3.4 >= 5.6");
+        let chunk = compile("1 <= 5 == 3.4 >= 5.6");
         let expected = Chunk {
-            lines: vec![11, 1],
-            constants: vec![Value::Int(1), Value::Int(2), Value::Float(3.4), Value::Float(5.6)],
+            lines: vec![10, 1],
+            constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
             code: vec![
+                Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::LTE as u8,
+                Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
                 Opcode::GTE as u8,
                 Opcode::Eq as u8,
                 Opcode::Return as u8
@@ -420,17 +430,16 @@ mod tests {
 
         let chunk = compile("\"a\" < \"b\" != 4");
         let expected = Chunk {
-            lines: vec![8, 1],
+            lines: vec![7, 1],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
-                Value::Int(4)
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) })
             ],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::LT as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::IConst4 as u8,
                 Opcode::Neq as u8,
                 Opcode::Return as u8
             ],
@@ -443,12 +452,12 @@ mod tests {
     fn compile_array_primitives() {
         let chunk = compile("[1, 2]");
         let expected = Chunk {
-            lines: vec![7, 1],
-            constants: vec![Value::Int(1), Value::Int(2), Value::Int(2)],
+            lines: vec![4, 1],
+            constants: vec![],
             code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::Constant as u8, 2,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IConst2 as u8,
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
@@ -458,18 +467,17 @@ mod tests {
 
         let chunk = compile("[\"a\", \"b\", \"c\"]");
         let expected = Chunk {
-            lines: vec![9, 1],
+            lines: vec![8, 1],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
-                Value::Int(3),
             ],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
+                Opcode::IConst3 as u8,
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
@@ -480,28 +488,21 @@ mod tests {
 
     #[test]
     fn compile_array_nested() {
-        let chunk = compile("[[1, 2], [3, 4]]");
+        let chunk = compile("[[1, 2], [3, 4, 5]]");
         let expected = Chunk {
-            lines: vec![17, 1],
-            constants: vec![
-                Value::Int(1),
-                Value::Int(2),
-                Value::Int(2),
-                Value::Int(3),
-                Value::Int(4),
-                Value::Int(2),
-                Value::Int(2),
-            ],
+            lines: vec![12, 1],
+            constants: vec![Value::Int(5)],
             code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::MkArr as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IConst4 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::Constant as u8, 2,
+                Opcode::IConst3 as u8,
                 Opcode::MkArr as u8,
-                Opcode::Constant as u8, 3,
-                Opcode::Constant as u8, 4,
-                Opcode::Constant as u8, 5,
-                Opcode::MkArr as u8,
-                Opcode::Constant as u8, 6,
+                Opcode::IConst2 as u8,
                 Opcode::MkArr as u8,
                 Opcode::Return as u8
             ],
@@ -514,11 +515,11 @@ mod tests {
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
         let expected = Chunk {
-            lines: vec![5, 1],
-            constants: vec![Value::Int(123), Value::Int(0)],
+            lines: vec![4, 1],
+            constants: vec![Value::Int(123)],
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
+                Opcode::IConst0 as u8,
                 Opcode::Store as u8,
                 Opcode::Return as u8
             ],
@@ -532,11 +533,11 @@ mod tests {
 
         let chunk = compile("var unset\nvar set = true");
         let expected = Chunk {
-            lines: vec![0, 4, 1],
-            constants: vec![Value::Int(1)],
+            lines: vec![0, 3, 1],
+            constants: vec![],
             code: vec![
                 Opcode::T as u8,
-                Opcode::Constant as u8, 0,
+                Opcode::IConst1 as u8,
                 Opcode::Store as u8,
                 Opcode::Return as u8
             ],
@@ -549,24 +550,22 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("val abc = \"a\" + \"b\"\nval def = 4");
+        let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Chunk {
-            lines: vec![8, 5, 1],
+            lines: vec![7, 4, 1],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
-                Value::Int(0),
-                Value::Int(4),
-                Value::Int(1),
+                Value::Int(5),
             ],
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::IConst0 as u8,
                 Opcode::Store as u8,
-                Opcode::Constant as u8, 3,
-                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 2,
+                Opcode::IConst1 as u8,
                 Opcode::Store as u8,
                 Opcode::Return as u8
             ],
@@ -584,13 +583,13 @@ mod tests {
     fn compile_ident() {
         let chunk = compile("val abc = 123\nabc");
         let expected = Chunk {
-            lines: vec![5, 3, 1],
-            constants: vec![Value::Int(123), Value::Int(0), Value::Int(0)],
+            lines: vec![4, 2, 1],
+            constants: vec![Value::Int(123)],
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
+                Opcode::IConst0 as u8,
                 Opcode::Store as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::IConst0 as u8,
                 Opcode::Load as u8,
                 Opcode::Return as u8
             ],
@@ -607,41 +606,32 @@ mod tests {
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Chunk {
-            lines: vec![5, 5, 17, 1],
-            constants: vec![
-                Value::Int(1),
-                Value::Int(0),
-                Value::Int(2),
-                Value::Int(1),
-                Value::Int(3),
-                Value::Int(0),
-                Value::Int(1),
-                Value::Int(2),
-            ],
+            lines: vec![3, 3, 11, 1],
+            constants: vec![],
             code: vec![
                 // var a = 1
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
+                Opcode::IConst1 as u8,
+                Opcode::IConst0 as u8,
                 Opcode::Store as u8,
                 // var b = 2
-                Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
+                Opcode::IConst2 as u8,
+                Opcode::IConst1 as u8,
                 Opcode::Store as u8,
 
                 // val c = b = a = 3
                 //   a = 3
-                Opcode::Constant as u8, 4,
-                Opcode::Constant as u8, 5,
+                Opcode::IConst3 as u8,
+                Opcode::IConst0 as u8,
                 Opcode::Store as u8,
-                Opcode::Constant as u8, 5,
+                Opcode::IConst0 as u8,
                 Opcode::Load as u8,
                 //  b = <a = 3>
-                Opcode::Constant as u8, 6,
+                Opcode::IConst1 as u8,
                 Opcode::Store as u8,
-                Opcode::Constant as u8, 6,
+                Opcode::IConst1 as u8,
                 Opcode::Load as u8,
                 //  c = <b = <a = 3>>
-                Opcode::Constant as u8, 7,
+                Opcode::IConst2 as u8,
                 Opcode::Store as u8,
                 Opcode::Return as u8
             ],

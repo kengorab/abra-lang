@@ -124,6 +124,11 @@ impl<'a> VM<'a> {
                         .clone();
                     self.push(val)
                 }
+                Opcode::IConst0 => self.push(Value::Int(0)),
+                Opcode::IConst1 => self.push(Value::Int(1)),
+                Opcode::IConst2 => self.push(Value::Int(2)),
+                Opcode::IConst3 => self.push(Value::Int(3)),
+                Opcode::IConst4 => self.push(Value::Int(4)),
                 Opcode::IAdd => self.int_op(|a, b| a + b)?,
                 Opcode::ISub => self.int_op(|a, b| a - b)?,
                 Opcode::IMul => self.int_op(|a, b| a * b)?,
