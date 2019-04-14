@@ -4,7 +4,7 @@ extern crate lazy_static;
 use crate::common::display_error::DisplayError;
 
 mod common;
-mod lexer;
+pub mod lexer;
 mod parser;
 mod typechecker;
 mod vm;
