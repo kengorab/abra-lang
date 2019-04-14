@@ -177,12 +177,18 @@ impl<'a> VM<'a> {
                                 a || b
                             };
                             self.push(Value::Bool(res));
+                        } else {
+                            unreachable!()
                         }
+                    } else {
+                        unreachable!()
                     }
                 }
                 Opcode::Negate => {
                     if let Value::Bool(val) = self.pop_expect()? {
                         self.push(Value::Bool(!val));
+                    } else {
+                        unreachable!()
                     }
                 }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
@@ -200,6 +206,8 @@ impl<'a> VM<'a> {
                             arr_items.push_front(Box::new(self.pop_expect()?));
                         }
                         self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
+                    } else {
+                        unreachable!()
                     }
                 }
                 Opcode::Store => {
@@ -207,6 +215,8 @@ impl<'a> VM<'a> {
                         let var_idx = var_idx as usize;
                         let val = self.pop_expect()?;
                         self.vars.insert(var_idx, val);
+                    } else {
+                        unreachable!()
                     }
                 }
                 Opcode::Load => {
@@ -214,7 +224,11 @@ impl<'a> VM<'a> {
                         let var_idx = var_idx as usize;
                         if let Some(val) = self.vars.get(var_idx) {
                             self.push(val.clone());
+                        } else {
+                            unreachable!()
                         }
+                    } else {
+                        unreachable!()
                     }
                 }
                 Opcode::Return => break Ok(self.pop()),

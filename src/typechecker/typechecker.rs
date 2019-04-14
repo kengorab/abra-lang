@@ -159,10 +159,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::MissingRequiredAssignment { ident });
         }
 
-        let name = match &ident {
-            Token::Ident(_, ident_name) => ident_name,
-            _ => unreachable!()
-        };
+        let name = Token::get_ident_name(&ident);
 
         if let Some(ScopeBinding(orig_ident, _, _)) = self.scope.bindings.get(name) {
             let orig_ident = orig_ident.clone();
@@ -189,10 +186,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
-        let name = match &token {
-            Token::Ident(_, ident_name) => ident_name,
-            _ => unreachable!()
-        };
+        let name = Token::get_ident_name(&token);
 
         match self.scope.bindings.get(name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
@@ -210,10 +204,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 _ => unreachable!()
             };
             if !is_mutable {
-                let name = match &ident_tok {
-                    Token::Ident(_, ident_name) => ident_name,
-                    _ => unreachable!()
-                };
+                let name = Token::get_ident_name(&ident_tok);
                 let orig_ident = match self.scope.bindings.get(name) {
                     Some(ScopeBinding(orig_ident, _, _)) => orig_ident.clone(),
                     None => unreachable!()

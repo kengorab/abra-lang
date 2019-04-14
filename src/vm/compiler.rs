@@ -139,13 +139,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
 
         let TypedBindingDeclNode { ident, expr, .. } = node;
-        let ident = match ident {
-            Token::Ident(_, ident) => ident,
-            _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
-        };
+        let ident = Token::get_ident_name(&ident);
 
         let binding_idx = self.chunk.bindings.len();
-        self.chunk.bindings.insert(ident, binding_idx);
+        self.chunk.bindings.insert(ident.clone(), binding_idx);
 
         if let Some(node) = expr {
             self.visit(*node)?;
@@ -163,12 +160,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_identifier(&mut self, token: Token, _typ: Type, _is_mutable: bool) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let ident = match token {
-            Token::Ident(_, ident) => ident,
-            _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
-        };
+        let ident = Token::get_ident_name(&token);
 
-        if let Some(binding_idx) = self.chunk.bindings.get(&ident) {
+        if let Some(binding_idx) = self.chunk.bindings.get(ident) {
             let const_idx = self.chunk.add_constant(Value::Int(*binding_idx as i64));
             self.chunk.write(Opcode::Constant as u8, line);
             self.chunk.write(const_idx, line);
@@ -184,10 +178,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let TypedAssignmentNode { target, expr, .. } = node;
         let ident = match *target {
-            TypedAstNode::Identifier(ident, _, _) => match ident {
-                Token::Ident(_, ident) => ident,
-                _ => unreachable!() // We can assume it's an Ident; typechecking would have failed otherwise
-            },
+            TypedAstNode::Identifier(ident, _, _) => Token::get_ident_name(&ident).clone(),
             _ => unreachable!() // We can assume it's an Identifier; typechecking would have failed otherwise
         };
 
