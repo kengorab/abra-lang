@@ -9,9 +9,7 @@ mod parser;
 mod typechecker;
 mod vm;
 
-fn main() {
-    let input = "val abc = 3\nval abc = 5".to_string();
-
+pub fn compile_and_run(input: String) {
     match lexer::lexer::tokenize(&input) {
         Err(e) => eprintln!("{}", e.get_message(&input)),
         Ok(tokens) => match parser::parser::parse(tokens) {
