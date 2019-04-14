@@ -214,8 +214,9 @@ impl Parser {
     }
 
     fn parse_assignment(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
-        let prec = Parser::get_precedence_for_token(&token);
-        let expr = self.parse_precedence(prec)?;
+        // By passing Prec::None (one lower than Prec::Assign), we achieve right-associativity
+        // (i.e. a = b = c ==> (a = (b = c))
+        let expr = self.parse_precedence(Precedence::None)?;
         let node = AssignmentNode { target: Box::new(left), expr: Box::new(expr) };
         Ok(AstNode::Assignment(token, node))
     }
@@ -797,6 +798,30 @@ mod tests {
                 ),
                 expr: Box::new(
                     AstNode::Identifier(Token::Ident(Position::new(1, 7), "def".to_string()))
+                ),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("a = b = c")?;
+        let expected = AstNode::Assignment(
+            Token::Assign(Position::new(1, 3)),
+            AssignmentNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "a".to_string()))
+                ),
+                expr: Box::new(
+                    AstNode::Assignment(
+                        Token::Assign(Position::new(1, 7)),
+                        AssignmentNode {
+                            target: Box::new(
+                                AstNode::Identifier(Token::Ident(Position::new(1, 5), "b".to_string()))
+                            ),
+                            expr: Box::new(
+                                AstNode::Identifier(Token::Ident(Position::new(1, 9), "c".to_string()))
+                            ),
+                        },
+                    )
                 ),
             },
         );

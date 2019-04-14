@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -160,7 +160,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_identifier(&mut self, token: Token, _typ: Type) -> Result<(), ()> {
+    fn visit_identifier(&mut self, token: Token, _typ: Type, _is_mutable: bool) -> Result<(), ()> {
         let line = token.get_position().line;
 
         let ident = match token {
@@ -177,6 +177,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    fn visit_assignment(&mut self, _token: Token, _node: TypedAssignmentNode) -> Result<(), ()> {
+        unimplemented!()
     }
 }
 

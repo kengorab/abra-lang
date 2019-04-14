@@ -9,7 +9,8 @@ pub enum TypedAstNode {
     Binary(Token, TypedBinaryNode),
     Array(Token, TypedArrayNode),
     BindingDecl(Token, TypedBindingDeclNode),
-    Identifier(Token, Type),
+    Identifier(Token, Type, bool),
+    Assignment(Token, TypedAssignmentNode),
 }
 
 impl TypedAstNode {
@@ -20,7 +21,8 @@ impl TypedAstNode {
             TypedAstNode::Binary(token, _) => token,
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
-            TypedAstNode::Identifier(token, _) => token,
+            TypedAstNode::Identifier(token, _, _) => token,
+            TypedAstNode::Assignment(token, _) => token,
         }
     }
 
@@ -36,7 +38,8 @@ impl TypedAstNode {
             TypedAstNode::Binary(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) => Type::Unit,
-            TypedAstNode::Identifier(_, typ) => typ.clone(),
+            TypedAstNode::Identifier(_, typ, _) => typ.clone(),
+            TypedAstNode::Assignment(_, node) => node.typ.clone(),
         }
     }
 }
@@ -76,4 +79,11 @@ pub struct TypedBindingDeclNode {
     pub ident: Token,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedAssignmentNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub expr: Box<TypedAstNode>,
 }
