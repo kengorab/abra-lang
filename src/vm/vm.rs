@@ -111,6 +111,20 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
+    fn store(&mut self, var_idx: usize) -> Result<(), InterpretError> {
+        let val = self.pop_expect()?;
+        Ok(self.vars.insert(var_idx, val))
+    }
+
+    fn load(&mut self, var_idx: usize) -> Result<(), InterpretError> {
+        if let Some(val) = self.vars.get(var_idx) {
+            self.push(val.clone());
+        } else {
+            unreachable!()
+        }
+        Ok(())
+    }
+
     pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
         loop {
             let instr = self.read_instr()
@@ -215,23 +229,26 @@ impl<'a> VM<'a> {
                         unreachable!()
                     }
                 }
+                Opcode::Store0 => self.store(0)?,
+                Opcode::Store1 => self.store(1)?,
+                Opcode::Store2 => self.store(2)?,
+                Opcode::Store3 => self.store(3)?,
+                Opcode::Store4 => self.store(4)?,
                 Opcode::Store => {
                     if let Value::Int(var_idx) = self.pop_expect()? {
-                        let var_idx = var_idx as usize;
-                        let val = self.pop_expect()?;
-                        self.vars.insert(var_idx, val);
+                        self.store(var_idx as usize)?;
                     } else {
                         unreachable!()
                     }
                 }
+                Opcode::Load0 => self.load(0)?,
+                Opcode::Load1 => self.load(1)?,
+                Opcode::Load2 => self.load(2)?,
+                Opcode::Load3 => self.load(3)?,
+                Opcode::Load4 => self.load(4)?,
                 Opcode::Load => {
                     if let Value::Int(var_idx) = self.pop_expect()? {
-                        let var_idx = var_idx as usize;
-                        if let Some(val) = self.vars.get(var_idx) {
-                            self.push(val.clone());
-                        } else {
-                            unreachable!()
-                        }
+                        self.load(var_idx as usize)?;
                     } else {
                         unreachable!()
                     }

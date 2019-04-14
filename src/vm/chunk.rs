@@ -38,8 +38,13 @@ impl Chunk {
     }
 
     pub fn add_constant(&mut self, value: Value) -> u8 {
-        self.constants.push(value);
-        (self.constants.len() - 1) as u8
+        let const_idx = self.constants.iter()
+            .position(|v| v == &value)
+            .unwrap_or_else(|| {
+                self.constants.push(value);
+                self.constants.len() - 1
+            });
+        const_idx as u8
     }
 }
 
