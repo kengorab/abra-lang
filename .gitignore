@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 .idea
+
+abra_wasm/pkg
+abra_wasm/js-tests/node_modules

@@ -2,14 +2,15 @@
 extern crate lazy_static;
 
 use crate::common::display_error::DisplayError;
+use crate::vm::value::Value;
 
 mod common;
 pub mod lexer;
 mod parser;
 mod typechecker;
-mod vm;
+pub mod vm;
 
-pub fn compile_and_run(input: String) {
+pub fn compile_and_run(input: String) -> Option<Value> {
     match lexer::lexer::tokenize(&input) {
         Err(e) => eprintln!("{}", e.get_message(&input)),
         Ok(tokens) => match parser::parser::parse(tokens) {
@@ -22,7 +23,7 @@ pub fn compile_and_run(input: String) {
 
                         let mut vm = vm::vm::VM::new(&chunk);
                         match vm.run() {
-                            Ok(Some(v)) => println!("{}", v),
+                            Ok(Some(v)) => return Some(v),// println!("{}", v),
                             Ok(None) => println!(),
                             Err(e) => eprintln!("{:?}", e)
                         }
@@ -31,4 +32,5 @@ pub fn compile_and_run(input: String) {
             }
         }
     }
+    None
 }
