@@ -1,6 +1,20 @@
-language: rust
-rust:
-  - stable
-  - beta
-  - nightly
-cache: cargo
+stages:
+  - build
+  - test
+  - js_test
+
+jobs:
+  include:
+    - stage: build
+      language: rust
+      script: cargo build
+      cache: cargo
+    - stage: test
+      language: rust
+      script: cargo test
+      cache: cargo
+    - stage: js_test
+      language: node_js
+      before_install: cd abra_wasm/js-tests
+      install: npm install
+      script: npm test
