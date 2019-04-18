@@ -7,7 +7,7 @@ jobs:
     - stage: build_and_test
       name: Build & Test
       language: rust
-      before_script: cargo install wasm-pack
+      before_script: cargo install wasm-pack --force
       script: cargo build && cargo test
       after_script: cd abra_wasm && ./build.sh
       cache: cargo
