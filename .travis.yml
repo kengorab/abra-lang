@@ -1,19 +1,23 @@
 stages:
-  - build
-  - test
-  - js_test
+  - build_and_test_no_wasm
+  - build_wasm
+  - test_wasm
 
 jobs:
   include:
-    - stage: build
+    - stage: build_and_test_no_wasm
+      name: Build & Test (No WASM)
       language: rust
-      script: cargo build
+      script: cargo build && cargo test
       cache: cargo
-    - stage: test
+    - stage: build_wasm
+      name: Build the WASM Submodule
       language: rust
-      script: cargo test
+      before_script: cargo install wasm-pack
+      script: ./build.sh
       cache: cargo
-    - stage: js_test
+    - stage: test_wasm
+      name: Test the WASM Submodule in NodeJS
       language: node_js
       before_install: cd abra_wasm/js-tests
       install: npm install
