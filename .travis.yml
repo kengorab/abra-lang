@@ -7,7 +7,6 @@ jobs:
     - stage: build_and_test
       name: Build & Test (No WASM)
       language: rust
-      before_script: cargo install wasm-pack || echo "wasm-pack already installed"
       script:
         - cargo build
         - cargo test
@@ -18,9 +17,9 @@ jobs:
       language: rust
       before_install:
         - nvm install stable
-      install: npm install
-      before_script:
+        - cargo install wasm-pack || echo "wasm-pack already installed"
         - cd abra_wasm
         - ./build.sh
         - cd js-tests
+      install: npm install
       script: npm test
