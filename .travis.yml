@@ -1,6 +1,11 @@
 language: rust
-rust:
-  - stable
-  - beta
-  - nightly
+script:
+  - nvm install stable
+  - cargo install wasm-pack || echo "wasm-pack already installed"
+  - cargo build
+  - cd abra_wasm && ./build.sh && cd ..
+  - cargo test
+  - cd abra_wasm/js-tests
+  - npm install
+  - npm test
 cache: cargo
