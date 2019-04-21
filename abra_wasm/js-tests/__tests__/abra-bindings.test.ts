@@ -13,7 +13,8 @@ describe('bindings', () => {
 
     test('reassigning to variables', () => {
         const input = `
-            var a = 1
+            var a: Int
+            a = 1
             a = 2 * a
             a = a * 3
             a
