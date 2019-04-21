@@ -44,6 +44,7 @@ pub enum Token {
     LBrack(Position),
     RBrack(Position),
     Comma(Position),
+    Colon(Position),
 }
 
 impl Token {
@@ -73,6 +74,7 @@ impl Token {
             Token::Bang(pos) |
             Token::LBrack(pos) |
             Token::RBrack(pos) |
+            Token::Colon(pos) |
             Token::Comma(pos) => pos
         };
         pos.clone()
@@ -115,6 +117,7 @@ impl Display for Token {
             Token::LBrack(_) => write!(f, "["),
             Token::RBrack(_) => write!(f, "]"),
             Token::Comma(_) => write!(f, ","),
+            Token::Colon(_) => write!(f, ":"),
         }
     }
 }

@@ -63,6 +63,7 @@ pub struct ArrayNode {
 pub struct BindingDeclNode {
     // Must be a Token::Ident
     pub ident: Token,
+    pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
 }
@@ -71,4 +72,10 @@ pub struct BindingDeclNode {
 pub struct AssignmentNode {
     pub target: Box<AstNode>,
     pub expr: Box<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypeIdentifier {
+    pub ident: Token,
+    pub is_arr: bool,
 }

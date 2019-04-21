@@ -153,7 +153,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let BindingDeclNode { is_mutable, ident, expr } = node;
+        let BindingDeclNode { is_mutable, ident, expr, .. } = node;
 
         if !is_mutable && expr == None {
             return Err(TypecheckerError::MissingRequiredAssignment { ident });
