@@ -554,7 +554,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("var unset\nvar set = true");
+        let chunk = compile("var unset: Bool\nvar set = true");
         let expected = Chunk {
             lines: vec![0, 2, 1],
             constants: vec![],
