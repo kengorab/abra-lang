@@ -17,7 +17,7 @@ pub enum Precedence {
     // ! - +
     Unary,
     // . () []
-//    Call,
+    Call,
 }
 
 impl Into<u8> for Precedence {
@@ -32,8 +32,7 @@ impl Into<u8> for Precedence {
             Precedence::Addition => 6,
             Precedence::Multiplication => 7,
             Precedence::Unary => 8,
-//            Precedence::Call => 9,
-//            Precedence::Declaration => 10,
+            Precedence::Call => 9,
         }
     }
 }

@@ -9,6 +9,7 @@ pub enum AstNode {
     BindingDecl(Token, BindingDeclNode),
     Identifier(Token),
     Assignment(Token, AssignmentNode),
+    Indexing(Token, IndexingNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -72,6 +73,18 @@ pub struct BindingDeclNode {
 pub struct AssignmentNode {
     pub target: Box<AstNode>,
     pub expr: Box<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum IndexingMode {
+    Index(Box<AstNode>),
+    Range(Option<Box<AstNode>>, Option<Box<AstNode>>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IndexingNode {
+    pub target: Box<AstNode>,
+    pub index: IndexingMode,
 }
 
 #[derive(Debug, PartialEq)]
