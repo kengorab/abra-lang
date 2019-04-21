@@ -5,6 +5,7 @@ use crate::common::display_error::{DisplayError, IND_AMT};
 pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(Token),
+    ExpectedToken(Token, Token),
     Raw(String),
 }
 
@@ -32,6 +33,16 @@ impl DisplayError for ParseError {
 
                 format!("Unexpected end of file ({}:{})\n{}", line_num, col_num, message)
             }
+            ParseError::ExpectedToken(expected, actual) => {
+                let pos = actual.get_position();
+                let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let indent = Self::indent();
+                let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                format!("Expected token '{}', saw '{}' ({}:{})\n{}", expected.to_string(), actual.to_string(), pos.line, pos.col, message)
+            }
             ParseError::Raw(msg) => format!("{}", msg)
         }
     }
@@ -53,6 +64,21 @@ mod tests {
 Unexpected token '+' (1:2)
   |  -+
       ^");
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_expected_token_error() {
+        let src = "val a: = 123".to_string();
+        let err = ParseError::ExpectedToken(
+            Token::Ident(Position::new(1, 7), "identifier".to_string()),
+            Token::Assign(Position::new(1, 8)),
+        );
+
+        let expected = format!("\
+Expected token 'identifier', saw '=' (1:8)
+  |  val a: = 123
+            ^");
         assert_eq!(expected, err.get_message(&src));
     }
 

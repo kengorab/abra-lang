@@ -10,9 +10,10 @@ pub enum TypecheckerError {
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
     UnknownIdentifier { ident: Token },
-    UnknownIdentifierType { ident: Token },
     InvalidAssignmentTarget { token: Token },
     AssignmentToImmutable { orig_ident: Token, token: Token },
+    UnannotatedUninitialized { ident: Token, is_mutable: bool },
+    UnknownType { type_ident: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -62,9 +63,10 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
-            TypecheckerError::UnknownIdentifierType { ident } => ident.get_position(),
             TypecheckerError::InvalidAssignmentTarget { token } => token.get_position(),
             TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
+            TypecheckerError::UnannotatedUninitialized { ident, .. } => ident.get_position(),
+            TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -111,17 +113,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
                 format!(
-                    "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name visible in current scope",
+                    "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name is visible in current scope",
                     ident, pos.line, pos.col, cursor_line
-                )
-            }
-            TypecheckerError::UnknownIdentifierType { ident } => {
-                let ident = Token::get_ident_name(&ident);
-                let msg = "It's possible that it hasn't been initialized";
-
-                format!(
-                    "Could not determine type of identifier '{}' ({}:{})\n{}\n{}",
-                    ident, pos.line, pos.col, cursor_line, msg
                 )
             }
             TypecheckerError::InvalidAssignmentTarget { token: _ } => {
@@ -144,6 +137,27 @@ impl DisplayError for TypecheckerError {
                 let second_msg = format!("The binding has been declared in scope as immutable at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}\nUse 'var' instead of 'val' to create a mutable binding", first_msg, second_msg)
+            }
+            TypecheckerError::UnannotatedUninitialized { ident, is_mutable } => {
+                let ident = Token::get_ident_name(&ident);
+                let msg = if *is_mutable {
+                    "Since it's a 'var', you can either provide an initial value or a type annotation"
+                } else {
+                    "Since it's a 'val', you must provide an initial value"
+                };
+
+                let modifier = if *is_mutable { "mutable" } else { "immutable" };
+                format!(
+                    "Could not determine type of {} variable '{}' ({}:{})\n{}\n{}",
+                    modifier, ident, pos.line, pos.col, cursor_line, msg
+                )
+            }
+            TypecheckerError::UnknownType { type_ident } => {
+                let ident = Token::get_ident_name(type_ident);
+                format!(
+                    "Unknown type '{}' ({}:{})\n{}\nNo type with that name is visible in current scope",
+                    ident, pos.line, pos.col, cursor_line
+                )
             }
         }
     }
@@ -249,23 +263,38 @@ Binding already declared in scope at (1:5)
 Unknown identifier 'abcd' (1:1)
   |  abcd
      ^
-No binding with that name visible in current scope"
+No binding with that name is visible in current scope"
         );
         assert_eq!(expected, err.get_message(&src));
     }
 
     #[test]
-    fn test_unknown_identifier_type() {
-        let src = "abcd".to_string();
-        let err = TypecheckerError::UnknownIdentifierType {
-            ident: Token::Ident(Position::new(1, 1), "abcd".to_string())
+    fn test_unannotated_and_uninitialized() {
+        let src = "var abcd".to_string();
+        let err = TypecheckerError::UnannotatedUninitialized {
+            ident: Token::Ident(Position::new(1, 5), "abcd".to_string()),
+            is_mutable: true,
         };
 
         let expected = format!("\
-Could not determine type of identifier 'abcd' (1:1)
-  |  abcd
-     ^
-It's possible that it hasn't been initialized"
+Could not determine type of mutable variable 'abcd' (1:5)
+  |  var abcd
+         ^
+Since it's a 'var', you can either provide an initial value or a type annotation"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "val abcd".to_string();
+        let err = TypecheckerError::UnannotatedUninitialized {
+            ident: Token::Ident(Position::new(1, 5), "abcd".to_string()),
+            is_mutable: false,
+        };
+
+        let expected = format!("\
+Could not determine type of immutable variable 'abcd' (1:5)
+  |  val abcd
+         ^
+Since it's a 'val', you must provide an initial value"
         );
         assert_eq!(expected, err.get_message(&src));
     }
@@ -292,7 +321,7 @@ Left-hand side of assignment must be a valid identifier"
         let src = "val abc = 1\n\nabc = 3".to_string();
         let err = TypecheckerError::AssignmentToImmutable {
             orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-            token: Token::Assign(Position::new(3, 5))
+            token: Token::Assign(Position::new(3, 5)),
         };
 
         let expected = format!("\
@@ -305,6 +334,22 @@ The binding has been declared in scope as immutable at (1:5)
 Use 'var' instead of 'val' to create a mutable binding"
         );
 
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_type() {
+        let src = "val abcd: NonExistentType = 432".to_string();
+        let err = TypecheckerError::UnknownType {
+            type_ident: Token::Ident(Position::new(1, 11), "NonExistentType".to_string())
+        };
+
+        let expected = format!("\
+Unknown type 'NonExistentType' (1:11)
+  |  val abcd: NonExistentType = 432
+               ^
+No type with that name is visible in current scope"
+        );
         assert_eq!(expected, err.get_message(&src));
     }
 }
