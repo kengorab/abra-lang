@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::lexer::tokens::Token;
 
 #[derive(Debug, PartialEq)]
@@ -11,6 +11,7 @@ pub enum TypedAstNode {
     BindingDecl(Token, TypedBindingDeclNode),
     Identifier(Token, Type, bool),
     Assignment(Token, TypedAssignmentNode),
+    Indexing(Token, TypedIndexingNode),
 }
 
 impl TypedAstNode {
@@ -23,6 +24,7 @@ impl TypedAstNode {
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::Identifier(token, _, _) => token,
             TypedAstNode::Assignment(token, _) => token,
+            TypedAstNode::Indexing(token, _) => token,
         }
     }
 
@@ -40,6 +42,7 @@ impl TypedAstNode {
             TypedAstNode::BindingDecl(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, typ, _) => typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
+            TypedAstNode::Indexing(_, node) => node.typ.clone(),
         }
     }
 }
@@ -86,4 +89,11 @@ pub struct TypedAssignmentNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub expr: Box<TypedAstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedIndexingNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub index: IndexingMode<TypedAstNode>,
 }

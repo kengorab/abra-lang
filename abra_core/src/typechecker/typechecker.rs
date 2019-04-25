@@ -1,8 +1,8 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -147,21 +147,20 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             items.iter().map(|node| node.get_type())
         );
         let typ = if item_types.len() == 1 {
-            let typ = item_types.into_iter()
+            item_types.into_iter()
                 .nth(0)
-                .expect("We know the size is 1");
-            Some(Box::new(typ))
+                .expect("We know the size is 1")
         } else if !item_types.is_empty() {
-            Some(Box::new(Type::Or(item_types.into_iter().collect())))
+            Type::Or(item_types.into_iter().collect())
         } else {
-            None
+            Type::Any
         };
 
         let items = items.into_iter()
             .map(Box::new)
             .collect();
 
-        Ok(TypedAstNode::Array(token.clone(), TypedArrayNode { typ: Type::Array(typ), items }))
+        Ok(TypedAstNode::Array(token.clone(), TypedArrayNode { typ: Type::Array(Box::new(typ)), items }))
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -191,7 +190,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Some(typ) => Ok(typ.clone()),
                     None => Err(TypecheckerError::UnknownType { type_ident: ann.ident.clone() })
                 }?;
-                let typ = if ann.is_arr { Type::Array(Some(Box::new(typ))) } else { typ };
+                let typ = if ann.is_arr { Type::Array(Box::new(typ)) } else { typ };
 
                 match e {
                     None => Ok(typ),
@@ -271,8 +270,62 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
     }
 
-    fn visit_indexing(&mut self, _token: Token, _node: IndexingNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<TypedAstNode, TypecheckerError> {
+        let IndexingNode { target, index } = node;
+
+        let target = self.visit(*target)?;
+        let target_type = target.get_type();
+
+        let typ = match (target_type, &index) {
+            (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(*inner_type),
+            (Type::Array(inner_type), IndexingMode::Range(_, _)) => Ok(Type::Array(inner_type)),
+            (Type::String, _) => Ok(Type::String),
+            (typ, _) => Err(TypecheckerError::Mismatch {
+                token: token.clone(),
+                expected: Type::Or(vec![Type::Array(Box::new(Type::Any)), Type::String]),
+                actual: typ,
+            })
+        }?;
+
+        let index = match index {
+            IndexingMode::Index(idx) => {
+                let idx = self.visit(*idx)?;
+                match idx.get_type() {
+                    Type::Int => Ok(IndexingMode::Index(Box::new(idx))),
+                    typ @ _ => Err(TypecheckerError::Mismatch {
+                        token: idx.get_token().clone(),
+                        expected: Type::Int,
+                        actual: typ,
+                    })
+                }
+            }
+            IndexingMode::Range(start, end) => {
+                #[inline]
+                fn visit_endpoint(tc: &mut Typechecker, node: Option<Box<AstNode>>) -> Result<Option<Box<TypedAstNode>>, TypecheckerError> {
+                    match node {
+                        None => Ok(None),
+                        Some(node) => {
+                            let typed_node = tc.visit(*node)?;
+                            let token = typed_node.get_token().clone();
+                            match typed_node.get_type() {
+                                Type::Int => Ok(Some(Box::new(typed_node))),
+                                typ @ _ => Err(TypecheckerError::Mismatch { token, expected: Type::Int, actual: typ })
+                            }
+                        }
+                    }
+                }
+
+                let start = visit_endpoint(self, start)?;
+                let end = visit_endpoint(self, end)?;
+                Ok(IndexingMode::Range(start, end))
+            }
+        }?;
+
+        Ok(TypedAstNode::Indexing(token, TypedIndexingNode {
+            typ,
+            target: Box::new(target),
+            index,
+        }))
     }
 }
 
@@ -780,10 +833,10 @@ mod tests {
             ("\"str\" >= 3", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Int),
             ("\"str\" >= 3.0", Token::GTE(Position::new(1, 7)), BinaryOp::Gte, Type::String, Type::Float),
             //
-            ("[1, 2] < 3", Token::LT(Position::new(1, 8)), BinaryOp::Lt, Type::Array(Some(Box::new(Type::Int))), Type::Int),
-            ("[1, 2] <= 3", Token::LTE(Position::new(1, 8)), BinaryOp::Lte, Type::Array(Some(Box::new(Type::Int))), Type::Int),
-            ("[1, 2] > 3", Token::GT(Position::new(1, 8)), BinaryOp::Gt, Type::Array(Some(Box::new(Type::Int))), Type::Int),
-            ("[1, 2] >= 3", Token::GTE(Position::new(1, 8)), BinaryOp::Gte, Type::Array(Some(Box::new(Type::Int))), Type::Int),
+            ("[1, 2] < 3", Token::LT(Position::new(1, 8)), BinaryOp::Lt, Type::Array(Box::new(Type::Int)), Type::Int),
+            ("[1, 2] <= 3", Token::LTE(Position::new(1, 8)), BinaryOp::Lte, Type::Array(Box::new(Type::Int)), Type::Int),
+            ("[1, 2] > 3", Token::GT(Position::new(1, 8)), BinaryOp::Gt, Type::Array(Box::new(Type::Int)), Type::Int),
+            ("[1, 2] >= 3", Token::GTE(Position::new(1, 8)), BinaryOp::Gte, Type::Array(Box::new(Type::Int)), Type::Int),
         ];
 
         for (input, token, op, ltype, rtype) in cases {
@@ -800,7 +853,7 @@ mod tests {
         let typed_ast = typecheck("[]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1)),
-            TypedArrayNode { typ: Type::Array(None), items: vec![] },
+            TypedArrayNode { typ: Type::Array(Box::new(Type::Any)), items: vec![] },
         );
         assert_eq!(expected, typed_ast[0]);
 
@@ -813,7 +866,7 @@ mod tests {
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1)),
             TypedArrayNode {
-                typ: Type::Array(Some(Box::new(Type::Int))),
+                typ: Type::Array(Box::new(Type::Int)),
                 items: vec![
                     Box::new(
                         TypedAstNode::Literal(
@@ -839,7 +892,7 @@ mod tests {
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1)),
             TypedArrayNode {
-                typ: Type::Array(Some(Box::new(Type::String))),
+                typ: Type::Array(Box::new(Type::String)),
                 items: vec![
                     Box::new(
                         TypedAstNode::Literal(
@@ -860,7 +913,7 @@ mod tests {
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1)),
             TypedArrayNode {
-                typ: Type::Array(Some(Box::new(Type::Bool))),
+                typ: Type::Array(Box::new(Type::Bool)),
                 items: vec![
                     Box::new(
                         TypedAstNode::Literal(
@@ -883,7 +936,7 @@ mod tests {
     #[test]
     fn typecheck_array_nested() -> TestResult {
         let typed_ast = typecheck("[[1, 2], [3, 4]]")?;
-        let expected_type = Type::Array(Some(Box::new(Type::Array(Some(Box::new(Type::Int))))));
+        let expected_type = Type::Array(Box::new(Type::Array(Box::new(Type::Int))));
         assert_eq!(expected_type, typed_ast[0].get_type());
 
         // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]]
@@ -926,7 +979,7 @@ mod tests {
                     TypedAstNode::Array(
                         Token::LBrack(Position::new(1, 18)),
                         TypedArrayNode {
-                            typ: Type::Array(Some(Box::new(Type::Int))),
+                            typ: Type::Array(Box::new(Type::Int)),
                             items: vec![
                                 Box::new(TypedAstNode::Literal(
                                     Token::Int(Position::new(1, 19), 1),
@@ -942,7 +995,7 @@ mod tests {
         let binding = typechecker.scope.bindings.get("abc").unwrap();
         let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
-            Type::Array(Some(Box::new(Type::Int))),
+            Type::Array(Box::new(Type::Int)),
             true,
         );
         assert_eq!(&expected_binding, binding);
@@ -986,7 +1039,7 @@ mod tests {
         let err = typecheck("val abc: Int[] = 1").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Int(Position::new(1, 18), 1),
-            expected: Type::Array(Some(Box::new(Type::Int))),
+            expected: Type::Array(Box::new(Type::Int)),
             actual: Type::Int,
         };
         assert_eq!(expected, err);
@@ -1104,6 +1157,142 @@ mod tests {
             token: Token::String(Position::new(2, 7), "str".to_string()),
             expected: Type::Int,
             actual: Type::String,
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_indexing() -> TestResult {
+        let typed_ast = typecheck("val abc = [1, 2, 3]\nabc[1]")?;
+        let expected = TypedAstNode::Indexing(
+            Token::LBrack(Position::new(2, 4)),
+            TypedIndexingNode {
+                typ: Type::Int,
+                target: Box::new(
+                    TypedAstNode::Identifier(
+                        Token::Ident(Position::new(2, 1), "abc".to_string()),
+                        Type::Array(Box::new(Type::Int)),
+                        false,
+                    )
+                ),
+                index: IndexingMode::Index(Box::new(
+                    TypedAstNode::Literal(
+                        Token::Int(Position::new(2, 5), 1),
+                        TypedLiteralNode::IntLiteral(1),
+                    )
+                )),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        let typed_ast = typecheck("val idx = 1\nval abc = [1, 2, 3]\nabc[idx:]")?;
+        let expected = TypedAstNode::Indexing(
+            Token::LBrack(Position::new(3, 4)),
+            TypedIndexingNode {
+                typ: Type::Array(Box::new(Type::Int)),
+                target: Box::new(
+                    TypedAstNode::Identifier(
+                        Token::Ident(Position::new(3, 1), "abc".to_string()),
+                        Type::Array(Box::new(Type::Int)),
+                        false,
+                    )
+                ),
+                index: IndexingMode::Range(
+                    Some(Box::new(
+                        TypedAstNode::Identifier(
+                            Token::Ident(Position::new(3, 5), "idx".to_string()),
+                            Type::Int,
+                            false,
+                        )
+                    )),
+                    None,
+                ),
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
+        let typed_ast = typecheck("val idx = 1\n\"abc\"[:idx * 2]")?;
+        let expected = TypedAstNode::Indexing(
+            Token::LBrack(Position::new(2, 6)),
+            TypedIndexingNode {
+                typ: Type::String,
+                target: Box::new(
+                    TypedAstNode::Literal(
+                        Token::String(Position::new(2, 1), "abc".to_string()),
+                        TypedLiteralNode::StringLiteral("abc".to_string()),
+                    )
+                ),
+                index: IndexingMode::Range(
+                    None,
+                    Some(Box::new(
+                        TypedAstNode::Binary(
+                            Token::Star(Position::new(2, 12)),
+                            TypedBinaryNode {
+                                typ: Type::Int,
+                                op: BinaryOp::Mul,
+                                left: Box::new(
+                                    TypedAstNode::Identifier(
+                                        Token::Ident(Position::new(2, 8), "idx".to_string()),
+                                        Type::Int,
+                                        false,
+                                    )
+                                ),
+                                right: Box::new(
+                                    TypedAstNode::Literal(
+                                        Token::Int(Position::new(2, 14), 2),
+                                        TypedLiteralNode::IntLiteral(2),
+                                    )
+                                ),
+                            },
+                        ),
+                    )),
+                ),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_indexing_errors() {
+        let err = typecheck("[1, 2, 3][\"a\"]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(1, 11), "a".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\"abcd\"[[1, 2]]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrack(Position::new(1, 8)),
+            expected: Type::Int,
+            actual: Type::Array(Box::new(Type::Int)),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("[1, 2, 3][\"a\":]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(1, 11), "a".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("[1, 2, 3][:\"a\"]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(1, 12), "a".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("123[0]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrack(Position::new(1, 4)),
+            expected: Type::Or(vec![Type::Array(Box::new(Type::Any)), Type::String]),
+            actual: Type::Int,
         };
         assert_eq!(expected, err);
     }

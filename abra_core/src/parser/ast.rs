@@ -76,15 +76,15 @@ pub struct AssignmentNode {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum IndexingMode {
-    Index(Box<AstNode>),
-    Range(Option<Box<AstNode>>, Option<Box<AstNode>>),
+pub enum IndexingMode<T> {
+    Index(Box<T>),
+    Range(Option<Box<T>>, Option<Box<T>>),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct IndexingNode {
     pub target: Box<AstNode>,
-    pub index: IndexingMode,
+    pub index: IndexingMode<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]
