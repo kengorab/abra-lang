@@ -17,6 +17,7 @@ impl Serialize for Res {
         where S: Serializer
     {
         match self {
+            Res(Value::Nil) => serializer.serialize_none(),
             Res(Value::Int(val)) => serializer.serialize_i64(*val),
             Res(Value::Float(val)) => serializer.serialize_f64(*val),
             Res(Value::Bool(val)) => serializer.serialize_bool(*val),

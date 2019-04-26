@@ -138,6 +138,7 @@ impl<'a> VM<'a> {
                         .clone();
                     self.push(val)
                 }
+                Opcode::Nil => self.push(Value::Nil),
                 Opcode::IConst0 => self.push(Value::Int(0)),
                 Opcode::IConst1 => self.push(Value::Int(1)),
                 Opcode::IConst2 => self.push(Value::Int(2)),
@@ -216,7 +217,7 @@ impl<'a> VM<'a> {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
-                Opcode::MkArr => {
+                Opcode::ArrMk => {
                     if let Value::Int(mut size) = self.pop_expect()? {
                         // Array items are on the stack in reverse order, pop them off in reverse
                         let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
@@ -228,6 +229,71 @@ impl<'a> VM<'a> {
                     } else {
                         unreachable!()
                     }
+                }
+                Opcode::ArrLoad => {
+                    if let Value::Int(idx) = self.pop_expect()? {
+                        let value = match self.pop_expect()? {
+                            Value::Obj(Obj::StringObj { value }) => {
+                                let len = value.len() as i64;
+                                let idx = if idx < 0 { idx + len } else { idx };
+
+                                match (*value).chars().nth(idx as usize) {
+                                    Some(ch) => Value::Obj(Obj::StringObj {
+                                        value: Box::new(ch.to_string())
+                                    }),
+                                    None => Value::Nil
+                                }
+                            }
+                            Value::Obj(Obj::ArrayObj { value }) => {
+                                let len = value.len() as i64;
+                                if idx < -len || idx >= len {
+                                    Value::Nil
+                                } else {
+                                    let idx = if idx < 0 { idx + len } else { idx };
+                                    *value[idx as usize].clone()
+                                }
+                            }
+                            _ => unreachable!()
+                        };
+                        self.push(value);
+                    } else {
+                        unreachable!()
+                    }
+                }
+                Opcode::ArrSlc => {
+                    #[inline]
+                    fn get_range_endpoints(len: usize, start: i64, end: Value) -> (usize, usize) {
+                        let len = len as i64;
+                        let start = if start < 0 { start + len } else { start };
+                        let end = match end {
+                            Value::Int(end) => end,
+                            Value::Nil => len,
+                            _ => unreachable!()
+                        };
+                        let end = if end < 0 { end + len } else { end };
+                        (start as usize, end as usize - start as usize)
+                    }
+
+                    let end = self.pop_expect()?;
+                    let start = match self.pop_expect()? {
+                        Value::Int(start) => start,
+                        _ => unreachable!()
+                    };
+
+                    let value = match self.pop_expect()? {
+                        Value::Obj(Obj::StringObj { value }) => {
+                            let (start, len) = get_range_endpoints(value.len(), start, end);
+                            let value = (*value).chars().skip(start).take(len).collect::<String>();
+                            Value::Obj(Obj::StringObj { value: Box::new(value) })
+                        }
+                        Value::Obj(Obj::ArrayObj { value }) => {
+                            let (start, len) = get_range_endpoints(value.len(), start, end);
+                            let value = value.into_iter().skip(start).take(len).collect::<Vec<_>>();
+                            Value::Obj(Obj::ArrayObj { value })
+                        }
+                        _ => unreachable!()
+                    };
+                    self.push(value);
                 }
                 Opcode::Store0 => self.store(0)?,
                 Opcode::Store1 => self.store(1)?,

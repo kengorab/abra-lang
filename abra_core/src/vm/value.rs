@@ -7,6 +7,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Obj(Obj),
+    Nil,
 }
 
 impl Value {
@@ -16,6 +17,7 @@ impl Value {
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
+            Value::Nil => format!("nil"),
         }
     }
 }
@@ -30,6 +32,7 @@ impl Display for Value {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ Obj::ArrayObj { .. } => write!(f, "{}", o.to_string()),
             }
+            Value::Nil => write!(f, "nil"),
         }
     }
 }

@@ -3,7 +3,7 @@ use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
-use crate::parser::ast::{UnaryOp, BinaryOp};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 
@@ -183,7 +183,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
 
         self.write_int_constant(num_items as u32, line);
-        self.chunk.write(Opcode::MkArr as u8, line);
+        self.chunk.write(Opcode::ArrMk as u8, line);
 
         Ok(())
     }
@@ -236,8 +236,37 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_indexing(&mut self, _token: Token, _node: TypedIndexingNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_indexing(&mut self, token: Token, node: TypedIndexingNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedIndexingNode { target, index, .. } = node;
+
+        self.visit(*target)?;
+
+        match index {
+            IndexingMode::Index(idx) => {
+                self.visit(*idx)?;
+                self.chunk.write(Opcode::ArrLoad as u8, line);
+            }
+            IndexingMode::Range(start, end) => {
+                if let Some(start) = start {
+                    self.visit(*start)?;
+                } else {
+                    self.write_int_constant(0, line);
+                }
+                if let Some(end) = end {
+                    self.visit(*end)?;
+                } else {
+                    // Jank: Use the Nil opcode as a placeholder to signify that there is no value,
+                    // and that the end of the range will need to be determined at runtime
+                    self.chunk.write(Opcode::Nil as u8, line);
+                }
+
+                self.chunk.write(Opcode::ArrSlc as u8, line);
+            }
+        };
+
+        Ok(())
     }
 }
 
@@ -486,7 +515,7 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::IConst2 as u8,
-                Opcode::MkArr as u8,
+                Opcode::ArrMk as u8,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),
@@ -506,7 +535,7 @@ mod tests {
                 Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 2,
                 Opcode::IConst3 as u8,
-                Opcode::MkArr as u8,
+                Opcode::ArrMk as u8,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),
@@ -524,14 +553,14 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::IConst2 as u8,
-                Opcode::MkArr as u8,
+                Opcode::ArrMk as u8,
                 Opcode::IConst3 as u8,
                 Opcode::IConst4 as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::IConst3 as u8,
-                Opcode::MkArr as u8,
+                Opcode::ArrMk as u8,
                 Opcode::IConst2 as u8,
-                Opcode::MkArr as u8,
+                Opcode::ArrMk as u8,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),
@@ -657,6 +686,87 @@ mod tests {
                 bindings.insert("c".to_string(), 2);
                 bindings
             },
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_indexing() {
+        let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
+        let expected = Chunk {
+            lines: vec![13, 1],
+            constants: vec![Value::Int(5)],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IConst4 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 0,
+                Opcode::ArrMk as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IAdd as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\"some string\"[1 + 1:]");
+        let expected = Chunk {
+            lines: vec![7, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::IConst1 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Nil as u8,
+                Opcode::ArrSlc as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\"some string\"[-1:4]");
+        let expected = Chunk {
+            lines: vec![6, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::IConst1 as u8,
+                Opcode::Invert as u8,
+                Opcode::IConst4 as u8,
+                Opcode::ArrSlc as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\"some string\"[:1 + 1]");
+        let expected = Chunk {
+            lines: vec![7, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::IConst0 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IAdd as u8,
+                Opcode::ArrSlc as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
     }
