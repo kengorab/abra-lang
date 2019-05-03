@@ -242,4 +242,114 @@ mod tests {
         let expected = Value::Int(9);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_indexing_arrays() {
+        let input = "\
+          val arr = [1, 2, 3]\n
+          val item = arr[1]\n
+          item
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(2);
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][-1]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = "[][0] == [1, 2][-3]"; // They're both nil
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_indexing_ranges_arrays() {
+        let input = "[1, 2, 3][1:2]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![Box::new(Value::Int(2))]
+        });
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][-2:-1]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![Box::new(Value::Int(2))]
+        });
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][:1]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![Box::new(Value::Int(1))]
+        });
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][1:]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![Box::new(Value::Int(2)), Box::new(Value::Int(3))]
+        });
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][-3:]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![Box::new(Value::Int(1)), Box::new(Value::Int(2)), Box::new(Value::Int(3))]
+        });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_indexing_strings() {
+        let input = "\
+          val str = \"hello world!\"\n
+          val char = str[6]\n
+          char
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("w".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"hello world\"[-3]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("r".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"hello world\"[100]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Nil;
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_indexing_ranges_strings() {
+        let input = "\"some string\"[1:2]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("o".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"some string\"[-2:-1]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("n".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"some string\"[:4]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("some".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"some string\"[5:]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = "\"some string\"[-6:]";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        assert_eq!(expected, result);
+    }
 }

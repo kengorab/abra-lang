@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -44,13 +44,14 @@ impl Parser {
         self.tokens.peek()
     }
 
+    fn expect_peek(&mut self) -> Result<&Token, ParseError> {
+        self.peek().ok_or(ParseError::UnexpectedEof)
+    }
+
     // Begin Pratt plumbing
 
     fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseError> {
-        let prefix_token = match self.peek() {
-            Some(token) => Ok(token.clone()),
-            None => Err(ParseError::UnexpectedEof),
-        }?;
+        let prefix_token = self.expect_peek()?.clone();
 
         match self.get_prefix_rule(&prefix_token) {
             None => Err(ParseError::UnexpectedToken(prefix_token)),
@@ -108,10 +109,10 @@ impl Parser {
             Token::Bang(_) |
             Token::Val(_) |
             Token::Var(_) |
-            Token::LBrack(_) |
             Token::RBrack(_) |
             Token::Comma(_) |
             Token::Ident(_, _) => None,
+            Token::LBrack(_) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
@@ -126,6 +127,7 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
+            Token::LBrack(_) => Precedence::Call,
             _ => Precedence::None,
         }
     }
@@ -133,11 +135,10 @@ impl Parser {
     // End Pratt plumbing
 
     fn parse_stmt(&mut self) -> Result<AstNode, ParseError> {
-        match self.peek() {
-            Some(Token::Val(_)) => self.parse_binding_decl(),
-            Some(Token::Var(_)) => self.parse_binding_decl(),
-            Some(_) => self.parse_expr(),
-            None => Err(ParseError::UnexpectedEof)
+        match self.expect_peek()? {
+            Token::Val(_) => self.parse_binding_decl(),
+            Token::Var(_) => self.parse_binding_decl(),
+            _ => self.parse_expr(),
         }
     }
 
@@ -164,16 +165,15 @@ impl Parser {
                         let is_arr = match self.peek() {
                             Some(Token::LBrack(_)) => {
                                 self.expect_next()?;
-                                match self.peek() {
-                                    Some(Token::RBrack(_)) => {
+                                match self.expect_peek()? {
+                                    Token::RBrack(_) => {
                                         self.expect_next()?;
                                         Ok(true)
                                     }
-                                    Some(t) => Err(ParseError::ExpectedToken(
+                                    t => Err(ParseError::ExpectedToken(
                                         Token::RBrack(t.get_position()),
                                         t.clone(),
                                     )),
-                                    None => Err(ParseError::UnexpectedEof)
                                 }
                             }
                             Some(_) | None => Ok(false)
@@ -245,6 +245,47 @@ impl Parser {
             _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
+    }
+
+    fn parse_index(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+        let mode = match self.expect_peek()? {
+            Token::RBrack(_) => Err(ParseError::UnexpectedToken(self.expect_next()?)),
+            Token::Colon(_) => {
+                self.expect_next()?; // Consume ':'
+                let range_end = self.parse_expr()?;
+
+                match self.expect_next()? {
+                    Token::RBrack(_) => Ok(IndexingMode::Range(None, Some(Box::new(range_end)))),
+                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                }
+            }
+            _ => {
+                let idx = self.parse_expr()?;
+                match self.expect_next()? {
+                    Token::RBrack(_) => Ok(IndexingMode::Index(Box::new(idx))),
+                    Token::Colon(_) => {
+                        match self.expect_peek()? {
+                            Token::RBrack(_) => {
+                                self.expect_next()?; // Consume ']'
+                                Ok(IndexingMode::Range(Some(Box::new(idx)), None))
+                            }
+                            _ => {
+                                let range_end = self.parse_expr()?;
+                                match self.expect_next()? {
+                                    Token::RBrack(_) => Ok(IndexingMode::Range(Some(Box::new(idx)), Some(Box::new(range_end)))),
+                                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                                }
+                            }
+                        }
+                    }
+                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                }
+            }
+        }?;
+        Ok(AstNode::Indexing(token, IndexingNode {
+            target: Box::new(left),
+            index: mode,
+        }))
     }
 
     fn parse_assignment(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
@@ -846,14 +887,14 @@ mod tests {
         let err = parse("val a: 123 = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(
             Token::Ident(Position::new(1, 8), "identifier".to_string()),
-            Token::Int(Position::new(1, 8), 123)
+            Token::Int(Position::new(1, 8), 123),
         );
         assert_eq!(expected, err);
 
         let err = parse("val a: Int[ = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(
             Token::RBrack(Position::new(1, 13)),
-            Token::Assign(Position::new(1, 13))
+            Token::Assign(Position::new(1, 13)),
         );
         assert_eq!(expected, err);
 
@@ -923,5 +964,172 @@ mod tests {
         );
         Ok(assert_eq!(expected, ast[0]))
     }
-}
 
+    #[test]
+    fn parse_indexing() -> TestResult {
+        let ast = parse("abcd[1]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 5)),
+            IndexingNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
+                ),
+                index: IndexingMode::Index(Box::new(
+                    AstNode::Literal(
+                        Token::Int(Position::new(1, 6), 1),
+                        AstLiteralNode::IntLiteral(1),
+                    )
+                )),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abcd[1:3]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 5)),
+            IndexingNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
+                ),
+                index: IndexingMode::Range(
+                    Some(Box::new(
+                        AstNode::Literal(
+                            Token::Int(Position::new(1, 6), 1),
+                            AstLiteralNode::IntLiteral(1),
+                        )
+                    )),
+                    Some(Box::new(
+                        AstNode::Literal(
+                            Token::Int(Position::new(1, 8), 3),
+                            AstLiteralNode::IntLiteral(3),
+                        )
+                    )),
+                ),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abcd[a:]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 5)),
+            IndexingNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
+                ),
+                index: IndexingMode::Range(
+                    Some(Box::new(
+                        AstNode::Identifier(
+                            Token::Ident(Position::new(1, 6), "a".to_string()),
+                        )
+                    )),
+                    None,
+                ),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abcd[:b]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 5)),
+            IndexingNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
+                ),
+                index: IndexingMode::Range(
+                    None,
+                    Some(Box::new(
+                        AstNode::Identifier(
+                            Token::Ident(Position::new(1, 7), "b".to_string()),
+                        )
+                    )),
+                ),
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_indexing_nested() -> TestResult {
+        let ast = parse("a[b[2]]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 2)),
+            IndexingNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "a".to_string()))
+                ),
+                index: IndexingMode::Index(Box::new(
+                    AstNode::Indexing(
+                        Token::LBrack(Position::new(1, 4)),
+                        IndexingNode {
+                            target: Box::new(
+                                AstNode::Identifier(Token::Ident(Position::new(1, 3), "b".to_string())),
+                            ),
+                            index: IndexingMode::Index(Box::new(
+                                AstNode::Literal(
+                                    Token::Int(Position::new(1, 5), 2),
+                                    AstLiteralNode::IntLiteral(2),
+                                )
+                            )),
+                        },
+                    )
+                )),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("[a, b][1][2]")?;
+        let expected = AstNode::Indexing(
+            Token::LBrack(Position::new(1, 10)),
+            IndexingNode {
+                target: Box::new(AstNode::Indexing(
+                    Token::LBrack(Position::new(1, 7)),
+                    IndexingNode {
+                        target: Box::new(
+                            AstNode::Array(
+                                Token::LBrack(Position::new(1, 1)),
+                                ArrayNode {
+                                    items: vec![
+                                        Box::new(AstNode::Identifier(Token::Ident(Position::new(1, 2), "a".to_string()))),
+                                        Box::new(AstNode::Identifier(Token::Ident(Position::new(1, 5), "b".to_string()))),
+                                    ],
+                                },
+                            )
+                        ),
+                        index: IndexingMode::Index(Box::new(
+                            AstNode::Literal(
+                                Token::Int(Position::new(1, 8), 1),
+                                AstLiteralNode::IntLiteral(1),
+                            )
+                        )),
+                    },
+                )),
+                index: IndexingMode::Index(Box::new(
+                    AstNode::Literal(
+                        Token::Int(Position::new(1, 11), 2),
+                        AstLiteralNode::IntLiteral(2),
+                    )
+                )),
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_indexing_error() {
+        let err = parse("abcd[]").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::RBrack(Position::new(1, 6)));
+        assert_eq!(expected, err);
+
+        let err = parse("abcd[: val b = 3").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 8)));
+        assert_eq!(expected, err);
+
+        let err = parse("abcd[1a").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 7), "a".to_string()));
+        assert_eq!(expected, err);
+
+        let err = parse("abcd[1:1:").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 9)));
+        assert_eq!(expected, err);
+    }
+}

@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 
@@ -12,6 +12,7 @@ pub trait AstVisitor<V, E> {
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
             Identifier(tok) => self.visit_ident(tok),
             Assignment(tok, node) => self.visit_assignment(tok, node),
+            Indexing(tok, node) => self.visit_indexing(tok, node),
         }
     }
 
@@ -22,4 +23,5 @@ pub trait AstVisitor<V, E> {
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<V, E>;
     fn visit_ident(&mut self, token: Token) -> Result<V, E>;
     fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<V, E>;
+    fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<V, E>;
 }

@@ -20,6 +20,7 @@ pub enum TypecheckerError {
 fn type_repr(t: &Type) -> String {
     match t {
         Type::Unit => "()".to_string(),
+        Type::Any => "Any".to_string(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
@@ -30,10 +31,7 @@ fn type_repr(t: &Type) -> String {
                 .collect();
             format!("one of ({})", type_opts.join(", "))
         }
-        Type::Array(typ) => match typ {
-            Some(typ) => format!("{}[]", type_repr(typ)),
-            None => "Unknown[]".to_string(),
-        }
+        Type::Array(typ) => format!("{}[]", type_repr(typ)),
     }
 }
 
