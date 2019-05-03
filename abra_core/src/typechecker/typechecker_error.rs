@@ -32,6 +32,7 @@ fn type_repr(t: &Type) -> String {
             format!("one of ({})", type_opts.join(", "))
         }
         Type::Array(typ) => format!("{}[]", type_repr(typ)),
+        Type::Option(typ) => format!("{}?", type_repr(typ)),
     }
 }
 

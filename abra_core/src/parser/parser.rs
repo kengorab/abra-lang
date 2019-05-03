@@ -142,6 +142,38 @@ impl Parser {
         }
     }
 
+    fn parse_type_identifier(&mut self) -> Result<TypeIdentifier, ParseError> {
+        let mut left = match self.expect_next()? {
+            ident @ Token::Ident(_, _) => Ok(TypeIdentifier::Normal { ident }),
+            t @ _ => Err(ParseError::ExpectedToken(
+                // FIXME: Not great, using "identifier" here, just so it shows up in the error
+                Token::Ident(t.get_position(), "identifier".to_string()),
+                t,
+            ))
+        }?;
+
+        let mut next_token = self.peek();
+        loop {
+            match next_token {
+                Some(Token::LBrack(_)) => {
+                    self.expect_next()?; // Consume '['
+                    match self.expect_peek()? {
+                        Token::RBrack(_) => self.expect_next(), // Consume ']'
+                        t => Err(ParseError::ExpectedToken(
+                            Token::RBrack(t.get_position()),
+                            t.clone(),
+                        )),
+                    }?;
+                    left = TypeIdentifier::Array { inner: Box::new(left) }
+                }
+                _ => break
+            }
+            next_token = self.peek();
+        };
+
+        Ok(left)
+    }
+
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
         let is_mutable = match &token {
@@ -160,32 +192,8 @@ impl Parser {
         let type_ann = match self.peek() {
             Some(Token::Colon(_)) => {
                 self.expect_next()?; // Consume ':'
-                match self.expect_next()? {
-                    ident @ Token::Ident(_, _) => {
-                        let is_arr = match self.peek() {
-                            Some(Token::LBrack(_)) => {
-                                self.expect_next()?;
-                                match self.expect_peek()? {
-                                    Token::RBrack(_) => {
-                                        self.expect_next()?;
-                                        Ok(true)
-                                    }
-                                    t => Err(ParseError::ExpectedToken(
-                                        Token::RBrack(t.get_position()),
-                                        t.clone(),
-                                    )),
-                                }
-                            }
-                            Some(_) | None => Ok(false)
-                        }?;
-                        Ok(Some(TypeIdentifier { ident, is_arr }))
-                    }
-                    t @ _ => Err(ParseError::ExpectedToken(
-                        // FIXME: Not great, using "identifier" here, just so it shows up in the error
-                        Token::Ident(t.get_position(), "identifier".to_string()),
-                        t,
-                    ))
-                }
+                let type_ident = self.parse_type_identifier()?;
+                Ok(Some(type_ident))
             }
             Some(_) | None => Ok(None)
         }?;
@@ -839,9 +847,8 @@ mod tests {
                 BindingDeclNode {
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                     is_mutable: false,
-                    type_ann: Some(TypeIdentifier {
+                    type_ann: Some(TypeIdentifier::Normal {
                         ident: Token::Ident(Position::new(1, 10), "Bool".to_string()),
-                        is_arr: false,
                     }),
                     expr: Some(Box::new(
                         AstNode::Literal(
@@ -856,9 +863,12 @@ mod tests {
                 BindingDeclNode {
                     ident: Token::Ident(Position::new(2, 5), "def".to_string()),
                     is_mutable: true,
-                    type_ann: Some(TypeIdentifier {
-                        ident: Token::Ident(Position::new(2, 10), "Int".to_string()),
-                        is_arr: true,
+                    type_ann: Some(TypeIdentifier::Array {
+                        inner: Box::new(
+                            TypeIdentifier::Normal {
+                                ident: Token::Ident(Position::new(2, 10), "Int".to_string()),
+                            }
+                        )
                     }),
                     expr: None,
                 },

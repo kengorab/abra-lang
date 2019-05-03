@@ -184,15 +184,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let typ = match (&typed_expr, &type_ann) {
             (Some(e), None) => Ok(e.get_type()),
-            (e @ _, Some(ann)) => {
-                let type_name = Token::get_ident_name(&ann.ident);
-                let typ = match self.scope.types.get(type_name) {
-                    Some(typ) => Ok(typ.clone()),
-                    None => Err(TypecheckerError::UnknownType { type_ident: ann.ident.clone() })
-                }?;
-                let typ = if ann.is_arr { Type::Array(Box::new(typ)) } else { typ };
+            (typed_expr @ _, Some(ann)) => {
+                let typ = Type::from_type_ident(ann, &self.scope.types)
+                    .ok_or(TypecheckerError::UnknownType { type_ident: ann.get_ident() })?;
 
-                match e {
+                match typed_expr {
                     None => Ok(typ),
                     Some(e) => {
                         if typ == e.get_type() {
