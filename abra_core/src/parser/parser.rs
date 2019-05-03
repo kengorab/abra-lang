@@ -166,6 +166,10 @@ impl Parser {
                     }?;
                     left = TypeIdentifier::Array { inner: Box::new(left) }
                 }
+                Some(Token::Question(_)) => {
+                    self.expect_next()?; // Consume '?'
+                    left = TypeIdentifier::Option { inner: Box::new(left) }
+                }
                 _ => break
             }
             next_token = self.peek();
@@ -839,42 +843,75 @@ mod tests {
     }
 
     #[test]
-    fn parse_binding_decls_with_type_annotations() -> TestResult {
-        let ast = parse("val abc: Bool = true\nvar def: Int[]")?;
-        let expected = vec![
-            AstNode::BindingDecl(
-                Token::Val(Position::new(1, 1)),
-                BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                    is_mutable: false,
-                    type_ann: Some(TypeIdentifier::Normal {
-                        ident: Token::Ident(Position::new(1, 10), "Bool".to_string()),
-                    }),
-                    expr: Some(Box::new(
-                        AstNode::Literal(
-                            Token::Bool(Position::new(1, 17), true),
-                            AstLiteralNode::BoolLiteral(true),
-                        )
-                    )),
-                },
-            ),
-            AstNode::BindingDecl(
-                Token::Var(Position::new(2, 1)),
-                BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "def".to_string()),
-                    is_mutable: true,
-                    type_ann: Some(TypeIdentifier::Array {
-                        inner: Box::new(
-                            TypeIdentifier::Normal {
-                                ident: Token::Ident(Position::new(2, 10), "Int".to_string()),
-                            }
-                        )
-                    }),
-                    expr: None,
-                },
-            ),
-        ];
-        Ok(assert_eq!(expected, ast))
+    fn parse_type_annotations() -> TestResult {
+        fn ast_to_type_ann(ast: Vec<AstNode>) -> TypeIdentifier {
+            match ast.into_iter().next() {
+                Some(AstNode::BindingDecl(_, BindingDeclNode { type_ann, .. })) => type_ann.unwrap(),
+                _ => unreachable!()
+            }
+        }
+
+        let ast = parse("var abc: Bool")?;
+        let expected = TypeIdentifier::Normal {
+            ident: Token::Ident(Position::new(1, 10), "Bool".to_string())
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int[]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int[][]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?")?;
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?[]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Option {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?[]?")?;
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Option {
+                    inner: Box::new(TypeIdentifier::Normal {
+                        ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    })
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        Ok(())
     }
 
     #[test]
