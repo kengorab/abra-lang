@@ -251,15 +251,15 @@ mod tests {
           item
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Int(2);
+        let expected = Value::Obj(Obj::OptionObj { value: Some(Box::new(Value::Int(2))) });
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-1]";
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Obj(Obj::OptionObj { value: Some(Box::new(Value::Int(3))) });
         assert_eq!(expected, result);
 
-        let input = "[][0] == [1, 2][-3]"; // They're both nil
+        let input = "[][0] == [1, 2][-3]"; // They're both None
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
@@ -311,17 +311,29 @@ mod tests {
           char
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("w".to_string()) });
+        let expected = Value::Obj(Obj::OptionObj {
+            value: Some(
+                Box::new(
+                    Value::Obj(Obj::StringObj { value: Box::new("w".to_string()) })
+                )
+            )
+        });
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[-3]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("r".to_string()) });
+        let expected = Value::Obj(Obj::OptionObj {
+            value: Some(
+                Box::new(
+                    Value::Obj(Obj::StringObj { value: Box::new("r".to_string()) })
+                )
+            )
+        });
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[100]";
         let result = interpret(input).unwrap();
-        let expected = Value::Nil;
+        let expected = Value::Obj(Obj::OptionObj { value: None });
         assert_eq!(expected, result);
     }
 

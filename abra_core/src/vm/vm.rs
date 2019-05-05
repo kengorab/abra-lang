@@ -237,21 +237,27 @@ impl<'a> VM<'a> {
                                 let len = value.len() as i64;
                                 let idx = if idx < 0 { idx + len } else { idx };
 
-                                match (*value).chars().nth(idx as usize) {
-                                    Some(ch) => Value::Obj(Obj::StringObj {
-                                        value: Box::new(ch.to_string())
-                                    }),
-                                    None => Value::Nil
-                                }
+                                let value = match (*value).chars().nth(idx as usize) {
+                                    Some(ch) => Some(
+                                        Box::new(
+                                            Value::Obj(Obj::StringObj {
+                                                value: Box::new(ch.to_string())
+                                            })
+                                        )
+                                    ),
+                                    None => None
+                                };
+                                Value::Obj(Obj::OptionObj { value })
                             }
                             Value::Obj(Obj::ArrayObj { value }) => {
                                 let len = value.len() as i64;
-                                if idx < -len || idx >= len {
-                                    Value::Nil
+                                let value = if idx < -len || idx >= len {
+                                    None
                                 } else {
                                     let idx = if idx < 0 { idx + len } else { idx };
-                                    *value[idx as usize].clone()
-                                }
+                                    Some(value[idx as usize].clone())
+                                };
+                                Value::Obj(Obj::OptionObj { value })
                             }
                             _ => unreachable!()
                         };

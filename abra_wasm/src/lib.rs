@@ -30,6 +30,10 @@ impl Serialize for Res {
                     });
                     arr.end()
                 }
+                Obj::OptionObj { value } => match value {
+                    None => serializer.serialize_none(),
+                    Some(value) => serializer.serialize_some(&Res(*value.clone()))
+                }
             }
         }
     }

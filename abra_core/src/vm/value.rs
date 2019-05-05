@@ -30,7 +30,7 @@ impl Display for Value {
             Value::Bool(v) => write!(f, "{}", v),
             Value::Obj(o) => match o {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
-                o @ Obj::ArrayObj { .. } => write!(f, "{}", o.to_string()),
+                o @ _ => write!(f, "{}", o.to_string()),
             }
             Value::Nil => write!(f, "nil"),
         }
@@ -41,6 +41,7 @@ impl Display for Value {
 pub enum Obj {
     StringObj { value: Box<String> },
     ArrayObj { value: Vec<Box<Value>> },
+    OptionObj { value: Option<Box<Value>> },
 }
 
 impl Obj {
@@ -53,6 +54,10 @@ impl Obj {
                     .collect::<Vec<String>>()
                     .join(", ");
                 format!("[{}]", items)
+            }
+            Obj::OptionObj { value } => match value {
+                None => format!("None"),
+                Some(value) => value.to_string()
             }
         }
     }
@@ -78,6 +83,14 @@ impl PartialOrd for Obj {
                         }
                     }
                     Some(Ordering::Equal)
+                }
+            }
+            (Obj::OptionObj { value: v1 }, Obj::OptionObj { value: v2 }) => {
+                match (v1, v2) {
+                    (None, None) => Some(Ordering::Equal),
+                    (Some(v1), Some(v2)) => v1.partial_cmp(&v2),
+                    (None, Some(_)) => Some(Ordering::Less),
+                    (Some(_), None) => Some(Ordering::Greater),
                 }
             }
             (_, _) => None
