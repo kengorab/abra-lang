@@ -121,6 +121,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
+                _ => unimplemented!()
             }
         }
 

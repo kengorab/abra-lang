@@ -124,6 +124,7 @@ impl Parser {
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
+            Token::Elvis(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
@@ -248,6 +249,7 @@ impl Parser {
             Token::Slash(_) => BinaryOp::Div,
             Token::And(_) => BinaryOp::And,
             Token::Or(_) => BinaryOp::Or,
+            Token::Elvis(_) => BinaryOp::Coalesce,
             Token::GT(_) => BinaryOp::Gt,
             Token::GTE(_) => BinaryOp::Gte,
             Token::LT(_) => BinaryOp::Lt,
@@ -632,6 +634,183 @@ mod tests {
                                 op: BinaryOp::Gte,
                                 right: Box::new(
                                     Literal(Token::Int(Position::new(1, 21), 13), IntLiteral(13))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_precedence_coalesce() -> TestResult {
+        let ast = parse("abc ?: true || false")?;
+        let expected = vec![
+            Binary(
+                Token::Or(Position::new(1, 13)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 5)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 8), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Or,
+                    right: Box::new(
+                        Literal(Token::Bool(Position::new(1, 16), false), BoolLiteral(false))
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("false || abc ?: true")?;
+        let expected = vec![
+            Binary(
+                Token::Or(Position::new(1, 7)),
+                BinaryNode {
+                    left: Box::new(
+                        Literal(Token::Bool(Position::new(1, 1), false), BoolLiteral(false))
+                    ),
+                    op: BinaryOp::Or,
+                    right: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 14)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 10), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 17), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 + abc ?: 0 != !def ?: true")?;
+        let expected = vec![
+            Binary(
+                Token::Neq(Position::new(1, 14)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Plus(Position::new(1, 3)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
+                                ),
+                                op: BinaryOp::Add,
+                                right: Box::new(
+                                    Binary(
+                                        Token::Elvis(Position::new(1, 9)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 5), "abc".to_string()))
+                                            ),
+                                            op: BinaryOp::Coalesce,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
+                                            ),
+                                        },
+                                    )
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Neq,
+                    right: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 22)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Unary(
+                                        Token::Bang(Position::new(1, 17)),
+                                        UnaryNode {
+                                            op: UnaryOp::Negate,
+                                            expr: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 18), "def".to_string()))
+                                            ),
+                                        },
+                                    )
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 25), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            ),
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("abc ?: def[0] == 0 <= def ?: 9")?;
+        let expected = vec![
+            Binary(
+                Token::Eq(Position::new(1, 15)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 5)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Indexing(
+                                        Token::LBrack(Position::new(1, 11)),
+                                        IndexingNode {
+                                            target: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 8), "def".to_string()))
+                                            ),
+                                            index: IndexingMode::Index(Box::new(
+                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
+                                            )),
+                                        },
+                                    )
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Eq,
+                    right: Box::new(
+                        Binary(
+                            Token::LTE(Position::new(1, 20)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 18), 0), IntLiteral(0))
+                                ),
+                                op: BinaryOp::Lte,
+                                right: Box::new(
+                                    Binary(
+                                        Token::Elvis(Position::new(1, 27)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 23), "def".to_string()))
+                                            ),
+                                            op: BinaryOp::Coalesce,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 30), 9), IntLiteral(9))
+                                            ),
+                                        },
+                                    )
                                 ),
                             },
                         )

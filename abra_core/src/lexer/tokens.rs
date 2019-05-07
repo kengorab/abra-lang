@@ -33,6 +33,7 @@ pub enum Token {
     Slash(Position),
     And(Position),
     Or(Position),
+    Elvis(Position),
     GT(Position),
     GTE(Position),
     LT(Position),
@@ -66,6 +67,7 @@ impl Token {
             Token::Slash(pos) |
             Token::And(pos) |
             Token::Or(pos) |
+            Token::Elvis(pos) |
             Token::GT(pos) |
             Token::GTE(pos) |
             Token::LT(pos) |
@@ -108,6 +110,7 @@ impl Display for Token {
             Token::Slash(_) => write!(f, "/"),
             Token::And(_) => write!(f, "&&"),
             Token::Or(_) => write!(f, "||"),
+            Token::Elvis(_) => write!(f, "?:"),
             Token::GT(_) => write!(f, ">"),
             Token::GTE(_) => write!(f, ">="),
             Token::LT(_) => write!(f, "<"),

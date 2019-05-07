@@ -40,6 +40,7 @@ pub enum BinaryOp {
     Div,
     And,
     Or,
+    Coalesce,
     Lt,
     Lte,
     Gt,
