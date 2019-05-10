@@ -88,49 +88,73 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<TypedAstNode, TypecheckerError> {
+        #[inline]
+        fn type_for_op(
+            token: &Token,
+            op: &BinaryOp,
+            typed_left: &TypedAstNode,
+            typed_right: &TypedAstNode,
+        ) -> Result<Type, TypecheckerError> {
+            let ltype = typed_left.get_type();
+            let rtype = typed_right.get_type();
+
+            match op {
+                BinaryOp::Add =>
+                    match (&ltype, &rtype) {
+                        (Type::String, _) | (_, Type::String) => Ok(Type::String),
+                        (Type::Int, Type::Int) => Ok(Type::Int),
+                        (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::Sub | BinaryOp::Mul =>
+                    match (&ltype, &rtype) {
+                        (Type::Int, Type::Int) => Ok(Type::Int),
+                        (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::Div =>
+                    match (&ltype, &rtype) {
+                        (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::And | BinaryOp::Or =>
+                    match (&ltype, &rtype) {
+                        (Type::Bool, Type::Bool) => Ok(Type::Bool),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte =>
+                    match (&ltype, &rtype) {
+                        (Type::String, Type::String) => Ok(Type::Bool),
+                        (Type::Int, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) | (Type::Float, Type::Int) => Ok(Type::Bool),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
+                BinaryOp::Coalesce => {
+                    match (&ltype, &rtype) {
+                        (Type::Option(ltype), rtype @ _) => {
+                            if **ltype != *rtype {
+                                let token = typed_right.get_token().clone();
+                                Err(TypecheckerError::Mismatch { token, expected: (**ltype).clone(), actual: rtype.clone() })
+                            } else {
+                                Ok((**ltype).clone())
+                            }
+                        }
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                }
+            }
+        }
+
         let left = *node.left;
         let typed_left = self.visit(left)?;
-        let ltype = typed_left.get_type();
 
         let right = *node.right;
         let typed_right = self.visit(right)?;
-        let rtype = typed_right.get_type();
 
-        let typ = match node.op {
-            BinaryOp::Add =>
-                match (&ltype, &rtype) {
-                    (Type::String, _) | (_, Type::String) => Ok(Type::String),
-                    (Type::Int, Type::Int) => Ok(Type::Int),
-                    (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
-                }
-            BinaryOp::Sub | BinaryOp::Mul =>
-                match (&ltype, &rtype) {
-                    (Type::Int, Type::Int) => Ok(Type::Int),
-                    (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
-                }
-            BinaryOp::Div =>
-                match (&ltype, &rtype) {
-                    (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
-                }
-            BinaryOp::And | BinaryOp::Or =>
-                match (&ltype, &rtype) {
-                    (Type::Bool, Type::Bool) => Ok(Type::Bool),
-                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
-                }
-            BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte =>
-                match (&ltype, &rtype) {
-                    (Type::String, Type::String) => Ok(Type::Bool),
-                    (Type::Int, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) | (Type::Float, Type::Int) => Ok(Type::Bool),
-                    (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: node.op.clone(), ltype, rtype })
-                }
-            BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
-        };
+        let typ = type_for_op(&token, &node.op, &typed_left, &typed_right)?;
 
         Ok(TypedAstNode::Binary(token.clone(), TypedBinaryNode {
-            typ: typ?,
+            typ,
             left: Box::new(typed_left),
             op: node.op,
             right: Box::new(typed_right),
@@ -184,15 +208,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let typ = match (&typed_expr, &type_ann) {
             (Some(e), None) => Ok(e.get_type()),
-            (e @ _, Some(ann)) => {
-                let type_name = Token::get_ident_name(&ann.ident);
-                let typ = match self.scope.types.get(type_name) {
-                    Some(typ) => Ok(typ.clone()),
-                    None => Err(TypecheckerError::UnknownType { type_ident: ann.ident.clone() })
-                }?;
-                let typ = if ann.is_arr { Type::Array(Box::new(typ)) } else { typ };
+            (typed_expr @ _, Some(ann)) => {
+                let typ = Type::from_type_ident(ann, &self.scope.types)
+                    .ok_or(TypecheckerError::UnknownType { type_ident: ann.get_ident() })?;
 
-                match e {
+                match typed_expr {
                     None => Ok(typ),
                     Some(e) => {
                         if typ == e.get_type() {
@@ -277,7 +297,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target_type = target.get_type();
 
         let typ = match (target_type, &index) {
-            (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(*inner_type),
+            (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
             (Type::Array(inner_type), IndexingMode::Range(_, _)) => Ok(Type::Array(inner_type)),
             (Type::String, _) => Ok(Type::String),
             (typ, _) => Err(TypecheckerError::Mismatch {
@@ -654,6 +674,10 @@ mod tests {
             ("true / 1.0", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Float),
             ("true / \"str\"", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::String),
             ("true / false", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Bool),
+            //
+            ("[1, 2][0] + 1", Token::Plus(Position::new(1, 11)), BinaryOp::Add, Type::Option(Box::new(Type::Int)), Type::Int),
+            ("[0][1] + [2][3]", Token::Plus(Position::new(1, 8)), BinaryOp::Add, Type::Option(Box::new(Type::Int)), Type::Option(Box::new(Type::Int))),
+            ("[\"a\", \"b\"][0] - [\"c\"][0]", Token::Minus(Position::new(1, 15)), BinaryOp::Sub, Type::Option(Box::new(Type::String)), Type::Option(Box::new(Type::String))),
         ];
 
         for (input, token, op, ltype, rtype) in cases {
@@ -849,6 +873,47 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_binary_coalesce_operation() -> TestResult {
+        let cases = vec![
+            ("[1][0] ?: 2", Type::Int),
+            ("[[0, 1]][0] ?: [1, 2]", Type::Array(Box::new(Type::Int))),
+            ("[[0, 1][0]][0] ?: [1, 2][1]", Type::Option(Box::new(Type::Int))),
+        ];
+
+        for (input, expected_type) in cases {
+            let typed_ast = typecheck(input)?;
+            assert_eq!(expected_type, typed_ast[0].get_type());
+        };
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_binary_coalesce_errors() {
+        let cases = vec![
+            ("[1][0] ?: \"a\"", Token::String(Position::new(1, 11), "a".to_string()), Type::Int, Type::String),
+            ("[1][0] ?: 1.0", Token::Float(Position::new(1, 11), 1.0), Type::Int, Type::Float),
+        ];
+        for (input, token, expected, actual) in cases {
+            let expected = TypecheckerError::Mismatch { token, expected, actual };
+            let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
+
+            let err = typecheck(input).expect_err(&*msg);
+            assert_eq!(expected, err, "{}", msg);
+        }
+
+        let input = "\"abc\" ?: 12";
+        let err = typecheck(input).expect_err("Error expected");
+        let expected = TypecheckerError::InvalidOperator {
+            token: Token::Elvis(Position::new(1, 7)),
+            op: BinaryOp::Coalesce,
+            ltype: Type::String,
+            rtype: Type::Int
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
     fn typecheck_array_empty() -> TestResult {
         let typed_ast = typecheck("[]")?;
         let expected = TypedAstNode::Array(
@@ -969,37 +1034,6 @@ mod tests {
         );
         assert_eq!(&expected_binding, binding);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("var abc: Int[] = [1]");
-        let expected = TypedAstNode::BindingDecl(
-            Token::Var(Position::new(1, 1)),
-            TypedBindingDeclNode {
-                is_mutable: true,
-                ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                expr: Some(Box::new(
-                    TypedAstNode::Array(
-                        Token::LBrack(Position::new(1, 18)),
-                        TypedArrayNode {
-                            typ: Type::Array(Box::new(Type::Int)),
-                            items: vec![
-                                Box::new(TypedAstNode::Literal(
-                                    Token::Int(Position::new(1, 19), 1),
-                                    TypedLiteralNode::IntLiteral(1),
-                                ))
-                            ],
-                        },
-                    )
-                )),
-            },
-        );
-        assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.scope.bindings.get("abc").unwrap();
-        let expected_binding = ScopeBinding(
-            Token::Ident(Position::new(1, 5), "abc".to_string()),
-            Type::Array(Box::new(Type::Int)),
-            true,
-        );
-        assert_eq!(&expected_binding, binding);
-
         let (typechecker, typed_ast) = typecheck_get_typechecker("var abc: Int");
         let expected = TypedAstNode::BindingDecl(
             Token::Var(Position::new(1, 1)),
@@ -1019,6 +1053,26 @@ mod tests {
         assert_eq!(&expected_binding, binding);
 
         Ok(())
+    }
+
+    #[test]
+    fn typecheck_type_annotation() {
+        let cases = vec![
+            // Simple cases
+            ("var abc: Int", Type::Int),
+            ("var abc: Int[]", Type::Array(Box::new(Type::Int))),
+            ("var abc: Int?", Type::Option(Box::new(Type::Int))),
+            // Complex cases
+            ("var abc: Int[][]", Type::Array(Box::new(Type::Array(Box::new(Type::Int))))),
+            ("var abc: Int?[]", Type::Array(Box::new(Type::Option(Box::new(Type::Int))))),
+            ("var abc: Int[]?", Type::Option(Box::new(Type::Array(Box::new(Type::Int))))),
+        ];
+
+        for (input, expected_binding_type) in cases {
+            let (typechecker, _) = typecheck_get_typechecker(input);
+            let ScopeBinding(_, typ, _) = typechecker.scope.bindings.get("abc").unwrap();
+            assert_eq!(expected_binding_type, *typ);
+        }
     }
 
     #[test]
@@ -1167,7 +1221,7 @@ mod tests {
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(2, 4)),
             TypedIndexingNode {
-                typ: Type::Int,
+                typ: Type::Option(Box::new(Type::Int)),
                 target: Box::new(
                     TypedAstNode::Identifier(
                         Token::Ident(Position::new(2, 1), "abc".to_string()),
@@ -1293,6 +1347,14 @@ mod tests {
             token: Token::LBrack(Position::new(1, 4)),
             expected: Type::Or(vec![Type::Array(Box::new(Type::Any)), Type::String]),
             actual: Type::Int,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("val a: Int = [1, 2, 3][0]").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrack(Position::new(1, 23)),
+            expected: Type::Int,
+            actual: Type::Option(Box::new(Type::Int)),
         };
         assert_eq!(expected, err);
     }

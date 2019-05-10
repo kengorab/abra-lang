@@ -33,6 +33,7 @@ pub enum Token {
     Slash(Position),
     And(Position),
     Or(Position),
+    Elvis(Position),
     GT(Position),
     GTE(Position),
     LT(Position),
@@ -43,8 +44,9 @@ pub enum Token {
 
     LBrack(Position),
     RBrack(Position),
-    Comma(Position),
     Colon(Position),
+    Comma(Position),
+    Question(Position),
 }
 
 impl Token {
@@ -65,6 +67,7 @@ impl Token {
             Token::Slash(pos) |
             Token::And(pos) |
             Token::Or(pos) |
+            Token::Elvis(pos) |
             Token::GT(pos) |
             Token::GTE(pos) |
             Token::LT(pos) |
@@ -75,7 +78,8 @@ impl Token {
             Token::LBrack(pos) |
             Token::RBrack(pos) |
             Token::Colon(pos) |
-            Token::Comma(pos) => pos
+            Token::Comma(pos) |
+            Token::Question(pos) => pos
         };
         pos.clone()
     }
@@ -106,6 +110,7 @@ impl Display for Token {
             Token::Slash(_) => write!(f, "/"),
             Token::And(_) => write!(f, "&&"),
             Token::Or(_) => write!(f, "||"),
+            Token::Elvis(_) => write!(f, "?:"),
             Token::GT(_) => write!(f, ">"),
             Token::GTE(_) => write!(f, ">="),
             Token::LT(_) => write!(f, "<"),
@@ -116,8 +121,9 @@ impl Display for Token {
 
             Token::LBrack(_) => write!(f, "["),
             Token::RBrack(_) => write!(f, "]"),
-            Token::Comma(_) => write!(f, ","),
             Token::Colon(_) => write!(f, ":"),
+            Token::Comma(_) => write!(f, ","),
+            Token::Question(_) => write!(f, "?"),
         }
     }
 }

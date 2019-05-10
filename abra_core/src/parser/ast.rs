@@ -40,6 +40,7 @@ pub enum BinaryOp {
     Div,
     And,
     Or,
+    Coalesce,
     Lt,
     Lte,
     Gt,
@@ -88,7 +89,18 @@ pub struct IndexingNode {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct TypeIdentifier {
-    pub ident: Token,
-    pub is_arr: bool,
+pub enum TypeIdentifier {
+    Normal { ident: Token },
+    Array { inner: Box<TypeIdentifier> },
+    Option { inner: Box<TypeIdentifier> },
+}
+
+impl TypeIdentifier {
+    pub fn get_ident(&self) -> Token {
+        match self {
+            TypeIdentifier::Normal { ident } => ident.clone(),
+            TypeIdentifier::Array { inner } => inner.get_ident(),
+            TypeIdentifier::Option { inner } => inner.get_ident()
+        }
+    }
 }

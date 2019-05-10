@@ -124,6 +124,7 @@ impl Parser {
             Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
+            Token::Elvis(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
@@ -140,6 +141,42 @@ impl Parser {
             Token::Var(_) => self.parse_binding_decl(),
             _ => self.parse_expr(),
         }
+    }
+
+    fn parse_type_identifier(&mut self) -> Result<TypeIdentifier, ParseError> {
+        let mut left = match self.expect_next()? {
+            ident @ Token::Ident(_, _) => Ok(TypeIdentifier::Normal { ident }),
+            t @ _ => Err(ParseError::ExpectedToken(
+                // FIXME: Not great, using "identifier" here, just so it shows up in the error
+                Token::Ident(t.get_position(), "identifier".to_string()),
+                t,
+            ))
+        }?;
+
+        let mut next_token = self.peek();
+        loop {
+            match next_token {
+                Some(Token::LBrack(_)) => {
+                    self.expect_next()?; // Consume '['
+                    match self.expect_peek()? {
+                        Token::RBrack(_) => self.expect_next(), // Consume ']'
+                        t => Err(ParseError::ExpectedToken(
+                            Token::RBrack(t.get_position()),
+                            t.clone(),
+                        )),
+                    }?;
+                    left = TypeIdentifier::Array { inner: Box::new(left) }
+                }
+                Some(Token::Question(_)) => {
+                    self.expect_next()?; // Consume '?'
+                    left = TypeIdentifier::Option { inner: Box::new(left) }
+                }
+                _ => break
+            }
+            next_token = self.peek();
+        };
+
+        Ok(left)
     }
 
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -160,32 +197,8 @@ impl Parser {
         let type_ann = match self.peek() {
             Some(Token::Colon(_)) => {
                 self.expect_next()?; // Consume ':'
-                match self.expect_next()? {
-                    ident @ Token::Ident(_, _) => {
-                        let is_arr = match self.peek() {
-                            Some(Token::LBrack(_)) => {
-                                self.expect_next()?;
-                                match self.expect_peek()? {
-                                    Token::RBrack(_) => {
-                                        self.expect_next()?;
-                                        Ok(true)
-                                    }
-                                    t => Err(ParseError::ExpectedToken(
-                                        Token::RBrack(t.get_position()),
-                                        t.clone(),
-                                    )),
-                                }
-                            }
-                            Some(_) | None => Ok(false)
-                        }?;
-                        Ok(Some(TypeIdentifier { ident, is_arr }))
-                    }
-                    t @ _ => Err(ParseError::ExpectedToken(
-                        // FIXME: Not great, using "identifier" here, just so it shows up in the error
-                        Token::Ident(t.get_position(), "identifier".to_string()),
-                        t,
-                    ))
-                }
+                let type_ident = self.parse_type_identifier()?;
+                Ok(Some(type_ident))
             }
             Some(_) | None => Ok(None)
         }?;
@@ -236,6 +249,7 @@ impl Parser {
             Token::Slash(_) => BinaryOp::Div,
             Token::And(_) => BinaryOp::And,
             Token::Or(_) => BinaryOp::Or,
+            Token::Elvis(_) => BinaryOp::Coalesce,
             Token::GT(_) => BinaryOp::Gt,
             Token::GTE(_) => BinaryOp::Gte,
             Token::LT(_) => BinaryOp::Lt,
@@ -631,6 +645,183 @@ mod tests {
     }
 
     #[test]
+    fn parse_binary_precedence_coalesce() -> TestResult {
+        let ast = parse("abc ?: true || false")?;
+        let expected = vec![
+            Binary(
+                Token::Or(Position::new(1, 13)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 5)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 8), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Or,
+                    right: Box::new(
+                        Literal(Token::Bool(Position::new(1, 16), false), BoolLiteral(false))
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("false || abc ?: true")?;
+        let expected = vec![
+            Binary(
+                Token::Or(Position::new(1, 7)),
+                BinaryNode {
+                    left: Box::new(
+                        Literal(Token::Bool(Position::new(1, 1), false), BoolLiteral(false))
+                    ),
+                    op: BinaryOp::Or,
+                    right: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 14)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 10), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 17), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("1 + abc ?: 0 != !def ?: true")?;
+        let expected = vec![
+            Binary(
+                Token::Neq(Position::new(1, 14)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Plus(Position::new(1, 3)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
+                                ),
+                                op: BinaryOp::Add,
+                                right: Box::new(
+                                    Binary(
+                                        Token::Elvis(Position::new(1, 9)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 5), "abc".to_string()))
+                                            ),
+                                            op: BinaryOp::Coalesce,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
+                                            ),
+                                        },
+                                    )
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Neq,
+                    right: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 22)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Unary(
+                                        Token::Bang(Position::new(1, 17)),
+                                        UnaryNode {
+                                            op: UnaryOp::Negate,
+                                            expr: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 18), "def".to_string()))
+                                            ),
+                                        },
+                                    )
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Literal(Token::Bool(Position::new(1, 25), true), BoolLiteral(true))
+                                ),
+                            },
+                        )
+                    ),
+                },
+            ),
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("abc ?: def[0] == 0 <= def ?: 9")?;
+        let expected = vec![
+            Binary(
+                Token::Eq(Position::new(1, 15)),
+                BinaryNode {
+                    left: Box::new(
+                        Binary(
+                            Token::Elvis(Position::new(1, 5)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
+                                ),
+                                op: BinaryOp::Coalesce,
+                                right: Box::new(
+                                    Indexing(
+                                        Token::LBrack(Position::new(1, 11)),
+                                        IndexingNode {
+                                            target: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 8), "def".to_string()))
+                                            ),
+                                            index: IndexingMode::Index(Box::new(
+                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
+                                            )),
+                                        },
+                                    )
+                                ),
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Eq,
+                    right: Box::new(
+                        Binary(
+                            Token::LTE(Position::new(1, 20)),
+                            BinaryNode {
+                                left: Box::new(
+                                    Literal(Token::Int(Position::new(1, 18), 0), IntLiteral(0))
+                                ),
+                                op: BinaryOp::Lte,
+                                right: Box::new(
+                                    Binary(
+                                        Token::Elvis(Position::new(1, 27)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Identifier(Token::Ident(Position::new(1, 23), "def".to_string()))
+                                            ),
+                                            op: BinaryOp::Coalesce,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 30), 9), IntLiteral(9))
+                                            ),
+                                        },
+                                    )
+                                ),
+                            },
+                        )
+                    ),
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
@@ -831,40 +1022,75 @@ mod tests {
     }
 
     #[test]
-    fn parse_binding_decls_with_type_annotations() -> TestResult {
-        let ast = parse("val abc: Bool = true\nvar def: Int[]")?;
-        let expected = vec![
-            AstNode::BindingDecl(
-                Token::Val(Position::new(1, 1)),
-                BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                    is_mutable: false,
-                    type_ann: Some(TypeIdentifier {
-                        ident: Token::Ident(Position::new(1, 10), "Bool".to_string()),
-                        is_arr: false,
-                    }),
-                    expr: Some(Box::new(
-                        AstNode::Literal(
-                            Token::Bool(Position::new(1, 17), true),
-                            AstLiteralNode::BoolLiteral(true),
-                        )
-                    )),
-                },
-            ),
-            AstNode::BindingDecl(
-                Token::Var(Position::new(2, 1)),
-                BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "def".to_string()),
-                    is_mutable: true,
-                    type_ann: Some(TypeIdentifier {
-                        ident: Token::Ident(Position::new(2, 10), "Int".to_string()),
-                        is_arr: true,
-                    }),
-                    expr: None,
-                },
-            ),
-        ];
-        Ok(assert_eq!(expected, ast))
+    fn parse_type_annotations() -> TestResult {
+        fn ast_to_type_ann(ast: Vec<AstNode>) -> TypeIdentifier {
+            match ast.into_iter().next() {
+                Some(AstNode::BindingDecl(_, BindingDeclNode { type_ann, .. })) => type_ann.unwrap(),
+                _ => unreachable!()
+            }
+        }
+
+        let ast = parse("var abc: Bool")?;
+        let expected = TypeIdentifier::Normal {
+            ident: Token::Ident(Position::new(1, 10), "Bool".to_string())
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int[]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int[][]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?")?;
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?[]")?;
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Option {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        let ast = parse("var abc: Int?[]?")?;
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Option {
+                    inner: Box::new(TypeIdentifier::Normal {
+                        ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    })
+                })
+            })
+        };
+        let type_ann = ast_to_type_ann(ast);
+        assert_eq!(expected, type_ann);
+
+        Ok(())
     }
 
     #[test]

@@ -211,6 +211,18 @@ impl<'a> VM<'a> {
                         unreachable!()
                     }
                 }
+                Opcode::Coalesce => { // TODO: Rewrite this using jumps when they're implemented!
+                    let fallback = self.pop_expect()?;
+
+                    if let Value::Obj(Obj::OptionObj { value }) = self.pop_expect()? {
+                        match value {
+                            Some(value) => self.push(*value),
+                            None => self.push(fallback)
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
                 Opcode::LTE => self.comp_values(Opcode::LTE)?,
                 Opcode::GT => self.comp_values(Opcode::GT)?,
@@ -237,21 +249,27 @@ impl<'a> VM<'a> {
                                 let len = value.len() as i64;
                                 let idx = if idx < 0 { idx + len } else { idx };
 
-                                match (*value).chars().nth(idx as usize) {
-                                    Some(ch) => Value::Obj(Obj::StringObj {
-                                        value: Box::new(ch.to_string())
-                                    }),
-                                    None => Value::Nil
-                                }
+                                let value = match (*value).chars().nth(idx as usize) {
+                                    Some(ch) => Some(
+                                        Box::new(
+                                            Value::Obj(Obj::StringObj {
+                                                value: Box::new(ch.to_string())
+                                            })
+                                        )
+                                    ),
+                                    None => None
+                                };
+                                Value::Obj(Obj::OptionObj { value })
                             }
                             Value::Obj(Obj::ArrayObj { value }) => {
                                 let len = value.len() as i64;
-                                if idx < -len || idx >= len {
-                                    Value::Nil
+                                let value = if idx < -len || idx >= len {
+                                    None
                                 } else {
                                     let idx = if idx < 0 { idx + len } else { idx };
-                                    *value[idx as usize].clone()
-                                }
+                                    Some(value[idx as usize].clone())
+                                };
+                                Value::Obj(Obj::OptionObj { value })
                             }
                             _ => unreachable!()
                         };

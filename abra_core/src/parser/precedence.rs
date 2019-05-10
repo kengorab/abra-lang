@@ -14,6 +14,8 @@ pub enum Precedence {
     Addition,
     // * /
     Multiplication,
+    // ?:
+    Coalesce,
     // ! - +
     Unary,
     // . () []
@@ -31,8 +33,9 @@ impl Into<u8> for Precedence {
             Precedence::Comparison => 5,
             Precedence::Addition => 6,
             Precedence::Multiplication => 7,
-            Precedence::Unary => 8,
-            Precedence::Call => 9,
+            Precedence::Coalesce => 8,
+            Precedence::Unary => 9,
+            Precedence::Call => 10,
         }
     }
 }

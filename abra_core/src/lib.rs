@@ -23,7 +23,7 @@ pub fn compile_and_run(input: String) -> Option<Value> {
 
                         let mut vm = vm::vm::VM::new(&chunk);
                         match vm.run() {
-                            Ok(Some(v)) => return Some(v),// println!("{}", v),
+                            Ok(Some(v)) => return Some(v),
                             Ok(None) => println!(),
                             Err(e) => eprintln!("{:?}", e)
                         }

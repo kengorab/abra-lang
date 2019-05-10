@@ -201,6 +201,14 @@ impl<'a> Lexer<'a> {
                     Ok(Some(Token::Or(pos)))
                 }
             }
+            '?' => {
+                if let Some(':') = self.peek() {
+                    self.expect_next()?; // Consume ':' token
+                    Ok(Some(Token::Elvis(pos)))
+                } else {
+                    Ok(Some(Token::Question(pos)))
+                }
+            }
             '>' => {
                 if let Some('=') = self.peek() {
                     self.expect_next()?; // Consume '=' token
@@ -295,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_multi_char_operators() {
-        let input = "&& || <= >= != ==";
+        let input = "&& || <= >= != == ?:";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::And(Position::new(1, 1)),
@@ -304,19 +312,21 @@ mod tests {
             Token::GTE(Position::new(1, 10)),
             Token::Neq(Position::new(1, 13)),
             Token::Eq(Position::new(1, 16)),
+            Token::Elvis(Position::new(1, 19)),
         ];
         assert_eq!(expected, tokens);
     }
 
     #[test]
     fn test_tokenize_single_char_separators() {
-        let input = "[ ] , :";
+        let input = "[ ] , : ?";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::LBrack(Position::new(1, 1)),
             Token::RBrack(Position::new(1, 3)),
             Token::Comma(Position::new(1, 5)),
             Token::Colon(Position::new(1, 7)),
+            Token::Question(Position::new(1, 9)),
         ];
         assert_eq!(expected, tokens);
     }
