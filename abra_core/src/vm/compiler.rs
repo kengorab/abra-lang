@@ -136,6 +136,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             (BinaryOp::Gte, Type::Bool) => Opcode::GTE,
             (BinaryOp::Eq, _) => Opcode::Eq,
             (BinaryOp::Neq, _) => Opcode::Neq,
+            (BinaryOp::Coalesce, _) => Opcode::Coalesce,
 
             (BinaryOp::Add, Type::Int) => Opcode::IAdd,
             (BinaryOp::Add, Type::Float) => Opcode::FAdd,
@@ -498,6 +499,32 @@ mod tests {
                 Opcode::LT as u8,
                 Opcode::IConst4 as u8,
                 Opcode::Neq as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_coalesce() {
+        let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
+        let expected = Chunk {
+            lines: vec![11, 1],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Coalesce as u8,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),

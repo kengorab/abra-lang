@@ -211,6 +211,18 @@ impl<'a> VM<'a> {
                         unreachable!()
                     }
                 }
+                Opcode::Coalesce => { // TODO: Rewrite this using jumps when they're implemented!
+                    let fallback = self.pop_expect()?;
+
+                    if let Value::Obj(Obj::OptionObj { value }) = self.pop_expect()? {
+                        match value {
+                            Some(value) => self.push(*value),
+                            None => self.push(fallback)
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
                 Opcode::LTE => self.comp_values(Opcode::LTE)?,
                 Opcode::GT => self.comp_values(Opcode::GT)?,

@@ -364,4 +364,25 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_coalescing() {
+        let input = "\
+          val arr = [1, 2, 3]\n
+          val item = arr[1] ?: 16\n
+          item
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(2);
+        assert_eq!(expected, result);
+
+        let input = "\
+          val arr = [1, 2, 3]\n
+          val item = arr[4] ?: 16\n
+          item
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(16);
+        assert_eq!(expected, result);
+    }
 }
