@@ -44,6 +44,7 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Mul => "*",
         BinaryOp::Div => "/",
         BinaryOp::And => "&&",
+        BinaryOp::Coalesce => "?:",
         BinaryOp::Or => "||",
         BinaryOp::Lt => "<",
         BinaryOp::Lte => "<=",
@@ -51,7 +52,6 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Gte => ">=",
         BinaryOp::Neq => "!=",
         BinaryOp::Eq => "==",
-        _ => unimplemented!()
     }.to_string()
 }
 

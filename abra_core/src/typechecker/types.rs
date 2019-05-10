@@ -26,7 +26,10 @@ impl Type {
                 let typ = Type::from_type_ident(inner, types)?;
                 Some(Type::Array(Box::new(typ)))
             }
-            _ => unimplemented!()
+            TypeIdentifier::Option { inner } => {
+                let typ = Type::from_type_ident(inner, types)?;
+                Some(Type::Option(Box::new(typ)))
+            }
         }
     }
 }
