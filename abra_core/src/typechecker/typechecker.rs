@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -354,6 +354,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             target: Box::new(target),
             index,
         }))
+    }
+
+    fn visit_if_statement(&mut self, _token: Token, _node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
     }
 }
 
