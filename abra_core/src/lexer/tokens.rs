@@ -42,6 +42,8 @@ pub enum Token {
     Neq(Position),
     Bang(Position),
 
+    LParen(Position),
+    RParen(Position),
     LBrack(Position),
     RBrack(Position),
     Colon(Position),
@@ -75,6 +77,8 @@ impl Token {
             Token::Eq(pos) |
             Token::Neq(pos) |
             Token::Bang(pos) |
+            Token::LParen(pos) |
+            Token::RParen(pos) |
             Token::LBrack(pos) |
             Token::RBrack(pos) |
             Token::Colon(pos) |
@@ -119,6 +123,8 @@ impl Display for Token {
             Token::Neq(_) => write!(f, "!="),
             Token::Bang(_) => write!(f, "!"),
 
+            Token::LParen(_) => write!(f, "("),
+            Token::RParen(_) => write!(f, ")"),
             Token::LBrack(_) => write!(f, "["),
             Token::RBrack(_) => write!(f, "]"),
             Token::Colon(_) => write!(f, ":"),

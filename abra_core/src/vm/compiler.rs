@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -173,6 +173,11 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.chunk.write(opcode as u8, token.get_position().line);
 
         Ok(())
+    }
+
+    fn visit_grouped(&mut self, _token: Token, node: TypedGroupedNode) -> Result<(), ()> {
+        let TypedGroupedNode { expr, .. } = node;
+        self.visit(*expr)
     }
 
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<(), ()> {
@@ -401,6 +406,25 @@ mod tests {
                 Opcode::I2F as u8,
                 Opcode::FDiv as u8,
                 Opcode::FSub as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binary_grouped() {
+        let chunk = compile("(1 + 2) * 3");
+        let expected = Chunk {
+            lines: vec![5, 1],
+            constants: vec![],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IMul as u8,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),

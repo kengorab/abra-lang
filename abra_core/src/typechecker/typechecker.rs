@@ -1,8 +1,8 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -159,6 +159,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             op: node.op,
             right: Box::new(typed_right),
         }))
+    }
+
+    fn visit_grouped(&mut self, token: Token, node: GroupedNode) -> Result<TypedAstNode, TypecheckerError> {
+        let GroupedNode { expr } = node;
+        let typed_expr = self.visit(*expr)?;
+        let typ = typed_expr.get_type();
+        let expr = Box::new(typed_expr);
+        Ok(TypedAstNode::Grouped(token, TypedGroupedNode { typ, expr }))
     }
 
     fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -908,9 +916,42 @@ mod tests {
             token: Token::Elvis(Position::new(1, 7)),
             op: BinaryOp::Coalesce,
             ltype: Type::String,
-            rtype: Type::Int
+            rtype: Type::Int,
         };
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_grouped() -> TestResult {
+        let typed_ast = typecheck("(1 + 2)")?;
+        let expected = TypedAstNode::Grouped(
+            Token::LParen(Position::new(1, 1)),
+            TypedGroupedNode {
+                typ: Type::Int,
+                expr: Box::new(
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(1, 4)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(
+                                TypedAstNode::Literal(
+                                    Token::Int(Position::new(1, 2), 1),
+                                    TypedLiteralNode::IntLiteral(1)
+                                )
+                            ),
+                            op: BinaryOp::Add,
+                            right: Box::new(
+                                TypedAstNode::Literal(
+                                    Token::Int(Position::new(1, 6), 2),
+                                    TypedLiteralNode::IntLiteral(2)
+                                )
+                            ),
+                        },
+                    )
+                ),
+            },
+        );
+        Ok(assert_eq!(expected, typed_ast[0]))
     }
 
     #[test]
