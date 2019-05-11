@@ -13,6 +13,8 @@ pub enum Keyword {
     False,
     Val,
     Var,
+    If,
+    Else,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +26,8 @@ pub enum Token {
 
     Val(Position),
     Var(Position),
+    If(Position),
+    Else(Position),
     Ident(Position, String),
 
     Assign(Position),
@@ -62,6 +66,8 @@ impl Token {
 
             Token::Val(pos) |
             Token::Var(pos) |
+            Token::If(pos) |
+            Token::Else(pos) |
             Token::Assign(pos) |
             Token::Plus(pos) |
             Token::Minus(pos) |
@@ -107,6 +113,8 @@ impl Display for Token {
 
             Token::Val(_) => write!(f, "val"),
             Token::Var(_) => write!(f, "var"),
+            Token::If(_) => write!(f, "if"),
+            Token::Else(_) => write!(f, "else"),
             Token::Assign(_) => write!(f, "="),
             Token::Plus(_) => write!(f, "+"),
             Token::Minus(_) => write!(f, "-"),
