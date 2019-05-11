@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -94,6 +94,7 @@ impl Parser {
             Token::String(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
+            Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
             Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
             _ => None,
@@ -237,6 +238,16 @@ impl Parser {
             _ => unreachable!()
         };
         Ok(AstNode::Unary(token, UnaryNode { op, expr: Box::new(expr) }))
+    }
+
+    fn parse_grouped(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        let expr = self.parse_expr()?;
+        match self.expect_next()? {
+            Token::RParen(_) => {
+                Ok(AstNode::Grouped(token, GroupedNode { expr: Box::new(expr) }))
+            }
+            t @ _ => Err(ParseError::UnexpectedToken(t))
+        }
     }
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
@@ -545,6 +556,44 @@ mod tests {
                                 ),
                             },
                         )
+                    ),
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_binary_with_grouping() -> TestResult {
+        let ast = parse("(1 + 2) * 3")?;
+        let expected = vec![
+            Binary(
+                Token::Star(Position::new(1, 9)),
+                BinaryNode {
+                    left: Box::new(
+                        Grouped(
+                            Token::LParen(Position::new(1, 1)),
+                            GroupedNode {
+                                expr: Box::new(
+                                    Binary(
+                                        Token::Plus(Position::new(1, 4)),
+                                        BinaryNode {
+                                            left: Box::new(
+                                                Literal(Token::Int(Position::new(1, 2), 1), IntLiteral(1))
+                                            ),
+                                            op: BinaryOp::Add,
+                                            right: Box::new(
+                                                Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
+                                            ),
+                                        },
+                                    )
+                                )
+                            },
+                        )
+                    ),
+                    op: BinaryOp::Mul,
+                    right: Box::new(
+                        Literal(Token::Int(Position::new(1, 11), 3), IntLiteral(3))
                     ),
                 },
             )

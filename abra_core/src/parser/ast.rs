@@ -5,6 +5,7 @@ pub enum AstNode {
     Literal(Token, AstLiteralNode),
     Unary(Token, UnaryNode),
     Binary(Token, BinaryNode),
+    Grouped(Token, GroupedNode),
     Array(Token, ArrayNode),
     BindingDecl(Token, BindingDeclNode),
     Identifier(Token),
@@ -54,6 +55,11 @@ pub struct BinaryNode {
     pub right: Box<AstNode>,
     pub op: BinaryOp,
     pub left: Box<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct GroupedNode {
+    pub expr: Box<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]

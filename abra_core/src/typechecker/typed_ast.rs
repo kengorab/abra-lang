@@ -7,6 +7,7 @@ pub enum TypedAstNode {
     Literal(Token, TypedLiteralNode),
     Unary(Token, TypedUnaryNode),
     Binary(Token, TypedBinaryNode),
+    Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
     BindingDecl(Token, TypedBindingDeclNode),
     Identifier(Token, Type, bool),
@@ -20,6 +21,7 @@ impl TypedAstNode {
             TypedAstNode::Literal(token, _) => token,
             TypedAstNode::Unary(token, _) => token,
             TypedAstNode::Binary(token, _) => token,
+            TypedAstNode::Grouped(token, _) => token,
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::Identifier(token, _, _) => token,
@@ -38,6 +40,7 @@ impl TypedAstNode {
             },
             TypedAstNode::Unary(_, node) => node.typ.clone(),
             TypedAstNode::Binary(_, node) => node.typ.clone(),
+            TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, typ, _) => typ.clone(),
@@ -68,6 +71,12 @@ pub struct TypedBinaryNode {
     pub right: Box<TypedAstNode>,
     pub op: BinaryOp,
     pub left: Box<TypedAstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedGroupedNode {
+    pub typ: Type,
+    pub expr: Box<TypedAstNode>,
 }
 
 #[derive(Debug, PartialEq)]
