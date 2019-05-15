@@ -11,53 +11,41 @@ macro_rules! int_literal {
     );
 }
 
-//macro_rules! float_literal {
-//    ($pos: expr, $i: expr) => (
-//        match $pos {
-//            (line, col) => {
-//                AstNode::Literal(
-//                    Token::Float(Position::new(line, col), $i),
-//                    AstLiteralNode::FloatLiteral($i)
-//                )
-//            }
-//        }
-//    );
-//}
-//
-//macro_rules! bool_literal {
-//    ($pos: expr, $b: expr) => (
-//        match $pos {
-//            (line, col) => {
-//                AstNode::Literal(
-//                    Token::Bool(Position::new(line, col), $b),
-//                    AstLiteralNode::BoolLiteral($b)
-//                )
-//            }
-//        }
-//    );
-//}
-//
-//macro_rules! string_literal {
-//    ($pos: expr, $str: expr) => (
-//        match $pos {
-//            (line, col) => {
-//                AstNode::Literal(
-//                    Token::String(Position::new(line, col), $str.to_string()),
-//                    AstLiteralNode::StringLiteral($str.to_string())
-//                )
-//            }
-//        }
-//    );
-//}
-//
-//macro_rules! identifier {
-//    ($pos: expr, $ident_name: expr) => (
-//        match $pos {
-//            (line, col) => {
-//                AstNode::Identifier(
-//                    Token::Ident(Position::new(line, col), $ident_name.to_string())
-//                )
-//            }
-//        }
-//    );
-//}
+macro_rules! float_literal {
+    ($pos: expr, $i: expr) => (
+        match $pos {
+            (line, col) => {
+                TypedAstNode::Literal(
+                    Token::Float(Position::new(line, col), $i),
+                    TypedLiteralNode::FloatLiteral($i)
+                )
+            }
+        }
+    );
+}
+
+macro_rules! bool_literal {
+    ($pos: expr, $b: expr) => (
+        match $pos {
+            (line, col) => {
+                TypedAstNode::Literal(
+                    Token::Bool(Position::new(line, col), $b),
+                    TypedLiteralNode::BoolLiteral($b)
+                )
+            }
+        }
+    );
+}
+
+macro_rules! string_literal {
+    ($pos: expr, $str: expr) => (
+        match $pos {
+            (line, col) => {
+                TypedAstNode::Literal(
+                    Token::String(Position::new(line, col), $str.to_string()),
+                    TypedLiteralNode::StringLiteral($str.to_string())
+                )
+            }
+        }
+    );
+}

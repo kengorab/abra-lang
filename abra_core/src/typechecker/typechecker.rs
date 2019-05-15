@@ -414,18 +414,9 @@ mod tests {
     fn typecheck_literals() -> TestResult {
         let typed_ast = typecheck("1 2.34 \"hello\"")?;
         let expected = vec![
-            TypedAstNode::Literal(
-                Token::Int(Position::new(1, 1), 1),
-                TypedLiteralNode::IntLiteral(1),
-            ),
-            TypedAstNode::Literal(
-                Token::Float(Position::new(1, 3), 2.34),
-                TypedLiteralNode::FloatLiteral(2.34),
-            ),
-            TypedAstNode::Literal(
-                Token::String(Position::new(1, 8), "hello".to_string()),
-                TypedLiteralNode::StringLiteral("hello".to_string()),
-            )
+            int_literal!((1, 1), 1),
+            float_literal!((1, 3), 2.34),
+            string_literal!((1, 8), "hello")
         ];
         Ok(assert_eq!(expected, typed_ast))
     }
@@ -439,12 +430,7 @@ mod tests {
                 TypedUnaryNode {
                     typ: Type::Int,
                     op: UnaryOp::Minus,
-                    expr: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 2), 1),
-                            TypedLiteralNode::IntLiteral(1),
-                        ),
-                    ),
+                    expr: Box::new(int_literal!((1, 2), 1)),
                 },
             ),
         ];
@@ -457,12 +443,7 @@ mod tests {
                 TypedUnaryNode {
                     typ: Type::Float,
                     op: UnaryOp::Minus,
-                    expr: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Float(Position::new(1, 2), 2.34),
-                            TypedLiteralNode::FloatLiteral(2.34),
-                        ),
-                    ),
+                    expr: Box::new(float_literal!((1, 2), 2.34)),
                 },
             ),
         ];
@@ -475,12 +456,7 @@ mod tests {
                 TypedUnaryNode {
                     typ: Type::Bool,
                     op: UnaryOp::Negate,
-                    expr: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Bool(Position::new(1, 2), true),
-                            TypedLiteralNode::BoolLiteral(true),
-                        ),
-                    ),
+                    expr: Box::new(bool_literal!((1, 2), true)),
                 },
             ),
         ];
@@ -529,19 +505,9 @@ mod tests {
             Token::Plus(Position::new(1, 3)),
             TypedBinaryNode {
                 typ: Type::Int,
-                left: Box::new(
-                    TypedAstNode::Literal(
-                        Token::Int(Position::new(1, 1), 1),
-                        TypedLiteralNode::IntLiteral(1),
-                    ),
-                ),
+                left: Box::new(int_literal!((1, 1), 1)),
                 op: BinaryOp::Add,
-                right: Box::new(
-                    TypedAstNode::Literal(
-                        Token::Int(Position::new(1, 5), 2),
-                        TypedLiteralNode::IntLiteral(2),
-                    ),
-                ),
+                right: Box::new(int_literal!((1, 5), 2)),
             },
         );
         Ok(assert_eq!(expected, typed_ast[0]))
@@ -559,19 +525,9 @@ mod tests {
                         Token::Plus(Position::new(1, 3)),
                         TypedBinaryNode {
                             typ: Type::Float,
-                            left: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Int(Position::new(1, 1), 1),
-                                    TypedLiteralNode::IntLiteral(1),
-                                ),
-                            ),
+                            left: Box::new(int_literal!((1, 1), 1)),
                             op: BinaryOp::Add,
-                            right: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Float(Position::new(1, 5), 2.3),
-                                    TypedLiteralNode::FloatLiteral(2.3),
-                                ),
-                            ),
+                            right: Box::new(float_literal!((1, 5), 2.3)),
                         },
                     )
                 ),
@@ -582,12 +538,7 @@ mod tests {
                         TypedUnaryNode {
                             typ: Type::Float,
                             op: UnaryOp::Minus,
-                            expr: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Float(Position::new(1, 12), 4.5),
-                                    TypedLiteralNode::FloatLiteral(4.5),
-                                ),
-                            ),
+                            expr: Box::new(float_literal!((1, 12), 4.5)),
                         },
                     )
                 ),
@@ -603,19 +554,9 @@ mod tests {
             Token::Plus(Position::new(1, 10)),
             TypedBinaryNode {
                 typ: Type::String,
-                left: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(1, 1), "hello ".to_string()),
-                        TypedLiteralNode::StringLiteral("hello ".to_string()),
-                    )
-                ),
+                left: Box::new(string_literal!((1, 1), "hello ")),
                 op: BinaryOp::Add,
-                right: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(1, 12), "world".to_string()),
-                        TypedLiteralNode::StringLiteral("world".to_string()),
-                    )
-                ),
+                right: Box::new(string_literal!((1, 12), "world")),
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -625,16 +566,9 @@ mod tests {
             Token::Plus(Position::new(1, 10)),
             TypedBinaryNode {
                 typ: Type::String,
-                left: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(1, 1), "hello ".to_string()),
-                        TypedLiteralNode::StringLiteral("hello ".to_string()),
-                    )
-                ),
+                left: Box::new(string_literal!((1, 1), "hello ")),
                 op: BinaryOp::Add,
-                right: Box::new(
-                    TypedAstNode::Literal(Token::Int(Position::new(1, 12), 3), TypedLiteralNode::IntLiteral(3))
-                ),
+                right: Box::new(int_literal!((1, 12), 3)),
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -644,16 +578,9 @@ mod tests {
             Token::Plus(Position::new(1, 6)),
             TypedBinaryNode {
                 typ: Type::String,
-                left: Box::new(
-                    TypedAstNode::Literal(Token::Float(Position::new(1, 1), 3.14), TypedLiteralNode::FloatLiteral(3.14))
-                ),
+                left: Box::new(float_literal!((1, 1), 3.14)),
                 op: BinaryOp::Add,
-                right: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(1, 8), "world".to_string()),
-                        TypedLiteralNode::StringLiteral("world".to_string()),
-                    )
-                ),
+                right: Box::new(string_literal!((1, 8), "world")),
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -663,16 +590,9 @@ mod tests {
             Token::Plus(Position::new(1, 7)),
             TypedBinaryNode {
                 typ: Type::String,
-                left: Box::new(
-                    TypedAstNode::Literal(Token::Bool(Position::new(1, 1), false), TypedLiteralNode::BoolLiteral(false))
-                ),
+                left: Box::new(bool_literal!((1, 1), false)),
                 op: BinaryOp::Add,
-                right: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(1, 9), " world".to_string()),
-                        TypedLiteralNode::StringLiteral(" world".to_string()),
-                    )
-                ),
+                right: Box::new(string_literal!((1, 9), " world")),
             },
         );
         Ok(assert_eq!(expected, typed_ast[0]))
@@ -737,27 +657,14 @@ mod tests {
                         Token::And(Position::new(1, 6)),
                         TypedBinaryNode {
                             typ: Type::Bool,
-                            left: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Bool(Position::new(1, 1), true),
-                                    TypedLiteralNode::BoolLiteral(true))
-                            ),
+                            left: Box::new(bool_literal!((1, 1), true)),
                             op: BinaryOp::And,
-                            right: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Bool(Position::new(1, 9), true),
-                                    TypedLiteralNode::BoolLiteral(true))
-                            ),
+                            right: Box::new(bool_literal!((1, 9), true)),
                         },
                     ),
                 ),
                 op: BinaryOp::Or,
-                right: Box::new(
-                    TypedAstNode::Literal(
-                        Token::Bool(Position::new(1, 17), false),
-                        TypedLiteralNode::BoolLiteral(false),
-                    ),
-                ),
+                right: Box::new(bool_literal!((1, 17), false)),
             },
         );
         Ok(assert_eq!(expected, typed_ast[0]))
@@ -806,17 +713,9 @@ mod tests {
                 token(Position::new(1, 3)),
                 TypedBinaryNode {
                     typ: Type::Bool,
-                    left: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 1), 1),
-                            TypedLiteralNode::IntLiteral(1))
-                    ),
+                    left: Box::new(int_literal!((1, 1), 1)),
                     op,
-                    right: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 6), 2),
-                            TypedLiteralNode::IntLiteral(2))
-                    ),
+                    right: Box::new(int_literal!((1, 6), 2)),
                 },
             );
             assert_eq!(expected, typed_ast[0]);
@@ -836,17 +735,9 @@ mod tests {
                 token(Position::new(1, 7)),
                 TypedBinaryNode {
                     typ: Type::Bool,
-                    left: Box::new(
-                        TypedAstNode::Literal(
-                            Token::String(Position::new(1, 1), "abc".to_string()),
-                            TypedLiteralNode::StringLiteral("abc".to_string()))
-                    ),
+                    left: Box::new(string_literal!((1, 1), "abc")),
                     op,
-                    right: Box::new(
-                        TypedAstNode::Literal(
-                            Token::String(Position::new(1, 10), "def".to_string()),
-                            TypedLiteralNode::StringLiteral("def".to_string()))
-                    ),
+                    right: Box::new(string_literal!((1, 10), "def")),
                 },
             );
             assert_eq!(expected, typed_ast[0]);
@@ -862,17 +753,9 @@ mod tests {
                 token(Position::new(1, 7)),
                 TypedBinaryNode {
                     typ: Type::Bool,
-                    left: Box::new(
-                        TypedAstNode::Literal(
-                            Token::String(Position::new(1, 1), "abc".to_string()),
-                            TypedLiteralNode::StringLiteral("abc".to_string()))
-                    ),
+                    left: Box::new(string_literal!((1, 1), "abc")),
                     op,
-                    right: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 10), 3),
-                            TypedLiteralNode::IntLiteral(3))
-                    ),
+                    right: Box::new(int_literal!((1, 10), 3)),
                 },
             );
             assert_eq!(expected, typed_ast[0]);
@@ -961,19 +844,9 @@ mod tests {
                         Token::Plus(Position::new(1, 4)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Int(Position::new(1, 2), 1),
-                                    TypedLiteralNode::IntLiteral(1),
-                                )
-                            ),
+                            left: Box::new(int_literal!((1, 2), 1)),
                             op: BinaryOp::Add,
-                            right: Box::new(
-                                TypedAstNode::Literal(
-                                    Token::Int(Position::new(1, 6), 2),
-                                    TypedLiteralNode::IntLiteral(2),
-                                )
-                            ),
+                            right: Box::new(int_literal!((1, 6), 2)),
                         },
                     )
                 ),
@@ -1002,21 +875,9 @@ mod tests {
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::Int)),
                 items: vec![
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 2), 1),
-                            TypedLiteralNode::IntLiteral(1))
-                    ),
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 5), 2),
-                            TypedLiteralNode::IntLiteral(2))
-                    ),
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 8), 3),
-                            TypedLiteralNode::IntLiteral(3))
-                    )
+                    Box::new(int_literal!((1, 2), 1)),
+                    Box::new(int_literal!((1, 5), 2)),
+                    Box::new(int_literal!((1, 8), 3))
                 ],
             },
         );
@@ -1028,16 +889,8 @@ mod tests {
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::String)),
                 items: vec![
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::String(Position::new(1, 2), "a".to_string()),
-                            TypedLiteralNode::StringLiteral("a".to_string()))
-                    ),
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::String(Position::new(1, 7), "b".to_string()),
-                            TypedLiteralNode::StringLiteral("b".to_string()))
-                    )
+                    Box::new(string_literal!((1, 2), "a")),
+                    Box::new(string_literal!((1, 7), "b"))
                 ],
             },
         );
@@ -1049,16 +902,8 @@ mod tests {
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::Bool)),
                 items: vec![
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::Bool(Position::new(1, 2), true),
-                            TypedLiteralNode::BoolLiteral(true))
-                    ),
-                    Box::new(
-                        TypedAstNode::Literal(
-                            Token::Bool(Position::new(1, 8), false),
-                            TypedLiteralNode::BoolLiteral(false))
-                    )
+                    Box::new(bool_literal!((1, 2), true)),
+                    Box::new(bool_literal!((1, 8), false))
                 ],
             },
         );
@@ -1086,12 +931,7 @@ mod tests {
             TypedBindingDeclNode {
                 is_mutable: false,
                 ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                expr: Some(Box::new(
-                    TypedAstNode::Literal(
-                        Token::Int(Position::new(1, 11), 123),
-                        TypedLiteralNode::IntLiteral(123),
-                    )
-                )),
+                expr: Some(Box::new(int_literal!((1, 11), 123))),
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1189,12 +1029,7 @@ mod tests {
                 TypedBindingDeclNode {
                     is_mutable: false,
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                    expr: Some(Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 11), 123),
-                            TypedLiteralNode::IntLiteral(123),
-                        )
-                    )),
+                    expr: Some(Box::new(int_literal!((1, 11), 123))),
                 },
             ),
             TypedAstNode::Identifier(
@@ -1232,12 +1067,7 @@ mod tests {
                 TypedBindingDeclNode {
                     is_mutable: true,
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
-                    expr: Some(Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(1, 11), 123),
-                            TypedLiteralNode::IntLiteral(123),
-                        )
-                    )),
+                    expr: Some(Box::new(int_literal!((1, 11), 123))),
                 },
             ),
             TypedAstNode::Assignment(
@@ -1249,12 +1079,7 @@ mod tests {
                         Type::Int,
                         true,
                     )),
-                    expr: Box::new(
-                        TypedAstNode::Literal(
-                            Token::Int(Position::new(2, 7), 456),
-                            TypedLiteralNode::IntLiteral(456),
-                        )
-                    ),
+                    expr: Box::new(int_literal!((2, 7), 456)),
                 },
             )
         ];
@@ -1298,12 +1123,7 @@ mod tests {
                         false,
                     )
                 ),
-                index: IndexingMode::Index(Box::new(
-                    TypedAstNode::Literal(
-                        Token::Int(Position::new(2, 5), 1),
-                        TypedLiteralNode::IntLiteral(1),
-                    )
-                )),
+                index: IndexingMode::Index(Box::new(int_literal!((2, 5), 1))),
             },
         );
         assert_eq!(expected, typed_ast[1]);
@@ -1339,12 +1159,7 @@ mod tests {
             Token::LBrack(Position::new(2, 6)),
             TypedIndexingNode {
                 typ: Type::String,
-                target: Box::new(
-                    TypedAstNode::Literal(
-                        Token::String(Position::new(2, 1), "abc".to_string()),
-                        TypedLiteralNode::StringLiteral("abc".to_string()),
-                    )
-                ),
+                target: Box::new(string_literal!((2, 1), "abc")),
                 index: IndexingMode::Range(
                     None,
                     Some(Box::new(
@@ -1360,12 +1175,7 @@ mod tests {
                                         false,
                                     )
                                 ),
-                                right: Box::new(
-                                    TypedAstNode::Literal(
-                                        Token::Int(Position::new(2, 14), 2),
-                                        TypedLiteralNode::IntLiteral(2),
-                                    )
-                                ),
+                                right: Box::new(int_literal!((2, 14), 2)),
                             },
                         ),
                     )),
