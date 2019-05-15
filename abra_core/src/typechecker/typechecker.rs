@@ -2,7 +2,7 @@ use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryO
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -356,8 +356,32 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }))
     }
 
-    fn visit_if_statement(&mut self, _token: Token, _node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+        let IfNode { condition, if_block, else_block } = node;
+
+        let condition = self.visit(*condition)?;
+        if condition.get_type() != Type::Bool {
+            let token = condition.get_token().clone();
+            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
+        }
+        let condition = Box::new(condition);
+
+        let if_block: Result<Vec<_>, _> = if_block.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let if_block = if_block?;
+
+        let else_block = match else_block {
+            None => None,
+            Some(nodes) => {
+                let else_block: Result<Vec<_>, _> = nodes.into_iter()
+                    .map(|node| self.visit(node))
+                    .collect();
+                Some(else_block?)
+            }
+        };
+
+        Ok(TypedAstNode::IfStatement(token, TypedIfNode { condition, if_block, else_block }))
     }
 }
 
@@ -940,14 +964,14 @@ mod tests {
                             left: Box::new(
                                 TypedAstNode::Literal(
                                     Token::Int(Position::new(1, 2), 1),
-                                    TypedLiteralNode::IntLiteral(1)
+                                    TypedLiteralNode::IntLiteral(1),
                                 )
                             ),
                             op: BinaryOp::Add,
                             right: Box::new(
                                 TypedAstNode::Literal(
                                     Token::Int(Position::new(1, 6), 2),
-                                    TypedLiteralNode::IntLiteral(2)
+                                    TypedLiteralNode::IntLiteral(2),
                                 )
                             ),
                         },
@@ -1402,5 +1426,62 @@ mod tests {
             actual: Type::Option(Box::new(Type::Int)),
         };
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_if_statement() -> TestResult {
+        let typed_ast = typecheck("if (1 < 2) 1234")?;
+        let expected = TypedAstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            TypedIfNode {
+                condition: Box::new(
+                    TypedAstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        TypedBinaryNode {
+                            typ: Type::Bool,
+                            left: Box::new(int_literal!((1, 5), 1)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 2)),
+                        },
+                    )
+                ),
+                if_block: vec![int_literal!((1, 12), 1234)],
+                else_block: None,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("if (1 < 2) 1234 else 1 + 2")?;
+        let expected = TypedAstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            TypedIfNode {
+                condition: Box::new(
+                    TypedAstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        TypedBinaryNode {
+                            typ: Type::Bool,
+                            left: Box::new(int_literal!((1, 5), 1)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 2)),
+                        },
+                    )
+                ),
+                if_block: vec![int_literal!((1, 12), 1234)],
+                else_block: Some(vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(1, 24)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(int_literal!((1, 22), 1)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 26), 2)),
+                        },
+                    )
+                ]),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
     }
 }
