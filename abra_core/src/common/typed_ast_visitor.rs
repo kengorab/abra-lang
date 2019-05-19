@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 use crate::typechecker::types::Type;
 
@@ -15,6 +15,7 @@ pub trait TypedAstVisitor<V, E> {
             Identifier(tok, typ, is_mutable) => self.visit_identifier(tok, typ, is_mutable),
             Assignment(tok, typ) => self.visit_assignment(tok, typ),
             Indexing(tok, typ) => self.visit_indexing(tok, typ),
+            IfStatement(tok, typ) => self.visit_if_statement(tok, typ),
         }
     }
 
@@ -27,4 +28,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_identifier(&mut self, token: Token, typ: Type, is_mutable: bool) -> Result<V, E>;
     fn visit_assignment(&mut self, token: Token, node: TypedAssignmentNode) -> Result<V, E>;
     fn visit_indexing(&mut self, token: Token, node: TypedIndexingNode) -> Result<V, E>;
+    fn visit_if_statement(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
 }

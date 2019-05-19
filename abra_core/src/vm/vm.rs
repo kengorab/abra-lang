@@ -189,6 +189,7 @@ impl<'a> VM<'a> {
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
                 Opcode::And | Opcode::Or => {
+                    // TODO: Short-circuiting
                     if let Value::Bool(b) = self.pop_expect()? {
                         if let Value::Bool(a) = self.pop_expect()? {
                             let res = if let Opcode::And = instr {
@@ -333,6 +334,20 @@ impl<'a> VM<'a> {
                 Opcode::Load => {
                     if let Value::Int(var_idx) = self.pop_expect()? {
                         self.load(var_idx as usize)?;
+                    } else {
+                        unreachable!()
+                    }
+                }
+                Opcode::Jump => {
+                    let jump_offset = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
+                    self.ip += jump_offset;
+                }
+                Opcode::JumpIfF => {
+                    let jump_offset = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
+                    if let Value::Bool(cond) = self.pop_expect()? {
+                        if !cond {
+                            self.ip += jump_offset;
+                        }
                     } else {
                         unreachable!()
                     }

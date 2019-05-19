@@ -16,7 +16,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Option<Type> {
+    pub fn from_type_ident(type_ident: &TypeIdentifier, types: HashMap<String, Type>) -> Option<Type> {
         match type_ident {
             TypeIdentifier::Normal { ident } => {
                 let type_name = Token::get_ident_name(ident);

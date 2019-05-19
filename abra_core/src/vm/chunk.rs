@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::vm::opcode::Opcode;
 use crate::vm::value::Value;
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Chunk {
     pub(crate) lines: Vec<usize>,
     pub(crate) code: Vec<u8>,
@@ -57,9 +57,9 @@ impl Debug for Chunk {
             match bytecode.next() {
                 Some(&byte) => {
                     write!(f, "{:?}", Opcode::from(byte))?;
-                    if byte == Opcode::Constant as u8 {
+                    if byte == Opcode::Constant as u8 || byte == Opcode::Jump as u8 || byte == Opcode::JumpIfF as u8 {
                         match bytecode.next() {
-                            None => panic!("Byte expected after Constant opcode!"),
+                            None => panic!("Byte expected after Constant|Jump|JumpIfF opcode!"),
                             Some(&byte) => write!(f, ", {:?}", byte)?
                         };
                     }

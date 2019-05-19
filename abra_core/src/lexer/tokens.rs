@@ -13,6 +13,8 @@ pub enum Keyword {
     False,
     Val,
     Var,
+    If,
+    Else,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +26,8 @@ pub enum Token {
 
     Val(Position),
     Var(Position),
+    If(Position),
+    Else(Position),
     Ident(Position, String),
 
     Assign(Position),
@@ -46,6 +50,8 @@ pub enum Token {
     RParen(Position),
     LBrack(Position),
     RBrack(Position),
+    LBrace(Position),
+    RBrace(Position),
     Colon(Position),
     Comma(Position),
     Question(Position),
@@ -62,6 +68,8 @@ impl Token {
 
             Token::Val(pos) |
             Token::Var(pos) |
+            Token::If(pos) |
+            Token::Else(pos) |
             Token::Assign(pos) |
             Token::Plus(pos) |
             Token::Minus(pos) |
@@ -81,6 +89,8 @@ impl Token {
             Token::RParen(pos) |
             Token::LBrack(pos) |
             Token::RBrack(pos) |
+            Token::LBrace(pos) |
+            Token::RBrace(pos) |
             Token::Colon(pos) |
             Token::Comma(pos) |
             Token::Question(pos) => pos
@@ -107,6 +117,8 @@ impl Display for Token {
 
             Token::Val(_) => write!(f, "val"),
             Token::Var(_) => write!(f, "var"),
+            Token::If(_) => write!(f, "if"),
+            Token::Else(_) => write!(f, "else"),
             Token::Assign(_) => write!(f, "="),
             Token::Plus(_) => write!(f, "+"),
             Token::Minus(_) => write!(f, "-"),
@@ -127,6 +139,8 @@ impl Display for Token {
             Token::RParen(_) => write!(f, ")"),
             Token::LBrack(_) => write!(f, "["),
             Token::RBrack(_) => write!(f, "]"),
+            Token::LBrace(_) => write!(f, "{{"),
+            Token::RBrace(_) => write!(f, "}}"),
             Token::Colon(_) => write!(f, ":"),
             Token::Comma(_) => write!(f, ","),
             Token::Question(_) => write!(f, "?"),

@@ -11,6 +11,7 @@ pub enum AstNode {
     Identifier(Token),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
+    IfStatement(Token, IfNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -92,6 +93,13 @@ pub enum IndexingMode<T> {
 pub struct IndexingNode {
     pub target: Box<AstNode>,
     pub index: IndexingMode<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct IfNode {
+    pub condition: Box<AstNode>,
+    pub if_block: Vec<AstNode>,
+    pub else_block: Option<Vec<AstNode>>,
 }
 
 #[derive(Debug, PartialEq)]

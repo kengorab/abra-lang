@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -271,6 +271,44 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 self.chunk.write(Opcode::ArrSlc as u8, line);
             }
         };
+
+        Ok(())
+    }
+
+    fn visit_if_statement(&mut self, token: Token, node: TypedIfNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedIfNode { condition, if_block, else_block } = node;
+
+        self.visit(*condition)?;
+        self.chunk.write(Opcode::JumpIfF as u8, line);
+        self.chunk.write(0, line); // <- Replaced after compiling if-block
+        let jump_offset_slot_idx = self.chunk.code.len();
+
+        // TODO: Purge useless bindings after if/else-blocks exit
+
+        for node in if_block {
+            self.visit(node)?;
+        }
+        if else_block.is_some() {
+            self.chunk.write(Opcode::Jump as u8, line);
+            self.chunk.write(0, line); // <- Replaced after compiling else-block
+        }
+
+        let if_block_len = self.chunk.code.len().checked_sub(jump_offset_slot_idx)
+            .expect("jump offset slot should be <= end of if-block");
+        *self.chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
+
+        let jump_offset_slot_idx = self.chunk.code.len();
+
+        if let Some(else_block) = else_block {
+            for node in else_block {
+                self.visit(node)?;
+            }
+            let else_block_len = self.chunk.code.len().checked_sub(jump_offset_slot_idx)
+                .expect("jump offset slot should be <= end of else-block");
+            *self.chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
+        }
 
         Ok(())
     }
@@ -815,6 +853,84 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IAdd as u8,
                 Opcode::ArrSlc as u8,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_if_else_statements() {
+        let chunk = compile("if (1 == 2) 123 else 456");
+        let expected = Chunk {
+            lines: vec![11, 1],
+            constants: vec![Value::Int(123), Value::Int(456)],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 4,
+                Opcode::Constant as u8, 0,
+                Opcode::Jump as u8, 2,
+                Opcode::Constant as u8, 1,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("if (1 == 2) 123");
+        let expected = Chunk {
+            lines: vec![7, 1],
+            constants: vec![Value::Int(123)],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("if (1 == 2) { } else { 456 }");
+        let expected = Chunk {
+            lines: vec![9, 1],
+            constants: vec![Value::Int(456)],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 2,
+                Opcode::Jump as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::Return as u8
+            ],
+            bindings: HashMap::new(),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
+        let expected = Chunk {
+            lines: vec![20, 1],
+            constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 4,
+                Opcode::Constant as u8, 0,
+                Opcode::Jump as u8, 11,
+                Opcode::IConst3 as u8,
+                Opcode::IConst4 as u8,
+                Opcode::LT as u8,
+                Opcode::JumpIfF as u8, 4,
+                Opcode::Constant as u8, 1,
+                Opcode::Jump as u8, 2,
+                Opcode::Constant as u8, 2,
                 Opcode::Return as u8
             ],
             bindings: HashMap::new(),

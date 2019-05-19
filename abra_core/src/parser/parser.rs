@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -140,6 +140,7 @@ impl Parser {
         match self.expect_peek()? {
             Token::Val(_) => self.parse_binding_decl(),
             Token::Var(_) => self.parse_binding_decl(),
+            Token::If(_) => self.parse_if_statement(),
             _ => self.parse_expr(),
         }
     }
@@ -214,6 +215,58 @@ impl Parser {
         };
 
         Ok(AstNode::BindingDecl(token, BindingDeclNode { ident, is_mutable, type_ann, expr }))
+    }
+
+    #[inline]
+    fn parse_expr_or_block(&mut self) -> Result<Vec<AstNode>, ParseError> {
+        match self.peek() {
+            Some(Token::LBrace(_)) => {
+                self.expect_next()?; // Consume '{'
+                let mut body = Vec::<AstNode>::new();
+                loop {
+                    match self.peek() {
+                        Some(Token::RBrace(_)) => {
+                            self.expect_next()?; // Consume '}'
+                            break Ok(body);
+                        }
+                        Some(_) => body.push(self.parse_stmt()?),
+                        None => break Err(ParseError::UnexpectedEof)
+                    }
+                }
+            }
+            _ => Ok(vec![self.parse_expr()?])
+        }
+    }
+
+    fn parse_if_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+
+        // Consume '(', or fail
+        match self.expect_next()? {
+            Token::LParen(_) => Ok(()),
+            t @ _ => Err(ParseError::ExpectedToken(Token::LParen(t.get_position()), t))
+        }?;
+        let condition = Box::new(self.parse_expr()?);
+        // Consume ')', or fail
+        match self.expect_next()? {
+            Token::RParen(_) => Ok(()),
+            t @ _ => Err(ParseError::ExpectedToken(Token::RParen(t.get_position()), t))
+        }?;
+
+        let if_block = self.parse_expr_or_block()?;
+
+        let else_block = if let Some(Token::Else(_)) = self.peek() {
+            self.expect_next()?; // Consume 'else'
+            if let Some(Token::If(_)) = self.peek() {
+                Some(vec![self.parse_if_statement()?])
+            } else {
+                Some(self.parse_expr_or_block()?)
+            }
+        } else {
+            None
+        };
+
+        Ok(AstNode::IfStatement(token, IfNode { condition, if_block, else_block }))
     }
 
     fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
@@ -363,7 +416,6 @@ mod tests {
     use super::*;
     use crate::lexer::tokens::{Token, Position};
     use crate::parser::ast::AstNode::*;
-    use crate::parser::ast::AstLiteralNode::*;
     use crate::lexer::lexer::tokenize;
 
     type TestResult = Result<(), ParseError>;
@@ -377,12 +429,12 @@ mod tests {
     fn parse_literals() -> TestResult {
         let ast = parse("123 4.56 0.789 \"hello world\" true false")?;
         let expected = vec![
-            Literal(Token::Int(Position::new(1, 1), 123), IntLiteral(123)),
-            Literal(Token::Float(Position::new(1, 5), 4.56), FloatLiteral(4.56)),
-            Literal(Token::Float(Position::new(1, 10), 0.789), FloatLiteral(0.789)),
-            Literal(Token::String(Position::new(1, 16), "hello world".to_string()), StringLiteral("hello world".to_string())),
-            Literal(Token::Bool(Position::new(1, 30), true), BoolLiteral(true)),
-            Literal(Token::Bool(Position::new(1, 35), false), BoolLiteral(false)),
+            int_literal!((1, 1), 123),
+            float_literal!((1, 5), 4.56),
+            float_literal!((1, 10), 0.789),
+            string_literal!((1, 16), "hello world"),
+            bool_literal!((1, 30), true),
+            bool_literal!((1, 35), false),
         ];
         Ok(assert_eq!(expected, ast))
     }
@@ -395,9 +447,7 @@ mod tests {
                 Token::Minus(Position::new(1, 1)),
                 UnaryNode {
                     op: UnaryOp::Minus,
-                    expr: Box::new(
-                        Literal(Token::Int(Position::new(1, 2), 123), IntLiteral(123))
-                    ),
+                    expr: Box::new(int_literal!((1, 2), 123)),
                 },
             )
         ];
@@ -409,9 +459,7 @@ mod tests {
                 Token::Bang(Position::new(1, 1)),
                 UnaryNode {
                     op: UnaryOp::Negate,
-                    expr: Box::new(
-                        Literal(Token::Bool(Position::new(1, 2), true), BoolLiteral(true))
-                    ),
+                    expr: Box::new(bool_literal!((1, 2), true)),
                 },
             )
         ];
@@ -440,13 +488,9 @@ mod tests {
             Binary(
                 Token::Plus(Position::new(1, 5)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(Token::Float(Position::new(1, 1), 1.2), FloatLiteral(1.2))
-                    ),
+                    left: Box::new(float_literal!((1, 1), 1.2)),
                     op: BinaryOp::Add,
-                    right: Box::new(
-                        Literal(Token::Int(Position::new(1, 7), 3), IntLiteral(3))
-                    ),
+                    right: Box::new(int_literal!((1, 7), 3)),
                 },
             )
         ];
@@ -457,19 +501,9 @@ mod tests {
             Binary(
                 Token::Plus(Position::new(1, 10)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(
-                            Token::String(Position::new(1, 1), "hello ".to_string()),
-                            StringLiteral("hello ".to_string()),
-                        )
-                    ),
+                    left: Box::new(string_literal!((1, 1), "hello ")),
                     op: BinaryOp::Add,
-                    right: Box::new(
-                        Literal(
-                            Token::String(Position::new(1, 12), "world".to_string()),
-                            StringLiteral("world".to_string()),
-                        )
-                    ),
+                    right: Box::new(string_literal!((1, 12), "world")),
                 },
             )
         ];
@@ -483,18 +517,14 @@ mod tests {
             Binary(
                 Token::Plus(Position::new(1, 3)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                    ),
+                    left: Box::new(int_literal!((1, 1), 1)),
                     op: BinaryOp::Add,
                     right: Box::new(
                         Unary(
                             Token::Minus(Position::new(1, 5)),
                             UnaryNode {
                                 op: UnaryOp::Minus,
-                                expr: Box::new(
-                                    Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
-                                ),
+                                expr: Box::new(int_literal!((1, 6), 2)),
                             },
                         )
                     ),
@@ -511,18 +541,14 @@ mod tests {
             Binary(
                 Token::And(Position::new(1, 6)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(Token::Bool(Position::new(1, 1), true), BoolLiteral(true))
-                    ),
+                    left: Box::new(bool_literal!((1, 1), true)),
                     op: BinaryOp::And,
                     right: Box::new(
                         Unary(
                             Token::Bang(Position::new(1, 9)),
                             UnaryNode {
                                 op: UnaryOp::Negate,
-                                expr: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 10), false), BoolLiteral(false))
-                                ),
+                                expr: Box::new(bool_literal!((1, 10), false)),
                             },
                         )
                     ),
@@ -539,21 +565,15 @@ mod tests {
             Binary(
                 Token::Plus(Position::new(1, 3)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                    ),
+                    left: Box::new(int_literal!((1, 1), 1)),
                     op: BinaryOp::Add,
                     right: Box::new(
                         Binary(
                             Token::Star(Position::new(1, 7)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
-                                ),
+                                left: Box::new(int_literal!((1, 5), 2)),
                                 op: BinaryOp::Mul,
-                                right: Box::new(
-                                    Literal(Token::Int(Position::new(1, 9), 3), IntLiteral(3))
-                                ),
+                                right: Box::new(int_literal!((1, 9), 3)),
                             },
                         )
                     ),
@@ -578,13 +598,9 @@ mod tests {
                                     Binary(
                                         Token::Plus(Position::new(1, 4)),
                                         BinaryNode {
-                                            left: Box::new(
-                                                Literal(Token::Int(Position::new(1, 2), 1), IntLiteral(1))
-                                            ),
+                                            left: Box::new(int_literal!((1, 2), 1)),
                                             op: BinaryOp::Add,
-                                            right: Box::new(
-                                                Literal(Token::Int(Position::new(1, 6), 2), IntLiteral(2))
-                                            ),
+                                            right: Box::new(int_literal!((1, 6), 2)),
                                         },
                                     )
                                 )
@@ -592,9 +608,7 @@ mod tests {
                         )
                     ),
                     op: BinaryOp::Mul,
-                    right: Box::new(
-                        Literal(Token::Int(Position::new(1, 11), 3), IntLiteral(3))
-                    ),
+                    right: Box::new(int_literal!((1, 11), 3)),
                 },
             )
         ];
@@ -612,13 +626,9 @@ mod tests {
                         Binary(
                             Token::And(Position::new(1, 6)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 1), true), BoolLiteral(true))
-                                ),
+                                left: Box::new(bool_literal!((1, 1), true)),
                                 op: BinaryOp::And,
-                                right: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 9), true), BoolLiteral(true))
-                                ),
+                                right: Box::new(bool_literal!((1, 9), true)),
                             },
                         )
                     ),
@@ -627,13 +637,9 @@ mod tests {
                         Binary(
                             Token::And(Position::new(1, 23)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 17), false), BoolLiteral(false))
-                                ),
+                                left: Box::new(bool_literal!((1, 17), false)),
                                 op: BinaryOp::And,
-                                right: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 26), false), BoolLiteral(false))
-                                ),
+                                right: Box::new(bool_literal!((1, 26), false)),
                             },
                         )
                     ),
@@ -655,20 +661,14 @@ mod tests {
                                     Binary(
                                         Token::Plus(Position::new(1, 3)),
                                         BinaryNode {
-                                            left: Box::new(
-                                                Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                                            ),
+                                            left: Box::new(int_literal!((1, 1), 1)),
                                             op: BinaryOp::Add,
-                                            right: Box::new(
-                                                Literal(Token::Int(Position::new(1, 5), 2), IntLiteral(2))
-                                            ),
+                                            right: Box::new(int_literal!((1, 5), 2)),
                                         },
                                     )
                                 ),
                                 op: BinaryOp::Lte,
-                                right: Box::new(
-                                    Literal(Token::Int(Position::new(1, 10), 3), IntLiteral(3))
-                                ),
+                                right: Box::new(int_literal!((1, 10), 3)),
                             },
                         )
                     ),
@@ -677,13 +677,9 @@ mod tests {
                         Binary(
                             Token::GTE(Position::new(1, 18)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Int(Position::new(1, 15), 11), IntLiteral(11))
-                                ),
+                                left: Box::new(int_literal!((1, 15), 11)),
                                 op: BinaryOp::Gte,
-                                right: Box::new(
-                                    Literal(Token::Int(Position::new(1, 21), 13), IntLiteral(13))
-                                ),
+                                right: Box::new(int_literal!((1, 21), 13)),
                             },
                         )
                     ),
@@ -704,20 +700,14 @@ mod tests {
                         Binary(
                             Token::Elvis(Position::new(1, 5)),
                             BinaryNode {
-                                left: Box::new(
-                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
-                                ),
+                                left: Box::new(identifier!((1, 1), "abc")),
                                 op: BinaryOp::Coalesce,
-                                right: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 8), true), BoolLiteral(true))
-                                ),
+                                right: Box::new(bool_literal!((1, 8), true)),
                             },
                         )
                     ),
                     op: BinaryOp::Or,
-                    right: Box::new(
-                        Literal(Token::Bool(Position::new(1, 16), false), BoolLiteral(false))
-                    ),
+                    right: Box::new(bool_literal!((1, 16), false)),
                 },
             )
         ];
@@ -728,21 +718,15 @@ mod tests {
             Binary(
                 Token::Or(Position::new(1, 7)),
                 BinaryNode {
-                    left: Box::new(
-                        Literal(Token::Bool(Position::new(1, 1), false), BoolLiteral(false))
-                    ),
+                    left: Box::new(bool_literal!((1, 1), false)),
                     op: BinaryOp::Or,
                     right: Box::new(
                         Binary(
                             Token::Elvis(Position::new(1, 14)),
                             BinaryNode {
-                                left: Box::new(
-                                    Identifier(Token::Ident(Position::new(1, 10), "abc".to_string()))
-                                ),
+                                left: Box::new(identifier!((1, 10), "abc")),
                                 op: BinaryOp::Coalesce,
-                                right: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 17), true), BoolLiteral(true))
-                                ),
+                                right: Box::new(bool_literal!((1, 17), true)),
                             },
                         )
                     ),
@@ -760,21 +744,15 @@ mod tests {
                         Binary(
                             Token::Plus(Position::new(1, 3)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Int(Position::new(1, 1), 1), IntLiteral(1))
-                                ),
+                                left: Box::new(int_literal!((1, 1), 1)),
                                 op: BinaryOp::Add,
                                 right: Box::new(
                                     Binary(
                                         Token::Elvis(Position::new(1, 9)),
                                         BinaryNode {
-                                            left: Box::new(
-                                                Identifier(Token::Ident(Position::new(1, 5), "abc".to_string()))
-                                            ),
+                                            left: Box::new(identifier!((1, 5), "abc")),
                                             op: BinaryOp::Coalesce,
-                                            right: Box::new(
-                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
-                                            ),
+                                            right: Box::new(int_literal!((1, 12), 0)),
                                         },
                                     )
                                 ),
@@ -791,16 +769,12 @@ mod tests {
                                         Token::Bang(Position::new(1, 17)),
                                         UnaryNode {
                                             op: UnaryOp::Negate,
-                                            expr: Box::new(
-                                                Identifier(Token::Ident(Position::new(1, 18), "def".to_string()))
-                                            ),
+                                            expr: Box::new(identifier!((1, 18), "def")),
                                         },
                                     )
                                 ),
                                 op: BinaryOp::Coalesce,
-                                right: Box::new(
-                                    Literal(Token::Bool(Position::new(1, 25), true), BoolLiteral(true))
-                                ),
+                                right: Box::new(bool_literal!((1, 25), true)),
                             },
                         )
                     ),
@@ -818,20 +792,14 @@ mod tests {
                         Binary(
                             Token::Elvis(Position::new(1, 5)),
                             BinaryNode {
-                                left: Box::new(
-                                    Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
-                                ),
+                                left: Box::new(identifier!((1, 1), "abc")),
                                 op: BinaryOp::Coalesce,
                                 right: Box::new(
                                     Indexing(
                                         Token::LBrack(Position::new(1, 11)),
                                         IndexingNode {
-                                            target: Box::new(
-                                                Identifier(Token::Ident(Position::new(1, 8), "def".to_string()))
-                                            ),
-                                            index: IndexingMode::Index(Box::new(
-                                                Literal(Token::Int(Position::new(1, 12), 0), IntLiteral(0))
-                                            )),
+                                            target: Box::new(identifier!((1, 8), "def")),
+                                            index: IndexingMode::Index(Box::new(int_literal!((1, 12), 0))),
                                         },
                                     )
                                 ),
@@ -843,21 +811,15 @@ mod tests {
                         Binary(
                             Token::LTE(Position::new(1, 20)),
                             BinaryNode {
-                                left: Box::new(
-                                    Literal(Token::Int(Position::new(1, 18), 0), IntLiteral(0))
-                                ),
+                                left: Box::new(int_literal!((1, 18), 0)),
                                 op: BinaryOp::Lte,
                                 right: Box::new(
                                     Binary(
                                         Token::Elvis(Position::new(1, 27)),
                                         BinaryNode {
-                                            left: Box::new(
-                                                Identifier(Token::Ident(Position::new(1, 23), "def".to_string()))
-                                            ),
+                                            left: Box::new(identifier!((1, 23), "def")),
                                             op: BinaryOp::Coalesce,
-                                            right: Box::new(
-                                                Literal(Token::Int(Position::new(1, 30), 9), IntLiteral(9))
-                                            ),
+                                            right: Box::new(int_literal!((1, 30), 9)),
                                         },
                                     )
                                 ),
@@ -915,22 +877,10 @@ mod tests {
             Token::LBrack(Position::new(1, 1)),
             ArrayNode {
                 items: vec![
-                    Box::new(AstNode::Literal(
-                        Token::Int(Position::new(1, 2), 1),
-                        AstLiteralNode::IntLiteral(1),
-                    )),
-                    Box::new(AstNode::Literal(
-                        Token::Bool(Position::new(1, 5), true),
-                        AstLiteralNode::BoolLiteral(true),
-                    )),
-                    Box::new(AstNode::Literal(
-                        Token::String(Position::new(1, 11), "a".to_string()),
-                        AstLiteralNode::StringLiteral("a".to_string()),
-                    )),
-                    Box::new(AstNode::Literal(
-                        Token::Float(Position::new(1, 16), 3.14),
-                        AstLiteralNode::FloatLiteral(3.14),
-                    ))
+                    Box::new(int_literal!((1, 2), 1)),
+                    Box::new(bool_literal!((1, 5), true)),
+                    Box::new(string_literal!((1, 11), "a")),
+                    Box::new(float_literal!((1, 16), 3.14))
                 ]
             },
         );
@@ -948,14 +898,8 @@ mod tests {
                         Token::LBrack(Position::new(1, 2)),
                         ArrayNode {
                             items: vec![
-                                Box::new(AstNode::Literal(
-                                    Token::Int(Position::new(1, 3), 1),
-                                    AstLiteralNode::IntLiteral(1),
-                                )),
-                                Box::new(AstNode::Literal(
-                                    Token::Int(Position::new(1, 6), 2),
-                                    AstLiteralNode::IntLiteral(2),
-                                )),
+                                Box::new(int_literal!((1, 3), 1)),
+                                Box::new(int_literal!((1, 6), 2)),
                             ]
                         },
                     )),
@@ -963,14 +907,8 @@ mod tests {
                         Token::LBrack(Position::new(1, 10)),
                         ArrayNode {
                             items: vec![
-                                Box::new(AstNode::Literal(
-                                    Token::Int(Position::new(1, 11), 3),
-                                    AstLiteralNode::IntLiteral(3),
-                                )),
-                                Box::new(AstNode::Literal(
-                                    Token::Int(Position::new(1, 14), 4),
-                                    AstLiteralNode::IntLiteral(4),
-                                )),
+                                Box::new(int_literal!((1, 11), 3)),
+                                Box::new(int_literal!((1, 14), 4)),
                             ]
                         },
                     ))
@@ -1043,13 +981,9 @@ mod tests {
                         AstNode::Binary(
                             Token::Plus(Position::new(1, 13)),
                             BinaryNode {
-                                left: Box::new(
-                                    AstNode::Literal(Token::Int(Position::new(1, 11), 1), AstLiteralNode::IntLiteral(1))
-                                ),
+                                left: Box::new(int_literal!((1, 11), 1)),
                                 op: BinaryOp::Add,
-                                right: Box::new(
-                                    AstNode::Literal(Token::String(Position::new(1, 15), "a".to_string()), AstLiteralNode::StringLiteral("a".to_string()))
-                                ),
+                                right: Box::new(string_literal!((1, 15), "a")),
                             },
                         ),
                     )),
@@ -1061,9 +995,7 @@ mod tests {
                     ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
                     is_mutable: true,
                     type_ann: None,
-                    expr: Some(Box::new(
-                        AstNode::Literal(Token::Int(Position::new(2, 11), 1), AstLiteralNode::IntLiteral(1))
-                    )),
+                    expr: Some(Box::new(int_literal!((2, 11), 1))),
                 },
             ),
         ];
@@ -1181,7 +1113,7 @@ mod tests {
     #[test]
     fn parse_ident() -> TestResult {
         let ast = parse("abcd")?;
-        let expected = AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()));
+        let expected = identifier!((1, 1), "abcd");
         Ok(assert_eq!(expected, ast[0]))
     }
 
@@ -1191,12 +1123,8 @@ mod tests {
         let expected = AstNode::Assignment(
             Token::Assign(Position::new(1, 5)),
             AssignmentNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
-                ),
-                expr: Box::new(
-                    AstNode::Literal(Token::Int(Position::new(1, 7), 123), AstLiteralNode::IntLiteral(123))
-                ),
+                target: Box::new(identifier!((1, 1), "abc")),
+                expr: Box::new(int_literal!((1, 7), 123)),
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1205,12 +1133,8 @@ mod tests {
         let expected = AstNode::Assignment(
             Token::Assign(Position::new(1, 5)),
             AssignmentNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abc".to_string()))
-                ),
-                expr: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 7), "def".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "abc")),
+                expr: Box::new(identifier!((1, 7), "def")),
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1219,19 +1143,13 @@ mod tests {
         let expected = AstNode::Assignment(
             Token::Assign(Position::new(1, 3)),
             AssignmentNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "a".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "a")),
                 expr: Box::new(
                     AstNode::Assignment(
                         Token::Assign(Position::new(1, 7)),
                         AssignmentNode {
-                            target: Box::new(
-                                AstNode::Identifier(Token::Ident(Position::new(1, 5), "b".to_string()))
-                            ),
-                            expr: Box::new(
-                                AstNode::Identifier(Token::Ident(Position::new(1, 9), "c".to_string()))
-                            ),
+                            target: Box::new(identifier!((1, 5), "b")),
+                            expr: Box::new(identifier!((1, 9), "c")),
                         },
                     )
                 ),
@@ -1246,15 +1164,8 @@ mod tests {
         let expected = AstNode::Indexing(
             Token::LBrack(Position::new(1, 5)),
             IndexingNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
-                ),
-                index: IndexingMode::Index(Box::new(
-                    AstNode::Literal(
-                        Token::Int(Position::new(1, 6), 1),
-                        AstLiteralNode::IntLiteral(1),
-                    )
-                )),
+                target: Box::new(identifier!((1, 1), "abcd")),
+                index: IndexingMode::Index(Box::new(int_literal!((1, 6), 1))),
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1263,22 +1174,10 @@ mod tests {
         let expected = AstNode::Indexing(
             Token::LBrack(Position::new(1, 5)),
             IndexingNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
-                    Some(Box::new(
-                        AstNode::Literal(
-                            Token::Int(Position::new(1, 6), 1),
-                            AstLiteralNode::IntLiteral(1),
-                        )
-                    )),
-                    Some(Box::new(
-                        AstNode::Literal(
-                            Token::Int(Position::new(1, 8), 3),
-                            AstLiteralNode::IntLiteral(3),
-                        )
-                    )),
+                    Some(Box::new(int_literal!((1, 6), 1))),
+                    Some(Box::new(int_literal!((1, 8), 3))),
                 ),
             },
         );
@@ -1288,9 +1187,7 @@ mod tests {
         let expected = AstNode::Indexing(
             Token::LBrack(Position::new(1, 5)),
             IndexingNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
                     Some(Box::new(
                         AstNode::Identifier(
@@ -1307,9 +1204,7 @@ mod tests {
         let expected = AstNode::Indexing(
             Token::LBrack(Position::new(1, 5)),
             IndexingNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "abcd".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
                     None,
                     Some(Box::new(
@@ -1329,21 +1224,14 @@ mod tests {
         let expected = AstNode::Indexing(
             Token::LBrack(Position::new(1, 2)),
             IndexingNode {
-                target: Box::new(
-                    AstNode::Identifier(Token::Ident(Position::new(1, 1), "a".to_string()))
-                ),
+                target: Box::new(identifier!((1, 1), "a")),
                 index: IndexingMode::Index(Box::new(
                     AstNode::Indexing(
                         Token::LBrack(Position::new(1, 4)),
                         IndexingNode {
-                            target: Box::new(
-                                AstNode::Identifier(Token::Ident(Position::new(1, 3), "b".to_string())),
-                            ),
+                            target: Box::new(identifier!((1, 3), "b")),
                             index: IndexingMode::Index(Box::new(
-                                AstNode::Literal(
-                                    Token::Int(Position::new(1, 5), 2),
-                                    AstLiteralNode::IntLiteral(2),
-                                )
+                                int_literal!((1, 5), 2)
                             )),
                         },
                     )
@@ -1364,25 +1252,19 @@ mod tests {
                                 Token::LBrack(Position::new(1, 1)),
                                 ArrayNode {
                                     items: vec![
-                                        Box::new(AstNode::Identifier(Token::Ident(Position::new(1, 2), "a".to_string()))),
-                                        Box::new(AstNode::Identifier(Token::Ident(Position::new(1, 5), "b".to_string()))),
+                                        Box::new(identifier!((1, 2), "a")),
+                                        Box::new(identifier!((1, 5), "b")),
                                     ],
                                 },
                             )
                         ),
                         index: IndexingMode::Index(Box::new(
-                            AstNode::Literal(
-                                Token::Int(Position::new(1, 8), 1),
-                                AstLiteralNode::IntLiteral(1),
-                            )
+                            int_literal!((1, 8), 1)
                         )),
                     },
                 )),
                 index: IndexingMode::Index(Box::new(
-                    AstNode::Literal(
-                        Token::Int(Position::new(1, 11), 2),
-                        AstLiteralNode::IntLiteral(2),
-                    )
+                    int_literal!((1, 11), 2)
                 )),
             },
         );
@@ -1406,5 +1288,146 @@ mod tests {
         let err = parse("abcd[1:1:").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 9)));
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn parse_if_statement() -> TestResult {
+        // Each phase of testing tests permutations of with/without braces
+
+        let ast = parse("if (3 < 4)   \"hello\"")?;
+        let expected = AstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            IfNode {
+                condition: Box::new(
+                    AstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 5), 3)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 4)),
+                        },
+                    )
+                ),
+                if_block: vec![
+                    string_literal!((1, 14), "hello")
+                ],
+                else_block: None,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" }")?;
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("if (3 < 4)   \"hello\"   else   \"world\"")?;
+        let expected = AstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            IfNode {
+                condition: Box::new(
+                    AstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 5), 3)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 4)),
+                        },
+                    )
+                ),
+                if_block: vec![
+                    string_literal!((1, 14), "hello")
+                ],
+                else_block: Some(vec![
+                    string_literal!((1, 31), "world")
+                ]),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" } else { \"world\" }")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" } else   \"world\"")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4)   \"hello\"   else { \"world\" }")?;
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("if (3 < 4)   \"hello\"   else if (true)   \"world\"   else   \"!\"")?;
+        let expected = AstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            IfNode {
+                condition: Box::new(
+                    AstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 5), 3)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 4)),
+                        },
+                    )
+                ),
+                if_block: vec![
+                    string_literal!((1, 14), "hello")
+                ],
+                else_block: Some(vec![
+                    AstNode::IfStatement(
+                        Token::If(Position::new(1, 29)),
+                        IfNode {
+                            condition: Box::new(bool_literal!((1, 33), true)),
+                            if_block: vec![
+                                string_literal!((1, 41), "world")
+                            ],
+                            else_block: Some(vec![
+                                string_literal!((1, 58), "!")
+                            ]),
+                        },
+                    )
+                ]),
+            },
+        );
+
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" } else if (true)   \"world\"   else   \"!\"")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" } else if (true) { \"world\" } else   \"!\"")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4) { \"hello\" } else if (true) { \"world\" } else { \"!\" }")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4)   \"hello\"   else if (true) { \"world\" } else { \"!\" }")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4)   \"hello\"   else if (true)   \"world\"   else { \"!\" }")?;
+        assert_eq!(expected, ast[0]);
+        let ast = parse("if (3 < 4)   \"hello\"   else if (true) { \"world\" } else   \"!\"")?;
+        assert_eq!(expected, ast[0]);
+
+        // Test with statement inside block
+        let ast = parse("if (3 < 4) { val a = \"hello\" a }")?;
+        let expected = AstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            IfNode {
+                condition: Box::new(
+                    AstNode::Binary(
+                        Token::LT(Position::new(1, 7)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 5), 3)),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 9), 4)),
+                        },
+                    )
+                ),
+                if_block: vec![
+                    AstNode::BindingDecl(
+                        Token::Val(Position::new(1, 14)),
+                        BindingDeclNode {
+                            is_mutable: false,
+                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
+                            type_ann: None,
+                            expr: Some(Box::new(string_literal!((1, 22), "hello"))),
+                        },
+                    ),
+                    identifier!((1, 30), "a")
+                ],
+                else_block: None,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 }

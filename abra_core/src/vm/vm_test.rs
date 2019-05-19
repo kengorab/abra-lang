@@ -385,4 +385,74 @@ mod tests {
         let expected = Value::Int(16);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_if_else_statements() {
+        let input = "\
+          if (1 != 2) {\
+            123\
+          } else {\
+            456\
+          }
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+
+        let input = "\
+          if (1 == 2) {\
+            123\
+          } else {\
+            456\
+          }
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(456);
+        assert_eq!(expected, result);
+
+        let input = "\
+          if (1 == 2) {\
+            123\
+          } else if (2 > 3) {\
+            456\
+          } else if (4 < 6) {\
+            789\
+          } else {\
+            1011\
+          }
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(789);
+        assert_eq!(expected, result);
+
+        let input = "\
+          val a = 123\
+          if (1 != 2) {\
+            val b = 123\
+            if (true) {\
+              val c = a + b \
+              c
+            }\
+          } else {\
+            a + 456\
+          }
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(246);
+        assert_eq!(expected, result);
+
+        let input = "\
+          val a = 123\
+          if (1 != 2) {\
+            a + 1\
+          } else {\
+            a + 2\
+          }\
+          val b = a + 3\
+          b - 3
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+    }
 }

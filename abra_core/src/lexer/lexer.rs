@@ -24,6 +24,8 @@ lazy_static! {
         let mut keywords = HashMap::new();
         keywords.insert("true", Keyword::True);
         keywords.insert("false", Keyword::False);
+        keywords.insert("if", Keyword::If);
+        keywords.insert("else", Keyword::Else);
         keywords.insert("val", Keyword::Val);
         keywords.insert("var", Keyword::Var);
         keywords
@@ -170,6 +172,8 @@ impl<'a> Lexer<'a> {
                 Some(keyword) => match keyword {
                     Keyword::True => Ok(Some(Token::Bool(pos, true))),
                     Keyword::False => Ok(Some(Token::Bool(pos, false))),
+                    Keyword::If => Ok(Some(Token::If(pos))),
+                    Keyword::Else => Ok(Some(Token::Else(pos))),
                     Keyword::Val => Ok(Some(Token::Val(pos))),
                     Keyword::Var => Ok(Some(Token::Var(pos))),
                 }
@@ -245,6 +249,8 @@ impl<'a> Lexer<'a> {
             ')' => Ok(Some(Token::RParen(pos))),
             '[' => Ok(Some(Token::LBrack(pos))),
             ']' => Ok(Some(Token::RBrack(pos))),
+            '{' => Ok(Some(Token::LBrace(pos))),
+            '}' => Ok(Some(Token::RBrace(pos))),
             ',' => Ok(Some(Token::Comma(pos))),
             ':' => Ok(Some(Token::Colon(pos))),
             _ => Ok(None)
@@ -321,16 +327,18 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_separators() {
-        let input = "( ) [ ] , : ?";
+        let input = "( ) [ ] { } , : ?";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::LParen(Position::new(1, 1)),
             Token::RParen(Position::new(1, 3)),
             Token::LBrack(Position::new(1, 5)),
             Token::RBrack(Position::new(1, 7)),
-            Token::Comma(Position::new(1, 9)),
-            Token::Colon(Position::new(1, 11)),
-            Token::Question(Position::new(1, 13)),
+            Token::LBrace(Position::new(1, 9)),
+            Token::RBrace(Position::new(1, 11)),
+            Token::Comma(Position::new(1, 13)),
+            Token::Colon(Position::new(1, 15)),
+            Token::Question(Position::new(1, 17)),
         ];
         assert_eq!(expected, tokens);
     }
@@ -403,13 +411,15 @@ mod tests {
 
     #[test]
     fn test_tokenize_keywords() {
-        let input = "true false val var";
+        let input = "true false val var if else";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
             Token::Bool(Position::new(1, 6), false),
             Token::Val(Position::new(1, 12)),
             Token::Var(Position::new(1, 16)),
+            Token::If(Position::new(1, 20)),
+            Token::Else(Position::new(1, 23)),
         ];
         assert_eq!(expected, tokens);
     }
