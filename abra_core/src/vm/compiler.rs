@@ -285,6 +285,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.chunk.write(0, line); // <- Replaced after compiling if-block
         let jump_offset_slot_idx = self.chunk.code.len();
 
+        // TODO: Purge useless bindings after if/else-blocks exit
+
         for node in if_block {
             self.visit(node)?;
         }
