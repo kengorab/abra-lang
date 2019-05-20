@@ -15,6 +15,7 @@ pub trait AstVisitor<V, E> {
             Assignment(tok, node) => self.visit_assignment(tok, node),
             Indexing(tok, node) => self.visit_indexing(tok, node),
             IfStatement(tok, node) => self.visit_if_statement(tok, node),
+            IfExpression(tok, node) => self.visit_if_expression(tok, node),
         }
     }
 
@@ -28,4 +29,5 @@ pub trait AstVisitor<V, E> {
     fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<V, E>;
     fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<V, E>;
     fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<V, E>;
+    fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<V, E>;
 }

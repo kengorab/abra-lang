@@ -97,6 +97,7 @@ impl Parser {
             Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
             Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
+            Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
             _ => None,
         }
     }
@@ -238,9 +239,7 @@ impl Parser {
         }
     }
 
-    fn parse_if_statement(&mut self) -> Result<AstNode, ParseError> {
-        let token = self.expect_next()?;
-
+    fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
         // Consume '(', or fail
         match self.expect_next()? {
             Token::LParen(_) => Ok(()),
@@ -265,8 +264,18 @@ impl Parser {
         } else {
             None
         };
+        Ok(IfNode { condition, if_block, else_block })
+    }
 
-        Ok(AstNode::IfStatement(token, IfNode { condition, if_block, else_block }))
+    fn parse_if_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        let if_node = self.parse_if_node()?;
+        Ok(AstNode::IfStatement(token, if_node))
+    }
+
+    fn parse_if_expr(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        let if_node = self.parse_if_node()?;
+        Ok(AstNode::IfExpression(token, if_node))
     }
 
     fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
@@ -1425,6 +1434,76 @@ mod tests {
                 ],
                 else_block: None,
             },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_if_expression() -> TestResult {
+        let ast = parse("val str = if (3 < 4) \"hello\"")?;
+        let expected = AstNode::BindingDecl(
+            Token::Val(Position::new(1, 1)),
+            BindingDeclNode {
+                ident: Token::Ident(Position::new(1, 5), "str".to_string()),
+                is_mutable: false,
+                type_ann: None,
+                expr: Some(Box::new(
+                    AstNode::IfExpression(
+                        Token::If(Position::new(1, 11)),
+                        IfNode {
+                            condition: Box::new(
+                                AstNode::Binary(
+                                    Token::LT(Position::new(1, 17)),
+                                    BinaryNode {
+                                        left: Box::new(int_literal!((1, 15), 3)),
+                                        op: BinaryOp::Lt,
+                                        right: Box::new(int_literal!((1, 19), 4)),
+                                    },
+                                )
+                            ),
+                            if_block: vec![
+                                string_literal!((1, 22), "hello")
+                            ],
+                            else_block: None,
+                        },
+                    )
+                )),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("\"hello\" + if (3 < 4) \"world\" else \"!\"")?;
+        let expected = AstNode::Binary(
+            Token::Plus(Position::new(1, 9)),
+            BinaryNode {
+                left: Box::new(string_literal!((1, 1), "hello")),
+                op: BinaryOp::Add,
+                right: Box::new(
+                    AstNode::IfExpression(
+                        Token::If(Position::new(1, 11)),
+                        IfNode {
+                            condition: Box::new(
+                                AstNode::Binary(
+                                    Token::LT(Position::new(1, 17)),
+                                    BinaryNode {
+                                        left: Box::new(int_literal!((1, 15), 3)),
+                                        op: BinaryOp::Lt,
+                                        right: Box::new(int_literal!((1, 19), 4)),
+                                    },
+                                )
+                            ),
+                            if_block: vec![
+                                string_literal!((1, 22), "world")
+                            ],
+                            else_block: Some(vec![
+                                string_literal!((1, 35), "!")
+                            ]),
+                        },
+                    )
+                )
+            }
         );
         assert_eq!(expected, ast[0]);
 

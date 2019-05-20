@@ -406,6 +406,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         Ok(TypedAstNode::IfStatement(token, TypedIfNode { condition, if_block, else_block }))
     }
+
+    fn visit_if_expression(&mut self, _token: Token, _node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
+    }
 }
 
 #[cfg(test)]
