@@ -19,8 +19,14 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     Ok(nodes)
 }
 
+#[derive(PartialEq)]
+enum Context {
+    ParsingExpr,
+}
+
 pub struct Parser {
-    tokens: Peekable<IntoIter<Token>>
+    tokens: Peekable<IntoIter<Token>>,
+    context: Vec<Context>,
 }
 
 type PrefixFn = Fn(&mut Parser, Token) -> Result<AstNode, ParseError>;
@@ -29,7 +35,22 @@ type InfixFn = Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError>;
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         let tokens = tokens.into_iter().peekable();
-        Parser { tokens }
+        Parser { tokens, context: vec![] }
+    }
+
+    fn is_context(&self, ctx: Context) -> bool {
+        match self.context.last() {
+            None => false,
+            Some(c) => c == &ctx
+        }
+    }
+
+    fn enter_context(&mut self, ctx: Context) {
+        self.context.push(ctx);
+    }
+
+    fn exit_context(&mut self) {
+        self.context.pop();
     }
 
     fn advance(&mut self) -> Option<Token> {
@@ -275,11 +296,31 @@ impl Parser {
 
     fn parse_if_expr(&mut self, token: Token) -> Result<AstNode, ParseError> {
         let if_node = self.parse_if_node()?;
+
+        // If we're in the context of parsing an expression (ie, not at the top-level), we need to
+        // know whether to treat if-elses as statements or expressions. If, for example, there's an
+        // if-else as the last item in an if expression's then-block, that should be treated as an
+        // expression and will be typechecked against other branches (and will be the return value).
+        let if_node = if self.is_context(Context::ParsingExpr) {
+            let mut if_node = if_node;
+            if let Some(AstNode::IfStatement(_, _)) = if_node.if_block.last() {
+                if let AstNode::IfStatement(token, node) = if_node.if_block.pop().unwrap() {
+                    if_node.if_block.push(AstNode::IfExpression(token, node));
+                    if_node
+                } else {
+                    unreachable!()
+                }
+            } else { if_node }
+        } else { if_node };
+
         Ok(AstNode::IfExpression(token, if_node))
     }
 
     fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
-        self.parse_precedence(Precedence::None)
+        self.enter_context(Context::ParsingExpr);
+        let result = self.parse_precedence(Precedence::None);
+        self.exit_context();
+        result
     }
 
     fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -1502,10 +1543,61 @@ mod tests {
                             ]),
                         },
                     )
-                )
-            }
+                ),
+            },
         );
         assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_if_expression_vs_statement() -> TestResult {
+        let ast = parse("if (true) { if (true) 1 } else { 2 }")?;
+        if let AstNode::IfStatement(_, node) = ast.get(0).clone().unwrap() {
+            match (*node).if_block[0] {
+                AstNode::IfStatement(_, _) => {}
+                _ => panic!("Should be an AstNode::IfStatement, not an IfExpression")
+            }
+        } else {
+            panic!("The first node should be an AstNode::IfStatement")
+        }
+
+        let ast = parse("val a = if (true) { if (true) 1 } else { 2 }")?;
+        if let AstNode::BindingDecl(_, node) = ast.get(0).clone().unwrap() {
+            let BindingDeclNode { expr, .. } = node.clone();
+            let expr = expr.as_ref().unwrap().as_ref();
+            match expr {
+                AstNode::IfExpression(_, IfNode { if_block, .. }) => {
+                    println!("{:?}", if_block);
+
+                    match if_block.get(0).unwrap() {
+                        AstNode::IfExpression(_, _) => {}
+                        _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+                    }
+                }
+                _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+            }
+        } else {
+            panic!("The first node should be an AstNode::BindingDecl")
+        }
+
+        let ast = parse("val a = if (true) { if (true) { 1 } 2 } else { 2 }")?;
+        if let AstNode::BindingDecl(_, node) = ast.get(0).clone().unwrap() {
+            let BindingDeclNode { expr, .. } = node.clone();
+            let expr = expr.as_ref().unwrap().as_ref();
+            match expr {
+                AstNode::IfExpression(_, IfNode { if_block, .. }) => {
+                    match if_block.get(0).unwrap() {
+                        AstNode::IfStatement(_, _) => {}
+                        _ => panic!("Should be an AstNode::IfStatement, not an IfExpression")
+                    }
+                }
+                _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+            }
+        } else {
+            panic!("The first node should be an AstNode::BindingDecl")
+        }
 
         Ok(())
     }
