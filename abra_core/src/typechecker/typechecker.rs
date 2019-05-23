@@ -60,6 +60,40 @@ impl Typechecker {
         }
         types
     }
+
+    // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
+    // not part of the AstVisitor trait.
+    fn visit_if_node(&mut self, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
+        let IfNode { condition, if_block, else_block } = node;
+
+        let condition = self.visit(*condition)?;
+        if condition.get_type() != Type::Bool {
+            let token = condition.get_token().clone();
+            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
+        }
+        let condition = Box::new(condition);
+
+        self.scopes.push(Scope::new());
+        let if_block: Result<Vec<_>, _> = if_block.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let if_block = if_block?;
+        self.scopes.pop();
+
+        self.scopes.push(Scope::new());
+        let else_block = match else_block {
+            None => None,
+            Some(nodes) => {
+                let else_block: Result<Vec<_>, _> = nodes.into_iter()
+                    .map(|node| self.visit(node))
+                    .collect();
+                Some(else_block?)
+            }
+        };
+        self.scopes.pop();
+
+        Ok(TypedIfNode { typ: Type::Unit, condition, if_block, else_block })
+    }
 }
 
 pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), TypecheckerError> {
@@ -376,39 +410,40 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
-        let IfNode { condition, if_block, else_block } = node;
-
-        let condition = self.visit(*condition)?;
-        if condition.get_type() != Type::Bool {
-            let token = condition.get_token().clone();
-            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
-        }
-        let condition = Box::new(condition);
-
-        self.scopes.push(Scope::new());
-        let if_block: Result<Vec<_>, _> = if_block.into_iter()
-            .map(|node| self.visit(node))
-            .collect();
-        let if_block = if_block?;
-        self.scopes.pop();
-
-        self.scopes.push(Scope::new());
-        let else_block = match else_block {
-            None => None,
-            Some(nodes) => {
-                let else_block: Result<Vec<_>, _> = nodes.into_iter()
-                    .map(|node| self.visit(node))
-                    .collect();
-                Some(else_block?)
-            }
-        };
-        self.scopes.pop();
-
-        Ok(TypedAstNode::IfStatement(token, TypedIfNode { condition, if_block, else_block }))
+        let node = self.visit_if_node(node)?;
+        Ok(TypedAstNode::IfStatement(token, node))
     }
 
-    fn visit_if_expression(&mut self, _token: Token, _node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+        let mut node = self.visit_if_node(node)?;
+
+        let if_block_type = match &node.if_block.last() {
+            None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
+            Some(expr) => Ok(expr.get_type())
+        }?;
+
+        let typ = match &node.else_block {
+            Some(else_block) => match else_block.last() {
+                None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: false }),
+                Some(expr) => {
+                    let else_block_type = expr.get_type();
+                    if if_block_type != else_block_type {
+                        Err(TypecheckerError::IfExprBranchMismatch {
+                            if_token: token.clone(),
+                            if_type: if_block_type,
+                            else_type: else_block_type,
+                        })
+                    } else {
+                        Ok(if_block_type)
+                    }
+                }
+            }
+            None => Ok(Type::Option(Box::new(if_block_type)))
+        }?;
+
+        node.typ = typ;
+
+        Ok(TypedAstNode::IfExpression(token, node))
     }
 }
 
@@ -433,6 +468,7 @@ mod tests {
     fn typecheck_get_typechecker(input: &str) -> (Typechecker, Vec<TypedAstNode>) {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
+        println!("{:?}", ast);
 
         super::typecheck(ast).unwrap()
     }
@@ -1271,6 +1307,7 @@ mod tests {
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
+                typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
                         Token::LT(Position::new(1, 7)),
@@ -1292,6 +1329,7 @@ mod tests {
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
+                typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
                         Token::LT(Position::new(1, 7)),
@@ -1339,6 +1377,7 @@ mod tests {
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
+                typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
                         Token::LT(Position::new(1, 7)),
@@ -1376,6 +1415,7 @@ mod tests {
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(2, 1)),
             TypedIfNode {
+                typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
                         Token::LT(Position::new(2, 7)),
@@ -1453,12 +1493,60 @@ mod tests {
             token: Token::Plus(Position::new(2, 18)),
             ltype: Type::Int,
             op: BinaryOp::Add,
-            rtype: Type::Bool
+            rtype: Type::Bool,
         };
         assert_eq!(expected, error);
 
         let error = typecheck("if (1 < 2) { val num = 1 }\nnum + 2").unwrap_err();
         let expected = TypecheckerError::UnknownIdentifier { ident: Token::Ident(Position::new(2, 1), "num".to_string()) };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_if_expression() {
+        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123 else 456");
+        match typechecker.get_binding("a") {
+            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Int, typ),
+            _ => panic!("There should be a binding named 'a'"),
+        }
+
+        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123");
+        match typechecker.get_binding("a") {
+            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Option(Box::new(Type::Int)), typ),
+            _ => panic!("There should be a binding named 'a'"),
+        }
+
+        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) { if (true) 123 } else if (false) 456");
+        match typechecker.get_binding("a") {
+            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Option(Box::new(Type::Int)), typ),
+            _ => panic!("There should be a binding named 'a'"),
+        }
+    }
+
+    #[test]
+    fn typecheck_if_expression_errors() {
+        let error = typecheck("val a = if (1 < 2) {} else 456").unwrap_err();
+        let expected = TypecheckerError::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: true };
+        assert_eq!(expected, error);
+
+        let error = typecheck("val a = if (1 < 2) 123 else {}").unwrap_err();
+        let expected = TypecheckerError::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: false };
+        assert_eq!(expected, error);
+
+        let error = typecheck("val a = if (1 < 2) 123 else true").unwrap_err();
+        let expected = TypecheckerError::IfExprBranchMismatch {
+            if_token: Token::If(Position::new(1, 9)),
+            if_type: Type::Int,
+            else_type: Type::Bool,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("val a = if (1 < 2) { if (true) 123 } else 456").unwrap_err();
+        let expected = TypecheckerError::IfExprBranchMismatch {
+            if_token: Token::If(Position::new(1, 9)),
+            if_type: Type::Option(Box::new(Type::Int)),
+            else_type: Type::Int,
+        };
         assert_eq!(expected, error);
     }
 }

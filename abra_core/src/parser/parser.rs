@@ -295,23 +295,51 @@ impl Parser {
     }
 
     fn parse_if_expr(&mut self, token: Token) -> Result<AstNode, ParseError> {
-        let if_node = self.parse_if_node()?;
+        let mut if_node = self.parse_if_node()?;
 
         // If we're in the context of parsing an expression (ie, not at the top-level), we need to
         // know whether to treat if-elses as statements or expressions. If, for example, there's an
         // if-else as the last item in an if expression's then-block, that should be treated as an
         // expression and will be typechecked against other branches (and will be the return value).
-        let if_node = if self.is_context(Context::ParsingExpr) {
-            let mut if_node = if_node;
-            if let Some(AstNode::IfStatement(_, _)) = if_node.if_block.last() {
-                if let AstNode::IfStatement(token, node) = if_node.if_block.pop().unwrap() {
-                    if_node.if_block.push(AstNode::IfExpression(token, node));
-                    if_node
-                } else {
-                    unreachable!()
+        //
+        // This code was annoying as hell to write, especially......
+        let if_node = if !self.is_context(Context::ParsingExpr) {
+            if_node
+        } else {
+            let if_node = match if_node.if_block.last() {
+                Some(AstNode::IfStatement(_, _)) => {
+                    match if_node.if_block.pop() {
+                        Some(AstNode::IfStatement(token, node)) => {
+                            if_node.if_block.push(AstNode::IfExpression(token, node));
+                            if_node
+                        }
+                        _ => if_node
+                    }
                 }
-            } else { if_node }
-        } else { if_node };
+                _ => if_node
+            };
+
+            // ...... this part right here, with all of the fighting I did with the borrow checker.
+            // Since the else_block is an Option type, it required the code be so much more verbose.
+            // There's probably a more idiomatic way to do this, but I've sunk too much time into it
+            // already.
+            let IfNode { condition, if_block, else_block } = if_node;
+            match else_block {
+                Some(mut else_block) => match else_block.last_mut() {
+                    Some(AstNode::IfStatement(_, _)) => {
+                        match else_block.pop() {
+                            Some(AstNode::IfStatement(token, node)) => {
+                                else_block.push(AstNode::IfExpression(token, node));
+                                IfNode { condition, if_block, else_block: Some(else_block) }
+                            }
+                            _ => IfNode { condition, if_block, else_block: Some(else_block) }
+                        }
+                    }
+                    _ => IfNode { condition, if_block, else_block: Some(else_block) }
+                }
+                _ => IfNode { condition, if_block, else_block }
+            }
+        };
 
         Ok(AstNode::IfExpression(token, if_node))
     }
@@ -1569,11 +1597,30 @@ mod tests {
             let expr = expr.as_ref().unwrap().as_ref();
             match expr {
                 AstNode::IfExpression(_, IfNode { if_block, .. }) => {
-                    println!("{:?}", if_block);
-
                     match if_block.get(0).unwrap() {
                         AstNode::IfExpression(_, _) => {}
                         _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+                    }
+                }
+                _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+            }
+        } else {
+            panic!("The first node should be an AstNode::BindingDecl")
+        }
+
+        let ast = parse("val a = if (true) { 1 } else if (true) { 2 }")?;
+        if let AstNode::BindingDecl(_, node) = ast.get(0).clone().unwrap() {
+            let BindingDeclNode { expr, .. } = node.clone();
+            let expr = expr.as_ref().unwrap().as_ref();
+            match expr {
+                AstNode::IfExpression(_, IfNode { else_block, .. }) => {
+                    if let Some(else_block) = else_block {
+                        match else_block.get(0).unwrap() {
+                            AstNode::IfExpression(_, _) => {}
+                            _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")
+                        }
+                    } else {
+                        panic!("Expected else_block to be present")
                     }
                 }
                 _ => panic!("Should be an AstNode::IfExpression, not an IfStatement")

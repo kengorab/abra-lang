@@ -14,6 +14,7 @@ pub enum TypedAstNode {
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
     IfStatement(Token, TypedIfNode),
+    IfExpression(Token, TypedIfNode),
 }
 
 impl TypedAstNode {
@@ -29,6 +30,7 @@ impl TypedAstNode {
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
             TypedAstNode::IfStatement(token, _) => token,
+            TypedAstNode::IfExpression(token, _) => token,
         }
     }
 
@@ -44,11 +46,12 @@ impl TypedAstNode {
             TypedAstNode::Binary(_, node) => node.typ.clone(),
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
-            TypedAstNode::BindingDecl(_, _) |
-            TypedAstNode::IfStatement(_, _) => Type::Unit,
+            TypedAstNode::BindingDecl(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, typ, _) => typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
+            TypedAstNode::IfStatement(_, node) => node.typ.clone(),
+            TypedAstNode::IfExpression(_, node) => node.typ.clone(),
         }
     }
 }
@@ -112,6 +115,7 @@ pub struct TypedIndexingNode {
 
 #[derive(Debug, PartialEq)]
 pub struct TypedIfNode {
+    pub typ: Type,
     pub condition: Box<TypedAstNode>,
     pub if_block: Vec<TypedAstNode>,
     pub else_block: Option<Vec<TypedAstNode>>,
