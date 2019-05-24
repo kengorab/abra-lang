@@ -11,6 +11,7 @@ impl Position {
 pub enum Keyword {
     True,
     False,
+    Func,
     Val,
     Var,
     If,
@@ -24,6 +25,7 @@ pub enum Token {
     String(Position, String),
     Bool(Position, bool),
 
+    Func(Position),
     Val(Position),
     Var(Position),
     If(Position),
@@ -66,6 +68,7 @@ impl Token {
             Token::Bool(pos, _) |
             Token::Ident(pos, _) => pos,
 
+            Token::Func(pos) |
             Token::Val(pos) |
             Token::Var(pos) |
             Token::If(pos) |
@@ -115,6 +118,7 @@ impl Display for Token {
             Token::Bool(_, val) => write!(f, "{}", val),
             Token::Ident(_, name) => write!(f, "{}", name),
 
+            Token::Func(_) => write!(f, "func"),
             Token::Val(_) => write!(f, "val"),
             Token::Var(_) => write!(f, "var"),
             Token::If(_) => write!(f, "if"),
