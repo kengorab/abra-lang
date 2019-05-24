@@ -278,7 +278,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_if_statement(&mut self, token: Token, node: TypedIfNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedIfNode { condition, if_block, else_block } = node;
+        let TypedIfNode { condition, if_block, else_block, .. } = node;
 
         self.visit(*condition)?;
         self.chunk.write(Opcode::JumpIfF as u8, line);
@@ -311,6 +311,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<(), ()> {
+        self.visit_if_statement(token, node)
     }
 }
 

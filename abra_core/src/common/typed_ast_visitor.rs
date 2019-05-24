@@ -16,6 +16,7 @@ pub trait TypedAstVisitor<V, E> {
             Assignment(tok, typ) => self.visit_assignment(tok, typ),
             Indexing(tok, typ) => self.visit_indexing(tok, typ),
             IfStatement(tok, typ) => self.visit_if_statement(tok, typ),
+            IfExpression(tok, typ) => self.visit_if_expression(tok, typ),
         }
     }
 
@@ -29,4 +30,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_assignment(&mut self, token: Token, node: TypedAssignmentNode) -> Result<V, E>;
     fn visit_indexing(&mut self, token: Token, node: TypedIndexingNode) -> Result<V, E>;
     fn visit_if_statement(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
+    fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
 }

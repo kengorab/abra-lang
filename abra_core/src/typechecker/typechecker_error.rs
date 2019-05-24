@@ -14,6 +14,8 @@ pub enum TypecheckerError {
     AssignmentToImmutable { orig_ident: Token, token: Token },
     UnannotatedUninitialized { ident: Token, is_mutable: bool },
     UnknownType { type_ident: Token },
+    MissingIfExprBranch { if_token: Token, is_if_branch: bool },
+    IfExprBranchMismatch { if_token: Token, if_type: Type, else_type: Type },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -67,6 +69,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
             TypecheckerError::UnannotatedUninitialized { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
+            TypecheckerError::MissingIfExprBranch { if_token, .. } => if_token.get_position(),
+            TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -157,6 +161,20 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Unknown type '{}' ({}:{})\n{}\nNo type with that name is visible in current scope",
                     ident, pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::MissingIfExprBranch { if_token: _, is_if_branch } => {
+                format!(
+                    "Missing {}-branch in if-else expression: ({}:{})\n{}\n\
+                    Both branches must have some value when used as an expression",
+                    if *is_if_branch { "if" } else { "else" }, pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::IfExprBranchMismatch { if_token: _, if_type, else_type } => {
+                format!(
+                    "Type mismatch between the if-else expression branches: ({}:{})\n{}\n\
+                    The if-branch had type {}, but the else-branch had type {}",
+                    pos.line, pos.col, cursor_line, type_repr(if_type), type_repr(else_type)
                 )
             }
         }
@@ -349,6 +367,55 @@ Unknown type 'NonExistentType' (1:11)
   |  val abcd: NonExistentType = 432
                ^
 No type with that name is visible in current scope"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_missing_if_expr_branch() {
+        let src = "val a = if (true) {} else 123".to_string();
+        let err = TypecheckerError::MissingIfExprBranch {
+            if_token: Token::If(Position::new(1, 9)),
+            is_if_branch: true,
+        };
+
+        let expected = format!("\
+Missing if-branch in if-else expression: (1:9)
+  |  val a = if (true) {{}} else 123
+             ^
+Both branches must have some value when used as an expression"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "val a = if (true) 123 else {}".to_string();
+        let err = TypecheckerError::MissingIfExprBranch {
+            if_token: Token::If(Position::new(1, 9)),
+            is_if_branch: false,
+        };
+
+        let expected = format!("\
+Missing else-branch in if-else expression: (1:9)
+  |  val a = if (true) 123 else {{}}
+             ^
+Both branches must have some value when used as an expression"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_if_expr_branch_mismatch() {
+        let src = "val a = if (true) \"hello\" else 123".to_string();
+        let err = TypecheckerError::IfExprBranchMismatch {
+            if_token: Token::If(Position::new(1, 9)),
+            if_type: Type::String,
+            else_type: Type::Int,
+        };
+
+        let expected = format!("\
+Type mismatch between the if-else expression branches: (1:9)
+  |  val a = if (true) \"hello\" else 123
+             ^
+The if-branch had type String, but the else-branch had type Int"
         );
         assert_eq!(expected, err.get_message(&src));
     }

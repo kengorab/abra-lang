@@ -12,6 +12,7 @@ pub enum AstNode {
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
     IfStatement(Token, IfNode),
+    IfExpression(Token, IfNode),
 }
 
 #[derive(Debug, PartialEq)]
