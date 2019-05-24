@@ -313,8 +313,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_if_expression(&mut self, _token: Token, _node: TypedIfNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<(), ()> {
+        self.visit_if_statement(token, node)
     }
 }
 

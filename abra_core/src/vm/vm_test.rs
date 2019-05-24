@@ -456,18 +456,18 @@ mod tests {
         assert_eq!(expected, result);
     }
 
-//    #[test]
-//    fn interpret_if_else_expressions() {
-//        let input = "\
-//          val abc = if (1 != 2) {\
-//            123\
-//          } else {\
-//            456\
-//          }\
-//          abc
-//        ";
-//        let result = interpret(input).unwrap();
-//        let expected = Value::Int(123);
-//        assert_eq!(expected, result);
-//    }
+    #[test]
+    fn interpret_if_else_expressions() {
+        let input = "\
+          val abc = if (1 != 2) {\
+            123\
+          } else {\
+            456\
+          }\
+          abc
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+    }
 }
