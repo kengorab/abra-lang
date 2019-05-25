@@ -1,10 +1,12 @@
-use std::fmt::{Display, Formatter, Error};
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Position { pub line: usize, pub col: usize }
 
 impl Position {
     pub fn new(line: usize, col: usize) -> Self { Position { line, col } }
+}
+
+impl Default for Position {
+    fn default() -> Self { Position { line: 0, col: 0 } }
 }
 
 #[derive(Debug, PartialEq)]
@@ -18,45 +20,46 @@ pub enum Keyword {
     Else,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
+#[strum_discriminants(name(TokenType), derive(Display))]
 pub enum Token {
-    Int(Position, i64),
-    Float(Position, f64),
-    String(Position, String),
-    Bool(Position, bool),
+    #[strum(to_string = "int", serialize = "Int")] Int(Position, i64),
+    #[strum(to_string = "float", serialize = "Float")] Float(Position, f64),
+    #[strum(to_string = "string", serialize = "String")] String(Position, String),
+    #[strum(to_string = "boolean", serialize = "Bool")] Bool(Position, bool),
 
-    Func(Position),
-    Val(Position),
-    Var(Position),
-    If(Position),
-    Else(Position),
-    Ident(Position, String),
+    #[strum(to_string = "func", serialize = "Func")] Func(Position),
+    #[strum(to_string = "val", serialize = "Val")] Val(Position),
+    #[strum(to_string = "var", serialize = "Var")] Var(Position),
+    #[strum(to_string = "if", serialize = "If")] If(Position),
+    #[strum(to_string = "else", serialize = "Else")] Else(Position),
+    #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
 
-    Assign(Position),
-    Plus(Position),
-    Minus(Position),
-    Star(Position),
-    Slash(Position),
-    And(Position),
-    Or(Position),
-    Elvis(Position),
-    GT(Position),
-    GTE(Position),
-    LT(Position),
-    LTE(Position),
-    Eq(Position),
-    Neq(Position),
-    Bang(Position),
+    #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
+    #[strum(to_string = "+", serialize = "Plus")] Plus(Position),
+    #[strum(to_string = "-", serialize = "Minus")] Minus(Position),
+    #[strum(to_string = "*", serialize = "Star")] Star(Position),
+    #[strum(to_string = "/", serialize = "Slash")] Slash(Position),
+    #[strum(to_string = "&&", serialize = "And")] And(Position),
+    #[strum(to_string = "||", serialize = "Or")] Or(Position),
+    #[strum(to_string = "?:", serialize = "Elvis")] Elvis(Position),
+    #[strum(to_string = ">", serialize = "GT")] GT(Position),
+    #[strum(to_string = ">=", serialize = "GTE")] GTE(Position),
+    #[strum(to_string = "<", serialize = "LT")] LT(Position),
+    #[strum(to_string = "<=", serialize = "LTE")] LTE(Position),
+    #[strum(to_string = "==", serialize = "Eq")] Eq(Position),
+    #[strum(to_string = "!=", serialize = "Neq")] Neq(Position),
+    #[strum(to_string = "!", serialize = "Bang")] Bang(Position),
 
-    LParen(Position),
-    RParen(Position),
-    LBrack(Position),
-    RBrack(Position),
-    LBrace(Position),
-    RBrace(Position),
-    Colon(Position),
-    Comma(Position),
-    Question(Position),
+    #[strum(serialize = "(", to_string = "LParen")] LParen(Position),
+    #[strum(to_string = ")", serialize = "RParen")] RParen(Position),
+    #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position),
+    #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),
+    #[strum(to_string = "{", serialize = "LBrace")] LBrace(Position),
+    #[strum(to_string = "}", serialize = "RBrace")] RBrace(Position),
+    #[strum(to_string = ":", serialize = "Colon")] Colon(Position),
+    #[strum(to_string = ",", serialize = "Comma")] Comma(Position),
+    #[strum(to_string = "?", serialize = "Question")] Question(Position),
 }
 
 impl Token {
@@ -105,49 +108,6 @@ impl Token {
         match token {
             Token::Ident(_, ident) => ident,
             _ => unreachable!()
-        }
-    }
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            Token::Int(_, val) => write!(f, "{}", val),
-            Token::Float(_, val) => write!(f, "{}", val),
-            Token::String(_, val) => write!(f, "\"{}\"", val),
-            Token::Bool(_, val) => write!(f, "{}", val),
-            Token::Ident(_, name) => write!(f, "{}", name),
-
-            Token::Func(_) => write!(f, "func"),
-            Token::Val(_) => write!(f, "val"),
-            Token::Var(_) => write!(f, "var"),
-            Token::If(_) => write!(f, "if"),
-            Token::Else(_) => write!(f, "else"),
-            Token::Assign(_) => write!(f, "="),
-            Token::Plus(_) => write!(f, "+"),
-            Token::Minus(_) => write!(f, "-"),
-            Token::Star(_) => write!(f, "*"),
-            Token::Slash(_) => write!(f, "/"),
-            Token::And(_) => write!(f, "&&"),
-            Token::Or(_) => write!(f, "||"),
-            Token::Elvis(_) => write!(f, "?:"),
-            Token::GT(_) => write!(f, ">"),
-            Token::GTE(_) => write!(f, ">="),
-            Token::LT(_) => write!(f, "<"),
-            Token::LTE(_) => write!(f, "<="),
-            Token::Eq(_) => write!(f, "=="),
-            Token::Neq(_) => write!(f, "!="),
-            Token::Bang(_) => write!(f, "!"),
-
-            Token::LParen(_) => write!(f, "("),
-            Token::RParen(_) => write!(f, ")"),
-            Token::LBrack(_) => write!(f, "["),
-            Token::RBrack(_) => write!(f, "]"),
-            Token::LBrace(_) => write!(f, "{{"),
-            Token::RBrace(_) => write!(f, "}}"),
-            Token::Colon(_) => write!(f, ":"),
-            Token::Comma(_) => write!(f, ","),
-            Token::Question(_) => write!(f, "?"),
         }
     }
 }

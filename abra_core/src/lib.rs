@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
 use crate::common::display_error::DisplayError;
 use crate::vm::value::Value;

@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
-use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode};
+use crate::lexer::tokens::{Token, TokenType};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -59,6 +59,17 @@ impl Parser {
 
     fn expect_next(&mut self) -> Result<Token, ParseError> {
         self.advance().ok_or(ParseError::UnexpectedEof)
+    }
+
+    fn expect_next_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
+        self.expect_next().and_then(|tok| {
+            let token_type: TokenType = tok.clone().into();
+            if token_type != expected_token {
+                Err(ParseError::ExpectedToken(expected_token, tok))
+            } else {
+                Ok(tok)
+            }
+        })
     }
 
     fn peek(&mut self) -> Option<&Token> {
@@ -160,6 +171,7 @@ impl Parser {
 
     fn parse_stmt(&mut self) -> Result<AstNode, ParseError> {
         match self.expect_peek()? {
+            Token::Func(_) => self.parse_func_decl(),
             Token::Val(_) => self.parse_binding_decl(),
             Token::Var(_) => self.parse_binding_decl(),
             Token::If(_) => self.parse_if_statement(),
@@ -168,14 +180,10 @@ impl Parser {
     }
 
     fn parse_type_identifier(&mut self) -> Result<TypeIdentifier, ParseError> {
-        let mut left = match self.expect_next()? {
-            ident @ Token::Ident(_, _) => Ok(TypeIdentifier::Normal { ident }),
-            t @ _ => Err(ParseError::ExpectedToken(
-                // FIXME: Not great, using "identifier" here, just so it shows up in the error
-                Token::Ident(t.get_position(), "identifier".to_string()),
-                t,
-            ))
-        }?;
+        let mut left = match self.expect_next_token(TokenType::Ident)? {
+            ident @ Token::Ident(_, _) =>TypeIdentifier::Normal { ident },
+            _ => unreachable!() // Since expect_next_token verifies it's a TokenType::Ident
+        };
 
         let mut next_token = self.peek();
         loop {
@@ -185,7 +193,7 @@ impl Parser {
                     match self.expect_peek()? {
                         Token::RBrack(_) => self.expect_next(), // Consume ']'
                         t => Err(ParseError::ExpectedToken(
-                            Token::RBrack(t.get_position()),
+                            TokenType::RBrack,//::RBrack(t.get_position()),
                             t.clone(),
                         )),
                     }?;
@@ -201,6 +209,23 @@ impl Parser {
         };
 
         Ok(left)
+    }
+
+    fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
+        let func_token = self.expect_next()?;
+
+        let func_name = self.expect_next_token(TokenType::Ident)?;
+
+        self.expect_next_token(TokenType::LParen)?;
+
+        self.expect_next_token(TokenType::RParen)?;
+
+        Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode {
+            name: func_name,
+            args: vec![],
+            ret_type: None,
+            body: vec![],
+        }))
     }
 
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -262,16 +287,18 @@ impl Parser {
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
         // Consume '(', or fail
-        match self.expect_next()? {
-            Token::LParen(_) => Ok(()),
-            t @ _ => Err(ParseError::ExpectedToken(Token::LParen(t.get_position()), t))
-        }?;
+        self.expect_next_token(TokenType::LParen)?;
+//        match self.expect_next()? {
+//            Token::LParen(_) => Ok(()),
+//            t @ _ => Err(ParseError::ExpectedToken(TokenType::LParen, t))
+//        }?;
         let condition = Box::new(self.parse_expr()?);
         // Consume ')', or fail
-        match self.expect_next()? {
-            Token::RParen(_) => Ok(()),
-            t @ _ => Err(ParseError::ExpectedToken(Token::RParen(t.get_position()), t))
-        }?;
+        self.expect_next_token(TokenType::RParen)?;
+//        match self.expect_next()? {
+//            Token::RParen(_) => Ok(()),
+//            t @ _ => Err(ParseError::ExpectedToken(TokenType::RParen, t))
+//        }?;
 
         let if_block = self.parse_expr_or_block()?;
 
@@ -1171,14 +1198,14 @@ mod tests {
     fn parse_binding_decls_with_type_annotations_error() {
         let err = parse("val a: 123 = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(
-            Token::Ident(Position::new(1, 8), "identifier".to_string()),
+            TokenType::Ident,
             Token::Int(Position::new(1, 8), 123),
         );
         assert_eq!(expected, err);
 
         let err = parse("val a: Int[ = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(
-            Token::RBrack(Position::new(1, 13)),
+            TokenType::RBrack,
             Token::Assign(Position::new(1, 13)),
         );
         assert_eq!(expected, err);

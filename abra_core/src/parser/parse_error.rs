@@ -1,11 +1,12 @@
-use crate::lexer::tokens::Token;
+use std::str::FromStr;
+use crate::lexer::tokens::{Token, TokenType};
 use crate::common::display_error::{DisplayError, IND_AMT};
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(Token),
-    ExpectedToken(Token, Token),
+    ExpectedToken(TokenType, Token),
     Raw(String),
 }
 
@@ -41,6 +42,9 @@ impl DisplayError for ParseError {
                 let indent = Self::indent();
                 let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
 
+                // Convert from TokenType to Token, to make use of the #[strum(to_string)] meta,
+                // since strum doesn't apply the #[strum(to_string)] to the discriminants.
+                let expected: Token = Token::from_str(&expected.to_string()).unwrap();
                 format!("Expected token '{}', saw '{}' ({}:{})\n{}", expected.to_string(), actual.to_string(), pos.line, pos.col, message)
             }
             ParseError::Raw(msg) => format!("{}", msg)
@@ -51,7 +55,7 @@ impl DisplayError for ParseError {
 #[cfg(test)]
 mod tests {
     use super::ParseError;
-    use crate::lexer::tokens::{Token, Position};
+    use crate::lexer::tokens::{Token, TokenType, Position};
     use crate::common::display_error::DisplayError;
 
     #[test]
@@ -71,7 +75,7 @@ Unexpected token '+' (1:2)
     fn test_expected_token_error() {
         let src = "val a: = 123".to_string();
         let err = ParseError::ExpectedToken(
-            Token::Ident(Position::new(1, 7), "identifier".to_string()),
+            TokenType::Ident,
             Token::Assign(Position::new(1, 8)),
         );
 
