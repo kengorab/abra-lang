@@ -181,7 +181,7 @@ impl Parser {
 
     fn parse_type_identifier(&mut self) -> Result<TypeIdentifier, ParseError> {
         let mut left = match self.expect_next_token(TokenType::Ident)? {
-            ident @ Token::Ident(_, _) =>TypeIdentifier::Normal { ident },
+            ident @ Token::Ident(_, _) => TypeIdentifier::Normal { ident },
             _ => unreachable!() // Since expect_next_token verifies it's a TokenType::Ident
         };
 
@@ -220,11 +220,20 @@ impl Parser {
 
         self.expect_next_token(TokenType::RParen)?;
 
+        let body = match self.expect_peek()? {
+            Token::Assign(_) => {
+                self.expect_next()?;
+                self.parse_expr_or_block()
+            }
+            Token::LBrace(_) => self.parse_expr_or_block(),
+            t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
+        }?;
+
         Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode {
             name: func_name,
             args: vec![],
             ret_type: None,
-            body: vec![],
+            body,
         }))
     }
 
@@ -286,19 +295,9 @@ impl Parser {
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
-        // Consume '(', or fail
         self.expect_next_token(TokenType::LParen)?;
-//        match self.expect_next()? {
-//            Token::LParen(_) => Ok(()),
-//            t @ _ => Err(ParseError::ExpectedToken(TokenType::LParen, t))
-//        }?;
         let condition = Box::new(self.parse_expr()?);
-        // Consume ')', or fail
         self.expect_next_token(TokenType::RParen)?;
-//        match self.expect_next()? {
-//            Token::RParen(_) => Ok(()),
-//            t @ _ => Err(ParseError::ExpectedToken(TokenType::RParen, t))
-//        }?;
 
         let if_block = self.parse_expr_or_block()?;
 
@@ -1213,6 +1212,48 @@ mod tests {
         let err = parse("val a: Int[").unwrap_err();
         let expected = ParseError::UnexpectedEof;
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn parse_func_decl() -> TestResult {
+        let ast = parse("func abc() = 123")?;
+        let expected = AstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            FunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: None,
+                body: vec![
+                    int_literal!((1, 14), 123)
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("func abc() = { val a = 123 a }")?;
+        let expected = AstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            FunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: None,
+                body: vec![
+                    AstNode::BindingDecl(
+                        Token::Val(Position::new(1, 16)),
+                        BindingDeclNode {
+                            is_mutable: false,
+                            ident: Token::Ident(Position::new(1, 20), "a".to_string()),
+                            type_ann: None,
+                            expr: Some(Box::new(int_literal!((1, 24), 123))),
+                        },
+                    ),
+                    identifier!((1, 28), "a")
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 
     #[test]
