@@ -10,6 +10,7 @@ pub enum TypedAstNode {
     Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
     BindingDecl(Token, TypedBindingDeclNode),
+    FunctionDecl(Token, TypedFunctionDeclNode),
     Identifier(Token, Type, bool),
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
@@ -26,6 +27,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(token, _) => token,
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
+            TypedAstNode::FunctionDecl(token, _) => token,
             TypedAstNode::Identifier(token, _, _) => token,
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
@@ -46,7 +48,8 @@ impl TypedAstNode {
             TypedAstNode::Binary(_, node) => node.typ.clone(),
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
-            TypedAstNode::BindingDecl(_, _) => Type::Unit,
+            TypedAstNode::BindingDecl(_, _) |
+            TypedAstNode::FunctionDecl(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, typ, _) => typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
@@ -97,6 +100,16 @@ pub struct TypedBindingDeclNode {
     pub ident: Token,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedFunctionDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub args: Vec<(Token, Type)>,
+    pub ret_type: Type,
+    pub body: Vec<TypedAstNode>,
 }
 
 #[derive(Debug, PartialEq)]

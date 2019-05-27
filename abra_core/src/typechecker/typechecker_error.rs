@@ -35,6 +35,10 @@ fn type_repr(t: &Type) -> String {
         }
         Type::Array(typ) => format!("{}[]", type_repr(typ)),
         Type::Option(typ) => format!("{}?", type_repr(typ)),
+        Type::Fn(args, ret_type) => {
+            let args = args.iter().map(|arg| type_repr(arg)).collect::<Vec<String>>().join(", ");
+            format!("({}) => {}", args, type_repr(ret_type))
+        }
     }
 }
 

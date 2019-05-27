@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode};
 use crate::vm::chunk::Chunk;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -210,6 +210,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         }
 
         Ok(())
+    }
+
+    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<(), ()> {
+        unimplemented!()
     }
 
     fn visit_identifier(&mut self, token: Token, _typ: Type, _is_mutable: bool) -> Result<(), ()> {

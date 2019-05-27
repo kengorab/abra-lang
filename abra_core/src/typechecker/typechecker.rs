@@ -1,14 +1,14 @@
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode};
 use crate::common::ast_visitor::AstVisitor;
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Token, Position};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ScopeBinding(Token, Type, bool);
+pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
 
 pub(crate) struct Scope {
     pub(crate) bindings: HashMap<String, ScopeBinding>,
@@ -22,10 +22,20 @@ impl Scope {
 
     fn root_scope() -> Self {
         let mut scope = Scope::new();
+        scope.bindings.insert(
+            "println".to_string(),
+            ScopeBinding(
+                Token::Ident(Position::new(0, 0), "println".to_string()),
+                Type::Fn(vec![Type::Any], Box::new(Type::String)),
+                false,
+            ),
+        );
+
         scope.types.insert("Int".to_string(), Type::Int);
         scope.types.insert("Float".to_string(), Type::Float);
         scope.types.insert("Bool".to_string(), Type::Bool);
         scope.types.insert("String".to_string(), Type::String);
+
         scope
     }
 }
@@ -304,8 +314,60 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         Ok(TypedAstNode::BindingDecl(token, node))
     }
 
-    fn visit_func_decl(&mut self, _token: Token, _node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+        let FunctionDeclNode { name, args, ret_type, body } = node;
+
+        let func_name = Token::get_ident_name(&name);
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding(func_name) {
+            let orig_ident = orig_ident.clone();
+            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
+        }
+
+        let args: Result<Vec<(Token, Type)>, _> = args.into_iter()
+            .map(|(token, type_ident)| {
+                let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
+                match arg_type {
+                    None => Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
+                    Some(arg_type) => Ok((token, arg_type))
+                }
+            })
+            .collect();
+        let args = args?;
+
+        let body: Result<Vec<TypedAstNode>, _> = body.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let body = body?;
+        let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
+
+        let ret_type = match ret_type {
+            None => body_type,
+            Some(ret_type) => {
+                match Type::from_type_ident(&ret_type, self.get_types_in_scope()) {
+                    None => Err(TypecheckerError::UnknownType { type_ident: ret_type.get_ident() }),
+                    Some(typ) => {
+                        if typ != body_type {
+                            Err(TypecheckerError::Mismatch {
+                                token: body.last().map_or(
+                                    name.clone(),
+                                    |node| node.get_token().clone(),
+                                ),
+                                actual: body_type,
+                                expected: typ,
+                            })
+                        } else {
+                            Ok(body_type)
+                        }
+                    }
+                }?
+            }
+        };
+
+        let arg_types = args.iter().map(|(_, typ)| typ.clone()).collect::<Vec<_>>();
+        let func_type = Type::Fn(arg_types, Box::new(ret_type.clone()));
+        self.add_binding(func_name, &name, &func_type, false);
+
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body }))
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -1083,6 +1145,48 @@ mod tests {
         let err = typecheck("var abc: NonExistentType").unwrap_err();
         let expected = TypecheckerError::UnknownType {
             type_ident: Token::Ident(Position::new(1, 10), "NonExistentType".to_string())
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_function_decl() -> TestResult {
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() = 123");
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: Type::Int,
+                body: vec![
+                    int_literal!((1, 14), 123)
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let ScopeBinding(_, typ, _) = typechecker.get_binding("abc")
+            .expect("The function abc should be defined");
+        let expected_type = Type::Fn(vec![], Box::new(Type::Int));
+        assert_eq!(&expected_type, typ);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_errors() {
+        let err = typecheck("func println() = 123").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(1, 6), "println".to_string()),
+            orig_ident: Token::Ident(Position::new(0, 0), "println".to_string()),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("func myFunc() = 123 + true").unwrap_err();
+        let expected = TypecheckerError::InvalidOperator {
+            token: Token::Plus(Position::new(1, 21)),
+            ltype: Type::Int,
+            op: BinaryOp::Add,
+            rtype: Type::Bool,
         };
         assert_eq!(expected, err);
     }

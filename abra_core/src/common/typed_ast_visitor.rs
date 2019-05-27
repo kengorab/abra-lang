@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 use crate::typechecker::types::Type;
 
@@ -12,6 +12,7 @@ pub trait TypedAstVisitor<V, E> {
             Grouped(tok, node) => self.visit_grouped(tok, node),
             Array(tok, node) => self.visit_array(tok, node),
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
+            FunctionDecl(tok, node) => self.visit_function_decl(tok, node),
             Identifier(tok, typ, is_mutable) => self.visit_identifier(tok, typ, is_mutable),
             Assignment(tok, typ) => self.visit_assignment(tok, typ),
             Indexing(tok, typ) => self.visit_indexing(tok, typ),
@@ -26,6 +27,7 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_grouped(&mut self, token: Token, node: TypedGroupedNode) -> Result<V, E>;
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<V, E>;
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<V, E>;
+    fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<V, E>;
     fn visit_identifier(&mut self, token: Token, typ: Type, is_mutable: bool) -> Result<V, E>;
     fn visit_assignment(&mut self, token: Token, node: TypedAssignmentNode) -> Result<V, E>;
     fn visit_indexing(&mut self, token: Token, node: TypedIndexingNode) -> Result<V, E>;
