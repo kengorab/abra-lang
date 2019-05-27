@@ -1169,6 +1169,47 @@ mod tests {
         let expected_type = Type::Fn(vec![], Box::new(Type::Int));
         assert_eq!(&expected_type, typ);
 
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() = { val a = [1, 2] a }");
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: Type::Array(Box::new(Type::Int)),
+                body: vec![
+                    TypedAstNode::BindingDecl(
+                        Token::Val(Position::new(1, 16)),
+                        TypedBindingDeclNode {
+                            ident: Token::Ident(Position::new(1, 20), "a".to_string()),
+                            is_mutable: false,
+                            expr: Some(Box::new(
+                                TypedAstNode::Array(
+                                    Token::LBrack(Position::new(1, 24)),
+                                    TypedArrayNode {
+                                        typ: Type::Array(Box::new(Type::Int)),
+                                        items: vec![
+                                            Box::new(int_literal!((1, 25), 1)),
+                                            Box::new(int_literal!((1, 28), 2)),
+                                        ],
+                                    },
+                                )
+                            )),
+                        },
+                    ),
+                    TypedAstNode::Identifier(
+                        Token::Ident(Position::new(1, 31), "a".to_string()),
+                        Type::Array(Box::new(Type::Int)),
+                        false,
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let ScopeBinding(_, typ, _) = typechecker.get_binding("abc")
+            .expect("The function abc should be defined");
+        let expected_type = Type::Fn(vec![], Box::new(Type::Array(Box::new(Type::Int))));
+        assert_eq!(&expected_type, typ);
+
         Ok(())
     }
 
