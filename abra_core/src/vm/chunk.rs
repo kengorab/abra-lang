@@ -3,17 +3,15 @@ use std::collections::HashMap;
 use crate::vm::opcode::Opcode;
 use crate::vm::value::Value;
 
-#[derive(Clone, PartialEq)]
+#[derive(PartialEq)]
 pub struct Chunk {
     pub(crate) lines: Vec<usize>,
     pub(crate) code: Vec<u8>,
-    pub(crate) constants: Vec<Value>,
-    pub(crate) bindings: HashMap<String, usize>,
 }
 
 impl Chunk {
     pub fn new() -> Self {
-        Chunk { lines: Vec::new(), code: Vec::new(), constants: Vec::new(), bindings: HashMap::new() }
+        Chunk { lines: Vec::new(), code: Vec::new() }
     }
 
     fn add_line(&mut self, line_num: usize) {
@@ -35,16 +33,6 @@ impl Chunk {
     pub fn write(&mut self, byte: u8, line_num: usize) {
         self.add_line(line_num);
         self.code.push(byte);
-    }
-
-    pub fn add_constant(&mut self, value: Value) -> u8 {
-        let const_idx = self.constants.iter()
-            .position(|v| v == &value)
-            .unwrap_or_else(|| {
-                self.constants.push(value);
-                self.constants.len() - 1
-            });
-        const_idx as u8
     }
 }
 
@@ -72,6 +60,38 @@ impl Debug for Chunk {
             }
         }
 
-        write!(f, "], constants: {:?}, bindings: {:?})", self.constants, self.bindings)
+        write!(f, "])")
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CompiledModule<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) chunks: HashMap<String, Chunk>,
+    pub(crate) constants: Vec<Value>,
+    pub(crate) bindings: HashMap<String, usize>,
+}
+
+impl<'a> CompiledModule<'a> {
+    pub fn new(name: &'a str) -> Self {
+        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new(), bindings: HashMap::new() }
+    }
+
+    pub fn get_chunk(&mut self, name: String) -> Option<&mut Chunk> {
+        self.chunks.get_mut(&name)
+    }
+
+    pub fn add_chunk(&mut self, name: String, chunk: Chunk) {
+        self.chunks.insert(name, chunk);
+    }
+
+    pub fn add_constant(&mut self, value: Value) -> u8 {
+        let const_idx = self.constants.iter()
+            .position(|v| v == &value)
+            .unwrap_or_else(|| {
+                self.constants.push(value);
+                self.constants.len() - 1
+            });
+        const_idx as u8
     }
 }

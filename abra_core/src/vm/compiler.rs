@@ -1,5 +1,5 @@
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode};
-use crate::vm::chunk::Chunk;
+use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
@@ -8,13 +8,18 @@ use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 
 pub struct Compiler<'a> {
-    chunk: &'a mut Chunk
+    current_chunk: &'a str,
+    module: CompiledModule<'a>,
 }
 
-pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
-    let mut chunk = Chunk::new();
+pub const MAIN_CHUNK_NAME: &str = "main";
 
-    let mut compiler = Compiler { chunk: &mut chunk };
+pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModule, ()> {
+    let mut module = CompiledModule::new(module_name);
+    let main_chunk = Chunk::new();
+    module.add_chunk(MAIN_CHUNK_NAME.to_string(), main_chunk);
+
+    let mut compiler = Compiler { module, current_chunk: MAIN_CHUNK_NAME };
 
     let last_line = ast.into_iter()
         .map(|node| {
@@ -25,12 +30,31 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<Chunk, ()> {
         .last()
         .unwrap_or(0);
 
-    chunk.write(Opcode::Return as u8, last_line + 1);
-
-    Ok(chunk)
+    let mut module = compiler.module;
+    module.get_chunk(MAIN_CHUNK_NAME.to_string())
+        .unwrap()
+        .write(Opcode::Return as u8, last_line + 1);
+    Ok(module)
 }
 
 impl<'a> Compiler<'a> {
+    #[inline]
+    fn get_current_chunk(&mut self) -> &mut Chunk {
+        let name = self.current_chunk.clone();
+        self.module.get_chunk(name.to_string())
+            .expect(&format!("Expected chunk named {} to exist", self.current_chunk))
+    }
+
+    #[inline]
+    fn write_opcode(&mut self, opcode: Opcode, line: usize) {
+        self.write_byte(opcode as u8, line);
+    }
+
+    #[inline]
+    fn write_byte(&mut self, byte: u8, line: usize) {
+        self.get_current_chunk().write(byte, line);
+    }
+
     fn write_int_constant(&mut self, number: u32, line: usize) {
         if number <= 4 {
             let opcode = match number {
@@ -41,11 +65,11 @@ impl<'a> Compiler<'a> {
                 4 => Opcode::IConst4,
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
-            self.chunk.write(opcode as u8, line);
+            self.write_opcode(opcode, line);
         } else {
-            let const_idx = self.chunk.add_constant(Value::Int(number as i64));
-            self.chunk.write(Opcode::Constant as u8, line);
-            self.chunk.write(const_idx, line);
+            let const_idx = self.module.add_constant(Value::Int(number as i64));
+            self.write_opcode(Opcode::Constant, line);
+            self.write_byte(const_idx, line);
         }
     }
 
@@ -59,10 +83,10 @@ impl<'a> Compiler<'a> {
                 4 => Opcode::Store4,
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
-            self.chunk.write(opcode as u8, line);
+            self.write_opcode(opcode, line);
         } else {
             self.write_int_constant(binding_idx, line);
-            self.chunk.write(Opcode::Store as u8, line);
+            self.write_opcode(Opcode::Store, line);
         }
     }
 
@@ -76,10 +100,10 @@ impl<'a> Compiler<'a> {
                 4 => Opcode::Load4,
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
-            self.chunk.write(opcode as u8, line);
+            self.write_opcode(opcode, line);
         } else {
             self.write_int_constant(binding_idx, line);
-            self.chunk.write(Opcode::Load as u8, line);
+            self.write_opcode(Opcode::Load, line);
         }
     }
 }
@@ -90,8 +114,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
 
         if let TypedLiteralNode::BoolLiteral(val) = node {
-            let opcode = if val { Opcode::T } else { Opcode::F } as u8;
-            self.chunk.write(opcode, line);
+            let opcode = if val { Opcode::T } else { Opcode::F };
+            self.write_opcode(opcode, line);
             return Ok(());
         } else if let TypedLiteralNode::IntLiteral(val) = node {
             self.write_int_constant(val as u32, line);
@@ -100,14 +124,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let const_idx = match node {
             TypedLiteralNode::FloatLiteral(val) =>
-                self.chunk.add_constant(Value::Float(val)),
+                self.module.add_constant(Value::Float(val)),
             TypedLiteralNode::StringLiteral(val) =>
-                self.chunk.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
+                self.module.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
             TypedLiteralNode::IntLiteral(_) | TypedLiteralNode::BoolLiteral(_) => unreachable!() // Handled in if-let above
         };
 
-        self.chunk.write(Opcode::Constant as u8, line);
-        self.chunk.write(const_idx, line);
+        self.write_opcode(Opcode::Constant, line);
+        self.write_byte(const_idx, line);
 
         Ok(())
     }
@@ -117,8 +141,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.visit(*node.expr)?;
         match node.op {
-            UnaryOp::Minus => self.chunk.write(Opcode::Invert as u8, line),
-            UnaryOp::Negate => self.chunk.write(Opcode::Negate as u8, line),
+            UnaryOp::Minus => self.write_opcode(Opcode::Invert, line),
+            UnaryOp::Negate => self.write_opcode(Opcode::Negate, line),
         }
         Ok(())
     }
@@ -156,8 +180,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let ltype = left.get_type();
         self.visit(left)?;
         match (node_type, ltype) {
-            (Type::Int, Type::Float) => self.chunk.write(Opcode::F2I as u8, line),
-            (Type::Float, Type::Int) => self.chunk.write(Opcode::I2F as u8, line),
+            (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
+            (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
             _ => {}
         };
 
@@ -165,12 +189,12 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let rtype = right.get_type();
         self.visit(right)?;
         match (node_type, rtype) {
-            (Type::Int, Type::Float) => self.chunk.write(Opcode::F2I as u8, line),
-            (Type::Float, Type::Int) => self.chunk.write(Opcode::I2F as u8, line),
+            (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
+            (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
             _ => {}
         };
 
-        self.chunk.write(opcode as u8, token.get_position().line);
+        self.write_opcode(opcode, token.get_position().line);
 
         Ok(())
     }
@@ -189,7 +213,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
 
         self.write_int_constant(num_items as u32, line);
-        self.chunk.write(Opcode::ArrMk as u8, line);
+        self.write_opcode(Opcode::ArrMk, line);
 
         Ok(())
     }
@@ -200,8 +224,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let TypedBindingDeclNode { ident, expr, .. } = node;
         let ident = Token::get_ident_name(&ident);
 
-        let binding_idx = self.chunk.bindings.len();
-        self.chunk.bindings.insert(ident.clone(), binding_idx);
+        let binding_idx = self.module.bindings.len();
+        self.module.bindings.insert(ident.clone(), binding_idx);
 
         if let Some(node) = expr {
             self.visit(*node)?;
@@ -221,7 +245,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let ident = Token::get_ident_name(&token);
 
-        if let Some(binding_idx) = self.chunk.bindings.get(ident) {
+        if let Some(binding_idx) = self.module.bindings.get(ident) {
             self.write_load_instr(*binding_idx as u32, line);
         }
 
@@ -239,7 +263,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.visit(*expr)?;
 
-        let binding_idx = self.chunk.bindings.get(&ident).unwrap().clone();
+        let binding_idx = self.module.bindings.get(&ident).unwrap().clone();
         self.write_store_instr(binding_idx as u32, line);
         self.write_load_instr(binding_idx as u32, line);
 
@@ -256,7 +280,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         match index {
             IndexingMode::Index(idx) => {
                 self.visit(*idx)?;
-                self.chunk.write(Opcode::ArrLoad as u8, line);
+                self.write_opcode(Opcode::ArrLoad, line);
             }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
@@ -269,10 +293,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 } else {
                     // Jank: Use the Nil opcode as a placeholder to signify that there is no value,
                     // and that the end of the range will need to be determined at runtime
-                    self.chunk.write(Opcode::Nil as u8, line);
+                    self.write_opcode(Opcode::Nil, line);
                 }
 
-                self.chunk.write(Opcode::ArrSlc as u8, line);
+                self.write_opcode(Opcode::ArrSlc, line);
             }
         };
 
@@ -285,9 +309,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let TypedIfNode { condition, if_block, else_block, .. } = node;
 
         self.visit(*condition)?;
-        self.chunk.write(Opcode::JumpIfF as u8, line);
-        self.chunk.write(0, line); // <- Replaced after compiling if-block
-        let jump_offset_slot_idx = self.chunk.code.len();
+        self.write_opcode(Opcode::JumpIfF, line);
+        self.write_byte(0, line); // <- Replaced after compiling if-block
+        let jump_offset_slot_idx = self.get_current_chunk().code.len();
 
         // TODO: Purge useless bindings after if/else-blocks exit
 
@@ -295,23 +319,25 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.visit(node)?;
         }
         if else_block.is_some() {
-            self.chunk.write(Opcode::Jump as u8, line);
-            self.chunk.write(0, line); // <- Replaced after compiling else-block
+            self.write_opcode(Opcode::Jump, line);
+            self.write_byte(0, line); // <- Replaced after compiling else-block
         }
 
-        let if_block_len = self.chunk.code.len().checked_sub(jump_offset_slot_idx)
+        let chunk = self.get_current_chunk();
+        let if_block_len = chunk.code.len().checked_sub(jump_offset_slot_idx)
             .expect("jump offset slot should be <= end of if-block");
-        *self.chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
+        *chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
 
-        let jump_offset_slot_idx = self.chunk.code.len();
+        let jump_offset_slot_idx = chunk.code.len();
 
         if let Some(else_block) = else_block {
             for node in else_block {
                 self.visit(node)?;
             }
-            let else_block_len = self.chunk.code.len().checked_sub(jump_offset_slot_idx)
+            let chunk = self.get_current_chunk();
+            let else_block_len = chunk.code.len().checked_sub(jump_offset_slot_idx)
                 .expect("jump offset slot should be <= end of else-block");
-            *self.chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
+            *chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
         }
 
         Ok(())
@@ -330,23 +356,36 @@ mod tests {
     use crate::typechecker::typechecker::typecheck;
     use std::collections::HashMap;
 
-    fn compile(input: &str) -> Chunk {
+    const MODULE_NAME: &str = "<test_module>";
+
+    fn compile(input: &str) -> CompiledModule {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
 
-        super::compile(typed_ast).unwrap()
+        super::compile(MODULE_NAME, typed_ast).unwrap()
+    }
+
+    fn with_main_chunk(chunk: Chunk) -> HashMap<String, Chunk> {
+        let mut chunks = HashMap::new();
+        chunks.insert(MAIN_CHUNK_NAME.to_string(), chunk);
+        chunks
     }
 
     #[test]
     fn compile_empty() {
         let chunk = compile("");
-        let expected = Chunk {
-            lines: vec![1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(
+                Chunk {
+                    lines: vec![1],
+                    code: vec![
+                        Opcode::Return as u8
+                    ],
+                }
+            ),
             constants: vec![],
-            code: vec![
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -355,22 +394,25 @@ mod tests {
     #[test]
     fn compile_literals() {
         let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
-        let expected = Chunk {
-            lines: vec![10, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![10, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst4 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Constant as u8, 2,
+                    Opcode::T as u8,
+                    Opcode::F as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Float(2.3),
                 Value::Float(5.6),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
-            ],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::IConst4 as u8,
-                Opcode::Constant as u8, 1,
-                Opcode::Constant as u8, 2,
-                Opcode::T as u8,
-                Opcode::F as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -380,40 +422,49 @@ mod tests {
     #[test]
     fn compile_unary() {
         let chunk = compile("-5");
-        let expected = Chunk {
-            lines: vec![3, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Invert as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5)],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Invert as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("-2.3");
-        let expected = Chunk {
-            lines: vec![3, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Invert as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Float(2.3)],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Invert as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("!false");
-        let expected = Chunk {
-            lines: vec![2, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![2, 1],
+                code: vec![
+                    Opcode::F as u8,
+                    Opcode::Negate as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![],
-            code: vec![
-                Opcode::F as u8,
-                Opcode::Negate as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -422,38 +473,44 @@ mod tests {
     #[test]
     fn compile_binary_numeric() {
         let chunk = compile("5 + 6");
-        let expected = Chunk {
-            lines: vec![5, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::IAdd as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5), Value::Int(6)],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::IAdd as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         // Testing i2f and order of ops
         let chunk = compile("1 - -5 * 3.4 / 5");
-        let expected = Chunk {
-            lines: vec![14, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![14, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::I2F as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Invert as u8,
+                    Opcode::I2F as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::FMul as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::I2F as u8,
+                    Opcode::FDiv as u8,
+                    Opcode::FSub as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5), Value::Float(3.4)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::I2F as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::Invert as u8,
-                Opcode::I2F as u8,
-                Opcode::Constant as u8, 1,
-                Opcode::FMul as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::I2F as u8,
-                Opcode::FDiv as u8,
-                Opcode::FSub as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -462,17 +519,20 @@ mod tests {
     #[test]
     fn compile_binary_grouped() {
         let chunk = compile("(1 + 2) * 3");
-        let expected = Chunk {
-            lines: vec![5, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::IConst3 as u8,
+                    Opcode::IMul as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IMul as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -481,36 +541,42 @@ mod tests {
     #[test]
     fn compile_binary_str_concat() {
         let chunk = compile("\"abc\" + \"def\"");
-        let expected = Chunk {
-            lines: vec![5, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::StrConcat as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::StrConcat as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("1 + \"a\" + 3.4");
-        let expected = Chunk {
-            lines: vec![7, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![7, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::StrConcat as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::StrConcat as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Float(3.4)
-            ],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 1,
-                Opcode::StrConcat as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -520,17 +586,20 @@ mod tests {
     #[test]
     fn compile_binary_boolean() {
         let chunk = compile("true && true || false");
-        let expected = Chunk {
-            lines: vec![5, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 1],
+                code: vec![
+                    Opcode::T as u8,
+                    Opcode::T as u8,
+                    Opcode::And as u8,
+                    Opcode::F as u8,
+                    Opcode::Or as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![],
-            code: vec![
-                Opcode::T as u8,
-                Opcode::T as u8,
-                Opcode::And as u8,
-                Opcode::F as u8,
-                Opcode::Or as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -539,37 +608,43 @@ mod tests {
     #[test]
     fn compile_binary_comparisons() {
         let chunk = compile("1 <= 5 == 3.4 >= 5.6");
-        let expected = Chunk {
-            lines: vec![10, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![10, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::LTE as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Constant as u8, 2,
+                    Opcode::GTE as u8,
+                    Opcode::Eq as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::LTE as u8,
-                Opcode::Constant as u8, 1,
-                Opcode::Constant as u8, 2,
-                Opcode::GTE as u8,
-                Opcode::Eq as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"a\" < \"b\" != 4");
-        let expected = Chunk {
-            lines: vec![7, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![7, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::LT as u8,
+                    Opcode::IConst4 as u8,
+                    Opcode::Neq as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) })
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::LT as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Neq as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -579,23 +654,26 @@ mod tests {
     #[test]
     fn compile_binary_coalesce() {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
-        let expected = Chunk {
-            lines: vec![11, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![11, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrLoad as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Coalesce as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Constant as u8, 2,
-                Opcode::Coalesce as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -605,35 +683,41 @@ mod tests {
     #[test]
     fn compile_array_primitives() {
         let chunk = compile("[1, 2]");
-        let expected = Chunk {
-            lines: vec![4, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![4, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("[\"a\", \"b\", \"c\"]");
-        let expected = Chunk {
-            lines: vec![8, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![8, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Constant as u8, 2,
+                    Opcode::IConst3 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::Constant as u8, 2,
-                Opcode::IConst3 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -643,23 +727,26 @@ mod tests {
     #[test]
     fn compile_array_nested() {
         let chunk = compile("[[1, 2], [3, 4, 5]]");
-        let expected = Chunk {
-            lines: vec![12, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![12, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::IConst3 as u8,
+                    Opcode::IConst4 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst3 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrMk as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::IConst3 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
@@ -668,14 +755,17 @@ mod tests {
     #[test]
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
-        let expected = Chunk {
-            lines: vec![3, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Store0 as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(123)],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Store0 as u8,
-                Opcode::Return as u8
-            ],
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("abc".to_string(), 0);
@@ -685,14 +775,17 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("var unset: Bool\nvar set = true");
-        let expected = Chunk {
-            lines: vec![0, 2, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![0, 2, 1],
+                code: vec![
+                    Opcode::T as u8,
+                    Opcode::Store1 as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![],
-            code: vec![
-                Opcode::T as u8,
-                Opcode::Store1 as u8,
-                Opcode::Return as u8
-            ],
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("unset".to_string(), 0);
@@ -703,21 +796,24 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
-        let expected = Chunk {
-            lines: vec![6, 3, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![6, 3, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::StrConcat as u8,
+                    Opcode::Store0 as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Store1 as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Int(5),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::StrConcat as u8,
-                Opcode::Store0 as u8,
-                Opcode::Constant as u8, 2,
-                Opcode::Store1 as u8,
-                Opcode::Return as u8
             ],
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
@@ -732,15 +828,18 @@ mod tests {
     #[test]
     fn compile_ident() {
         let chunk = compile("val abc = 123\nabc");
-        let expected = Chunk {
-            lines: vec![3, 1, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Store0 as u8,
+                    Opcode::Load0 as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(123)],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Store0 as u8,
-                Opcode::Load0 as u8,
-                Opcode::Return as u8
-            ],
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("abc".to_string(), 0);
@@ -753,29 +852,32 @@ mod tests {
     #[test]
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
-        let expected = Chunk {
-            lines: vec![2, 2, 6, 1],
-            constants: vec![],
-            code: vec![
-                // var a = 1
-                Opcode::IConst1 as u8,
-                Opcode::Store0 as u8,
-                // var b = 2
-                Opcode::IConst2 as u8,
-                Opcode::Store1 as u8,
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![2, 2, 6, 1],
+                code: vec![
+                    // var a = 1
+                    Opcode::IConst1 as u8,
+                    Opcode::Store0 as u8,
+                    // var b = 2
+                    Opcode::IConst2 as u8,
+                    Opcode::Store1 as u8,
 
-                // val c = b = a = 3
-                //   a = 3
-                Opcode::IConst3 as u8,
-                Opcode::Store0 as u8,
-                Opcode::Load0 as u8,
-                //  b = <a = 3>
-                Opcode::Store1 as u8,
-                Opcode::Load1 as u8,
-                //  c = <b = <a = 3>>
-                Opcode::Store2 as u8,
-                Opcode::Return as u8
-            ],
+                    // val c = b = a = 3
+                    //   a = 3
+                    Opcode::IConst3 as u8,
+                    Opcode::Store0 as u8,
+                    Opcode::Load0 as u8,
+                    //  b = <a = 3>
+                    Opcode::Store1 as u8,
+                    Opcode::Load1 as u8,
+                    //  c = <b = <a = 3>>
+                    Opcode::Store2 as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![],
             bindings: {
                 let mut bindings = HashMap::<String, usize>::new();
                 bindings.insert("a".to_string(), 0);
@@ -790,78 +892,90 @@ mod tests {
     #[test]
     fn compile_indexing() {
         let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
-        let expected = Chunk {
-            lines: vec![13, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![13, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::IConst3 as u8,
+                    Opcode::IConst4 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 0,
+                    Opcode::ArrMk as u8,
+                    Opcode::IConst3 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::ArrLoad as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(5)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 0,
-                Opcode::ArrMk as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[1 + 1:]");
-        let expected = Chunk {
-            lines: vec![7, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![7, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::Nil as u8,
+                    Opcode::ArrSlc as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::IConst1 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Nil as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[-1:4]");
-        let expected = Chunk {
-            lines: vec![6, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![6, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst1 as u8,
+                    Opcode::Invert as u8,
+                    Opcode::IConst4 as u8,
+                    Opcode::ArrSlc as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::IConst1 as u8,
-                Opcode::Invert as u8,
-                Opcode::IConst4 as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[:1 + 1]");
-        let expected = Chunk {
-            lines: vec![7, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![7, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst0 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::ArrSlc as u8,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
-            ],
-            code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::IConst0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
             ],
             bindings: HashMap::new(),
         };
@@ -871,76 +985,88 @@ mod tests {
     #[test]
     fn compile_if_else_statements() {
         let chunk = compile("if (1 == 2) 123 else 456");
-        let expected = Chunk {
-            lines: vec![11, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![11, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::Eq as u8,
+                    Opcode::JumpIfF as u8, 4,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Jump as u8, 2,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(123), Value::Int(456)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 4,
-                Opcode::Constant as u8, 0,
-                Opcode::Jump as u8, 2,
-                Opcode::Constant as u8, 1,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) 123");
-        let expected = Chunk {
-            lines: vec![7, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![7, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::Eq as u8,
+                    Opcode::JumpIfF as u8, 2,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(123)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 2,
-                Opcode::Constant as u8, 0,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) { } else { 456 }");
-        let expected = Chunk {
-            lines: vec![9, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![9, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::Eq as u8,
+                    Opcode::JumpIfF as u8, 2,
+                    Opcode::Jump as u8, 2,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(456)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 2,
-                Opcode::Jump as u8, 2,
-                Opcode::Constant as u8, 0,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
-        let expected = Chunk {
-            lines: vec![20, 1],
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![20, 1],
+                code: vec![
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::Eq as u8,
+                    Opcode::JumpIfF as u8, 4,
+                    Opcode::Constant as u8, 0,
+                    Opcode::Jump as u8, 11,
+                    Opcode::IConst3 as u8,
+                    Opcode::IConst4 as u8,
+                    Opcode::LT as u8,
+                    Opcode::JumpIfF as u8, 4,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Jump as u8, 2,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Return as u8
+                ],
+            }),
             constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
-            code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 4,
-                Opcode::Constant as u8, 0,
-                Opcode::Jump as u8, 11,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 4,
-                Opcode::Constant as u8, 1,
-                Opcode::Jump as u8, 2,
-                Opcode::Constant as u8, 2,
-                Opcode::Return as u8
-            ],
             bindings: HashMap::new(),
         };
         assert_eq!(expected, chunk);

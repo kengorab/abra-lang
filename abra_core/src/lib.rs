@@ -22,9 +22,9 @@ pub fn compile_and_run(input: String) -> Option<Value> {
                 match typechecker::typechecker::typecheck(ast) {
                     Err(e) => eprintln!("{}", e.get_message(&input)),
                     Ok((_, nodes)) => {
-                        let chunk = vm::compiler::compile(nodes).unwrap();
+                        let mut chunk = vm::compiler::compile("<default>", nodes).unwrap();
 
-                        let mut vm = vm::vm::VM::new(&chunk);
+                        let mut vm = vm::vm::VM::new(&mut chunk);
                         match vm.run() {
                             Ok(Some(v)) => return Some(v),
                             Ok(None) => println!(),

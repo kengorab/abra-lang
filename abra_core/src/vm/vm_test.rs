@@ -14,9 +14,9 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let chunk = compile(typed_ast).unwrap();
+        let mut module = compile("<test_module>", typed_ast).unwrap();
 
-        let mut vm = VM::new(&chunk);
+        let mut vm = VM::new(&mut module);
         vm.run().unwrap()
     }
 

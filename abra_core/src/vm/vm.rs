@@ -1,8 +1,9 @@
-use crate::vm::chunk::Chunk;
-use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj};
 use std::cmp::Ordering;
 use std::collections::vec_deque::VecDeque;
+use crate::vm::chunk::CompiledModule;
+use crate::vm::opcode::Opcode;
+use crate::vm::value::{Value, Obj};
+use crate::vm::compiler::MAIN_CHUNK_NAME;
 
 #[derive(Debug)]
 pub enum InterpretError {
@@ -13,14 +14,22 @@ pub enum InterpretError {
 
 pub struct VM<'a> {
     ip: usize,
-    chunk: &'a Chunk,
+    current_chunk: &'a str,
+    module: &'a mut CompiledModule<'a>,
     stack: Vec<Value>,
     vars: Vec<Value>,
 }
 
 impl<'a> VM<'a> {
-    pub fn new(chunk: &'a Chunk) -> Self {
-        VM { ip: 0, chunk, stack: Vec::new(), vars: Vec::with_capacity(chunk.bindings.len()) }
+    pub fn new(module: &'a mut CompiledModule<'a>) -> Self {
+        let num_vars = module.bindings.len();
+        VM {
+            ip: 0,
+            current_chunk: MAIN_CHUNK_NAME,
+            module,
+            stack: Vec::new(),
+            vars: Vec::with_capacity(num_vars),
+        }
     }
 
     fn push(&mut self, value: Value) {
@@ -36,10 +45,11 @@ impl<'a> VM<'a> {
     }
 
     fn read_byte(&mut self) -> Option<u8> {
-        if self.chunk.code.len() == self.ip {
+        let chunk = self.module.get_chunk(self.current_chunk.to_string()).unwrap();
+        if chunk.code.len() == self.ip {
             None
         } else {
-            let instr: u8 = self.chunk.code[self.ip];
+            let instr: u8 = chunk.code[self.ip];
             self.ip += 1;
             Some(instr)
         }
@@ -133,7 +143,7 @@ impl<'a> VM<'a> {
             match instr {
                 Opcode::Constant => {
                     let const_idx = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
-                    let val = self.chunk.constants.get(const_idx)
+                    let val = self.module.constants.get(const_idx)
                         .ok_or(InterpretError::ConstIdxOutOfBounds)?
                         .clone();
                     self.push(val)
