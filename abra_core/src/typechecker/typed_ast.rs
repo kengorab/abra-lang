@@ -11,7 +11,7 @@ pub enum TypedAstNode {
     Array(Token, TypedArrayNode),
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
-    Identifier(Token, Type, bool),
+    Identifier(Token, TypedIdentifierNode),
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
     IfStatement(Token, TypedIfNode),
@@ -28,7 +28,7 @@ impl TypedAstNode {
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
-            TypedAstNode::Identifier(token, _, _) => token,
+            TypedAstNode::Identifier(token, _) => token,
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
             TypedAstNode::IfStatement(token, _) => token,
@@ -50,7 +50,7 @@ impl TypedAstNode {
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::FunctionDecl(_, _) => Type::Unit,
-            TypedAstNode::Identifier(_, typ, _) => typ.clone(),
+            TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
             TypedAstNode::IfStatement(_, node) => node.typ.clone(),
@@ -100,6 +100,7 @@ pub struct TypedBindingDeclNode {
     pub ident: Token,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
+    pub scope_depth: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -110,6 +111,13 @@ pub struct TypedFunctionDeclNode {
     pub args: Vec<(Token, Type)>,
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedIdentifierNode {
+    pub typ: Type,
+    pub is_mutable: bool,
+    pub scope_depth: usize,
 }
 
 #[derive(Debug, PartialEq)]

@@ -1,5 +1,5 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode};
-use crate::vm::chunk::{CompiledModule, Chunk};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode};
+use crate::vm::chunk::{CompiledModule, Chunk, BindingDescriptor};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
@@ -8,7 +8,7 @@ use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 
 pub struct Compiler<'a> {
-    current_chunk: &'a str,
+    current_chunk: String,
     module: CompiledModule<'a>,
 }
 
@@ -19,7 +19,7 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
     let main_chunk = Chunk::new();
     module.add_chunk(MAIN_CHUNK_NAME.to_string(), main_chunk);
 
-    let mut compiler = Compiler { module, current_chunk: MAIN_CHUNK_NAME };
+    let mut compiler = Compiler { module, current_chunk: MAIN_CHUNK_NAME.to_string() };
 
     let last_line = ast.into_iter()
         .map(|node| {
@@ -105,6 +105,19 @@ impl<'a> Compiler<'a> {
             self.write_int_constant(binding_idx, line);
             self.write_opcode(Opcode::Load, line);
         }
+    }
+
+    fn get_binding_index(&self, binding_name: &String) -> usize {
+        let mut binding_idx = self.module.bindings.len() - 1;
+        while binding_idx > 0 {
+            if let Some(BindingDescriptor { name, .. }) = self.module.bindings.get(binding_idx) {
+                if name == binding_name {
+                    break;
+                }
+            }
+            binding_idx -= 1;
+        }
+        binding_idx
     }
 }
 
@@ -221,11 +234,11 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedBindingDeclNode { ident, expr, .. } = node;
+        let TypedBindingDeclNode { ident, expr, scope_depth, .. } = node;
         let ident = Token::get_ident_name(&ident);
 
         let binding_idx = self.module.bindings.len();
-        self.module.bindings.insert(ident.clone(), binding_idx);
+        self.module.bindings.push(BindingDescriptor { name: ident.clone(), scope_depth });
 
         if let Some(node) = expr {
             self.visit(*node)?;
@@ -236,18 +249,36 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
+        let TypedFunctionDeclNode { name, args, ret_type, body } = node;
+        let func_name = Token::get_ident_name(&name);
+        self.module.add_chunk(func_name.to_owned(), Chunk::new());
+        let prev_chunk = self.current_chunk.clone();
+        self.current_chunk = func_name.to_owned();
+
+        let len = body.len();
+        let mut idx = 0;
+        let mut line = 0;
+        for node in body {
+            idx += 1;
+            if idx == len {
+                line = node.get_token().get_position().line;
+            }
+            self.visit(node)?;
+        }
+        self.write_opcode(Opcode::Return, line);
+
+        self.current_chunk = prev_chunk;
+
+        Ok(())
     }
 
-    fn visit_identifier(&mut self, token: Token, _typ: Type, _is_mutable: bool) -> Result<(), ()> {
+    fn visit_identifier(&mut self, token: Token, _node: TypedIdentifierNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
         let ident = Token::get_ident_name(&token);
-
-        if let Some(binding_idx) = self.module.bindings.get(ident) {
-            self.write_load_instr(*binding_idx as u32, line);
-        }
+        let binding_idx = self.get_binding_index(ident);
+        self.write_load_instr(binding_idx as u32, line);
 
         Ok(())
     }
@@ -257,13 +288,13 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let TypedAssignmentNode { target, expr, .. } = node;
         let ident = match *target {
-            TypedAstNode::Identifier(ident, _, _) => Token::get_ident_name(&ident).clone(),
+            TypedAstNode::Identifier(ident, _) => Token::get_ident_name(&ident).clone(),
             _ => unreachable!() // We can assume it's an Identifier; typechecking would have failed otherwise
         };
 
         self.visit(*expr)?;
 
-        let binding_idx = self.module.bindings.get(&ident).unwrap().clone();
+        let binding_idx = self.get_binding_index(&ident);
         self.write_store_instr(binding_idx as u32, line);
         self.write_load_instr(binding_idx as u32, line);
 
@@ -386,7 +417,7 @@ mod tests {
                 }
             ),
             constants: vec![],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -414,7 +445,7 @@ mod tests {
                 Value::Float(5.6),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -433,7 +464,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -449,7 +480,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Float(2.3)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -465,7 +496,7 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -485,7 +516,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5), Value::Int(6)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -511,7 +542,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5), Value::Float(3.4)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -533,7 +564,7 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -556,7 +587,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -578,7 +609,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Float(3.4)
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -600,7 +631,7 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -624,7 +655,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -646,7 +677,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) })
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -675,7 +706,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -696,7 +727,7 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -719,7 +750,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -747,7 +778,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -766,11 +797,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(123)],
-            bindings: {
-                let mut bindings = HashMap::<String, usize>::new();
-                bindings.insert("abc".to_string(), 0);
-                bindings
-            },
+            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
         };
         assert_eq!(expected, chunk);
 
@@ -786,12 +813,10 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: {
-                let mut bindings = HashMap::<String, usize>::new();
-                bindings.insert("unset".to_string(), 0);
-                bindings.insert("set".to_string(), 1);
-                bindings
-            },
+            bindings: vec![
+                BindingDescriptor { name: "unset".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "set".to_string(), scope_depth: 0 },
+            ],
         };
         assert_eq!(expected, chunk);
 
@@ -815,12 +840,10 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Int(5),
             ],
-            bindings: {
-                let mut bindings = HashMap::<String, usize>::new();
-                bindings.insert("abc".to_string(), 0);
-                bindings.insert("def".to_string(), 1);
-                bindings
-            },
+            bindings: vec![
+                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "def".to_string(), scope_depth: 0 },
+            ],
         };
         assert_eq!(expected, chunk);
     }
@@ -840,11 +863,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(123)],
-            bindings: {
-                let mut bindings = HashMap::<String, usize>::new();
-                bindings.insert("abc".to_string(), 0);
-                bindings
-            },
+            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
         };
         assert_eq!(expected, chunk);
     }
@@ -878,13 +897,11 @@ mod tests {
                 ],
             }),
             constants: vec![],
-            bindings: {
-                let mut bindings = HashMap::<String, usize>::new();
-                bindings.insert("a".to_string(), 0);
-                bindings.insert("b".to_string(), 1);
-                bindings.insert("c".to_string(), 2);
-                bindings
-            },
+            bindings: vec![
+                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "c".to_string(), scope_depth: 0 },
+            ],
         };
         assert_eq!(expected, chunk);
     }
@@ -912,7 +929,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -934,7 +951,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -955,7 +972,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -977,7 +994,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -1001,7 +1018,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(123), Value::Int(456)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1020,7 +1037,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(123)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1040,7 +1057,7 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(456)],
-            bindings: HashMap::new(),
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1067,7 +1084,69 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
-            bindings: HashMap::new(),
+            bindings: vec![],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          val a = 123
+          if (true) {\
+            val a = 456\
+            a + 1\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 9, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Store0 as u8,
+                    Opcode::T as u8,
+                    Opcode::JumpIfF as u8, 6,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Store1 as u8,
+                    Opcode::Load1 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![Value::Int(123), Value::Int(456)],
+            bindings: vec![
+                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "a".to_string(), scope_depth: 1 },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_declaration() {
+        let chunk = compile("func abc() = 1 + 2");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: {
+                let mut chunks = HashMap::new();
+                chunks.insert("abc".to_string(), Chunk {
+                    lines: vec![4],
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::Return as u8,
+                    ],
+                });
+                chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
+                    lines: vec![0, 1],
+                    code: vec![
+                        Opcode::Return as u8
+                    ],
+                });
+                chunks
+            },
+            constants: vec![],
+            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }

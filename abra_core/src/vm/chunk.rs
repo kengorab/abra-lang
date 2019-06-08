@@ -65,16 +65,22 @@ impl Debug for Chunk {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct BindingDescriptor {
+    pub(crate) name: String,
+    pub(crate) scope_depth: usize,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct CompiledModule<'a> {
     pub(crate) name: &'a str,
     pub(crate) chunks: HashMap<String, Chunk>,
     pub(crate) constants: Vec<Value>,
-    pub(crate) bindings: HashMap<String, usize>,
+    pub(crate) bindings: Vec<BindingDescriptor>,
 }
 
 impl<'a> CompiledModule<'a> {
     pub fn new(name: &'a str) -> Self {
-        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new(), bindings: HashMap::new() }
+        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new(), bindings: Vec::new() }
     }
 
     pub fn get_chunk(&mut self, name: String) -> Option<&mut Chunk> {
