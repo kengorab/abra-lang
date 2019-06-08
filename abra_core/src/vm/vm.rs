@@ -362,7 +362,19 @@ impl<'a> VM<'a> {
                         unreachable!()
                     }
                 }
-                Opcode::Return => break Ok(self.pop()),
+                Opcode::Return => {
+                    let chunk = self.module.chunks.get(self.current_chunk)
+                        .expect(&format!("Chunk named {} expected to exist", self.current_chunk));
+
+                    for _ in 0..chunk.num_bindings {
+                        self.vars.pop();
+                    }
+
+                    let top = self.pop();
+                    if self.current_chunk == MAIN_CHUNK_NAME {
+                        break Ok(top);
+                    }
+                }
             }
         }
     }

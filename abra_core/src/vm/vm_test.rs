@@ -390,7 +390,8 @@ mod tests {
     fn interpret_if_else_statements() {
         let input = "\
           if (1 != 2) {\
-            123\
+            val a = 123\
+            a\
           } else {\
             456\
           }
