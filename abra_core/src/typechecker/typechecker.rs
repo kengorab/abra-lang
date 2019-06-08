@@ -378,8 +378,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let arg_types = args.iter().map(|(_, typ)| typ.clone()).collect::<Vec<_>>();
         let func_type = Type::Fn(arg_types, Box::new(ret_type.clone()));
         self.add_binding(func_name, &name, &func_type, false);
+        let scope_depth = self.scopes.len() - 1;
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth }))
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -1185,6 +1186,7 @@ mod tests {
                 body: vec![
                     int_literal!((1, 14), 123)
                 ],
+                scope_depth: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1231,6 +1233,7 @@ mod tests {
                         },
                     )
                 ],
+                scope_depth: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1722,7 +1725,7 @@ mod tests {
             Some((ScopeBinding(_, typ, _), scope_depth)) => {
                 assert_eq!(&Type::Int, typ);
                 assert_eq!(0, scope_depth);
-            },
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
 
@@ -1731,7 +1734,7 @@ mod tests {
             Some((ScopeBinding(_, typ, _), scope_depth)) => {
                 assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
                 assert_eq!(0, scope_depth);
-            },
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
 
@@ -1740,7 +1743,7 @@ mod tests {
             Some((ScopeBinding(_, typ, _), scope_depth)) => {
                 assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
                 assert_eq!(0, scope_depth);
-            },
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
     }

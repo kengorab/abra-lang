@@ -7,11 +7,12 @@ use crate::vm::value::Value;
 pub struct Chunk {
     pub(crate) lines: Vec<usize>,
     pub(crate) code: Vec<u8>,
+    pub(crate) num_bindings: u32,
 }
 
 impl Chunk {
     pub fn new() -> Self {
-        Chunk { lines: Vec::new(), code: Vec::new() }
+        Chunk { lines: Vec::new(), code: Vec::new(), num_bindings: 0 }
     }
 
     fn add_line(&mut self, line_num: usize) {
@@ -60,7 +61,7 @@ impl Debug for Chunk {
             }
         }
 
-        write!(f, "])")
+        write!(f, "], num_bindings: {:?})", self.num_bindings)
     }
 }
 

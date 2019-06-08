@@ -111,6 +111,7 @@ pub struct TypedFunctionDeclNode {
     pub args: Vec<(Token, Type)>,
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
+    pub scope_depth: usize,
 }
 
 #[derive(Debug, PartialEq)]

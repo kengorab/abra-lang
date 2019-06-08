@@ -239,6 +239,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let binding_idx = self.module.bindings.len();
         self.module.bindings.push(BindingDescriptor { name: ident.clone(), scope_depth });
+        self.get_current_chunk().num_bindings += 1;
 
         if let Some(node) = expr {
             self.visit(*node)?;
@@ -249,9 +250,12 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, args, ret_type, body } = node;
+    fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
+        let TypedFunctionDeclNode { name, body, scope_depth, .. } = node;
         let func_name = Token::get_ident_name(&name);
+        self.module.bindings.push(BindingDescriptor { name: func_name.clone(), scope_depth });
+        self.get_current_chunk().num_bindings += 1;
+
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
         let prev_chunk = self.current_chunk.clone();
         self.current_chunk = func_name.to_owned();
@@ -414,6 +418,7 @@ mod tests {
                     code: vec![
                         Opcode::Return as u8
                     ],
+                    num_bindings: 0,
                 }
             ),
             constants: vec![],
@@ -439,6 +444,7 @@ mod tests {
                     Opcode::F as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Float(2.3),
@@ -462,6 +468,7 @@ mod tests {
                     Opcode::Invert as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
             bindings: vec![],
@@ -478,6 +485,7 @@ mod tests {
                     Opcode::Invert as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Float(2.3)],
             bindings: vec![],
@@ -494,6 +502,7 @@ mod tests {
                     Opcode::Negate as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![],
             bindings: vec![],
@@ -514,6 +523,7 @@ mod tests {
                     Opcode::IAdd as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Int(6)],
             bindings: vec![],
@@ -540,6 +550,7 @@ mod tests {
                     Opcode::FSub as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Float(3.4)],
             bindings: vec![],
@@ -562,6 +573,7 @@ mod tests {
                     Opcode::IMul as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![],
             bindings: vec![],
@@ -582,6 +594,7 @@ mod tests {
                     Opcode::StrConcat as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
@@ -604,6 +617,7 @@ mod tests {
                     Opcode::StrConcat as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
@@ -629,6 +643,7 @@ mod tests {
                     Opcode::Or as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![],
             bindings: vec![],
@@ -653,6 +668,7 @@ mod tests {
                     Opcode::Eq as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
             bindings: vec![],
@@ -672,6 +688,7 @@ mod tests {
                     Opcode::Neq as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
@@ -700,6 +717,7 @@ mod tests {
                     Opcode::Coalesce as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
@@ -725,6 +743,7 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![],
             bindings: vec![],
@@ -744,6 +763,7 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
@@ -776,6 +796,7 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
             bindings: vec![],
@@ -795,6 +816,7 @@ mod tests {
                     Opcode::Store0 as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 1,
             }),
             constants: vec![Value::Int(123)],
             bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
@@ -811,6 +833,7 @@ mod tests {
                     Opcode::Store1 as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 2,
             }),
             constants: vec![],
             bindings: vec![
@@ -834,6 +857,7 @@ mod tests {
                     Opcode::Store1 as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 2,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
@@ -861,6 +885,7 @@ mod tests {
                     Opcode::Load0 as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 1,
             }),
             constants: vec![Value::Int(123)],
             bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
@@ -895,6 +920,7 @@ mod tests {
                     Opcode::Store2 as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 3,
             }),
             constants: vec![],
             bindings: vec![
@@ -927,6 +953,7 @@ mod tests {
                     Opcode::ArrLoad as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
             bindings: vec![],
@@ -947,6 +974,7 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
@@ -968,6 +996,7 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
@@ -990,6 +1019,7 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
@@ -1016,6 +1046,7 @@ mod tests {
                     Opcode::Constant as u8, 1,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(123), Value::Int(456)],
             bindings: vec![],
@@ -1035,6 +1066,7 @@ mod tests {
                     Opcode::Constant as u8, 0,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(123)],
             bindings: vec![],
@@ -1055,6 +1087,7 @@ mod tests {
                     Opcode::Constant as u8, 0,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(456)],
             bindings: vec![],
@@ -1082,6 +1115,7 @@ mod tests {
                     Opcode::Constant as u8, 2,
                     Opcode::Return as u8
                 ],
+                num_bindings: 0,
             }),
             constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
             bindings: vec![],
@@ -1111,6 +1145,7 @@ mod tests {
                     Opcode::IAdd as u8,
                     Opcode::Return as u8
                 ],
+                num_bindings: 2,
             }),
             constants: vec![Value::Int(123), Value::Int(456)],
             bindings: vec![
@@ -1136,17 +1171,19 @@ mod tests {
                         Opcode::IAdd as u8,
                         Opcode::Return as u8,
                     ],
+                    num_bindings: 0,
                 });
                 chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
                     lines: vec![0, 1],
                     code: vec![
                         Opcode::Return as u8
                     ],
+                    num_bindings: 1,
                 });
                 chunks
             },
             constants: vec![],
-            bindings: vec![],
+            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
         };
         assert_eq!(expected, chunk);
     }
