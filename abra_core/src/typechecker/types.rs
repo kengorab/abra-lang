@@ -13,6 +13,7 @@ pub enum Type {
     Bool,
     Array(Box<Type>),
     Option(Box<Type>),
+    Fn(Vec<Type>, Box<Type>)
 }
 
 impl Type {

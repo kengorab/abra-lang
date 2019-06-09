@@ -35,6 +35,7 @@ impl Serialize for Res {
                     Some(value) => serializer.serialize_some(&Res(*value.clone()))
                 }
             }
+            Res(Value::Fn(fn_name)) => serializer.serialize_str(fn_name)
         }
     }
 }

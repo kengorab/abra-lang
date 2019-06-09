@@ -14,9 +14,9 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let chunk = compile(typed_ast).unwrap();
+        let mut module = compile("<test_module>", typed_ast).unwrap();
 
-        let mut vm = VM::new(&chunk);
+        let mut vm = VM::new(&mut module);
         vm.run().unwrap()
     }
 
@@ -390,7 +390,8 @@ mod tests {
     fn interpret_if_else_statements() {
         let input = "\
           if (1 != 2) {\
-            123\
+            val a = 123\
+            a\
           } else {\
             456\
           }
@@ -468,6 +469,18 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(123);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_declaration() {
+        let input = "\
+          func abc(a: Int): Int = 123
+          val def = abc
+          def
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Fn("abc".to_string());
         assert_eq!(expected, result);
     }
 }

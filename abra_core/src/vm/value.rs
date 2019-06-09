@@ -7,6 +7,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Obj(Obj),
+    Fn(String),
     Nil,
 }
 
@@ -17,6 +18,7 @@ impl Value {
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
+            Value::Fn(name) => format!("<func {}>", name),
             Value::Nil => format!("nil"),
         }
     }
@@ -32,6 +34,7 @@ impl Display for Value {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
+            Value::Fn(name) => write!(f, "<func {}>", name),
             Value::Nil => write!(f, "nil"),
         }
     }

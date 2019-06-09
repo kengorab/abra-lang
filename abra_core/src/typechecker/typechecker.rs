@@ -1,14 +1,14 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode};
 use crate::common::ast_visitor::AstVisitor;
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Token, Position};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq)]
-pub(crate) struct ScopeBinding(Token, Type, bool);
+pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
 
 pub(crate) struct Scope {
     pub(crate) bindings: HashMap<String, ScopeBinding>,
@@ -22,10 +22,20 @@ impl Scope {
 
     fn root_scope() -> Self {
         let mut scope = Scope::new();
+        scope.bindings.insert(
+            "println".to_string(),
+            ScopeBinding(
+                Token::Ident(Position::new(0, 0), "println".to_string()),
+                Type::Fn(vec![Type::Any], Box::new(Type::String)),
+                false,
+            ),
+        );
+
         scope.types.insert("Int".to_string(), Type::Int);
         scope.types.insert("Float".to_string(), Type::Float);
         scope.types.insert("Bool".to_string(), Type::Bool);
         scope.types.insert("String".to_string(), Type::String);
+
         scope
     }
 }
@@ -35,14 +45,22 @@ pub struct Typechecker {
 }
 
 impl Typechecker {
-    fn get_binding(&self, name: &str) -> Option<&ScopeBinding> {
+    fn get_binding(&self, name: &str) -> Option<(&ScopeBinding, usize)> {
+        let mut depth = 0;
         for scope in self.scopes.iter().rev() {
             match scope.bindings.get(name) {
-                None => continue,
-                Some(binding) => return Some(binding)
+                None => {
+                    depth += 1;
+                    continue;
+                }
+                Some(binding) => return Some((binding, self.scopes.len() - depth - 1))
             }
         }
         None
+    }
+
+    fn get_binding_in_current_scope(&self, name: &str) -> Option<&ScopeBinding> {
+        self.scopes.last().and_then(|scope| scope.bindings.get(name))
     }
 
     fn add_binding(&mut self, name: &str, ident: &Token, typ: &Type, is_mutable: bool) {
@@ -257,7 +275,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let name = Token::get_ident_name(&ident);
 
-        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding(name) {
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(name) {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident, orig_ident });
         }
@@ -295,13 +313,84 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }?;
 
         self.add_binding(name, &ident, &typ, is_mutable);
+        let scope_depth = self.scopes.len() - 1;
 
         let node = TypedBindingDeclNode {
             is_mutable,
             ident,
             expr: typed_expr.map(Box::new),
+            scope_depth,
         };
         Ok(TypedAstNode::BindingDecl(token, node))
+    }
+
+    fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+        let FunctionDeclNode { name, args, ret_type, body } = node;
+
+        let func_name = Token::get_ident_name(&name);
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(func_name) {
+            let orig_ident = orig_ident.clone();
+            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
+        }
+
+        self.scopes.push(Scope::new());
+        let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
+        let mut arg_idents = HashMap::<String, Token>::new();
+        for (token, type_ident) in args {
+            let arg_name = Token::get_ident_name(&token).clone();
+            if let Some(arg_tok) = arg_idents.get(&arg_name) {
+                return Err(TypecheckerError::DuplicateBinding { orig_ident: arg_tok.clone(), ident: token.clone() });
+            }
+            arg_idents.insert(arg_name, token.clone());
+
+            let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
+            match arg_type {
+                None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
+                Some(arg_type) => {
+                    let arg_name = Token::get_ident_name(&token);
+                    self.add_binding(arg_name, &token, &arg_type, false);
+                    typed_args.push((token, arg_type));
+                }
+            }
+        }
+        let args = typed_args;
+
+        let body: Result<Vec<TypedAstNode>, _> = body.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let body = body?;
+        let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
+        self.scopes.pop();
+
+        let ret_type = match ret_type {
+            None => body_type,
+            Some(ret_type) => {
+                match Type::from_type_ident(&ret_type, self.get_types_in_scope()) {
+                    None => Err(TypecheckerError::UnknownType { type_ident: ret_type.get_ident() }),
+                    Some(typ) => {
+                        if typ != body_type {
+                            Err(TypecheckerError::Mismatch {
+                                token: body.last().map_or(
+                                    name.clone(),
+                                    |node| node.get_token().clone(),
+                                ),
+                                actual: body_type,
+                                expected: typ,
+                            })
+                        } else {
+                            Ok(body_type)
+                        }
+                    }
+                }?
+            }
+        };
+
+        let arg_types = args.iter().map(|(_, typ)| typ.clone()).collect::<Vec<_>>();
+        let func_type = Type::Fn(arg_types, Box::new(ret_type.clone()));
+        self.add_binding(func_name, &name, &func_type, false);
+        let scope_depth = self.scopes.len() - 1;
+
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth }))
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -309,7 +398,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         match self.get_binding(name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
-            Some(ScopeBinding(_, typ, is_mutable)) => Ok(TypedAstNode::Identifier(token, typ.clone(), is_mutable.clone())),
+            Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
+                let node = TypedIdentifierNode {
+                    typ: typ.clone(),
+                    is_mutable: is_mutable.clone(),
+                    scope_depth,
+                };
+                Ok(TypedAstNode::Identifier(token, node))
+            }
         }
     }
 
@@ -318,13 +414,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         if let AstNode::Identifier(ident_tok) = *target {
             let ident = self.visit_ident(ident_tok.clone())?;
             let (typ, is_mutable) = match &ident {
-                TypedAstNode::Identifier(_, typ, is_mutable) => (typ, is_mutable),
+                TypedAstNode::Identifier(_, TypedIdentifierNode { typ, is_mutable, .. }) => (typ, is_mutable),
                 _ => unreachable!()
             };
             if !is_mutable {
                 let name = Token::get_ident_name(&ident_tok);
                 let orig_ident = match self.get_binding(name) {
-                    Some(ScopeBinding(orig_ident, _, _)) => orig_ident.clone(),
+                    Some((ScopeBinding(orig_ident, _, _), _)) => orig_ident.clone(),
                     None => unreachable!()
                 };
                 return Err(TypecheckerError::AssignmentToImmutable { token, orig_ident });
@@ -468,7 +564,6 @@ mod tests {
     fn typecheck_get_typechecker(input: &str) -> (Typechecker, Vec<TypedAstNode>) {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        println!("{:?}", ast);
 
         super::typecheck(ast).unwrap()
     }
@@ -995,16 +1090,18 @@ mod tests {
                 is_mutable: false,
                 ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                 expr: Some(Box::new(int_literal!((1, 11), 123))),
+                scope_depth: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("abc").unwrap();
+        let (binding, scope_depth) = typechecker.get_binding("abc").unwrap();
         let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
             Type::Int,
             false,
         );
         assert_eq!(&expected_binding, binding);
+        assert_eq!(0, scope_depth);
 
         let (typechecker, typed_ast) = typecheck_get_typechecker("var abc: Int");
         let expected = TypedAstNode::BindingDecl(
@@ -1013,16 +1110,18 @@ mod tests {
                 is_mutable: true,
                 ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                 expr: None,
+                scope_depth: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("abc").unwrap();
+        let (binding, scope_depth) = typechecker.get_binding("abc").unwrap();
         let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
             Type::Int,
             true,
         );
         assert_eq!(&expected_binding, binding);
+        assert_eq!(0, scope_depth);
 
         Ok(())
     }
@@ -1042,8 +1141,9 @@ mod tests {
 
         for (input, expected_binding_type) in cases {
             let (typechecker, _) = typecheck_get_typechecker(input);
-            let ScopeBinding(_, typ, _) = typechecker.get_binding("abc").unwrap();
+            let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc").unwrap();
             assert_eq!(expected_binding_type, *typ);
+            assert_eq!(0, scope_depth);
         }
     }
 
@@ -1084,6 +1184,179 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_function_decl() -> TestResult {
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() = 123");
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: Type::Int,
+                body: vec![
+                    int_literal!((1, 14), 123)
+                ],
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc")
+            .expect("The function abc should be defined");
+        let expected_type = Type::Fn(vec![], Box::new(Type::Int));
+        assert_eq!(&expected_type, typ);
+        assert_eq!(0, scope_depth);
+
+        let typed_ast = typecheck("func abc(a: Int) = a + 1")?;
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![(ident_token!((1, 10), "a"), Type::Int)],
+                ret_type: Type::Int,
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(1, 22)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(TypedAstNode::Identifier(
+                                ident_token!((1, 20), "a"),
+                                TypedIdentifierNode { typ: Type::Int, is_mutable: false, scope_depth: 1 },
+                            )),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 24), 1)),
+                        })
+                ],
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() { val a = [1, 2] a }");
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![],
+                ret_type: Type::Array(Box::new(Type::Int)),
+                body: vec![
+                    TypedAstNode::BindingDecl(
+                        Token::Val(Position::new(1, 14)),
+                        TypedBindingDeclNode {
+                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
+                            is_mutable: false,
+                            expr: Some(Box::new(
+                                TypedAstNode::Array(
+                                    Token::LBrack(Position::new(1, 22)),
+                                    TypedArrayNode {
+                                        typ: Type::Array(Box::new(Type::Int)),
+                                        items: vec![
+                                            Box::new(int_literal!((1, 23), 1)),
+                                            Box::new(int_literal!((1, 26), 2)),
+                                        ],
+                                    },
+                                )
+                            )),
+                            scope_depth: 1,
+                        },
+                    ),
+                    TypedAstNode::Identifier(
+                        Token::Ident(Position::new(1, 29), "a".to_string()),
+                        TypedIdentifierNode {
+                            typ: Type::Array(Box::new(Type::Int)),
+                            is_mutable: false,
+                            scope_depth: 1,
+                        },
+                    )
+                ],
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc")
+            .expect("The function abc should be defined");
+        let expected_type = Type::Fn(vec![], Box::new(Type::Array(Box::new(Type::Int))));
+        assert_eq!(&expected_type, typ);
+        assert_eq!(0, scope_depth);
+
+        let typed_ast = typecheck("func abc(): Int = 123")?;
+        let ret_type = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { ret_type, .. }) => ret_type,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        assert_eq!(&Type::Int, ret_type);
+
+        // Test that bindings assigned to functions have the proper type
+        let (typechecker, _) = typecheck_get_typechecker("func abc(a: Int): Bool = a == 1\nval def = abc");
+        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("def").unwrap();
+        assert_eq!(&Type::Fn(vec![Type::Int], Box::new(Type::Bool)), typ);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_args() -> TestResult {
+        let typed_ast = typecheck("func abc(a: Int) = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Type::Int)
+        ];
+        assert_eq!(&expected, args);
+
+        let typed_ast = typecheck("func abc(a: Int, b: Bool?, c: Int[]) = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Type::Int),
+            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool))),
+            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int))),
+        ];
+        assert_eq!(&expected, args);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_args_error() {
+        let error = typecheck("func abc(a: Int, a: Bool) = 123").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            orig_ident: ident_token!((1, 10), "a"),
+            ident: ident_token!((1, 18), "a"),
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_function_decl_errors() {
+        let err = typecheck("func println() = 123").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(1, 6), "println".to_string()),
+            orig_ident: Token::Ident(Position::new(0, 0), "println".to_string()),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("func myFunc() = 123 + true").unwrap_err();
+        let expected = TypecheckerError::InvalidOperator {
+            token: Token::Plus(Position::new(1, 21)),
+            ltype: Type::Int,
+            op: BinaryOp::Add,
+            rtype: Type::Bool,
+        };
+        assert_eq!(expected, err);
+
+        let error = typecheck("func abc(a: Int): Bool = 123").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(1, 26), 123),
+            expected: Type::Bool,
+            actual: Type::Int,
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
     fn typecheck_ident() -> TestResult {
         let typed_ast = typecheck("val abc = 123\nabc")?;
         let expected = vec![
@@ -1093,12 +1366,16 @@ mod tests {
                     is_mutable: false,
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                     expr: Some(Box::new(int_literal!((1, 11), 123))),
+                    scope_depth: 0,
                 },
             ),
             TypedAstNode::Identifier(
                 Token::Ident(Position::new(2, 1), "abc".to_string()),
-                Type::Int,
-                false,
+                TypedIdentifierNode {
+                    typ: Type::Int,
+                    is_mutable: false,
+                    scope_depth: 0,
+                },
             )
         ];
         assert_eq!(expected, typed_ast);
@@ -1131,6 +1408,7 @@ mod tests {
                     is_mutable: true,
                     ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
                     expr: Some(Box::new(int_literal!((1, 11), 123))),
+                    scope_depth: 0,
                 },
             ),
             TypedAstNode::Assignment(
@@ -1139,8 +1417,11 @@ mod tests {
                     typ: Type::Int,
                     target: Box::new(TypedAstNode::Identifier(
                         Token::Ident(Position::new(2, 1), "abc".to_string()),
-                        Type::Int,
-                        true,
+                        TypedIdentifierNode {
+                            typ: Type::Int,
+                            is_mutable: true,
+                            scope_depth: 0,
+                        },
                     )),
                     expr: Box::new(int_literal!((2, 7), 456)),
                 },
@@ -1182,8 +1463,11 @@ mod tests {
                 target: Box::new(
                     TypedAstNode::Identifier(
                         Token::Ident(Position::new(2, 1), "abc".to_string()),
-                        Type::Array(Box::new(Type::Int)),
-                        false,
+                        TypedIdentifierNode {
+                            typ: Type::Array(Box::new(Type::Int)),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
                     )
                 ),
                 index: IndexingMode::Index(Box::new(int_literal!((2, 5), 1))),
@@ -1199,16 +1483,22 @@ mod tests {
                 target: Box::new(
                     TypedAstNode::Identifier(
                         Token::Ident(Position::new(3, 1), "abc".to_string()),
-                        Type::Array(Box::new(Type::Int)),
-                        false,
+                        TypedIdentifierNode {
+                            typ: Type::Array(Box::new(Type::Int)),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
                     )
                 ),
                 index: IndexingMode::Range(
                     Some(Box::new(
                         TypedAstNode::Identifier(
                             Token::Ident(Position::new(3, 5), "idx".to_string()),
-                            Type::Int,
-                            false,
+                            TypedIdentifierNode {
+                                typ: Type::Int,
+                                is_mutable: false,
+                                scope_depth: 0,
+                            },
                         )
                     )),
                     None,
@@ -1234,8 +1524,11 @@ mod tests {
                                 left: Box::new(
                                     TypedAstNode::Identifier(
                                         Token::Ident(Position::new(2, 8), "idx".to_string()),
-                                        Type::Int,
-                                        false,
+                                        TypedIdentifierNode {
+                                            typ: Type::Int,
+                                            is_mutable: false,
+                                            scope_depth: 0,
+                                        },
                                     )
                                 ),
                                 right: Box::new(int_literal!((2, 14), 2)),
@@ -1396,12 +1689,16 @@ mod tests {
                             ident: Token::Ident(Position::new(1, 18), "a".to_string()),
                             is_mutable: false,
                             expr: Some(Box::new(string_literal!((1, 22), "hello"))),
+                            scope_depth: 1,
                         },
                     ),
                     TypedAstNode::Identifier(
                         Token::Ident(Position::new(1, 30), "a".to_string()),
-                        Type::String,
-                        false,
+                        TypedIdentifierNode {
+                            typ: Type::String,
+                            is_mutable: false,
+                            scope_depth: 1,
+                        },
                     )
                 ],
                 else_block: None,
@@ -1434,6 +1731,7 @@ mod tests {
                             ident: Token::Ident(Position::new(2, 18), "b".to_string()),
                             is_mutable: false,
                             expr: Some(Box::new(string_literal!((2, 22), "world"))),
+                            scope_depth: 1,
                         },
                     ),
                     TypedAstNode::Binary(
@@ -1443,16 +1741,22 @@ mod tests {
                             left: Box::new(
                                 TypedAstNode::Identifier(
                                     Token::Ident(Position::new(2, 30), "a".to_string()),
-                                    Type::String,
-                                    false,
+                                    TypedIdentifierNode {
+                                        typ: Type::String,
+                                        is_mutable: false,
+                                        scope_depth: 0,
+                                    },
                                 )
                             ),
                             op: BinaryOp::Add,
                             right: Box::new(
                                 TypedAstNode::Identifier(
                                     Token::Ident(Position::new(2, 34), "b".to_string()),
-                                    Type::String,
-                                    false,
+                                    TypedIdentifierNode {
+                                        typ: Type::String,
+                                        is_mutable: false,
+                                        scope_depth: 1,
+                                    },
                                 )
                             ),
                         },
@@ -1466,8 +1770,11 @@ mod tests {
                             left: Box::new(
                                 TypedAstNode::Identifier(
                                     Token::Ident(Position::new(2, 45), "a".to_string()),
-                                    Type::String,
-                                    false,
+                                    TypedIdentifierNode {
+                                        typ: Type::String,
+                                        is_mutable: false,
+                                        scope_depth: 0,
+                                    },
                                 )
                             ),
                             op: BinaryOp::Add,
@@ -1506,19 +1813,28 @@ mod tests {
     fn typecheck_if_expression() {
         let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123 else 456");
         match typechecker.get_binding("a") {
-            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Int, typ),
+            Some((ScopeBinding(_, typ, _), scope_depth)) => {
+                assert_eq!(&Type::Int, typ);
+                assert_eq!(0, scope_depth);
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
 
         let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123");
         match typechecker.get_binding("a") {
-            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Option(Box::new(Type::Int)), typ),
+            Some((ScopeBinding(_, typ, _), scope_depth)) => {
+                assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
+                assert_eq!(0, scope_depth);
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
 
         let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) { if (true) 123 } else if (false) 456");
         match typechecker.get_binding("a") {
-            Some(ScopeBinding(_, typ, _)) => assert_eq!(&Type::Option(Box::new(Type::Int)), typ),
+            Some((ScopeBinding(_, typ, _), scope_depth)) => {
+                assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
+                assert_eq!(0, scope_depth);
+            }
             _ => panic!("There should be a binding named 'a'"),
         }
     }

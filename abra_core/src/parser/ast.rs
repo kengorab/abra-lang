@@ -8,6 +8,7 @@ pub enum AstNode {
     Grouped(Token, GroupedNode),
     Array(Token, ArrayNode),
     BindingDecl(Token, BindingDeclNode),
+    FunctionDecl(Token, FunctionDeclNode),
     Identifier(Token),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
@@ -76,6 +77,16 @@ pub struct BindingDeclNode {
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FunctionDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub args: Vec<(Token, TypeIdentifier)>,
+    pub ret_type: Option<TypeIdentifier>,
+    pub body: Vec<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]
