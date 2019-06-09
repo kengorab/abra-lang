@@ -275,6 +275,13 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
+        // Make sure locals declared in function blocks don't contribute to the indices of bindings
+        // declared outside of the function declaration
+        let Chunk { num_bindings, .. } = self.module.chunks.get(func_name).unwrap();
+        for _ in 0..*num_bindings {
+            self.module.bindings.pop();
+        }
+
         let binding_idx = self.module.bindings.len();
         self.module.bindings.push(BindingDescriptor { name: func_name.clone(), scope_depth });
         self.get_current_chunk().num_bindings += 1;
@@ -933,6 +940,47 @@ mod tests {
                 BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
                 BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
                 BindingDescriptor { name: "c".to_string(), scope_depth: 0 },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_assignment_scopes() {
+        let chunk = compile("var a = 1\nfunc abc() { a = 3 }");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: {
+                let mut chunks = HashMap::new();
+                chunks.insert(MAIN_CHUNK_NAME.to_owned(), Chunk {
+                    lines: vec![2, 3, 1],
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::Store0 as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::Store1 as u8,
+                        Opcode::Return as u8
+                    ],
+                    num_bindings: 2,
+                });
+
+                chunks.insert("abc".to_owned(), Chunk {
+                    lines: vec![0, 4],
+                    code: vec![
+                        Opcode::IConst3 as u8,
+                        Opcode::Store0 as u8,
+                        Opcode::Load0 as u8,
+                        Opcode::Return as u8
+                    ],
+                    num_bindings: 0,
+                });
+
+                chunks
+            },
+            constants: vec![Value::Fn("abc".to_string())],
+            bindings: vec![
+                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
             ],
         };
         assert_eq!(expected, chunk);

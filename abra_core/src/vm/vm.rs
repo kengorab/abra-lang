@@ -22,13 +22,14 @@ pub struct VM<'a> {
 
 impl<'a> VM<'a> {
     pub fn new(module: &'a mut CompiledModule<'a>) -> Self {
-        let num_vars = module.bindings.len();
+        let num_main_chunk_vars = module.bindings.len();
+
         VM {
             ip: 0,
             current_chunk: MAIN_CHUNK_NAME,
             module,
             stack: Vec::new(),
-            vars: Vec::with_capacity(num_vars),
+            vars: Vec::with_capacity(num_main_chunk_vars),
         }
     }
 
