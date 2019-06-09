@@ -242,6 +242,14 @@ impl Parser {
             }
         }
 
+        let ret_type = match self.peek().ok_or(ParseError::UnexpectedEof)? {
+            Token::Colon(_) => {
+                self.expect_next()?;
+                Some(self.parse_type_identifier()?)
+            }
+            _ => None
+        };
+
         let body = match self.expect_peek()? {
             Token::Assign(_) => {
                 self.expect_next()?;
@@ -254,7 +262,7 @@ impl Parser {
         Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode {
             name: func_name,
             args,
-            ret_type: None,
+            ret_type,
             body,
         }))
     }
@@ -1295,6 +1303,14 @@ mod tests {
             (ident_token!((1, 18), "b"), TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }) })
         ];
         assert_eq!(&expected, args);
+
+        let ast = parse("func abc(a: Int): String = 123")?;
+        let ret_type = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { ret_type, .. }) => ret_type,
+            _ => unreachable!()
+        };
+        let expected = Some(TypeIdentifier::Normal { ident: ident_token!((1, 19), "String") });
+        assert_eq!(&expected, ret_type);
 
         Ok(())
     }

@@ -1277,6 +1277,13 @@ mod tests {
         assert_eq!(&expected_type, typ);
         assert_eq!(0, scope_depth);
 
+        let typed_ast = typecheck("func abc(): Int = 123")?;
+        let ret_type = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { ret_type, .. }) => ret_type,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        assert_eq!(&Type::Int, ret_type);
+
         Ok(())
     }
 
@@ -1334,6 +1341,14 @@ mod tests {
             rtype: Type::Bool,
         };
         assert_eq!(expected, err);
+
+        let error = typecheck("func abc(a: Int): Bool = 123").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(1, 26), 123),
+            expected: Type::Bool,
+            actual: Type::Int,
+        };
+        assert_eq!(expected, error);
     }
 
     #[test]
