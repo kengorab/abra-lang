@@ -1,3 +1,13 @@
+macro_rules! ident_token {
+    ($pos: expr, $i: expr) => (
+        match $pos {
+            (line, col) => {
+                Token::Ident(Position::new(line, col), $i.to_string())
+            }
+        }
+    );
+}
+
 macro_rules! int_literal {
     ($pos: expr, $i: expr) => (
         match $pos {

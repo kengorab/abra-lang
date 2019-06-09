@@ -234,12 +234,9 @@ impl Parser {
                     args.push((arg_ident, type_ident));
 
                     match self.peek().ok_or(ParseError::UnexpectedEof)? {
-                        Token::Comma(_) => {
-                            self.expect_next()?;
-                            Ok(())
-                        }
-                        Token::RParen(_) => Ok(()),
-                        tok @ _ => Err(ParseError::UnexpectedToken(tok.clone())),
+                        Token::Comma(_) => self.expect_next(),
+                        Token::RParen(_) => continue,
+                        tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
                     }?;
                 }
                 tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
@@ -249,7 +246,7 @@ impl Parser {
         let body = match self.expect_peek()? {
             Token::Assign(_) => {
                 self.expect_next()?;
-                self.parse_expr_or_block()
+                Ok(vec![self.parse_expr()?])
             }
             Token::LBrace(_) => self.parse_expr_or_block(),
             t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
@@ -1256,7 +1253,7 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
-        let ast = parse("func abc() = { val a = 123 a }")?;
+        let ast = parse("func abc() { val a = 123 a }")?;
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
@@ -1265,15 +1262,15 @@ mod tests {
                 ret_type: None,
                 body: vec![
                     AstNode::BindingDecl(
-                        Token::Val(Position::new(1, 16)),
+                        Token::Val(Position::new(1, 14)),
                         BindingDeclNode {
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 20), "a".to_string()),
+                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
                             type_ann: None,
-                            expr: Some(Box::new(int_literal!((1, 24), 123))),
+                            expr: Some(Box::new(int_literal!((1, 22), 123))),
                         },
                     ),
-                    identifier!((1, 28), "a")
+                    identifier!((1, 26), "a")
                 ],
             },
         );
@@ -1305,6 +1302,10 @@ mod tests {
 
     #[test]
     fn parse_func_decl_error() {
+        let error = parse("func abc() = { 123 }").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::LBrace(Position::new(1, 14)));
+        assert_eq!(expected, error);
+
         let error = parse("func (a: Int) = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6)));
         assert_eq!(expected, error);

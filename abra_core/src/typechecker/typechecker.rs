@@ -333,16 +333,22 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
 
-        let args: Result<Vec<(Token, Type)>, _> = args.into_iter()
-            .map(|(token, type_ident)| {
-                let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
-                match arg_type {
-                    None => Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
-                    Some(arg_type) => Ok((token, arg_type))
-                }
-            })
-            .collect();
-        let args = args?;
+        let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
+        let mut arg_idents = HashMap::<String, Token>::new();
+        for (token, type_ident) in args {
+            let arg_name = Token::get_ident_name(&token).clone();
+            if let Some(arg_tok) = arg_idents.get(&arg_name) {
+                return Err(TypecheckerError::DuplicateBinding { orig_ident: arg_tok.clone(), ident: token.clone() });
+            }
+            arg_idents.insert(arg_name, token.clone());
+
+            let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
+            match arg_type {
+                None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
+                Some(arg_type) => typed_args.push((token, arg_type))
+            }
+        }
+        let args = typed_args;
 
         self.scopes.push(Scope::new());
         let body: Result<Vec<TypedAstNode>, _> = body.into_iter()
@@ -554,7 +560,6 @@ mod tests {
     fn typecheck_get_typechecker(input: &str) -> (Typechecker, Vec<TypedAstNode>) {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        println!("{:?}", ast);
 
         super::typecheck(ast).unwrap()
     }
@@ -1196,7 +1201,7 @@ mod tests {
         assert_eq!(&expected_type, typ);
         assert_eq!(0, scope_depth);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() = { val a = [1, 2] a }");
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() { val a = [1, 2] a }");
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -1205,18 +1210,18 @@ mod tests {
                 ret_type: Type::Array(Box::new(Type::Int)),
                 body: vec![
                     TypedAstNode::BindingDecl(
-                        Token::Val(Position::new(1, 16)),
+                        Token::Val(Position::new(1, 14)),
                         TypedBindingDeclNode {
-                            ident: Token::Ident(Position::new(1, 20), "a".to_string()),
+                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
                             is_mutable: false,
                             expr: Some(Box::new(
                                 TypedAstNode::Array(
-                                    Token::LBrack(Position::new(1, 24)),
+                                    Token::LBrack(Position::new(1, 22)),
                                     TypedArrayNode {
                                         typ: Type::Array(Box::new(Type::Int)),
                                         items: vec![
-                                            Box::new(int_literal!((1, 25), 1)),
-                                            Box::new(int_literal!((1, 28), 2)),
+                                            Box::new(int_literal!((1, 23), 1)),
+                                            Box::new(int_literal!((1, 26), 2)),
                                         ],
                                     },
                                 )
@@ -1225,7 +1230,7 @@ mod tests {
                         },
                     ),
                     TypedAstNode::Identifier(
-                        Token::Ident(Position::new(1, 31), "a".to_string()),
+                        Token::Ident(Position::new(1, 29), "a".to_string()),
                         TypedIdentifierNode {
                             typ: Type::Array(Box::new(Type::Int)),
                             is_mutable: false,
@@ -1244,6 +1249,43 @@ mod tests {
         assert_eq!(0, scope_depth);
 
         Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_args() -> TestResult {
+        let typed_ast = typecheck("func abc(a: Int) = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Type::Int)
+        ];
+        assert_eq!(&expected, args);
+
+        let typed_ast = typecheck("func abc(a: Int, b: Bool?, c: Int[]) = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Type::Int),
+            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool))),
+            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int))),
+        ];
+        assert_eq!(&expected, args);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_args_error() {
+        let error = typecheck("func abc(a: Int, a: Bool) = 123").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            orig_ident: ident_token!((1, 10), "a"),
+            ident: ident_token!((1, 18), "a"),
+        };
+        assert_eq!(expected, error);
     }
 
     #[test]
