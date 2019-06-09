@@ -4,6 +4,7 @@ use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
+use crate::typechecker::typechecker_error::TypecheckerError;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut parser = Parser::new(tokens);
@@ -216,9 +217,34 @@ impl Parser {
 
         let func_name = self.expect_next_token(TokenType::Ident)?;
 
+        // Parsing args
         self.expect_next_token(TokenType::LParen)?;
+        let mut args: Vec<(Token, TypeIdentifier)> = Vec::new();
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            match token {
+                Token::RParen(_) => {
+                    self.expect_next()?; // Consume ')' before ending loop
+                    break;
+                }
+                Token::Ident(_, _) => {
+                    let arg_ident = self.expect_next()?;
+                    self.expect_next_token(TokenType::Colon)?;
+                    let type_ident = self.parse_type_identifier()?;
+                    args.push((arg_ident, type_ident));
 
-        self.expect_next_token(TokenType::RParen)?;
+                    match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                        Token::Comma(_) => {
+                            self.expect_next()?;
+                            Ok(())
+                        }
+                        Token::RParen(_) => Ok(()),
+                        tok @ _ => Err(ParseError::UnexpectedToken(tok.clone())),
+                    }?;
+                }
+                tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
+            }
+        }
 
         let body = match self.expect_peek()? {
             Token::Assign(_) => {
@@ -231,7 +257,7 @@ impl Parser {
 
         Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode {
             name: func_name,
-            args: vec![],
+            args,
             ret_type: None,
             body,
         }))
@@ -1253,7 +1279,55 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
+        let ast = parse("func abc(a: Int) = 123")?;
+        let args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") })
+        ];
+        assert_eq!(&expected, args);
+
+        let ast = parse("func abc(a: Int, b: Int?) = 123")?;
+        let args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }),
+            (ident_token!((1, 18), "b"), TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }) })
+        ];
+        assert_eq!(&expected, args);
+
         Ok(())
+    }
+
+    #[test]
+    fn parse_func_decl_error() {
+        let error = parse("func (a: Int) = 123").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6)));
+        assert_eq!(expected, error);
+
+        let error = parse("func abc) = 123").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::LParen, Token::RParen(Position::new(1, 9)));
+        assert_eq!(expected, error);
+
+        let error = parse("func abc( = 123").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Assign(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = parse("func abc(a) = 123").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RParen(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = parse("func abc(a: ) = 123").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::RParen(Position::new(1, 13)));
+        assert_eq!(expected, error);
+
+        let error = parse("func abc(a: Int b: Int) = 123").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 17), "b".to_string()));
+        assert_eq!(expected, error);
     }
 
     #[test]
