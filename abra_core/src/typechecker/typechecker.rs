@@ -333,6 +333,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
 
+        self.scopes.push(Scope::new());
         let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
         let mut arg_idents = HashMap::<String, Token>::new();
         for (token, type_ident) in args {
@@ -345,12 +346,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
             match arg_type {
                 None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
-                Some(arg_type) => typed_args.push((token, arg_type))
+                Some(arg_type) => {
+                    let arg_name = Token::get_ident_name(&token);
+                    self.add_binding(arg_name, &token, &arg_type, false);
+                    typed_args.push((token, arg_type));
+                }
             }
         }
         let args = typed_args;
 
-        self.scopes.push(Scope::new());
         let body: Result<Vec<TypedAstNode>, _> = body.into_iter()
             .map(|node| self.visit(node))
             .collect();
@@ -1200,6 +1204,31 @@ mod tests {
         let expected_type = Type::Fn(vec![], Box::new(Type::Int));
         assert_eq!(&expected_type, typ);
         assert_eq!(0, scope_depth);
+
+        let typed_ast = typecheck("func abc(a: Int) = a + 1")?;
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                args: vec![(ident_token!((1, 10), "a"), Type::Int)],
+                ret_type: Type::Int,
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(1, 22)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(TypedAstNode::Identifier(
+                                ident_token!((1, 20), "a"),
+                                TypedIdentifierNode { typ: Type::Int, is_mutable: false, scope_depth: 1 },
+                            )),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 24), 1)),
+                        })
+                ],
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
 
         let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() { val a = [1, 2] a }");
         let expected = TypedAstNode::FunctionDecl(

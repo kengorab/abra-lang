@@ -4,7 +4,6 @@ use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
-use crate::typechecker::typechecker_error::TypecheckerError;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut parser = Parser::new(tokens);
