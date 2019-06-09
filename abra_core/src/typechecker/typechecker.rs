@@ -1284,6 +1284,11 @@ mod tests {
         };
         assert_eq!(&Type::Int, ret_type);
 
+        // Test that bindings assigned to functions have the proper type
+        let (typechecker, _) = typecheck_get_typechecker("func abc(a: Int): Bool = a == 1\nval def = abc");
+        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("def").unwrap();
+        assert_eq!(&Type::Fn(vec![Type::Int], Box::new(Type::Bool)), typ);
+
         Ok(())
     }
 

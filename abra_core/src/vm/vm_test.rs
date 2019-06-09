@@ -471,4 +471,16 @@ mod tests {
         let expected = Value::Int(123);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_func_declaration() {
+        let input = "\
+          func abc(a: Int): Int = 123
+          val def = abc
+          def
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Fn("abc".to_string());
+        assert_eq!(expected, result);
+    }
 }

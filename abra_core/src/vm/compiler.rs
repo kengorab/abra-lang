@@ -253,8 +253,6 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
         let TypedFunctionDeclNode { name, body, scope_depth, .. } = node;
         let func_name = Token::get_ident_name(&name);
-        self.module.bindings.push(BindingDescriptor { name: func_name.clone(), scope_depth });
-        self.get_current_chunk().num_bindings += 1;
 
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
         let prev_chunk = self.current_chunk.clone();
@@ -273,6 +271,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_opcode(Opcode::Return, line);
 
         self.current_chunk = prev_chunk;
+        let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
+        self.write_opcode(Opcode::Constant, line);
+        self.write_byte(const_idx, line);
+
+        let binding_idx = self.module.bindings.len();
+        self.module.bindings.push(BindingDescriptor { name: func_name.clone(), scope_depth });
+        self.get_current_chunk().num_bindings += 1;
+        self.write_store_instr(binding_idx as u32, line);
 
         Ok(())
     }
@@ -1174,15 +1180,17 @@ mod tests {
                     num_bindings: 0,
                 });
                 chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
-                    lines: vec![0, 1],
+                    lines: vec![3, 1],
                     code: vec![
+                        Opcode::Constant as u8, 0,
+                        Opcode::Store0 as u8,
                         Opcode::Return as u8
                     ],
                     num_bindings: 1,
                 });
                 chunks
             },
-            constants: vec![],
+            constants: vec![Value::Fn("abc".to_string())],
             bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
         };
         assert_eq!(expected, chunk);
