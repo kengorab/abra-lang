@@ -14,6 +14,7 @@ pub enum AstNode {
     Indexing(Token, IndexingNode),
     IfStatement(Token, IfNode),
     IfExpression(Token, IfNode),
+    Invocation(Token, InvocationNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -112,6 +113,12 @@ pub struct IfNode {
     pub condition: Box<AstNode>,
     pub if_block: Vec<AstNode>,
     pub else_block: Option<Vec<AstNode>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct InvocationNode {
+    pub target: Box<AstNode>,
+    pub args: Vec<(Option<Token>, AstNode)>,
 }
 
 #[derive(Debug, PartialEq)]
