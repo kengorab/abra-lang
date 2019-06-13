@@ -1181,75 +1181,77 @@ mod tests {
     }
 
     #[test]
-    fn parse_type_annotations() -> TestResult {
-        fn ast_to_type_ann(ast: Vec<AstNode>) -> TypeIdentifier {
-            match ast.into_iter().next() {
-                Some(AstNode::BindingDecl(_, BindingDeclNode { type_ann, .. })) => type_ann.unwrap(),
-                _ => unreachable!()
-            }
+    fn parse_type_identifier() {
+        #[inline]
+        fn parse_type_identifier(input: &str) -> TypeIdentifier {
+            let tokens = tokenize(&input.to_string()).unwrap();
+            let mut parser = Parser::new(tokens);
+            parser.parse_type_identifier().unwrap()
         }
 
-        let ast = parse("var abc: Bool")?;
+        let type_ident = parse_type_identifier("Bool");
         let expected = TypeIdentifier::Normal {
-            ident: Token::Ident(Position::new(1, 10), "Bool".to_string())
+            ident: Token::Ident(Position::new(1, 1), "Bool".to_string())
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int[]")?;
+        let type_ident = parse_type_identifier("Int[]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int[][]")?;
+        let type_ident = parse_type_identifier("Int?");
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+            })
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("Int[][]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?")?;
-        let expected = TypeIdentifier::Option {
-            inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+        let type_ident = parse_type_identifier("Int[][]");
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?[]")?;
+        let type_ident = parse_type_identifier("Int?[]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Option {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?[]?")?;
+        let type_ident = parse_type_identifier("Int?[]?");
         let expected = TypeIdentifier::Option {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Option {
                     inner: Box::new(TypeIdentifier::Normal {
-                        ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                        ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                     })
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
-
-        Ok(())
+        assert_eq!(expected, type_ident);
     }
 
     #[test]

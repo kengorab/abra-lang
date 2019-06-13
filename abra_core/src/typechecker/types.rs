@@ -74,3 +74,55 @@ impl Type {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::typechecker::types::Type::*;
+    use crate::parser::parser::parse;
+    use crate::lexer::lexer::tokenize;
+    use crate::parser::ast::{AstNode, BindingDeclNode};
+    use super::*;
+
+    fn parse_type_ident<S: Into<std::string::String>>(input: S) -> Type {
+        let base_types: HashMap<std::string::String, Type> = {
+            let mut types = HashMap::new();
+            types.insert("Int".to_string(), Int);
+            types.insert("Float".to_string(), Float);
+            types.insert("Bool".to_string(), Bool);
+            types.insert("String".to_string(), String);
+            types
+        };
+
+        let type_ident: std::string::String = input.into();
+        let val_stmt = format!("val a: {}", type_ident);
+        let tokens = tokenize(&val_stmt).unwrap();
+        let ast = parse(tokens).unwrap();
+        match ast.first().unwrap() {
+            AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
+                Type::from_type_ident(&type_ann, base_types).unwrap()
+            }
+            _ => unreachable!()
+        }
+    }
+
+    #[test]
+    fn from_type_ident_normal() {
+        assert_eq!(Int, parse_type_ident("Int"));
+        assert_eq!(Float, parse_type_ident("Float"));
+        assert_eq!(Bool, parse_type_ident("Bool"));
+        assert_eq!(String, parse_type_ident("String"));
+    }
+
+    #[test]
+    fn from_type_ident_array_and_option() {
+        assert_eq!(Array(Box::new(Int)), parse_type_ident("Int[]"));
+        assert_eq!(Array(Box::new(Array(Box::new(Int)))), parse_type_ident("Int[][]"));
+        assert_eq!(Array(Box::new(Array(Box::new(Array(Box::new(Int)))))), parse_type_ident("Int[][][]"));
+
+        assert_eq!(Option(Box::new(Int)), parse_type_ident("Int?"));
+        assert_eq!(Option(Box::new(Option(Box::new(Int)))), parse_type_ident("Int??")); // <- I don't know why you'd want this type, but it works
+
+        assert_eq!(Array(Box::new(Option(Box::new(Int)))), parse_type_ident("Int?[]"));
+        assert_eq!(Option(Box::new(Array(Box::new(Int)))), parse_type_ident("Int[]?"));
+    }
+}
