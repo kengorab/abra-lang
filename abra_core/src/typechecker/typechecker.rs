@@ -566,7 +566,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                 let arg = self.visit(arg)?;
                 let arg_type = arg.get_type();
-                if arg_type.is_equivalent_to(expected_arg_type) {
+                if !arg_type.is_equivalent_to(expected_arg_type) {
                     return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
                 }
                 typed_args.push(arg);
@@ -1906,5 +1906,92 @@ mod tests {
             else_type: Type::Int,
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_invocation() -> TestResult {
+        let ast = typecheck("func abc() {}\nabc()")?;
+        let node = ast.get(1).unwrap();
+
+        let expected = TypedAstNode::Invocation(
+            Token::LParen(Position::new(2, 4)),
+            TypedInvocationNode {
+                typ: Type::Unit,
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 1), "abc"),
+                    TypedIdentifierNode {
+                        typ: Type::Fn(vec![], Box::new(Type::Unit)),
+                        is_mutable: false,
+                        scope_depth: 0,
+                    },
+                )),
+                args: vec![],
+            },
+        );
+        assert_eq!(node, &expected);
+
+        let ast = typecheck("\
+          func abc(a: Int, b: String) { b }\n\
+          abc(1, \"2\")\
+        ")?;
+        let node = ast.get(1).unwrap();
+
+        let expected = TypedAstNode::Invocation(
+            Token::LParen(Position::new(2, 4)),
+            TypedInvocationNode {
+                typ: Type::String,
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 1), "abc"),
+                    TypedIdentifierNode {
+                        typ: Type::Fn(
+                            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::String)],
+                            Box::new(Type::String),
+                        ),
+                        is_mutable: false,
+                        scope_depth: 0,
+                    },
+                )),
+                args: vec![
+                    int_literal!((2, 5), 1),
+                    string_literal!((2, 8), "2"),
+                ],
+            },
+        );
+        assert_eq!(node, &expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_invocation_errors() {
+        let error = typecheck("func abc() {}\nabc(1, 2)").unwrap_err();
+        let expected = TypecheckerError::IncorrectArity {
+            token: ident_token!((2, 1), "abc"),
+            expected: 0,
+            actual: 2,
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("func abc(a: Int) {}\nabc(z: false)").unwrap_err();
+        let expected = TypecheckerError::ParamNameMismatch {
+            token: ident_token!((2, 5), "z"),
+            expected: "a".to_string(),
+            actual: "z".to_string(),
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("func abc(a: Int) {}\nabc(a: false)").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Bool(Position::new(2, 8), false),
+            expected: Type::Int,
+            actual: Type::Bool,
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("val abc = [1, 2]\nabc()").unwrap_err();
+        let expected = TypecheckerError::InvalidInvocationTarget {
+            token: ident_token!((2, 1), "abc"),
+        };
+        assert_eq!(error, expected);
     }
 }
