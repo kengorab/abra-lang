@@ -49,6 +49,7 @@ pub enum Opcode {
     Load,
     Jump,
     JumpIfF,
+    Invoke,
     Return,
 }
 
@@ -103,7 +104,8 @@ impl From<u8> for Opcode {
             45 => Opcode::Load,
             46 => Opcode::Jump,
             47 => Opcode::JumpIfF,
-            48 => Opcode::Return,
+            48 => Opcode::Invoke,
+            49 => Opcode::Return,
             _ => unreachable!()
         }
     }

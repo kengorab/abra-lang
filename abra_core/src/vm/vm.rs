@@ -12,9 +12,14 @@ pub enum InterpretError {
     EndOfBytes,
 }
 
+struct CallFrame {
+    return_ip: usize,
+    chunk_name: String,
+}
+
 pub struct VM<'a> {
     ip: usize,
-    current_chunk: &'a str,
+    call_stack: Vec<CallFrame>,
     module: &'a mut CompiledModule<'a>,
     stack: Vec<Value>,
     vars: Vec<Value>,
@@ -22,14 +27,17 @@ pub struct VM<'a> {
 
 impl<'a> VM<'a> {
     pub fn new(module: &'a mut CompiledModule<'a>) -> Self {
-        let num_main_chunk_vars = module.bindings.len();
+        let root_frame = CallFrame {
+            return_ip: 0,
+            chunk_name: MAIN_CHUNK_NAME.to_owned(),
+        };
 
         VM {
             ip: 0,
-            current_chunk: MAIN_CHUNK_NAME,
+            call_stack: vec![root_frame],
             module,
             stack: Vec::new(),
-            vars: Vec::with_capacity(num_main_chunk_vars),
+            vars: Vec::new(),
         }
     }
 
@@ -45,8 +53,15 @@ impl<'a> VM<'a> {
         self.stack.pop().ok_or(InterpretError::StackEmpty)
     }
 
+    fn curr_chunk(&self) -> &CallFrame {
+        self.call_stack.last()
+            .expect("There needs to be at least 1 active call stack member")
+            .clone()
+    }
+
     fn read_byte(&mut self) -> Option<u8> {
-        let chunk = self.module.get_chunk(self.current_chunk.to_string()).unwrap();
+        let CallFrame { chunk_name: curr_chunk_name, .. } = self.curr_chunk();
+        let chunk = self.module.get_chunk(curr_chunk_name.to_string()).unwrap();
         if chunk.code.len() == self.ip {
             None
         } else {
@@ -363,17 +378,33 @@ impl<'a> VM<'a> {
                         unreachable!()
                     }
                 }
+                Opcode::Invoke => {
+                    let func_name = match self.pop_expect()? {
+                        Value::Obj(Obj::StringObj { value }) => *value,
+                        _ => unreachable!()
+                    };
+
+                    let frame = CallFrame { return_ip: self.ip, chunk_name: func_name };
+                    self.call_stack.push(frame);
+                    self.ip = 0;
+                }
                 Opcode::Return => {
-                    let chunk = self.module.chunks.get(self.current_chunk)
-                        .expect(&format!("Chunk named {} expected to exist", self.current_chunk));
+                    let CallFrame { chunk_name, .. } = self.curr_chunk();
+                    let chunk_name = chunk_name.clone();
+
+                    let chunk = self.module.chunks.get(chunk_name.as_str())
+                        .expect(&format!("Chunk named {} expected to exist", chunk_name));
 
                     for _ in 0..chunk.num_bindings {
                         self.vars.pop();
                     }
 
-                    let top = self.pop();
-                    if self.current_chunk == MAIN_CHUNK_NAME {
+                    if chunk_name == MAIN_CHUNK_NAME {
+                        let top = self.pop();
                         break Ok(top);
+                    } else {
+                        let CallFrame { return_ip, .. } = self.call_stack.pop().unwrap();
+                        self.ip = return_ip;
                     }
                 }
             }

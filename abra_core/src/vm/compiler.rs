@@ -55,6 +55,13 @@ impl<'a> Compiler<'a> {
         self.get_current_chunk().write(byte, line);
     }
 
+    fn write_constant(&mut self, value: Value, line: usize) -> u8 {
+        let const_idx = self.module.add_constant(value);
+        self.write_opcode(Opcode::Constant, line);
+        self.write_byte(const_idx, line);
+        const_idx
+    }
+
     fn write_int_constant(&mut self, number: u32, line: usize) {
         if number <= 4 {
             let opcode = match number {
@@ -67,9 +74,7 @@ impl<'a> Compiler<'a> {
             };
             self.write_opcode(opcode, line);
         } else {
-            let const_idx = self.module.add_constant(Value::Int(number as i64));
-            self.write_opcode(Opcode::Constant, line);
-            self.write_byte(const_idx, line);
+            self.write_constant(Value::Int(number as i64), line);
         }
     }
 
@@ -251,12 +256,23 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     }
 
     fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, body, scope_depth, .. } = node;
+        let TypedFunctionDeclNode { name, args, body, scope_depth, .. } = node;
         let func_name = Token::get_ident_name(&name);
 
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
         let prev_chunk = self.current_chunk.clone();
         self.current_chunk = func_name.to_owned();
+
+        // Pop function arguments off stack and store in local bindings
+        for (arg_token, _) in args {
+            let ident = Token::get_ident_name(&arg_token);
+
+            let binding_idx = self.module.bindings.len();
+            let scope_depth = scope_depth + 1;
+            self.module.bindings.push(BindingDescriptor { name: ident.clone(), scope_depth });
+            self.get_current_chunk().num_bindings += 1;
+            self.write_store_instr(binding_idx as u32, arg_token.get_position().line);
+        }
 
         let len = body.len();
         let mut idx = 0;
@@ -395,8 +411,23 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.visit_if_statement(token, node)
     }
 
-    fn visit_invocation(&mut self, _token: Token, _node: TypedInvocationNode) -> Result<(), ()> {
-        unimplemented!()
+    fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+        let TypedInvocationNode { target, args, .. } = node;
+
+        for arg in args {
+            self.visit(arg)?;
+        }
+
+        let name = match *target {
+            TypedAstNode::Identifier(ref token, _) => Token::get_ident_name(token),
+            _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes
+        };
+        let value = Value::Obj(Obj::StringObj { value: Box::new(name.to_owned()) });
+        self.write_constant(value, line);
+        self.write_opcode(Opcode::Invoke, line);
+
+        Ok(())
     }
 }
 
@@ -1216,34 +1247,115 @@ mod tests {
 
     #[test]
     fn compile_function_declaration() {
-        let chunk = compile("func abc() = 1 + 2");
+        let chunk = compile("\
+          val a = 1\n\
+          val b = 2\n\
+          val c = 3\n\
+          func abc(b: Int) {\n\
+            val a1 = a\n\
+            val c = b + a1\n\
+            c\n\
+          }\
+        ");
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: {
                 let mut chunks = HashMap::new();
                 chunks.insert("abc".to_string(), Chunk {
-                    lines: vec![4],
+                    lines: vec![0, 0, 0, 1, 2, 6, 4],
                     code: vec![
-                        Opcode::IConst1 as u8,
-                        Opcode::IConst2 as u8,
+                        Opcode::Store3 as u8,
+                        Opcode::Load0 as u8,
+                        Opcode::Store4 as u8,
+                        Opcode::Load3 as u8,
+                        Opcode::Load4 as u8,
                         Opcode::IAdd as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::Store as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::Load as u8,
                         Opcode::Return as u8,
                     ],
-                    num_bindings: 0,
+                    num_bindings: 3,
                 });
                 chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
-                    lines: vec![3, 1],
+                    lines: vec![2, 2, 2, 0, 0, 0, 3, 1],
                     code: vec![
-                        Opcode::Constant as u8, 0,
+                        Opcode::IConst1 as u8,
                         Opcode::Store0 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::Store1 as u8,
+                        Opcode::IConst3 as u8,
+                        Opcode::Store2 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::Store3 as u8,
                         Opcode::Return as u8
                     ],
-                    num_bindings: 1,
+                    num_bindings: 4,
                 });
                 chunks
             },
-            constants: vec![Value::Fn("abc".to_string())],
-            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
+            constants: vec![Value::Int(5), Value::Fn("abc".to_string())],
+            bindings: vec![
+                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "c".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_invocation() {
+        let chunk = compile("\
+          val one = 1\n\
+          func inc(number: Int) {\n\
+            number + 1\n\
+          }\n
+          val two = inc(number: one)\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: {
+                let mut chunks = HashMap::new();
+                chunks.insert("inc".to_string(), Chunk {
+                    lines: vec![0, 1, 4],
+                    code: vec![
+                        Opcode::Store1 as u8,
+                        Opcode::Load1 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::Return as u8,
+                    ],
+                    num_bindings: 1,
+                });
+                chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
+                    lines: vec![2, 0, 3, 0, 0, 5, 1],
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::Store0 as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::Store1 as u8,
+                        Opcode::Load0 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::Invoke as u8,
+                        Opcode::Store2 as u8,
+                        Opcode::Return as u8
+                    ],
+                    num_bindings: 3,
+                });
+                chunks
+            },
+            constants: vec![
+                Value::Fn("inc".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) })
+            ],
+            bindings: vec![
+                BindingDescriptor { name: "one".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "inc".to_string(), scope_depth: 0 },
+                BindingDescriptor { name: "two".to_string(), scope_depth: 0 },
+            ],
         };
         assert_eq!(expected, chunk);
     }
