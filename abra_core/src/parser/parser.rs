@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -148,6 +148,7 @@ impl Parser {
             Token::Ident(_, _) => None,
             Token::LBrack(_) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
+            Token::LParen(_) => Some(Box::new(Parser::parse_invocation)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
     }
@@ -162,7 +163,7 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::LBrack(_) => Precedence::Call,
+            Token::LBrack(_) | Token::LParen(_) => Precedence::Call,
             _ => Precedence::None,
         }
     }
@@ -506,6 +507,49 @@ impl Parser {
         let expr = self.parse_precedence(Precedence::None)?;
         let node = AssignmentNode { target: Box::new(left), expr: Box::new(expr) };
         Ok(AstNode::Assignment(token, node))
+    }
+
+    fn parse_invocation(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+        let lparen = token;
+        let mut item_expected = true;
+        let mut args = Vec::<(Option<Token>, AstNode)>::new();
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::RParen(_) = token {
+                self.expect_next()?; // Consume ')' before ending loop
+                break;
+            } else {
+                if !item_expected {
+                    return Err(ParseError::UnexpectedToken(token.clone()));
+                }
+
+                match self.parse_expr()? {
+                    ident @ AstNode::Identifier(_) => {
+                        if let Token::Colon(_) = self.expect_peek()? {
+                            self.expect_next()?; // Consume ':'
+                            let arg_value = self.parse_expr()?;
+                            // Kind of silly, but I can't destruct ident while also @-ing it
+                            let arg_name = match ident {
+                                AstNode::Identifier(arg_name) => arg_name,
+                                _ => unreachable!()
+                            };
+                            args.push((Some(arg_name), arg_value));
+                        } else {
+                            args.push((None, ident));
+                        }
+                    }
+                    expr @ _ => args.push((None, expr))
+                }
+
+                if let Token::Comma(_) = self.expect_peek()? {
+                    self.expect_next()?; // Consume ','
+                } else {
+                    item_expected = false;
+                }
+            }
+        }
+
+        Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
     }
 
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -1137,75 +1181,77 @@ mod tests {
     }
 
     #[test]
-    fn parse_type_annotations() -> TestResult {
-        fn ast_to_type_ann(ast: Vec<AstNode>) -> TypeIdentifier {
-            match ast.into_iter().next() {
-                Some(AstNode::BindingDecl(_, BindingDeclNode { type_ann, .. })) => type_ann.unwrap(),
-                _ => unreachable!()
-            }
+    fn parse_type_identifier() {
+        #[inline]
+        fn parse_type_identifier(input: &str) -> TypeIdentifier {
+            let tokens = tokenize(&input.to_string()).unwrap();
+            let mut parser = Parser::new(tokens);
+            parser.parse_type_identifier().unwrap()
         }
 
-        let ast = parse("var abc: Bool")?;
+        let type_ident = parse_type_identifier("Bool");
         let expected = TypeIdentifier::Normal {
-            ident: Token::Ident(Position::new(1, 10), "Bool".to_string())
+            ident: Token::Ident(Position::new(1, 1), "Bool".to_string())
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int[]")?;
+        let type_ident = parse_type_identifier("Int[]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int[][]")?;
+        let type_ident = parse_type_identifier("Int?");
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Normal {
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+            })
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("Int[][]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?")?;
-        let expected = TypeIdentifier::Option {
-            inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+        let type_ident = parse_type_identifier("Int[][]");
+        let expected = TypeIdentifier::Array {
+            inner: Box::new(TypeIdentifier::Array {
+                inner: Box::new(TypeIdentifier::Normal {
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?[]")?;
+        let type_ident = parse_type_identifier("Int?[]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Option {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
+        assert_eq!(expected, type_ident);
 
-        let ast = parse("var abc: Int?[]?")?;
+        let type_ident = parse_type_identifier("Int?[]?");
         let expected = TypeIdentifier::Option {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Option {
                     inner: Box::new(TypeIdentifier::Normal {
-                        ident: Token::Ident(Position::new(1, 10), "Int".to_string())
+                        ident: Token::Ident(Position::new(1, 1), "Int".to_string())
                     })
                 })
             })
         };
-        let type_ann = ast_to_type_ann(ast);
-        assert_eq!(expected, type_ann);
-
-        Ok(())
+        assert_eq!(expected, type_ident);
     }
 
     #[test]
@@ -1304,6 +1350,18 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
+        // Testing trailing comma in param list
+        let ast = parse("func abc(a: Int,) = 123")?;
+        let args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") })
+        ];
+        assert_eq!(&expected, args);
+
+        // Testing return type
         let ast = parse("func abc(a: Int): String = 123")?;
         let ret_type = match ast.first().unwrap() {
             AstNode::FunctionDecl(_, FunctionDeclNode { ret_type, .. }) => ret_type,
@@ -1805,5 +1863,144 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_invocation() -> TestResult {
+        let ast = parse("abc()")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc(4)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (None, int_literal!((1, 5), 4))
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Testing trailing commas
+        let ast = parse("abc(4,)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (None, int_literal!((1, 5), 4))
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc(4, def(5, 6), 7)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (None, int_literal!((1, 5), 4)),
+                    (None, AstNode::Invocation(
+                        Token::LParen(Position::new(1, 11)),
+                        InvocationNode {
+                            target: Box::new(identifier!((1, 8), "def")),
+                            args: vec![
+                                (None, int_literal!((1, 12), 5)),
+                                (None, int_literal!((1, 15), 6)),
+                            ],
+                        },
+                    )),
+                    (None, int_literal!((1, 19), 7)),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_invocation_named_parameters() -> TestResult {
+        let ast = parse("abc(a: 4)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (Some(ident_token!((1, 5), "a")), int_literal!((1, 8), 4))
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Testing trailing commas
+        let ast = parse("abc(a: 4,)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (Some(ident_token!((1, 5), "a")), int_literal!((1, 8), 4))
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc(a: 4, def(5, d: 6), c: 7)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 4)),
+            InvocationNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                args: vec![
+                    (Some(ident_token!((1, 5), "a")), int_literal!((1, 8), 4)),
+                    (None, AstNode::Invocation(
+                        Token::LParen(Position::new(1, 14)),
+                        InvocationNode {
+                            target: Box::new(identifier!((1, 11), "def")),
+                            args: vec![
+                                (None, int_literal!((1, 15), 5)),
+                                (Some(ident_token!((1, 18), "d")), int_literal!((1, 21), 6)),
+                            ],
+                        },
+                    )),
+                    (Some(ident_token!((1, 25), "c")), int_literal!((1, 28), 7)),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_invocation_errors() {
+        let error = parse("abc(").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("abc!()").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::RParen(Position::new(1, 6)));
+        assert_eq!(expected, error);
+
+        let error = parse("abc(1 + )").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::RParen(Position::new(1, 9)));
+        assert_eq!(expected, error);
+
+        let error = parse("abc(1, 1 1)").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 10), 1));
+        assert_eq!(expected, error);
+
+        let error = parse("abc(a + b: 2)").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 10)));
+        assert_eq!(expected, error);
     }
 }

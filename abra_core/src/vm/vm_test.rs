@@ -483,4 +483,36 @@ mod tests {
         let expected = Value::Fn("abc".to_string());
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_func_invocation() {
+        let input = "\
+          val a = 1\n\
+          val b = 2\n\
+          val c = 3\n\
+          func add(a: Int, b: Int): Int {\n\
+            val sum = a + b\n\
+            sum\n\
+          }\n\
+          add(add(a, b), c)\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_closure() {
+        let input = "\
+          val a = 1\n\
+          val b = 2\n\
+          func getSum(): Int {\n\
+            a + b\n\
+          }\n\
+          getSum()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+    }
 }

@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 
@@ -17,6 +17,7 @@ pub trait AstVisitor<V, E> {
             Indexing(tok, node) => self.visit_indexing(tok, node),
             IfStatement(tok, node) => self.visit_if_statement(tok, node),
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
+            Invocation(tok, node) => self.visit_invocation(tok, node),
         }
     }
 
@@ -32,4 +33,5 @@ pub trait AstVisitor<V, E> {
     fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<V, E>;
     fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<V, E>;
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<V, E>;
+    fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<V, E>;
 }

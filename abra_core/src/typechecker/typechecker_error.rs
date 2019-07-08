@@ -16,6 +16,9 @@ pub enum TypecheckerError {
     UnknownType { type_ident: Token },
     MissingIfExprBranch { if_token: Token, is_if_branch: bool },
     IfExprBranchMismatch { if_token: Token, if_type: Type, else_type: Type },
+    InvalidInvocationTarget { token: Token },
+    IncorrectArity { token: Token, expected: usize, actual: usize },
+    ParamNameMismatch { token: Token, expected: String, actual: String },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -36,7 +39,7 @@ fn type_repr(t: &Type) -> String {
         Type::Array(typ) => format!("{}[]", type_repr(typ)),
         Type::Option(typ) => format!("{}?", type_repr(typ)),
         Type::Fn(args, ret_type) => {
-            let args = args.iter().map(|arg| type_repr(arg)).collect::<Vec<String>>().join(", ");
+            let args = args.iter().map(|(_, arg_type)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
     }
@@ -75,6 +78,9 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
             TypecheckerError::MissingIfExprBranch { if_token, .. } => if_token.get_position(),
             TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
+            TypecheckerError::InvalidInvocationTarget { token } => token.get_position(),
+            TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
+            TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -180,6 +186,15 @@ impl DisplayError for TypecheckerError {
                     The if-branch had type {}, but the else-branch had type {}",
                     pos.line, pos.col, cursor_line, type_repr(if_type), type_repr(else_type)
                 )
+            }
+            TypecheckerError::InvalidInvocationTarget { token: _ } => {
+                unimplemented!()
+            }
+            TypecheckerError::IncorrectArity { token: _, expected: _, actual: _ } => {
+                unimplemented!()
+            }
+            TypecheckerError::ParamNameMismatch { token: _, expected: _, actual: _ } => {
+                unimplemented!()
             }
         }
     }

@@ -16,6 +16,7 @@ pub enum TypedAstNode {
     Indexing(Token, TypedIndexingNode),
     IfStatement(Token, TypedIfNode),
     IfExpression(Token, TypedIfNode),
+    Invocation(Token, TypedInvocationNode),
 }
 
 impl TypedAstNode {
@@ -33,6 +34,7 @@ impl TypedAstNode {
             TypedAstNode::Indexing(token, _) => token,
             TypedAstNode::IfStatement(token, _) => token,
             TypedAstNode::IfExpression(token, _) => token,
+            TypedAstNode::Invocation(token, _) => token,
         }
     }
 
@@ -55,6 +57,7 @@ impl TypedAstNode {
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
             TypedAstNode::IfStatement(_, node) => node.typ.clone(),
             TypedAstNode::IfExpression(_, node) => node.typ.clone(),
+            TypedAstNode::Invocation(_, node) => node.typ.clone(),
         }
     }
 }
@@ -141,4 +144,11 @@ pub struct TypedIfNode {
     pub condition: Box<TypedAstNode>,
     pub if_block: Vec<TypedAstNode>,
     pub else_block: Option<Vec<TypedAstNode>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedInvocationNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub args: Vec<TypedAstNode>,
 }
