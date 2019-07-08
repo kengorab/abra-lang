@@ -505,14 +505,15 @@ mod tests {
     fn interpret_func_invocation_closure() {
         let input = "\
           val a = 1\n\
-          val b = 2\n\
+          var b = 2\n\
           func getSum(): Int {\n\
             a + b\n\
           }\n\
+          b = 17\n\
           getSum()\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Int(18);
         assert_eq!(expected, result);
     }
 }
