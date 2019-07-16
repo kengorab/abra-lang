@@ -259,6 +259,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let TypedFunctionDeclNode { name, args, body, scope_depth, .. } = node;
         let func_name = Token::get_ident_name(&name);
 
+        let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
+
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
         let prev_chunk = self.current_chunk.clone();
         self.current_chunk = func_name.to_owned();
@@ -287,7 +289,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_opcode(Opcode::Return, line);
 
         self.current_chunk = prev_chunk;
-        let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
+//        let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
@@ -1270,9 +1272,9 @@ mod tests {
                         Opcode::Load3 as u8,
                         Opcode::Load4 as u8,
                         Opcode::IAdd as u8,
-                        Opcode::Constant as u8, 0,
+                        Opcode::Constant as u8, 1,
                         Opcode::Store as u8,
-                        Opcode::Constant as u8, 0,
+                        Opcode::Constant as u8, 1,
                         Opcode::Load as u8,
                         Opcode::Return as u8,
                     ],
@@ -1287,7 +1289,7 @@ mod tests {
                         Opcode::Store1 as u8,
                         Opcode::IConst3 as u8,
                         Opcode::Store2 as u8,
-                        Opcode::Constant as u8, 1,
+                        Opcode::Constant as u8, 0,
                         Opcode::Store3 as u8,
                         Opcode::Return as u8
                     ],
@@ -1295,7 +1297,7 @@ mod tests {
                 });
                 chunks
             },
-            constants: vec![Value::Int(5), Value::Fn("abc".to_string())],
+            constants: vec![Value::Fn("abc".to_string()), Value::Int(5)],
             bindings: vec![
                 BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
                 BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
