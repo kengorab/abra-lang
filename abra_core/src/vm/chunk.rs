@@ -5,9 +5,9 @@ use crate::vm::value::Value;
 
 #[derive(PartialEq)]
 pub struct Chunk {
-    pub(crate) lines: Vec<usize>,
-    pub(crate) code: Vec<u8>,
-    pub(crate) num_bindings: u32,
+    pub lines: Vec<usize>,
+    pub code: Vec<u8>,
+    pub num_bindings: u32,
 }
 
 impl Chunk {
@@ -67,16 +67,16 @@ impl Debug for Chunk {
 
 #[derive(Debug, PartialEq)]
 pub struct BindingDescriptor {
-    pub(crate) name: String,
-    pub(crate) scope_depth: usize,
+    pub name: String,
+    pub scope_depth: usize,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct CompiledModule<'a> {
-    pub(crate) name: &'a str,
-    pub(crate) chunks: HashMap<String, Chunk>,
-    pub(crate) constants: Vec<Value>,
-    pub(crate) bindings: Vec<BindingDescriptor>,
+    pub name: &'a str,
+    pub chunks: HashMap<String, Chunk>,
+    pub constants: Vec<Value>,
+    pub bindings: Vec<BindingDescriptor>,
 }
 
 impl<'a> CompiledModule<'a> {
