@@ -51,7 +51,7 @@ pub enum Token {
     #[strum(to_string = "!=", serialize = "Neq")] Neq(Position),
     #[strum(to_string = "!", serialize = "Bang")] Bang(Position),
 
-    #[strum(serialize = "(", to_string = "LParen")] LParen(Position),
+    #[strum(to_string = "(", serialize = "LParen")] LParen(Position),
     #[strum(to_string = ")", serialize = "RParen")] RParen(Position),
     #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position),
     #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),

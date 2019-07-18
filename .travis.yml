@@ -3,7 +3,7 @@ script:
   - nvm install stable
   - cargo install wasm-pack || echo "wasm-pack already installed"
   - cargo build
-  - cd abra_wasm && ./build.sh && cd ..
+  - cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..
   - cargo test
   - cd abra_wasm/js-tests
   - npm install

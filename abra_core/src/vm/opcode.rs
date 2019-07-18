@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Display, Debug, PartialEq)]
 #[repr(u8)]
 pub enum Opcode {
     Constant = 0,
