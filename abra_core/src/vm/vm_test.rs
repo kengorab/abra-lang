@@ -389,54 +389,74 @@ mod tests {
     #[test]
     fn interpret_if_else_statements() {
         let input = "\
+          var res = 0\
           if (1 != 2) {\
             val a = 123\
-            a\
+            res = a\
           } else {\
-            456\
+            res = 456\
           }
+        ";
+        let result = interpret(input);
+        assert!(result.is_none());
+
+        let input = "\
+          var res = 0\
+          if (1 != 2) {\
+            val a = 123\
+            res = a\
+          } else {\
+            res = 456\
+          }\
+          res
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(123);
         assert_eq!(expected, result);
 
         let input = "\
+          var res = 0\
           if (1 == 2) {\
-            123\
+            res = 123\
           } else {\
-            456\
-          }
+            res = 456\
+          }\
+          res
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(456);
         assert_eq!(expected, result);
 
         let input = "\
+          var res = 0\
           if (1 == 2) {\
-            123\
+            res = 123\
           } else if (2 > 3) {\
-            456\
+            res = 456\
           } else if (4 < 6) {\
-            789\
+            res = 789\
           } else {\
-            1011\
-          }
+            res = 1011\
+          }\
+          res
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(789);
         assert_eq!(expected, result);
 
         let input = "\
+          var res = 0\
           val a = 123\
           if (1 != 2) {\
             val b = 123\
             if (true) {\
               val c = a + b \
-              c
+              res = c
             }\
           } else {\
-            a + 456\
-          }
+            res = a + 456\
+          }\
+          res
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(246);
