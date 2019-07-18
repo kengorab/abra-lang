@@ -388,6 +388,9 @@ impl<'a> VM<'a> {
                     self.call_stack.push(frame);
                     self.ip = 0;
                 }
+                Opcode::Pop => {
+                    self.pop_expect()?;
+                },
                 Opcode::Return => {
                     let CallFrame { chunk_name, .. } = self.curr_chunk();
                     let chunk_name = chunk_name.clone();
