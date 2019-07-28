@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::vec_deque::VecDeque;
-use crate::vm::chunk::CompiledModule;
+use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
 use crate::vm::compiler::MAIN_CHUNK_NAME;
@@ -43,6 +43,11 @@ macro_rules! pop_expect_bool {
     );
 }
 
+// Helper to get the current frame, without having to worry about lifetimes
+macro_rules! current_frame {
+    ($self: expr) => { $self.call_stack.last_mut().expect("There needs to be at least 1 active call stack member") };
+}
+
 #[derive(Debug)]
 pub enum InterpretError {
     StackEmpty,
@@ -51,27 +56,23 @@ pub enum InterpretError {
     TypeError(/*expected: */ String, /*actual:*/ String),
 }
 
-struct CallFrame {
+struct CallFrame<'a> {
     ip: usize,
-    chunk_name: String,
+    chunk: &'a Chunk,
     stack_offset: usize,
 }
 
 pub struct VM<'a> {
-    call_stack: Vec<CallFrame>,
-    module: &'a mut CompiledModule<'a>,
+    call_stack: Vec<CallFrame<'a>>,
+    module: &'a CompiledModule<'a>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
 }
 
 impl<'a> VM<'a> {
-    pub fn new(module: &'a mut CompiledModule<'a>) -> Self {
-        let root_frame = CallFrame {
-            ip: 0,
-            chunk_name: MAIN_CHUNK_NAME.to_owned(),
-            stack_offset: 0,
-        };
-
+    pub fn new(module: &'a CompiledModule<'a>) -> Self {
+        let chunk = module.chunks.get(MAIN_CHUNK_NAME).unwrap();
+        let root_frame = CallFrame { ip: 0, chunk, stack_offset: 0 };
         VM {
             call_stack: vec![root_frame],
             module,
@@ -105,19 +106,12 @@ impl<'a> VM<'a> {
         self.stack.pop().ok_or(InterpretError::StackEmpty)
     }
 
-    fn curr_frame(&self) -> &CallFrame {
-        self.call_stack.last().expect("There needs to be at least 1 active call stack member")
-    }
-
     fn read_byte(&mut self) -> Option<u8> {
-        let CallFrame { chunk_name: curr_chunk_name, .. } = self.curr_frame();
-        let chunk = self.module.get_chunk(curr_chunk_name.to_string()).unwrap();
-
-        let frame = self.call_stack.last_mut().unwrap();
-        if chunk.code.len() == frame.ip {
+        let frame: &mut CallFrame = current_frame!(self);
+        if frame.chunk.code.len() == frame.ip {
             None
         } else {
-            let instr = chunk.code[frame.ip];
+            let instr = frame.chunk.code[frame.ip];
             frame.ip += 1;
             Some(instr)
         }
@@ -196,13 +190,15 @@ impl<'a> VM<'a> {
     }
 
     fn store(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
-        let stack_slot = stack_slot + self.call_stack.last().unwrap().stack_offset;
+        let CallFrame { stack_offset, .. } = current_frame!(self);
+        let stack_slot = stack_slot + *stack_offset;
         let value = self.pop_expect()?;
         Ok(self.stack_insert_at(stack_slot, value)) // TODO: Raise InterpretError when OOB stack_slot
     }
 
     fn load(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
-        let stack_slot = stack_slot + self.call_stack.last().unwrap().stack_offset;
+        let CallFrame { stack_offset, .. } = current_frame!(self);
+        let stack_slot = stack_slot + *stack_offset;
         let value = self.stack_get(stack_slot);
         Ok(self.push(value))
     }
@@ -407,14 +403,14 @@ impl<'a> VM<'a> {
                 Opcode::Jump => {
                     let jump_offset = self.read_byte_expect()?;
 
-                    let frame = self.call_stack.last_mut().unwrap();
+                    let frame: &mut CallFrame = current_frame!(self);
                     frame.ip += jump_offset;
                 }
                 Opcode::JumpIfF => {
                     let jump_offset = self.read_byte_expect()?;
                     let cond = pop_expect_bool!(self)?;
                     if !cond {
-                        let frame = self.call_stack.last_mut().unwrap();
+                        let frame: &mut CallFrame = current_frame!(self);
                         frame.ip += jump_offset;
                     }
                 }
@@ -422,9 +418,11 @@ impl<'a> VM<'a> {
                     let func_name = pop_expect_string!(self)?;
                     let arity = self.read_byte_expect()?;
 
+                    let chunk = self.module.chunks.get(&func_name).unwrap();
+
                     let frame = CallFrame {
                         ip: 0,
-                        chunk_name: func_name,
+                        chunk,
                         stack_offset: self.stack.len() - arity,
                     };
                     self.call_stack.push(frame);
@@ -433,9 +431,9 @@ impl<'a> VM<'a> {
                     self.pop_expect()?;
                 }
                 Opcode::Return => {
-                    let CallFrame { chunk_name, .. } = self.curr_frame();
+                    let is_main_frame = self.call_stack.len() == 1;
 
-                    if chunk_name == MAIN_CHUNK_NAME {
+                    if is_main_frame {
                         let top = self.pop();
                         break Ok(top);
                     } else {
