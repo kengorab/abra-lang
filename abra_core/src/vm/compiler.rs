@@ -261,8 +261,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let line = token.get_position().line;
 
-        self.write_int_constant(num_items as u32, line);
         self.write_opcode(Opcode::ArrMk, line);
+        self.write_byte(num_items as u8, line);
         Ok(())
     }
 
@@ -844,8 +844,7 @@ mod tests {
                 code: vec![
                     Opcode::Constant as u8, 0,
                     Opcode::Constant as u8, 1,
-                    Opcode::IConst2 as u8,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 2,
                     Opcode::IConst2 as u8,
                     Opcode::ArrLoad as u8,
                     Opcode::Constant as u8, 2,
@@ -872,8 +871,7 @@ mod tests {
                 code: vec![
                     Opcode::IConst1 as u8,
                     Opcode::IConst2 as u8,
-                    Opcode::IConst2 as u8,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 2,
                     Opcode::Return as u8
                 ],
             }),
@@ -890,8 +888,7 @@ mod tests {
                     Opcode::Constant as u8, 0,
                     Opcode::Constant as u8, 1,
                     Opcode::Constant as u8, 2,
-                    Opcode::IConst3 as u8,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 3,
                     Opcode::Return as u8
                 ],
             }),
@@ -914,15 +911,12 @@ mod tests {
                 code: vec![
                     Opcode::IConst1 as u8,
                     Opcode::IConst2 as u8,
-                    Opcode::IConst2 as u8,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 2,
                     Opcode::IConst3 as u8,
                     Opcode::IConst4 as u8,
                     Opcode::Constant as u8, 0,
-                    Opcode::IConst3 as u8,
-                    Opcode::ArrMk as u8,
-                    Opcode::IConst2 as u8,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 3,
+                    Opcode::ArrMk as u8, 2,
                     Opcode::Return as u8
                 ],
             }),
@@ -1144,15 +1138,14 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![13, 1],
+                lines: vec![12, 1],
                 code: vec![
                     Opcode::IConst1 as u8,
                     Opcode::IConst2 as u8,
                     Opcode::IConst3 as u8,
                     Opcode::IConst4 as u8,
                     Opcode::Constant as u8, 0,
-                    Opcode::Constant as u8, 0,
-                    Opcode::ArrMk as u8,
+                    Opcode::ArrMk as u8, 5,
                     Opcode::IConst3 as u8,
                     Opcode::IConst1 as u8,
                     Opcode::IAdd as u8,
@@ -1430,7 +1423,7 @@ mod tests {
             chunks: {
                 let mut chunks = HashMap::new();
                 chunks.insert("inc".to_string(), Chunk {
-                    lines: vec![0,0, 3, 1, 1],
+                    lines: vec![0, 0, 3, 1, 1],
                     code: vec![
                         Opcode::LLoad0 as u8,
                         Opcode::IConst1 as u8,

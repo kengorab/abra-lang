@@ -275,17 +275,12 @@ impl<'a> VM<'a> {
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
                 Opcode::ArrMk => {
-                    if let Value::Int(mut size) = self.pop_expect()? {
-                        // Array items are on the stack in reverse order, pop them off in reverse
-                        let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
-                        while size > 0 {
-                            size -= 1;
-                            arr_items.push_front(Box::new(self.pop_expect()?));
-                        }
-                        self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
-                    } else {
-                        unreachable!()
+                    let size = self.read_byte_expect()?;
+                    let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
+                    for _ in 0..size {
+                        arr_items.push_front(Box::new(self.pop_expect()?));
                     }
+                    self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
                 }
                 Opcode::ArrLoad => {
                     if let Value::Int(idx) = self.pop_expect()? {
