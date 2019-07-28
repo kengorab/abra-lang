@@ -188,6 +188,7 @@ export namespace Errors {
         = InterpretErrors.StackEmpty
         | InterpretErrors.ConstIdxOutOfBounds
         | InterpretErrors.EndOfBytes
+        | InterpretErrors.TypeError
 
     export namespace InterpretErrors {
         interface StackEmpty {
@@ -203,6 +204,13 @@ export namespace Errors {
         interface EndOfBytes {
             kind: 'interpretError',
             subKind: 'endOfBytes'
+        }
+
+        interface TypeError {
+            kind: 'interpretError',
+            subKind: 'typeError',
+            expected: string,
+            actual: string
         }
     }
 }

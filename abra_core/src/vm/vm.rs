@@ -6,11 +6,49 @@ use crate::vm::value::{Value, Obj};
 use crate::vm::compiler::MAIN_CHUNK_NAME;
 use std::collections::HashMap;
 
+// Helper macros
+macro_rules! pop_expect_string {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Obj(Obj::StringObj { value }) => Ok(*value),
+            v @ _ => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
+        }
+    );
+}
+
+macro_rules! pop_expect_int {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Int(value) => Ok(value),
+            v @ _ => Err(InterpretError::TypeError("Int".to_string(), v.to_string()))
+        }
+    );
+}
+
+macro_rules! pop_expect_float {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Float(value) => Ok(value),
+            v @ _ => Err(InterpretError::TypeError("Float".to_string(), v.to_string()))
+        }
+    );
+}
+
+macro_rules! pop_expect_bool {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Bool(value) => Ok(value),
+            v @ _ => Err(InterpretError::TypeError("Bool".to_string(), v.to_string()))
+        }
+    );
+}
+
 #[derive(Debug)]
 pub enum InterpretError {
     StackEmpty,
     ConstIdxOutOfBounds,
     EndOfBytes,
+    TypeError(/*expected: */ String, /*actual:*/ String),
 }
 
 struct CallFrame {
@@ -197,20 +235,12 @@ impl<'a> VM<'a> {
                 Opcode::FMul => self.float_op(|a, b| a * b)?,
                 Opcode::FDiv => self.float_op(|a, b| a / b)?,
                 Opcode::I2F => {
-                    let val = self.pop_expect()?;
-                    let val = match val {
-                        Value::Int(v) => Value::Float(v as f64),
-                        _ => unreachable!()
-                    };
-                    self.push(val)
+                    let val = pop_expect_int!(self)?;
+                    self.push(Value::Float(val as f64))
                 }
                 Opcode::F2I => {
-                    let val = self.pop_expect()?;
-                    let val = match val {
-                        Value::Float(v) => Value::Int(v as i64),
-                        _ => unreachable!()
-                    };
-                    self.push(val)
+                    let val = pop_expect_float!(self)?;
+                    self.push(Value::Int(val as i64))
                 }
                 Opcode::Invert => {
                     let val = self.pop_expect()?;
@@ -250,11 +280,8 @@ impl<'a> VM<'a> {
                     }
                 }
                 Opcode::Negate => {
-                    if let Value::Bool(val) = self.pop_expect()? {
-                        self.push(Value::Bool(!val));
-                    } else {
-                        unreachable!()
-                    }
+                    let val = pop_expect_bool!(self)?;
+                    self.push(Value::Bool(!val));
                 }
                 Opcode::Coalesce => { // TODO: Rewrite this using jumps when they're implemented!
                     let fallback = self.pop_expect()?;
@@ -283,40 +310,37 @@ impl<'a> VM<'a> {
                     self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
                 }
                 Opcode::ArrLoad => {
-                    if let Value::Int(idx) = self.pop_expect()? {
-                        let value = match self.pop_expect()? {
-                            Value::Obj(Obj::StringObj { value }) => {
-                                let len = value.len() as i64;
-                                let idx = if idx < 0 { idx + len } else { idx };
+                    let idx = pop_expect_int!(self)?;
+                    let value = match self.pop_expect()? {
+                        Value::Obj(Obj::StringObj { value }) => {
+                            let len = value.len() as i64;
+                            let idx = if idx < 0 { idx + len } else { idx };
 
-                                let value = match (*value).chars().nth(idx as usize) {
-                                    Some(ch) => Some(
-                                        Box::new(
-                                            Value::Obj(Obj::StringObj {
-                                                value: Box::new(ch.to_string())
-                                            })
-                                        )
-                                    ),
-                                    None => None
-                                };
-                                Value::Obj(Obj::OptionObj { value })
-                            }
-                            Value::Obj(Obj::ArrayObj { value }) => {
-                                let len = value.len() as i64;
-                                let value = if idx < -len || idx >= len {
-                                    None
-                                } else {
-                                    let idx = if idx < 0 { idx + len } else { idx };
-                                    Some(value[idx as usize].clone())
-                                };
-                                Value::Obj(Obj::OptionObj { value })
-                            }
-                            _ => unreachable!()
-                        };
-                        self.push(value);
-                    } else {
-                        unreachable!()
-                    }
+                            let value = match (*value).chars().nth(idx as usize) {
+                                Some(ch) => Some(
+                                    Box::new(
+                                        Value::Obj(Obj::StringObj {
+                                            value: Box::new(ch.to_string())
+                                        })
+                                    )
+                                ),
+                                None => None
+                            };
+                            Value::Obj(Obj::OptionObj { value })
+                        }
+                        Value::Obj(Obj::ArrayObj { value }) => {
+                            let len = value.len() as i64;
+                            let value = if idx < -len || idx >= len {
+                                None
+                            } else {
+                                let idx = if idx < 0 { idx + len } else { idx };
+                                Some(value[idx as usize].clone())
+                            };
+                            Value::Obj(Obj::OptionObj { value })
+                        }
+                        _ => unreachable!()
+                    };
+                    self.push(value);
                 }
                 Opcode::ArrSlc => {
                     #[inline]
@@ -354,11 +378,7 @@ impl<'a> VM<'a> {
                     self.push(value);
                 }
                 Opcode::GStore => {
-                    let global_name = if let Value::Obj(Obj::StringObj { value }) = self.pop_expect()? {
-                        *value
-                    } else {
-                        unreachable!()
-                    };
+                    let global_name: String = pop_expect_string!(self)?;
                     let value = self.pop_expect()?;
                     self.globals.insert(global_name, value);
                 }
@@ -372,11 +392,7 @@ impl<'a> VM<'a> {
                     self.store(stack_slot)?
                 }
                 Opcode::GLoad => {
-                    let global_name = if let Value::Obj(Obj::StringObj { value }) = self.pop_expect()? {
-                        *value
-                    } else {
-                        unreachable!()
-                    };
+                    let global_name: String = pop_expect_string!(self)?;
                     let value = self.globals.get(&global_name)
                         .unwrap_or(&Value::Nil)
                         .clone();
@@ -399,21 +415,14 @@ impl<'a> VM<'a> {
                 }
                 Opcode::JumpIfF => {
                     let jump_offset = self.read_byte_expect()?;
-                    if let Value::Bool(cond) = self.pop_expect()? {
-                        if !cond {
-                            let frame = self.call_stack.last_mut().unwrap();
-                            frame.ip += jump_offset;
-                        }
-                    } else {
-                        unreachable!()
+                    let cond = pop_expect_bool!(self)?;
+                    if !cond {
+                        let frame = self.call_stack.last_mut().unwrap();
+                        frame.ip += jump_offset;
                     }
                 }
                 Opcode::Invoke => {
-                    let func_name = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj { value }) => *value,
-                        _ => unreachable!()
-                    };
-
+                    let func_name = pop_expect_string!(self)?;
                     let arity = self.read_byte_expect()?;
 
                     let frame = CallFrame {
