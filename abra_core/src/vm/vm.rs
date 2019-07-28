@@ -357,10 +357,7 @@ impl<'a> VM<'a> {
                     }
 
                     let end = self.pop_expect()?;
-                    let start = match self.pop_expect()? {
-                        Value::Int(start) => start,
-                        _ => unreachable!()
-                    };
+                    let start = pop_expect_int!(self)?;
 
                     let value = match self.pop_expect()? {
                         Value::Obj(Obj::StringObj { value }) => {
