@@ -29,8 +29,8 @@ pub struct Parser {
     context: Vec<Context>,
 }
 
-type PrefixFn = Fn(&mut Parser, Token) -> Result<AstNode, ParseError>;
-type InfixFn = Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError>;
+type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseError>;
+type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError>;
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {

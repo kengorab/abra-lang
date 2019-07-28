@@ -10,7 +10,7 @@ impl<'a> Serialize for JsChunk<'a> {
     {
         use serde::ser::SerializeMap;
 
-        let Chunk { code, num_bindings, .. } = self.0;
+        let Chunk { code, .. } = self.0;
 
         let mut obj = serializer.serialize_map(Some(2))?;
 
@@ -18,14 +18,12 @@ impl<'a> Serialize for JsChunk<'a> {
         let mut code = code.iter();
         while let Some(byte) = code.next() {
             let op = Opcode::from(*byte);
-            let imm = match &op {
-                Opcode::Constant | Opcode::Jump | Opcode::JumpIfF => code.next().map(|b| b.clone()),
-                _ => None
-            };
+            let imm = if op.expects_imm() {
+                code.next().map(|b| b.clone())
+            } else { None };
             bytecode.push((op.to_string(), imm));
         }
 
-        obj.serialize_entry("numBindings", num_bindings)?;
         obj.serialize_entry("code", &bytecode)?;
         obj.end()
     }

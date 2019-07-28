@@ -35,18 +35,20 @@ pub enum Opcode {
     ArrMk,
     ArrLoad,
     ArrSlc,
-    Store0,
-    Store1,
-    Store2,
-    Store3,
-    Store4,
-    Store,
-    Load0,
-    Load1,
-    Load2,
-    Load3,
-    Load4,
-    Load,
+    GStore,
+    LStore0,
+    LStore1,
+    LStore2,
+    LStore3,
+    LStore4,
+    LStore,
+    GLoad,
+    LLoad0,
+    LLoad1,
+    LLoad2,
+    LLoad3,
+    LLoad4,
+    LLoad,
     Jump,
     JumpIfF,
     Invoke,
@@ -91,24 +93,40 @@ impl From<u8> for Opcode {
             31 => Opcode::ArrMk,
             32 => Opcode::ArrLoad,
             33 => Opcode::ArrSlc,
-            34 => Opcode::Store0,
-            35 => Opcode::Store1,
-            36 => Opcode::Store2,
-            37 => Opcode::Store3,
-            38 => Opcode::Store4,
-            39 => Opcode::Store,
-            40 => Opcode::Load0,
-            41 => Opcode::Load1,
-            42 => Opcode::Load2,
-            43 => Opcode::Load3,
-            44 => Opcode::Load4,
-            45 => Opcode::Load,
-            46 => Opcode::Jump,
-            47 => Opcode::JumpIfF,
-            48 => Opcode::Invoke,
-            49 => Opcode::Pop,
-            50 => Opcode::Return,
+            34 => Opcode::GStore,
+            35 => Opcode::LStore0,
+            36 => Opcode::LStore1,
+            37 => Opcode::LStore2,
+            38 => Opcode::LStore3,
+            39 => Opcode::LStore4,
+            40 => Opcode::LStore,
+            41 => Opcode::GLoad,
+            42 => Opcode::LLoad0,
+            43 => Opcode::LLoad1,
+            44 => Opcode::LLoad2,
+            45 => Opcode::LLoad3,
+            46 => Opcode::LLoad4,
+            47 => Opcode::LLoad,
+            48 => Opcode::Jump,
+            49 => Opcode::JumpIfF,
+            50 => Opcode::Invoke,
+            51 => Opcode::Pop,
+            52 => Opcode::Return,
             _ => unreachable!()
+        }
+    }
+}
+
+impl Opcode {
+    pub fn expects_imm(&self) -> bool {
+        match self {
+            Opcode::Constant |
+            Opcode::Jump |
+            Opcode::JumpIfF |
+            Opcode::LStore |
+            Opcode::LLoad |
+            Opcode::Invoke => true,
+            _ => false
         }
     }
 }

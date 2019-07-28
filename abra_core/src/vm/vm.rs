@@ -4,6 +4,7 @@ use crate::vm::chunk::CompiledModule;
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
 use crate::vm::compiler::MAIN_CHUNK_NAME;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum InterpretError {
@@ -15,6 +16,7 @@ pub enum InterpretError {
 struct CallFrame {
     return_ip: usize,
     chunk_name: String,
+    stack_offset: usize,
 }
 
 pub struct VM<'a> {
@@ -22,7 +24,7 @@ pub struct VM<'a> {
     call_stack: Vec<CallFrame>,
     module: &'a mut CompiledModule<'a>,
     stack: Vec<Value>,
-    vars: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 
 impl<'a> VM<'a> {
@@ -30,6 +32,7 @@ impl<'a> VM<'a> {
         let root_frame = CallFrame {
             return_ip: 0,
             chunk_name: MAIN_CHUNK_NAME.to_owned(),
+            stack_offset: 0,
         };
 
         VM {
@@ -37,8 +40,21 @@ impl<'a> VM<'a> {
             call_stack: vec![root_frame],
             module,
             stack: Vec::new(),
-            vars: Vec::new(),
+            globals: HashMap::new(),
         }
+    }
+
+    fn stack_insert_at(&mut self, index: usize, value: Value) {
+        match self.stack.get_mut(index) {
+            Some(slot) => *slot = value,
+            None => panic!("No stack slot available at index {}", index)
+        }
+    }
+
+    fn stack_get(&mut self, index: usize) -> Value {
+        self.stack.get(index)
+            .map(|value| value.clone())
+            .unwrap_or(Value::Nil)
     }
 
     fn push(&mut self, value: Value) {
@@ -69,6 +85,12 @@ impl<'a> VM<'a> {
             self.ip += 1;
             Some(instr)
         }
+    }
+
+    fn read_byte_expect(&mut self) -> Result<usize, InterpretError> {
+        self.read_byte()
+            .map(|b| b as usize)
+            .ok_or(InterpretError::EndOfBytes)
     }
 
     fn read_instr(&mut self) -> Option<Opcode> {
@@ -137,18 +159,16 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    fn store(&mut self, var_idx: usize) -> Result<(), InterpretError> {
-        let val = self.pop_expect()?;
-        Ok(self.vars.insert(var_idx, val))
+    fn store(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+        let stack_slot = stack_slot + self.call_stack.last().unwrap().stack_offset;
+        let value = self.pop_expect()?;
+        Ok(self.stack_insert_at(stack_slot, value)) // TODO: Raise InterpretError when OOB stack_slot
     }
 
-    fn load(&mut self, var_idx: usize) -> Result<(), InterpretError> {
-        if let Some(val) = self.vars.get(var_idx) {
-            self.push(val.clone());
-        } else {
-            unreachable!()
-        }
-        Ok(())
+    fn load(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+        let stack_slot = stack_slot + self.call_stack.last().unwrap().stack_offset;
+        let value = self.stack_get(stack_slot);
+        Ok(self.push(value))
     }
 
     pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
@@ -158,7 +178,7 @@ impl<'a> VM<'a> {
 
             match instr {
                 Opcode::Constant => {
-                    let const_idx = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
+                    let const_idx = self.read_byte_expect()?;
                     let val = self.module.constants.get(const_idx)
                         .ok_or(InterpretError::ConstIdxOutOfBounds)?
                         .clone();
@@ -340,36 +360,50 @@ impl<'a> VM<'a> {
                     };
                     self.push(value);
                 }
-                Opcode::Store0 => self.store(0)?,
-                Opcode::Store1 => self.store(1)?,
-                Opcode::Store2 => self.store(2)?,
-                Opcode::Store3 => self.store(3)?,
-                Opcode::Store4 => self.store(4)?,
-                Opcode::Store => {
-                    if let Value::Int(var_idx) = self.pop_expect()? {
-                        self.store(var_idx as usize)?;
+                Opcode::GStore => {
+                    let global_name = if let Value::Obj(Obj::StringObj { value }) = self.pop_expect()? {
+                        *value
                     } else {
                         unreachable!()
-                    }
+                    };
+                    let value = self.pop_expect()?;
+                    self.globals.insert(global_name, value);
                 }
-                Opcode::Load0 => self.load(0)?,
-                Opcode::Load1 => self.load(1)?,
-                Opcode::Load2 => self.load(2)?,
-                Opcode::Load3 => self.load(3)?,
-                Opcode::Load4 => self.load(4)?,
-                Opcode::Load => {
-                    if let Value::Int(var_idx) = self.pop_expect()? {
-                        self.load(var_idx as usize)?;
+                Opcode::LStore0 => self.store(0)?,
+                Opcode::LStore1 => self.store(1)?,
+                Opcode::LStore2 => self.store(2)?,
+                Opcode::LStore3 => self.store(3)?,
+                Opcode::LStore4 => self.store(4)?,
+                Opcode::LStore => {
+                    let stack_slot = self.read_byte_expect()?;
+                    self.store(stack_slot)?
+                }
+                Opcode::GLoad => {
+                    let global_name = if let Value::Obj(Obj::StringObj { value }) = self.pop_expect()? {
+                        *value
                     } else {
                         unreachable!()
-                    }
+                    };
+                    let value = self.globals.get(&global_name)
+                        .unwrap_or(&Value::Nil)
+                        .clone();
+                    self.push(value);
+                }
+                Opcode::LLoad0 => self.load(0)?,
+                Opcode::LLoad1 => self.load(1)?,
+                Opcode::LLoad2 => self.load(2)?,
+                Opcode::LLoad3 => self.load(3)?,
+                Opcode::LLoad4 => self.load(4)?,
+                Opcode::LLoad => {
+                    let stack_slot = self.read_byte_expect()?;
+                    self.load(stack_slot)?
                 }
                 Opcode::Jump => {
-                    let jump_offset = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
+                    let jump_offset = self.read_byte_expect()?;
                     self.ip += jump_offset;
                 }
                 Opcode::JumpIfF => {
-                    let jump_offset = self.read_byte().ok_or(InterpretError::EndOfBytes)? as usize;
+                    let jump_offset = self.read_byte_expect()?;
                     if let Value::Bool(cond) = self.pop_expect()? {
                         if !cond {
                             self.ip += jump_offset;
@@ -384,23 +418,21 @@ impl<'a> VM<'a> {
                         _ => unreachable!()
                     };
 
-                    let frame = CallFrame { return_ip: self.ip, chunk_name: func_name };
+                    let arity = self.read_byte_expect()?;
+
+                    let frame = CallFrame {
+                        return_ip: self.ip,
+                        chunk_name: func_name,
+                        stack_offset: self.stack.len() - arity,
+                    };
                     self.call_stack.push(frame);
                     self.ip = 0;
                 }
                 Opcode::Pop => {
                     self.pop_expect()?;
-                },
+                }
                 Opcode::Return => {
                     let CallFrame { chunk_name, .. } = self.curr_chunk();
-                    let chunk_name = chunk_name.clone();
-
-                    let chunk = self.module.chunks.get(chunk_name.as_str())
-                        .expect(&format!("Chunk named {} expected to exist", chunk_name));
-
-                    for _ in 0..chunk.num_bindings {
-                        self.vars.pop();
-                    }
 
                     if chunk_name == MAIN_CHUNK_NAME {
                         let top = self.pop();

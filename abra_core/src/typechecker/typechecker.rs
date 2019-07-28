@@ -81,7 +81,7 @@ impl Typechecker {
 
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
-    fn visit_if_node(&mut self, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
+    fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
         let IfNode { condition, if_block, else_block } = node;
 
         let condition = self.visit(*condition)?;
@@ -92,8 +92,22 @@ impl Typechecker {
         let condition = Box::new(condition);
 
         self.scopes.push(Scope::new());
-        let if_block: Result<Vec<_>, _> = if_block.into_iter()
-            .map(|node| self.visit(node))
+        let if_block_len = if_block.len();
+        let if_block: Result<Vec<_>, _> = (0..if_block_len).zip(if_block.into_iter())
+            .map(|(idx, mut node)| {
+                // If the last node of an if-expression is an if-statement, treat it as an if-expr.
+                // This is due to the fact that if-blocks are only treated as expressions in certain
+                // situations, namely when an expression is already expected. Otherwise, they're parsed
+                // as an if-statement. However, since the last item in an if-expression's block is the
+                // "return value" for that block, the last slot is ALSO a valid place for an expression
+                // to be. This is much more difficult to represent in the parser, so it's done here.
+                if !is_stmt && idx == if_block_len - 1 {
+                    if let AstNode::IfStatement(token, if_node) = node {
+                        node = AstNode::IfExpression(token, if_node)
+                    }
+                }
+                self.visit(node)
+            })
             .collect();
         let if_block = if_block?;
         self.scopes.pop();
@@ -102,8 +116,16 @@ impl Typechecker {
         let else_block = match else_block {
             None => None,
             Some(nodes) => {
-                let else_block: Result<Vec<_>, _> = nodes.into_iter()
-                    .map(|node| self.visit(node))
+                let else_block_len = nodes.len();
+                let else_block: Result<Vec<_>, _> = (0..else_block_len).zip(nodes.into_iter())
+                    .map(|(idx, mut node)| {
+                        if !is_stmt && idx == else_block_len - 1 {
+                            if let AstNode::IfStatement(token, if_node) = node {
+                                node = AstNode::IfExpression(token, if_node)
+                            }
+                        }
+                        self.visit(node)
+                    })
                     .collect();
                 Some(else_block?)
             }
@@ -355,8 +377,50 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let args = typed_args;
 
-        let body: Result<Vec<TypedAstNode>, _> = body.into_iter()
-            .map(|node| self.visit(node))
+        let body_len = body.len();
+        let body: Result<Vec<TypedAstNode>, _> = (0..body_len).zip(body.into_iter())
+            .map(|(idx, node)| {
+                if idx == body_len - 1 {
+                    // This is sufficiently gross to warrant a comment. This logic is similar to the
+                    // if-block logic in `visit_if_node` above, but slightly different. Like in an
+                    // if-/else-block, the last slot in a function body could be treated as an
+                    // expression. An if-block in this slot will be parsed as an if-statement, and
+                    // should be re-counted here as if it were an expression instead. HOWEVER, this
+                    // DOES NOT account for functions which return Unit. A function that ends in
+                    // such a re-attributed if-expression in which both or either branch is a Unit
+                    // type (ie. a full Unit type or a Unit? type) should be treated as if it were
+                    // an if-statement instead. This is critical for bytecode generation, as no
+                    // POP instruction will be emitted following an if-statement.
+                    match node {
+                        AstNode::IfStatement(token, if_node) => {
+                            let node = AstNode::IfExpression(token.clone(), if_node);
+                            let typed_node = self.visit(node)?;
+                            match typed_node.get_type() {
+                                Type::Unit => {
+                                    if let TypedAstNode::IfExpression(token, typed_if_node) = typed_node {
+                                        Ok(TypedAstNode::IfStatement(token, typed_if_node))
+                                    } else {
+                                        unreachable!()
+                                    }
+                                }
+                                // Kind of annoying, but the box_patterns feature is hidden behind a
+                                // nightly feature, so code duplication is unavoidable here
+                                Type::Option(ref t) if *t == Box::new(Type::Unit) => {
+                                    if let TypedAstNode::IfExpression(token, typed_if_node) = typed_node {
+                                        Ok(TypedAstNode::IfStatement(token, typed_if_node))
+                                    } else {
+                                        unreachable!()
+                                    }
+                                }
+                                _ => Ok(typed_node)
+                            }
+                        }
+                        n @ _ => self.visit(n)
+                    }
+                } else {
+                    self.visit(node)
+                }
+            })
             .collect();
         let body = body?;
         let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
@@ -508,12 +572,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
-        let node = self.visit_if_node(node)?;
+        let node = self.visit_if_node(true, node)?;
         Ok(TypedAstNode::IfStatement(token, node))
     }
 
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
-        let mut node = self.visit_if_node(node)?;
+        let mut node = self.visit_if_node(false, node)?;
 
         let if_block_type = match &node.if_block.last() {
             None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
