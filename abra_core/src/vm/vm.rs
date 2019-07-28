@@ -14,13 +14,12 @@ pub enum InterpretError {
 }
 
 struct CallFrame {
-    return_ip: usize,
+    ip: usize,
     chunk_name: String,
     stack_offset: usize,
 }
 
 pub struct VM<'a> {
-    ip: usize,
     call_stack: Vec<CallFrame>,
     module: &'a mut CompiledModule<'a>,
     stack: Vec<Value>,
@@ -30,13 +29,12 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn new(module: &'a mut CompiledModule<'a>) -> Self {
         let root_frame = CallFrame {
-            return_ip: 0,
+            ip: 0,
             chunk_name: MAIN_CHUNK_NAME.to_owned(),
             stack_offset: 0,
         };
 
         VM {
-            ip: 0,
             call_stack: vec![root_frame],
             module,
             stack: Vec::new(),
@@ -69,20 +67,20 @@ impl<'a> VM<'a> {
         self.stack.pop().ok_or(InterpretError::StackEmpty)
     }
 
-    fn curr_chunk(&self) -> &CallFrame {
-        self.call_stack.last()
-            .expect("There needs to be at least 1 active call stack member")
-            .clone()
+    fn curr_frame(&self) -> &CallFrame {
+        self.call_stack.last().expect("There needs to be at least 1 active call stack member")
     }
 
     fn read_byte(&mut self) -> Option<u8> {
-        let CallFrame { chunk_name: curr_chunk_name, .. } = self.curr_chunk();
+        let CallFrame { chunk_name: curr_chunk_name, .. } = self.curr_frame();
         let chunk = self.module.get_chunk(curr_chunk_name.to_string()).unwrap();
-        if chunk.code.len() == self.ip {
+
+        let frame = self.call_stack.last_mut().unwrap();
+        if chunk.code.len() == frame.ip {
             None
         } else {
-            let instr: u8 = chunk.code[self.ip];
-            self.ip += 1;
+            let instr = chunk.code[frame.ip];
+            frame.ip += 1;
             Some(instr)
         }
     }
@@ -400,13 +398,16 @@ impl<'a> VM<'a> {
                 }
                 Opcode::Jump => {
                     let jump_offset = self.read_byte_expect()?;
-                    self.ip += jump_offset;
+
+                    let frame = self.call_stack.last_mut().unwrap();
+                    frame.ip += jump_offset;
                 }
                 Opcode::JumpIfF => {
                     let jump_offset = self.read_byte_expect()?;
                     if let Value::Bool(cond) = self.pop_expect()? {
                         if !cond {
-                            self.ip += jump_offset;
+                            let frame = self.call_stack.last_mut().unwrap();
+                            frame.ip += jump_offset;
                         }
                     } else {
                         unreachable!()
@@ -421,25 +422,24 @@ impl<'a> VM<'a> {
                     let arity = self.read_byte_expect()?;
 
                     let frame = CallFrame {
-                        return_ip: self.ip,
+                        ip: 0,
                         chunk_name: func_name,
                         stack_offset: self.stack.len() - arity,
                     };
                     self.call_stack.push(frame);
-                    self.ip = 0;
                 }
                 Opcode::Pop => {
                     self.pop_expect()?;
                 }
                 Opcode::Return => {
-                    let CallFrame { chunk_name, .. } = self.curr_chunk();
+                    let CallFrame { chunk_name, .. } = self.curr_frame();
 
                     if chunk_name == MAIN_CHUNK_NAME {
                         let top = self.pop();
                         break Ok(top);
                     } else {
-                        let CallFrame { return_ip, .. } = self.call_stack.pop().unwrap();
-                        self.ip = return_ip;
+                        // Pop off current frame, so the next loop will resume with the previous frame
+                        self.call_stack.pop();
                     }
                 }
             }
