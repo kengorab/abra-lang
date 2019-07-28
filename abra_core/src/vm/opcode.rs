@@ -123,6 +123,7 @@ impl Opcode {
             Opcode::Constant |
             Opcode::Jump |
             Opcode::JumpIfF |
+            Opcode::ArrMk |
             Opcode::LStore |
             Opcode::LLoad |
             Opcode::Invoke => true,
