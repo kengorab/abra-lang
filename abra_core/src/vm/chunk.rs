@@ -7,12 +7,11 @@ use crate::vm::value::Value;
 pub struct Chunk {
     pub lines: Vec<usize>,
     pub code: Vec<u8>,
-    pub num_bindings: u32,
 }
 
 impl Chunk {
     pub fn new() -> Self {
-        Chunk { lines: Vec::new(), code: Vec::new(), num_bindings: 0 }
+        Chunk { lines: Vec::new(), code: Vec::new() }
     }
 
     fn add_line(&mut self, line_num: usize) {
@@ -46,9 +45,9 @@ impl Debug for Chunk {
             match bytecode.next() {
                 Some(&byte) => {
                     write!(f, "{:?}", Opcode::from(byte))?;
-                    if byte == Opcode::Constant as u8 || byte == Opcode::Jump as u8 || byte == Opcode::JumpIfF as u8 {
+                    if Opcode::from(byte).expects_imm() {
                         match bytecode.next() {
-                            None => panic!("Byte expected after Constant|Jump|JumpIfF opcode!"),
+                            None => panic!("Byte expected after opcode"),
                             Some(&byte) => write!(f, ", {:?}", byte)?
                         };
                     }
@@ -61,14 +60,8 @@ impl Debug for Chunk {
             }
         }
 
-        write!(f, "], num_bindings: {:?})", self.num_bindings)
+        write!(f, "])")
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct BindingDescriptor {
-    pub name: String,
-    pub scope_depth: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -76,12 +69,11 @@ pub struct CompiledModule<'a> {
     pub name: &'a str,
     pub chunks: HashMap<String, Chunk>,
     pub constants: Vec<Value>,
-    pub bindings: Vec<BindingDescriptor>,
 }
 
 impl<'a> CompiledModule<'a> {
     pub fn new(name: &'a str) -> Self {
-        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new(), bindings: Vec::new() }
+        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new() /*bindings: Vec::new()*/ }
     }
 
     pub fn get_chunk(&mut self, name: String) -> Option<&mut Chunk> {
@@ -93,12 +85,16 @@ impl<'a> CompiledModule<'a> {
     }
 
     pub fn add_constant(&mut self, value: Value) -> u8 {
-        let const_idx = self.constants.iter()
-            .position(|v| v == &value)
+        self.get_constant_index(&value)
             .unwrap_or_else(|| {
                 self.constants.push(value);
-                self.constants.len() - 1
-            });
-        const_idx as u8
+                (self.constants.len() - 1) as u8
+            })
+    }
+
+    pub fn get_constant_index(&self, value: &Value) -> Option<u8> {
+        self.constants.iter()
+            .position(|v| v == value)
+            .map(|v| v as u8)
     }
 }

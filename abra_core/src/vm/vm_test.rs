@@ -536,4 +536,46 @@ mod tests {
         let expected = Value::Int(18);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_func_invocation_callstack() {
+        let input = "\
+          val greeting = \"Hello\"\n\
+          func exclaim(word: String) {\n\
+            val abc = 123\n\
+            word + \"!\"\n\
+          }\n\
+          func greet(recipient: String) {\n\
+            greeting + \", \" + exclaim(recipient)\n\
+          }\n\
+          val languageName = \"Abra\"\n\
+          greet(languageName) + \" \" + greet(languageName)\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("Hello, Abra! Hello, Abra!".to_string()) });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_nested_if() {
+        let input = "\
+          val prefix = \"Save the\"\n\
+          func exclaim(word: String) {\n\
+            val abc = 123\n\
+            word + \"!\"\n\
+          }\n\
+          func save(recipient: String) {\n\
+            if (recipient == \"World\") {
+              val target = exclaim(recipient)
+              prefix + \" \" + target\n\
+            } else {
+              prefix + \" \" + recipient\n\
+            }
+          }\n\
+          save(\"Cheerleader\") + \", \" + save(\"World\")\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("Save the Cheerleader, Save the World!".to_string()) });
+        assert_eq!(expected, result);
+    }
 }

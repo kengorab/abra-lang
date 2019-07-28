@@ -1,6 +1,5 @@
 pub mod abra_type;
 pub mod binary_op;
-pub mod binding_descriptor;
 pub mod chunk;
 pub mod compiled_module;
 pub mod error;

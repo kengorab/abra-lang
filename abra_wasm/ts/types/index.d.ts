@@ -1,6 +1,5 @@
 import './abra-types'
 import './binary-op'
-import './binding-descriptor'
 import './chunk'
 import './compiled-module'
 import './error'

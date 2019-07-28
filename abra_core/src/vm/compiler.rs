@@ -1,5 +1,5 @@
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
-use crate::vm::chunk::{CompiledModule, Chunk, BindingDescriptor};
+use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::vm::opcode::Opcode;
@@ -7,10 +7,14 @@ use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 
+#[derive(Debug, PartialEq)]
+pub struct Local(/* name: */ String, /* scope_depth: */ usize);
+
 pub struct Compiler<'a> {
     current_chunk: String,
     module: CompiledModule<'a>,
-    depth: u32,
+    depth: usize,
+    locals: Vec<Local>,
 }
 
 pub const MAIN_CHUNK_NAME: &str = "main";
@@ -20,7 +24,12 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
     let main_chunk = Chunk::new();
     module.add_chunk(MAIN_CHUNK_NAME.to_string(), main_chunk);
 
-    let mut compiler = Compiler { module, current_chunk: MAIN_CHUNK_NAME.to_string(), depth: 0 };
+    let mut compiler = Compiler {
+        module,
+        current_chunk: MAIN_CHUNK_NAME.to_string(),
+        depth: 0,
+        locals: Vec::new(),
+    };
 
     let len = ast.len();
     let mut last_line = 0;
@@ -28,6 +37,7 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
         let line = node.get_token().get_position().line;
         let should_pop = should_pop_after_node(&node);
         compiler.visit(node).unwrap();
+
         if idx != len - 1 && should_pop {
             compiler.write_opcode(Opcode::Pop, line);
         }
@@ -42,6 +52,7 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
 }
 
 fn should_pop_after_node(node: &TypedAstNode) -> bool {
+    // Really this function could be `is_expression`
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
@@ -91,54 +102,63 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn write_store_instr(&mut self, binding_idx: u32, line: usize) {
-        if binding_idx <= 4 {
-            let opcode = match binding_idx {
-                0 => Opcode::Store0,
-                1 => Opcode::Store1,
-                2 => Opcode::Store2,
-                3 => Opcode::Store3,
-                4 => Opcode::Store4,
+    fn write_store_local_instr(&mut self, stack_slot: usize, line: usize) {
+        if stack_slot <= 4 {
+            let opcode = match stack_slot {
+                0 => Opcode::LStore0,
+                1 => Opcode::LStore1,
+                2 => Opcode::LStore2,
+                3 => Opcode::LStore3,
+                4 => Opcode::LStore4,
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
             self.write_opcode(opcode, line);
         } else {
-            self.write_int_constant(binding_idx, line);
-            self.write_opcode(Opcode::Store, line);
+            self.write_opcode(Opcode::LStore, line);
+            self.write_byte(stack_slot as u8, line);
         }
     }
 
-    fn write_load_instr(&mut self, binding_idx: u32, line: usize) {
-        if binding_idx <= 4 {
-            let opcode = match binding_idx {
-                0 => Opcode::Load0,
-                1 => Opcode::Load1,
-                2 => Opcode::Load2,
-                3 => Opcode::Load3,
-                4 => Opcode::Load4,
+    fn write_load_local_instr(&mut self, stack_slot: usize, line: usize) {
+        if stack_slot <= 4 {
+            let opcode = match stack_slot {
+                0 => Opcode::LLoad0,
+                1 => Opcode::LLoad1,
+                2 => Opcode::LLoad2,
+                3 => Opcode::LLoad3,
+                4 => Opcode::LLoad4,
                 _ => unreachable!(), // Values greater than 4 are handled in the else-block
             };
             self.write_opcode(opcode, line);
         } else {
-            self.write_int_constant(binding_idx, line);
-            self.write_opcode(Opcode::Load, line);
+            self.write_opcode(Opcode::LLoad, line);
+            self.write_byte(stack_slot as u8, line);
         }
     }
 
-    fn get_binding_index(&self, binding_name: &String) -> usize {
-        let mut binding_idx = self.module.bindings.len() - 1;
-        while binding_idx > 0 {
-            if let Some(BindingDescriptor { name, .. }) = self.module.bindings.get(binding_idx) {
-                if name == binding_name {
-                    break;
-                }
+    fn get_num_locals_at_depth(&self, target_depth: &usize) -> usize {
+        self.locals.iter().rev()
+            .filter(|Local(_, depth)| depth >= target_depth)
+            .count()
+    }
+
+    fn get_first_local_at_depth(&self, target_depth: &usize) -> Option<usize> {
+        (0..self.locals.len()).zip(self.locals.iter()).rev()
+            .filter(|(_, Local(_, depth))| depth == target_depth)
+            .map(|(idx, _)| idx)
+            .min()
+    }
+
+    fn get_binding_index(&self, ident: &String) -> (/* local_idx: */ usize, /* is_global: */ bool) {
+        for idx in 0..self.locals.len() {
+            let Local(local_name, _) = self.locals.get(idx).unwrap();
+            if local_name == ident {
+                return (idx, false);
             }
-            binding_idx -= 1;
         }
-        binding_idx
+        return (0, true);
     }
 }
-
 
 impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     fn visit_literal(&mut self, token: Token, node: TypedLiteralNode) -> Result<(), ()> {
@@ -163,7 +183,6 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
-
         Ok(())
     }
 
@@ -226,7 +245,6 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         };
 
         self.write_opcode(opcode, token.get_position().line);
-
         Ok(())
     }
 
@@ -245,96 +263,111 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.write_int_constant(num_items as u32, line);
         self.write_opcode(Opcode::ArrMk, line);
-
         Ok(())
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedBindingDeclNode { ident, expr, scope_depth, .. } = node;
-        let ident = Token::get_ident_name(&ident);
+        let TypedBindingDeclNode { ident, expr, .. } = node;
+        let ident = Token::get_ident_name(&ident).clone();
 
-        let binding_idx = self.module.bindings.len();
-        self.module.bindings.push(BindingDescriptor { name: ident.clone(), scope_depth });
-        self.get_current_chunk().num_bindings += 1;
-
-        if let Some(node) = expr {
-            self.visit(*node)?;
-
-            self.write_store_instr(binding_idx as u32, line);
+        if self.depth == 0 { // If it's a global...
+            if let Some(node) = expr {
+                self.visit(*node)?;
+            } else {
+                self.write_opcode(Opcode::Nil, line);
+            }
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(ident) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else { // ...otherwise, it's a local
+            let local = Local(ident, self.depth);
+            if let Some(node) = expr {
+                self.visit(*node)?;
+            } else {
+                self.write_opcode(Opcode::Nil, line);
+            }
+            self.locals.push(local);
         }
-
         Ok(())
     }
 
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, args, body, scope_depth, .. } = node;
+        let TypedFunctionDeclNode { name, args, body, .. } = node;
         let func_name = Token::get_ident_name(&name);
 
         let line = token.get_position().line;
         let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
+        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
+        self.write_opcode(Opcode::GStore, line);
 
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
         let prev_chunk = self.current_chunk.clone();
         self.current_chunk = func_name.to_owned();
 
+        self.depth += 1;
+        let func_depth = self.depth;
+
         // Pop function arguments off stack and store in local bindings
         for (arg_token, _) in args {
             let ident = Token::get_ident_name(&arg_token);
 
-            let binding_idx = self.module.bindings.len();
-            let scope_depth = scope_depth + 1;
-            self.module.bindings.push(BindingDescriptor { name: ident.clone(), scope_depth });
-            self.get_current_chunk().num_bindings += 1;
-            self.write_store_instr(binding_idx as u32, arg_token.get_position().line);
+            let local = Local(ident.clone(), self.depth);
+            self.locals.push(local);
         }
 
         let body_len = body.len();
-//        let mut idx = 0;
         let mut last_line = 0;
-//        for node in body {
-//            idx += 1;
-//            if idx == len {
-//                line = node.get_token().get_position().line;
-//            }
-//            self.visit(node)?;
-//        }
         for (idx, node) in (0..body_len).zip(body.into_iter()) {
             last_line = node.get_token().get_position().line;
+            let is_last_line = idx == body_len - 1;
+            let should_pop = should_pop_after_node(&node);
             self.visit(node)?;
+
+            if !is_last_line && should_pop {
+                self.write_opcode(Opcode::Return, line);
+            }
+            if is_last_line {
+                let mut num_locals_to_pop = self.get_num_locals_at_depth(&func_depth);
+
+                if let Some(idx) = self.get_first_local_at_depth(&func_depth) {
+                    self.write_store_local_instr(idx, line);
+                }
+                for _ in 0..num_locals_to_pop {
+                    self.locals.pop();
+                }
+                if num_locals_to_pop != 0 {
+                    num_locals_to_pop -= 1;
+                }
+                for _ in 0..num_locals_to_pop {
+                    self.write_opcode(Opcode::Pop, line);
+                }
+            }
         }
         self.write_opcode(Opcode::Return, last_line);
+        self.depth -= 1;
 
         self.current_chunk = prev_chunk;
-//        let const_idx = self.module.add_constant(Value::Fn(func_name.clone()));
-//        self.write_opcode(Opcode::Constant, line);
-//        self.write_byte(const_idx, line);
-
-        // Make sure locals declared in function blocks don't contribute to the indices of bindings
-        // declared outside of the function declaration
-        let Chunk { num_bindings, .. } = self.module.chunks.get(func_name).unwrap();
-        for _ in 0..*num_bindings {
-            self.module.bindings.pop();
-        }
-
-        let binding_idx = self.module.bindings.len();
-        self.module.bindings.push(BindingDescriptor { name: func_name.clone(), scope_depth });
-        self.get_current_chunk().num_bindings += 1;
-        self.write_store_instr(binding_idx as u32, line);
-
         Ok(())
     }
 
     fn visit_identifier(&mut self, token: Token, _node: TypedIdentifierNode) -> Result<(), ()> {
         let line = token.get_position().line;
-
         let ident = Token::get_ident_name(&token);
-        let binding_idx = self.get_binding_index(ident);
-        self.write_load_instr(binding_idx as u32, line);
 
+        let (local_idx, is_global) = self.get_binding_index(ident);
+        if is_global {
+            let const_idx = self.module.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
+            let const_idx = const_idx.unwrap();
+
+            self.write_opcode(Opcode::Constant, line);
+            self.write_byte(const_idx, line);
+            self.write_opcode(Opcode::GLoad, line);
+        } else {
+            self.write_load_local_instr(local_idx, line);
+        }
         Ok(())
     }
 
@@ -349,10 +382,21 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         self.visit(*expr)?;
 
-        let binding_idx = self.get_binding_index(&ident);
-        self.write_store_instr(binding_idx as u32, line);
-        self.write_load_instr(binding_idx as u32, line);
+        let (local_idx, is_global) = self.get_binding_index(&ident);
+        if is_global {
+            let const_idx = self.module.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
+            let const_idx = const_idx.unwrap();
 
+            self.write_opcode(Opcode::Constant, line);
+            self.write_byte(const_idx, line);
+            self.write_opcode(Opcode::GStore, line);
+            self.write_opcode(Opcode::Constant, line);
+            self.write_byte(const_idx, line);
+            self.write_opcode(Opcode::GLoad, line);
+        } else {
+            self.write_store_local_instr(local_idx, line);
+            self.write_load_local_instr(local_idx, line);
+        }
         Ok(())
     }
 
@@ -385,11 +429,58 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 self.write_opcode(Opcode::ArrSlc, line);
             }
         };
-
         Ok(())
     }
 
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<(), ()> {
+        #[inline]
+        fn compile_block(compiler: &mut Compiler, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
+            compiler.depth += 1;
+            let if_block_depth = compiler.depth; // TODO: Decrement depth after if block ends
+
+            let block_len = block.len();
+            for (idx, node) in (0..block_len).zip(block.into_iter()) {
+                let line = node.get_token().get_position().line;
+                let is_last_line = idx == block_len - 1;
+
+                let should_pop = should_pop_after_node(&node);
+                compiler.visit(node)?;
+
+                // If we're in a statement and we should pop, then pop
+                // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
+                if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
+                    compiler.write_opcode(Opcode::Pop, line);
+                }
+
+                // This is documented in #35
+                if is_last_line {
+                    let mut num_locals_to_pop = compiler.get_num_locals_at_depth(&if_block_depth);
+
+                    if !is_stmt {
+                        if let Some(idx) = compiler.get_first_local_at_depth(&if_block_depth) {
+                            compiler.write_store_local_instr(idx, line);
+                        }
+                        for _ in 0..num_locals_to_pop {
+                            compiler.locals.pop();
+                        }
+                        if num_locals_to_pop != 0 {
+                            num_locals_to_pop -= 1;
+                        }
+                    } else {
+                        for _ in 0..num_locals_to_pop {
+                            compiler.locals.pop();
+                        }
+                    }
+                    for _ in 0..num_locals_to_pop {
+                        compiler.write_opcode(Opcode::Pop, line);
+                    }
+                }
+            }
+
+            compiler.depth -= 1;
+            Ok(())
+        }
+
         let line = token.get_position().line;
 
         let TypedIfNode { condition, if_block, else_block, .. } = node;
@@ -399,19 +490,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_byte(0, line); // <- Replaced after compiling if-block
         let jump_offset_slot_idx = self.get_current_chunk().code.len();
 
-        // TODO: Purge useless bindings after if/else-blocks exit
-
-        let if_block_len = if_block.len();
-        for (idx, node) in (0..if_block_len).zip(if_block.into_iter()) {
-            let line = node.get_token().get_position().line;
-            let should_pop = should_pop_after_node(&node);
-            self.visit(node)?;
-            if is_stmt && should_pop {
-                self.write_opcode(Opcode::Pop, line);
-            } else if idx != if_block_len - 1 && should_pop {
-                self.write_opcode(Opcode::Pop, line);
-            }
-        }
+        compile_block(self, if_block, is_stmt)?;
         if else_block.is_some() {
             self.write_opcode(Opcode::Jump, line);
             self.write_byte(0, line); // <- Replaced after compiling else-block
@@ -425,23 +504,12 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let jump_offset_slot_idx = chunk.code.len();
 
         if let Some(else_block) = else_block {
-            let else_block_len = else_block.len();
-            for (idx, node) in (0..else_block_len).zip(else_block.into_iter()) {
-                let line = node.get_token().get_position().line;
-                let should_pop = should_pop_after_node(&node);
-                self.visit(node)?;
-                if is_stmt && should_pop {
-                    self.write_opcode(Opcode::Pop, line);
-                } else if idx != else_block_len - 1 && should_pop {
-                    self.write_opcode(Opcode::Pop, line);
-                }
-            }
+            compile_block(self, else_block, is_stmt)?;
             let chunk = self.get_current_chunk();
             let else_block_len = chunk.code.len().checked_sub(jump_offset_slot_idx)
                 .expect("jump offset slot should be <= end of else-block");
             *chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
         }
-
         Ok(())
     }
 
@@ -453,6 +521,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
         let TypedInvocationNode { target, args, .. } = node;
 
+        let num_args = args.len();
         for arg in args {
             self.visit(arg)?;
         }
@@ -464,7 +533,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let value = Value::Obj(Obj::StringObj { value: Box::new(name.to_owned()) });
         self.write_constant(value, line);
         self.write_opcode(Opcode::Invoke, line);
-
+        self.write_byte(num_args as u8, line);
         Ok(())
     }
 }
@@ -504,11 +573,9 @@ mod tests {
                     code: vec![
                         Opcode::Return as u8
                     ],
-                    num_bindings: 0,
                 }
             ),
             constants: vec![],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -536,14 +603,12 @@ mod tests {
                     Opcode::F as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Float(2.3),
                 Value::Float(5.6),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -560,10 +625,8 @@ mod tests {
                     Opcode::Invert as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -577,10 +640,8 @@ mod tests {
                     Opcode::Invert as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Float(2.3)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -594,10 +655,8 @@ mod tests {
                     Opcode::Negate as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -615,10 +674,8 @@ mod tests {
                     Opcode::IAdd as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Int(6)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -642,10 +699,8 @@ mod tests {
                     Opcode::FSub as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Float(3.4)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -665,10 +720,8 @@ mod tests {
                     Opcode::IMul as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -686,13 +739,11 @@ mod tests {
                     Opcode::StrConcat as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -709,13 +760,11 @@ mod tests {
                     Opcode::StrConcat as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Float(3.4)
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -735,10 +784,8 @@ mod tests {
                     Opcode::Or as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -760,10 +807,8 @@ mod tests {
                     Opcode::Eq as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -780,13 +825,11 @@ mod tests {
                     Opcode::Neq as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) })
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -809,14 +852,12 @@ mod tests {
                     Opcode::Coalesce as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -835,10 +876,8 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -855,14 +894,12 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -888,10 +925,8 @@ mod tests {
                     Opcode::ArrMk as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -902,16 +937,15 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![3, 1],
+                lines: vec![5, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
-                    Opcode::Store0 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 1,
             }),
-            constants: vec![Value::Int(123)],
-            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
+            constants: vec![Value::Int(123), Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) })],
         };
         assert_eq!(expected, chunk);
 
@@ -919,18 +953,20 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![0, 2, 1],
+                lines: vec![4, 4, 1],
                 code: vec![
+                    Opcode::Nil as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
                     Opcode::T as u8,
-                    Opcode::Store1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 2,
             }),
-            constants: vec![],
-            bindings: vec![
-                BindingDescriptor { name: "unset".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "set".to_string(), scope_depth: 0 },
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("unset".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("set".to_string()) })
             ],
         };
         assert_eq!(expected, chunk);
@@ -939,26 +975,25 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![6, 3, 1],
+                lines: vec![8, 5, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
                     Opcode::Constant as u8, 1,
                     Opcode::StrConcat as u8,
-                    Opcode::Store0 as u8,
                     Opcode::Constant as u8, 2,
-                    Opcode::Store1 as u8,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 3,
+                    Opcode::Constant as u8, 4,
+                    Opcode::GStore as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 2,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Int(5),
-            ],
-            bindings: vec![
-                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "def".to_string(), scope_depth: 0 },
+                Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -970,17 +1005,17 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![3, 1, 1],
+                lines: vec![5, 3, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
-                    Opcode::Store0 as u8,
-                    Opcode::Load0 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GLoad as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 1,
             }),
-            constants: vec![Value::Int(123)],
-            bindings: vec![BindingDescriptor { name: "abc".to_string(), scope_depth: 0 }],
+            constants: vec![Value::Int(123), Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) })],
         };
         assert_eq!(expected, chunk);
     }
@@ -991,34 +1026,39 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![2, 2, 6, 1],
+                lines: vec![4, 4, 16, 1],
                 code: vec![
                     // var a = 1
                     Opcode::IConst1 as u8,
-                    Opcode::Store0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
                     // var b = 2
                     Opcode::IConst2 as u8,
-                    Opcode::Store1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
 
                     // val c = b = a = 3
                     //   a = 3
                     Opcode::IConst3 as u8,
-                    Opcode::Store0 as u8,
-                    Opcode::Load0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
                     //  b = <a = 3>
-                    Opcode::Store1 as u8,
-                    Opcode::Load1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GLoad as u8,
                     //  c = <b = <a = 3>>
-                    Opcode::Store2 as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::GStore as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 3,
             }),
-            constants: vec![],
-            bindings: vec![
-                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "c".to_string(), scope_depth: 0 },
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1027,27 +1067,29 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![2, 4, 2, 1],
+                lines: vec![4, 8, 4, 1],
                 code: vec![
                     // var a = 1
                     Opcode::IConst1 as u8,
-                    Opcode::Store0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
                     // a = 2
                     Opcode::IConst2 as u8,
-                    Opcode::Store0 as u8,
-                    Opcode::Load0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
                     Opcode::Pop as u8, // <- This test verifies that the intermediate 2 gets popped
                     // val b = 3
                     Opcode::IConst3 as u8,
-                    Opcode::Store1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 2,
             }),
-            constants: vec![],
-            bindings: vec![
-                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1061,34 +1103,36 @@ mod tests {
             chunks: {
                 let mut chunks = HashMap::new();
                 chunks.insert(MAIN_CHUNK_NAME.to_owned(), Chunk {
-                    lines: vec![2, 3, 1],
+                    lines: vec![4, 5, 1],
                     code: vec![
                         Opcode::IConst1 as u8,
-                        Opcode::Store0 as u8,
                         Opcode::Constant as u8, 0,
-                        Opcode::Store1 as u8,
+                        Opcode::GStore as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::Constant as u8, 2,
+                        Opcode::GStore as u8,
                         Opcode::Return as u8
                     ],
-                    num_bindings: 2,
                 });
 
                 chunks.insert("abc".to_owned(), Chunk {
-                    lines: vec![0, 4],
+                    lines: vec![0, 8],
                     code: vec![
                         Opcode::IConst3 as u8,
-                        Opcode::Store0 as u8,
-                        Opcode::Load0 as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::GStore as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::GLoad as u8,
                         Opcode::Return as u8
                     ],
-                    num_bindings: 0,
                 });
 
                 chunks
             },
-            constants: vec![Value::Fn("abc".to_string())],
-            bindings: vec![
-                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Fn("abc".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1115,10 +1159,8 @@ mod tests {
                     Opcode::ArrLoad as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(5)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1136,12 +1178,10 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1158,12 +1198,10 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1181,12 +1219,10 @@ mod tests {
                     Opcode::ArrSlc as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
             ],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
     }
@@ -1210,10 +1246,8 @@ mod tests {
                     Opcode::Pop as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(123), Value::Int(456)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1231,10 +1265,8 @@ mod tests {
                     Opcode::Pop as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(123)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1253,10 +1285,8 @@ mod tests {
                     Opcode::Pop as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(456)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1284,10 +1314,8 @@ mod tests {
                     Opcode::Pop as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 0,
             }),
             constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
-            bindings: vec![],
         };
         assert_eq!(expected, chunk);
 
@@ -1301,26 +1329,26 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![3, 10, 1],
+                lines: vec![5, 10, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
-                    Opcode::Store0 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
                     Opcode::T as u8,
                     Opcode::JumpIfF as u8, 7,
-                    Opcode::Constant as u8, 1,
-                    Opcode::Store1 as u8,
-                    Opcode::Load1 as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::LLoad0 as u8,
                     Opcode::IConst1 as u8,
                     Opcode::IAdd as u8,
                     Opcode::Pop as u8,
+                    Opcode::Pop as u8,
                     Opcode::Return as u8
                 ],
-                num_bindings: 2,
             }),
-            constants: vec![Value::Int(123), Value::Int(456)],
-            bindings: vec![
-                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "a".to_string(), scope_depth: 1 },
+            constants: vec![
+                Value::Int(123),
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Int(456),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1343,45 +1371,46 @@ mod tests {
             chunks: {
                 let mut chunks = HashMap::new();
                 chunks.insert("abc".to_string(), Chunk {
-                    lines: vec![0, 0, 0, 1, 2, 6, 4],
+                    lines: vec![0, 0, 0, 0, 3, 3, 1, 1, 1, 1, 1], // TODO: Fix how messed up line-counting is (#32)
                     code: vec![
-                        Opcode::Store3 as u8,
-                        Opcode::Load0 as u8,
-                        Opcode::Store4 as u8,
-                        Opcode::Load3 as u8,
-                        Opcode::Load4 as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::GLoad as u8,
+                        Opcode::LLoad0 as u8,
+                        Opcode::LLoad1 as u8,
                         Opcode::IAdd as u8,
-                        Opcode::Constant as u8, 1,
-                        Opcode::Store as u8,
-                        Opcode::Constant as u8, 1,
-                        Opcode::Load as u8,
+                        Opcode::LLoad2 as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
-                    num_bindings: 3,
                 });
                 chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
-                    lines: vec![2, 2, 2, 3, 1], // TODO: Fix how messed up line-counting is (#32)
+                    lines: vec![4, 4, 4, 5, 1],
                     code: vec![
                         Opcode::IConst1 as u8,
-                        Opcode::Store0 as u8,
-                        Opcode::IConst2 as u8,
-                        Opcode::Store1 as u8,
-                        Opcode::IConst3 as u8,
-                        Opcode::Store2 as u8,
                         Opcode::Constant as u8, 0,
-                        Opcode::Store3 as u8,
+                        Opcode::GStore as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::GStore as u8,
+                        Opcode::IConst3 as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::GStore as u8,
+                        Opcode::Constant as u8, 3,
+                        Opcode::Constant as u8, 4,
+                        Opcode::GStore as u8,
                         Opcode::Return as u8
                     ],
-                    num_bindings: 4,
                 });
                 chunks
             },
-            constants: vec![Value::Fn("abc".to_string()), Value::Int(5)],
-            bindings: vec![
-                BindingDescriptor { name: "a".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "b".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "c".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "abc".to_string(), scope_depth: 0 },
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Fn("abc".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1401,41 +1430,40 @@ mod tests {
             chunks: {
                 let mut chunks = HashMap::new();
                 chunks.insert("inc".to_string(), Chunk {
-                    lines: vec![0, 1, 4],
+                    lines: vec![0,0, 3, 1, 1],
                     code: vec![
-                        Opcode::Store1 as u8,
-                        Opcode::Load1 as u8,
+                        Opcode::LLoad0 as u8,
                         Opcode::IConst1 as u8,
                         Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
                         Opcode::Return as u8,
                     ],
-                    num_bindings: 1,
                 });
                 chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
-                    lines: vec![2, 3, 0, 0, 0, 5, 1],
+                    lines: vec![4, 5, 0, 0, 0, 10, 1],
                     code: vec![
                         Opcode::IConst1 as u8,
-                        Opcode::Store0 as u8,
                         Opcode::Constant as u8, 0,
-                        Opcode::Store1 as u8,
-                        Opcode::Load0 as u8,
+                        Opcode::GStore as u8,
                         Opcode::Constant as u8, 1,
-                        Opcode::Invoke as u8,
-                        Opcode::Store2 as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::GStore as u8,
+                        Opcode::Constant as u8, 0,
+                        Opcode::GLoad as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::Invoke as u8, 1,
+                        Opcode::Constant as u8, 3,
+                        Opcode::GStore as u8,
                         Opcode::Return as u8
                     ],
-                    num_bindings: 3,
                 });
                 chunks
             },
             constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("one".to_string()) }),
                 Value::Fn("inc".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) })
-            ],
-            bindings: vec![
-                BindingDescriptor { name: "one".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "inc".to_string(), scope_depth: 0 },
-                BindingDescriptor { name: "two".to_string(), scope_depth: 0 },
+                Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("two".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
