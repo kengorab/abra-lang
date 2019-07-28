@@ -207,6 +207,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("subKind", "endOfBytes")?;
                     obj.end()
                 }
+                InterpretError::TypeError(expected, actual) => {
+                    let mut obj = serializer.serialize_map(Some(2))?;
+                    obj.serialize_entry("kind", "interpretError")?;
+                    obj.serialize_entry("subKind", "typeError")?;
+                    obj.serialize_entry("expected", expected)?;
+                    obj.serialize_entry("actual", actual)?;
+                    obj.end()
+                }
             }
         }
     }
