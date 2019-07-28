@@ -5,7 +5,6 @@ use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
 use crate::vm::compiler::MAIN_CHUNK_NAME;
 use std::collections::HashMap;
-use std::cell::Cell;
 
 #[derive(Debug)]
 pub enum InterpretError {
