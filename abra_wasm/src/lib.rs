@@ -2,7 +2,9 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate wasm_bindgen;
+extern crate wasm_bindgen_futures;
 extern crate js_sys;
+extern crate futures;
 
 mod js_value;
 
@@ -15,6 +17,8 @@ use abra_core::vm::value::{Obj, Value};
 use abra_core::vm::chunk::CompiledModule;
 use crate::js_value::compiled_module::JsCompiledModule;
 use crate::js_value::error::JsWrappedError;
+use futures::Future;
+use wasm_bindgen_futures::future_to_promise;
 
 pub struct RunResult(Value);
 
@@ -90,15 +94,17 @@ pub fn run(input: &str) -> JsValue {
 }
 
 #[wasm_bindgen(js_name = runAsync)]
-pub fn run_async(input: &str, callback: &js_sys::Function) {
-    let result = match compile_and_run(input.to_string()) {
-        Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
-        Ok(None) => Ok(JsValue::UNDEFINED),
-        Err(error) => JsValue::from_serde(&JsWrappedError(&error))
-    };
-    let result = result.unwrap_or(JsValue::from("Could not convert result to JSON"));
-    match callback.call1(&JsValue::NULL, &result) {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+pub fn run_async(input: &str) -> js_sys::Promise {
+    let future = futures::future::ok(input.to_string())
+        .and_then(|input| {
+            match compile_and_run(input) {
+                Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
+                Ok(None) => Ok(JsValue::UNDEFINED),
+                Err(error) => JsValue::from_serde(&JsWrappedError(&error))
+            }
+        })
+        .map_err(|_| {
+            JsValue::from("Could not convert result to JSON")
+        });
+    future_to_promise(future)
 }

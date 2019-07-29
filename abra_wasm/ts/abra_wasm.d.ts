@@ -28,7 +28,7 @@ export function compile(input: string): CompileResult | null;
 export function runSync(input: string): Error | any;
 
 /**
- * Compiles and executes the input string as Abra code, invoking the callback with the
- * result. This could result in a runtime error, which will be passed to the callback.
+ * Compiles and executes the input string as Abra code, resolving with the
+ * result. This could result in a runtime error, which will also resolve as a successful Promise
  */
-export function runAsync(input: string, callback: (result: any) => void): void;
+export function runAsync(input: string): Promise<any>;
