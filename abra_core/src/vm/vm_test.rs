@@ -578,4 +578,36 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new("Save the Cheerleader, Save the World!".to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_func_invocation_recursion() {
+        let input = "\
+          func fib(n: Int): Int {\n\
+            if (n == 0) {\n\
+              0\n\
+            } else if (n == 1) {\n\
+              1\n\
+            } else {\n\
+              fib(n - 2) + fib(n - 1)\n\
+            }\n\
+          }\n\
+          \n\
+          [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(0)),
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(2)),
+                Box::new(Value::Int(3)),
+                Box::new(Value::Int(5)),
+                Box::new(Value::Int(8)),
+                Box::new(Value::Int(13)),
+                Box::new(Value::Int(21)),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
 }

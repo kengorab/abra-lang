@@ -54,6 +54,7 @@ pub enum InterpretError {
     ConstIdxOutOfBounds,
     EndOfBytes,
     TypeError(/*expected: */ String, /*actual:*/ String),
+    StackOverflow,
 }
 
 struct CallFrame<'a> {
@@ -68,6 +69,8 @@ pub struct VM<'a> {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
 }
+
+const STACK_LIMIT: usize = 64;
 
 impl<'a> VM<'a> {
     pub fn new(module: &'a CompiledModule<'a>) -> Self {
@@ -425,7 +428,11 @@ impl<'a> VM<'a> {
                         chunk,
                         stack_offset: self.stack.len() - arity,
                     };
-                    self.call_stack.push(frame);
+                    if self.call_stack.len() + 1 >= STACK_LIMIT {
+                        break Err(InterpretError::StackOverflow);
+                    } else {
+                        self.call_stack.push(frame);
+                    }
                 }
                 Opcode::Pop => {
                     self.pop_expect()?;
