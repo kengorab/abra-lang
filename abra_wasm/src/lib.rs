@@ -2,6 +2,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate wasm_bindgen;
+extern crate js_sys;
 
 mod js_value;
 
@@ -78,7 +79,7 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
         .unwrap_or(JsValue::NULL)
 }
 
-#[wasm_bindgen(js_name = run)]
+#[wasm_bindgen(js_name = runSync)]
 pub fn run(input: &str) -> JsValue {
     let result = match compile_and_run(input.to_string()) {
         Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
@@ -86,4 +87,18 @@ pub fn run(input: &str) -> JsValue {
         Err(error) => JsValue::from_serde(&JsWrappedError(&error))
     };
     result.unwrap_or(JsValue::from("Could not convert result to JSON"))
+}
+
+#[wasm_bindgen(js_name = runAsync)]
+pub fn run_async(input: &str, callback: &js_sys::Function) {
+    let result = match compile_and_run(input.to_string()) {
+        Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
+        Ok(None) => Ok(JsValue::UNDEFINED),
+        Err(error) => JsValue::from_serde(&JsWrappedError(&error))
+    };
+    let result = result.unwrap_or(JsValue::from("Could not convert result to JSON"));
+    match callback.call1(&JsValue::NULL, &result) {
+        Ok(_) => {}
+        Err(_) => {}
+    }
 }

@@ -8,7 +8,8 @@ describe('bindings', () => {
             val c = a + b + 3
             c
         `;
-        expect(Abra.run(input)).toEqual(6);
+
+        expect(Abra.runSync(input)).toEqual(6);
     });
 
     test('reassigning to variables', () => {
@@ -19,7 +20,7 @@ describe('bindings', () => {
             a = a * 3
             a
         `;
-        expect(Abra.run(input)).toEqual(6);
+        expect(Abra.runSync(input)).toEqual(6);
     });
 
     test('chained reassignment', () => {
@@ -31,6 +32,6 @@ describe('bindings', () => {
             val e = a + b + c + d
             e
         `;
-        expect(Abra.run(input)).toEqual(76);
+        expect(Abra.runSync(input)).toEqual(76);
     });
 });
