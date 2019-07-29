@@ -15,6 +15,7 @@ pub enum Type {
     Array(Box<Type>),
     Option(Box<Type>),
     Fn(Vec<(String, Type)>, Box<Type>),
+    Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
 }
 
 impl Type {

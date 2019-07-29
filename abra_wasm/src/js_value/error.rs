@@ -187,6 +187,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("actual", actual)?;
                     obj.end()
                 }
+                TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "recursiveRefWithoutReturnType")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("origToken", &JsToken(orig_token))?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {
@@ -208,11 +217,17 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.end()
                 }
                 InterpretError::TypeError(expected, actual) => {
-                    let mut obj = serializer.serialize_map(Some(2))?;
+                    let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "interpretError")?;
                     obj.serialize_entry("subKind", "typeError")?;
                     obj.serialize_entry("expected", expected)?;
                     obj.serialize_entry("actual", actual)?;
+                    obj.end()
+                }
+                InterpretError::StackOverflow => {
+                    let mut obj = serializer.serialize_map(Some(2))?;
+                    obj.serialize_entry("kind", "interpretError")?;
+                    obj.serialize_entry("subKind", "stackOverflow")?;
                     obj.end()
                 }
             }

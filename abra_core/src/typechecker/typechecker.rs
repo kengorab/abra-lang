@@ -10,18 +10,24 @@ use std::iter::FromIterator;
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
 
+pub(crate) enum ScopeKind {
+    Block,
+    Function(/*token: */ Token, /*name: */ String),
+}
+
 pub(crate) struct Scope {
+    pub(crate) kind: ScopeKind,
     pub(crate) bindings: HashMap<String, ScopeBinding>,
     pub(crate) types: HashMap<String, Type>,
 }
 
 impl Scope {
-    fn new() -> Self {
-        Scope { bindings: HashMap::new(), types: HashMap::new() }
+    fn new(kind: ScopeKind) -> Self {
+        Scope { kind, bindings: HashMap::new(), types: HashMap::new() }
     }
 
     fn root_scope() -> Self {
-        let mut scope = Scope::new();
+        let mut scope = Scope::new(ScopeKind::Block);
         scope.bindings.insert(
             "println".to_string(),
             ScopeBinding(
@@ -69,6 +75,11 @@ impl Typechecker {
         scope.bindings.insert(name.to_string(), binding);
     }
 
+    fn get_binding_mut(&mut self, name: &str) -> Option<&mut ScopeBinding> {
+        let scope = self.scopes.last_mut().unwrap();
+        scope.bindings.get_mut(name)
+    }
+
     fn get_types_in_scope(&self) -> HashMap<String, Type> {
         let mut types = HashMap::<String, Type>::new();
         for scope in self.scopes.iter().rev() {
@@ -91,7 +102,7 @@ impl Typechecker {
         }
         let condition = Box::new(condition);
 
-        self.scopes.push(Scope::new());
+        self.scopes.push(Scope::new(ScopeKind::Block));
         let if_block_len = if_block.len();
         let if_block: Result<Vec<_>, _> = (0..if_block_len).zip(if_block.into_iter())
             .map(|(idx, mut node)| {
@@ -112,7 +123,7 @@ impl Typechecker {
         let if_block = if_block?;
         self.scopes.pop();
 
-        self.scopes.push(Scope::new());
+        self.scopes.push(Scope::new(ScopeKind::Block));
         let else_block = match else_block {
             None => None,
             Some(nodes) => {
@@ -355,7 +366,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
 
-        self.scopes.push(Scope::new());
+        self.scopes.push(Scope::new(ScopeKind::Function(name.clone(), func_name.clone())));
         let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
         let mut arg_idents = HashMap::<String, Token>::new();
         for (token, type_ident) in args {
@@ -377,6 +388,34 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let args = typed_args;
 
+        // Store a stub version of the function type, based on what we know so far. Recursive references
+        // to the function within its body will be typed according to whatever is saved now. If we cannot
+        // determine the return type (due to a missing return type annotation, since we haven't yet
+        // typechecked the body, and thus cannot infer it), store it as Unknown. When identifiers are
+        // typechecked later in (say, for example, within the function body), a return type of Unknown
+        // will signal a recursive reference to a function which is missing a return type. Note: this is
+        // a fairly brittle abstraction, and should probably be readdressed.
+        // Note also that we need to add this reference to the previous scope, which is achieved via
+        // this pop/push.
+        let scope = self.scopes.pop().unwrap();
+        let arg_types = args.iter()
+            .map(|(ident, typ)| (Token::get_ident_name(ident).clone(), typ.clone()))
+            .collect::<Vec<_>>();
+        let initial_ret_type = match &ret_type {
+            None => Type::Unknown,
+            Some(ret_type) => {
+                match Type::from_type_ident(ret_type, self.get_types_in_scope()) {
+                    None => Err(TypecheckerError::UnknownType { type_ident: ret_type.get_ident() }),
+                    Some(typ) => Ok(typ)
+                }?
+            }
+        };
+
+        let func_type = Type::Fn(arg_types, Box::new(initial_ret_type.clone()));
+        self.add_binding(func_name, &name, &func_type, false);
+        self.scopes.push(scope);
+
+        // Typecheck function body
         let body_len = body.len();
         let body: Result<Vec<TypedAstNode>, _> = (0..body_len).zip(body.into_iter())
             .map(|(idx, node)| {
@@ -448,12 +487,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }?
             }
         };
-
-        let arg_types = args.iter()
-            .map(|(ident, typ)| (Token::get_ident_name(ident).clone(), typ.clone()))
-            .collect::<Vec<_>>();
-        let func_type = Type::Fn(arg_types, Box::new(ret_type.clone()));
-        self.add_binding(func_name, &name, &func_type, false);
+        // Rewrite the return type of the previously-inserted func_type stub
+        let ScopeBinding(_, func_type, _) = self.get_binding_mut(func_name).unwrap();
+        if let Type::Fn(_, return_type) = func_type {
+            *return_type = Box::new(ret_type.clone());
+        }
         let scope_depth = self.scopes.len() - 1;
 
         Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth }))
@@ -465,6 +503,22 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         match self.get_binding(name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
             Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
+                if let Type::Fn(_, ret_type) = typ {
+                    // Type::Unknown acts as the sentinel value for a not-fully typechecked function
+                    if **ret_type == Type::Unknown {
+                        for Scope { kind, .. } in self.scopes.iter().rev() {
+                            if let ScopeKind::Function(func_token, func_name) = kind {
+                                if name == func_name {
+                                    // A function can't be referenced recursively unless it has a declared return type
+                                    return Err(TypecheckerError::RecursiveRefWithoutReturnType {
+                                        orig_token: func_token.clone(),
+                                        token: token.clone(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
                 let node = TypedIdentifierNode {
                     typ: typ.clone(),
                     is_mutable: is_mutable.clone(),
@@ -963,7 +1017,7 @@ mod tests {
 
     #[test]
     fn typecheck_binary_comparisons() -> TestResult {
-        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+        let cases: Vec<(&str, Box<dyn Fn(Position) -> Token>, BinaryOp)> = vec![
             ("1 <  2", Box::new(Token::LT), BinaryOp::Lt),
             ("1 <= 2", Box::new(Token::LTE), BinaryOp::Lte),
             ("1 >  2", Box::new(Token::GT), BinaryOp::Gt),
@@ -985,7 +1039,7 @@ mod tests {
             assert_eq!(expected, typed_ast[0]);
         };
 
-        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+        let cases: Vec<(&str, Box<dyn Fn(Position) -> Token>, BinaryOp)> = vec![
             ("\"abc\" <  \"def\"", Box::new(Token::LT), BinaryOp::Lt),
             ("\"abc\" <= \"def\"", Box::new(Token::LTE), BinaryOp::Lte),
             ("\"abc\" >  \"def\"", Box::new(Token::GT), BinaryOp::Gt),
@@ -1007,7 +1061,7 @@ mod tests {
             assert_eq!(expected, typed_ast[0]);
         }
 
-        let cases: Vec<(&str, Box<Fn(Position) -> Token>, BinaryOp)> = vec![
+        let cases: Vec<(&str, Box<dyn Fn(Position) -> Token>, BinaryOp)> = vec![
             ("\"abc\" == 3", Box::new(Token::Eq), BinaryOp::Eq),
             ("\"abc\" != 3", Box::new(Token::Neq), BinaryOp::Neq),
         ];
@@ -1458,6 +1512,22 @@ mod tests {
             token: Token::Int(Position::new(1, 26), 123),
             expected: Type::Bool,
             actual: Type::Int,
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_function_decl_recursion() {
+        let (typechecker, _) = typecheck_get_typechecker("func abc(): Int {\nabc()\n}");
+        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc")
+            .expect("The function abc should be defined");
+        let expected_type = Type::Fn(vec![], Box::new(Type::Int));
+        assert_eq!(&expected_type, typ);
+
+        let error = typecheck("func abc() {\nabc()\n}").unwrap_err();
+        let expected = TypecheckerError::RecursiveRefWithoutReturnType {
+            orig_token: ident_token!((1, 6), "abc"),
+            token: ident_token!((2, 1), "abc"),
         };
         assert_eq!(expected, error);
     }

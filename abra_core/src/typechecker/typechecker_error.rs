@@ -19,6 +19,7 @@ pub enum TypecheckerError {
     InvalidInvocationTarget { token: Token },
     IncorrectArity { token: Token, expected: usize, actual: usize },
     ParamNameMismatch { token: Token, expected: String, actual: String },
+    RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -42,6 +43,7 @@ fn type_repr(t: &Type) -> String {
             let args = args.iter().map(|(_, arg_type)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
+        Type::Unknown => "Unknown".to_string(),
     }
 }
 
@@ -81,6 +83,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidInvocationTarget { token } => token.get_position(),
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
             TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
+            TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -195,6 +198,21 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::ParamNameMismatch { token: _, expected: _, actual: _ } => {
                 unimplemented!()
+            }
+            TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
+                let secondary_pos = orig_token.get_position();
+                let line = lines.get(secondary_pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + secondary_pos.col);
+                let secondary_cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                format!(
+                    "Missing return type declaration: ({}:{})\n{}\n\
+                    Functions that contain recursive references must explicitly declare their return type\n\
+                    Missing return type annotation here ({}:{}):\n{}",
+                    pos.line, pos.col, cursor_line,
+                    secondary_pos.line, secondary_pos.col, secondary_cursor_line
+                )
             }
         }
     }
@@ -435,6 +453,26 @@ Type mismatch between the if-else expression branches: (1:9)
   |  val a = if (true) \"hello\" else 123
              ^
 The if-branch had type String, but the else-branch had type Int"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_recursive_call_no_return_type() {
+        let src = "func abc() {\nabc()\n}".to_string();
+        let err = TypecheckerError::RecursiveRefWithoutReturnType {
+            orig_token: Token::Ident(Position::new(1, 6), "abc".to_string()),
+            token: Token::Ident(Position::new(2, 1), "abc".to_string()),
+        };
+
+        let expected = format!("\
+Missing return type declaration: (2:1)
+  |  abc()
+     ^
+Functions that contain recursive references must explicitly declare their return type
+Missing return type annotation here (1:6):
+  |  func abc() {{
+          ^"
         );
         assert_eq!(expected, err.get_message(&src));
     }
