@@ -25,4 +25,10 @@ export function compile(input: string): CompileResult | null;
  * Compiles and executes the input string as Abra code, returning the result. This could
  * result in a runtime error.
  */
-export function run(input: string): Error | any;
+export function runSync(input: string): Error | any;
+
+/**
+ * Compiles and executes the input string as Abra code, invoking the callback with the
+ * result. This could result in a runtime error, which will be passed to the callback.
+ */
+export function runAsync(input: string, callback: (result: any) => void): void;
