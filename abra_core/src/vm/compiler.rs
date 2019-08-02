@@ -327,7 +327,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.visit(node)?;
 
             if !is_last_line && should_pop {
-                self.write_opcode(Opcode::Return, line);
+                self.write_opcode(Opcode::Pop, line);
             }
             if is_last_line {
                 let mut num_locals_to_pop = self.get_num_locals_at_depth(&func_depth);
