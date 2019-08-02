@@ -7,6 +7,7 @@ extern crate strum_macros;
 use crate::vm::value::Value;
 use crate::vm::chunk::CompiledModule;
 
+pub mod builtins;
 pub mod common;
 pub mod lexer;
 pub mod parser;

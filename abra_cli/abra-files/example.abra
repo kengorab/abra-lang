@@ -1,4 +1,11 @@
+val arr = range(0, 15, 2)
+println("Array: " + arr)
+
+var iterations = 0
+
 func fib(n: Int): Int {
+  iterations = iterations + 1
+
   if (n == 0) {
     0
   } else if (n == 1) {
@@ -8,4 +15,5 @@ func fib(n: Int): Int {
   }
 }
 
-fib(30)
+println("Iterations: " + iterations)
+fib(8)

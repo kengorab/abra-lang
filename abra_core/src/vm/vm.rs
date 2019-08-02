@@ -1,10 +1,11 @@
-use std::cmp::Ordering;
-use std::collections::vec_deque::VecDeque;
+use crate::builtins::native_fns::NATIVE_FNS_MAP;
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
 use crate::vm::compiler::MAIN_CHUNK_NAME;
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::collections::vec_deque::VecDeque;
 
 // Helper macros
 macro_rules! pop_expect_string {
@@ -420,6 +421,14 @@ impl<'a> VM<'a> {
                 Opcode::Invoke => {
                     let func_name = pop_expect_string!(self)?;
                     let arity = self.read_byte_expect()?;
+
+                    if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
+                        let len = self.stack.len();
+                        let args = self.stack.split_off(len - arity);
+                        let result: Value = native_fn(args);
+                        self.push(result);
+                        continue;
+                    }
 
                     let chunk = self.module.chunks.get(&func_name).unwrap();
 
