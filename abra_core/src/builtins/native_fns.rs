@@ -43,7 +43,7 @@ fn native_fns() -> Vec<NativeFn> {
 
     native_fns.push(NativeFn {
         name: "range".to_string(),
-        args: vec![Type::Int, Type::Int, Type::Int],
+        args: vec![Type::Int, Type::Int],
         return_type: Type::Array(Box::new(Type::Int)),
         native_fn: range,
     });
