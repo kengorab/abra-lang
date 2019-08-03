@@ -64,7 +64,27 @@ struct CallFrame<'a> {
     stack_offset: usize,
 }
 
+#[derive(Clone)]
+pub struct VMContext//<F>
+//    where F: Fn(String) -> ()
+{
+    pub print: fn(&str) -> ()
+}
+
+impl VMContext {
+    pub fn default() -> Self {
+        VMContext {
+            print: VMContext::print
+        }
+    }
+
+    pub fn print(input: &str) {
+        print!("{}\n", input)
+    }
+}
+
 pub struct VM<'a> {
+    ctx: VMContext,
     call_stack: Vec<CallFrame<'a>>,
     module: &'a CompiledModule<'a>,
     stack: Vec<Value>,
@@ -74,10 +94,11 @@ pub struct VM<'a> {
 const STACK_LIMIT: usize = 64;
 
 impl<'a> VM<'a> {
-    pub fn new(module: &'a CompiledModule<'a>) -> Self {
+    pub fn new(module: &'a CompiledModule<'a>, ctx: VMContext) -> Self {
         let chunk = module.chunks.get(MAIN_CHUNK_NAME).unwrap();
         let root_frame = CallFrame { ip: 0, chunk, stack_offset: 0 };
         VM {
+            ctx,
             call_stack: vec![root_frame],
             module,
             stack: Vec::new(),
@@ -425,7 +446,7 @@ impl<'a> VM<'a> {
                     if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
                         let len = self.stack.len();
                         let args = self.stack.split_off(len - arity);
-                        let result: Value = native_fn(args);
+                        let result: Value = native_fn(self.ctx.clone(), args);
                         self.push(result);
                         continue;
                     }

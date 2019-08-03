@@ -1,7 +1,3 @@
-// We need to override stdout, so println! calls within abra_core can get routed to console.log.
-// See js_console.rs in this package for more details.
-#![feature(set_stdio)]
-
 extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
@@ -10,10 +6,8 @@ extern crate wasm_bindgen_futures;
 extern crate js_sys;
 extern crate futures;
 
-mod js_console;
 mod js_value;
 
-use crate::js_console::Console;
 use crate::js_value::compiled_module::JsCompiledModule;
 use crate::js_value::error::JsWrappedError;
 use futures::Future;
@@ -25,6 +19,7 @@ use wasm_bindgen_futures::future_to_promise;
 use abra_core::{Error, compile, compile_and_run};
 use abra_core::vm::value::{Obj, Value};
 use abra_core::vm::chunk::CompiledModule;
+use abra_core::vm::vm::VMContext;
 
 pub struct RunResult(Value);
 
@@ -81,6 +76,12 @@ impl<'a> Serialize for CompileResult<'a> {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
     let result = compile(input.to_string());
@@ -91,9 +92,11 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = runSync)]
 pub fn run(input: &str) -> JsValue {
-    std::io::set_print(Some(Box::new(Console {})));
+    let ctx = VMContext {
+        print: |input| log(input)
+    };
 
-    let result = match compile_and_run(input.to_string()) {
+    let result = match compile_and_run(input.to_string(), ctx) {
         Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
         Ok(None) => Ok(JsValue::UNDEFINED),
         Err(error) => JsValue::from_serde(&JsWrappedError(&error))
@@ -103,11 +106,13 @@ pub fn run(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = runAsync)]
 pub fn run_async(input: &str) -> js_sys::Promise {
-    std::io::set_print(Some(Box::new(Console {})));
+    let ctx = VMContext {
+        print: |input| log(input)
+    };
 
     let future = futures::future::ok(input.to_string())
-        .and_then(|input| {
-            match compile_and_run(input) {
+        .and_then(move |input| {
+            match compile_and_run(input, ctx) {
                 Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
                 Ok(None) => Ok(JsValue::UNDEFINED),
                 Err(error) => JsValue::from_serde(&JsWrappedError(&error))

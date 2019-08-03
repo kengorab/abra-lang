@@ -1,4 +1,4 @@
-val arr = range(0, 15, 2)
+val arr = range(0, 15)
 println("Array: " + arr)
 
 var iterations = 0

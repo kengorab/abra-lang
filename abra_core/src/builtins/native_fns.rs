@@ -2,10 +2,12 @@ use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 use std::collections::HashMap;
 use std::slice::Iter;
+use crate::vm::vm::VMContext;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return Value::Nil.
-type NativeAbraFn = fn(Vec<Value>) -> Value;
+//#[derive(PartialEq, Eq, Hash)]
+type NativeAbraFn = fn(VMContext, Vec<Value>) -> Value;
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct NativeFn {
@@ -51,13 +53,14 @@ fn native_fns() -> Vec<NativeFn> {
     native_fns
 }
 
-fn println(args: Vec<Value>) -> Value {
+fn println(ctx: VMContext, args: Vec<Value>) -> Value {
     let val = args.first().unwrap();
-    println!("{}", val.to_string());
+    let print_fn = ctx.print;
+    print_fn(&format!("{}", val.to_string()));
     Value::Nil
 }
 
-fn range(args: Vec<Value>) -> Value {
+fn range(_ctx: VMContext, args: Vec<Value>) -> Value {
     let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
         panic!("range requires an Int as first argument")
     };
@@ -89,8 +92,10 @@ mod test {
 
     #[test]
     fn range_returning_int_array() {
+        let ctx = VMContext::default();
+
         // Test w/ increment of 1
-        let arr = range(vec![Value::Int(0), Value::Int(5)]);
+        let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5)]);
         let expected = Value::Obj(Obj::ArrayObj {
             value: vec![
                 Box::new(Value::Int(0)),
@@ -103,7 +108,7 @@ mod test {
         assert_eq!(expected, arr);
 
         // Test w/ increment of 2
-        let arr = range(vec![Value::Int(0), Value::Int(5), Value::Int(2)]);
+        let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5), Value::Int(2)]);
         let expected = Value::Obj(Obj::ArrayObj {
             value: vec![
                 Box::new(Value::Int(0)),
@@ -116,18 +121,20 @@ mod test {
 
     #[test]
     fn range_returning_single_element_int_array() {
+        let ctx = VMContext::default();
+
         // Test w/ increment larger than range
-        let arr = range(vec![Value::Int(0), Value::Int(5), Value::Int(5)]);
+        let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5), Value::Int(5)]);
         let expected = Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] });
         assert_eq!(expected, arr);
 
         // Test w/ [0, 1)
-        let arr = range(vec![Value::Int(0), Value::Int(1)]);
+        let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(1)]);
         let expected = Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] });
         assert_eq!(expected, arr);
 
         // Test w/ [0, 0) -> Empty array
-        let arr = range(vec![Value::Int(0), Value::Int(0)]);
+        let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(0)]);
         let expected = Value::Obj(Obj::ArrayObj { value: vec![] });
         assert_eq!(expected, arr);
     }
