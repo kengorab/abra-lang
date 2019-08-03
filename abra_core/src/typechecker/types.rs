@@ -52,6 +52,7 @@ impl Type {
                 }
                 true
             }
+            (_, Any) => true,
             (_, _) => false
         }
     }
@@ -125,5 +126,11 @@ mod test {
 
         assert_eq!(Array(Box::new(Option(Box::new(Int)))), parse_type_ident("Int?[]"));
         assert_eq!(Option(Box::new(Array(Box::new(Int)))), parse_type_ident("Int[]?"));
+    }
+
+    #[test]
+    fn is_equivalent_to_any() {
+        assert_eq!(false, Type::Any.is_equivalent_to(&Type::Bool));
+        assert_eq!(true, Type::Bool.is_equivalent_to(&Type::Any));
     }
 }

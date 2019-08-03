@@ -1,11 +1,13 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
+use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
 use crate::typechecker::types::Type;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
+use std::slice::Iter;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -28,14 +30,17 @@ impl Scope {
 
     fn root_scope() -> Self {
         let mut scope = Scope::new(ScopeKind::Block);
-        scope.bindings.insert(
-            "println".to_string(),
-            ScopeBinding(
-                Token::Ident(Position::new(0, 0), "println".to_string()),
-                Type::Fn(vec![("_".to_string(), Type::Any)], Box::new(Type::String)),
-                false,
-            ),
-        );
+
+        // Populate root scope with root-level builtin functions
+        let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
+        for NativeFn { name, args, return_type, .. } in native_fns {
+            let token = Token::Ident(Position::new(0, 0), name.clone());
+            let args: Vec<(String, Type)> = (0..args.len()).zip(args.iter())
+                .map(|(idx, arg)| (format!("_{}", idx), arg.clone()))
+                .collect();
+            let typ = Type::Fn(args, Box::new(return_type.clone()));
+            scope.bindings.insert(name.to_string(), ScopeBinding(token, typ, false));
+        }
 
         scope.types.insert("Int".to_string(), Type::Int);
         scope.types.insert("Float".to_string(), Type::Float);

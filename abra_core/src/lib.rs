@@ -6,7 +6,9 @@ extern crate strum_macros;
 
 use crate::vm::value::Value;
 use crate::vm::chunk::CompiledModule;
+use crate::vm::vm::VMContext;
 
+pub mod builtins;
 pub mod common;
 pub mod lexer;
 pub mod parser;
@@ -38,9 +40,9 @@ pub fn compile(input: String) -> Result<CompiledModule<'static>, Error> {
     }
 }
 
-pub fn compile_and_run(input: String) -> Result<Option<Value>, Error> {
+pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
     let mut compiled_module = compile(input)?;
-    let mut vm = vm::vm::VM::new(&mut compiled_module);
+    let mut vm = vm::vm::VM::new(&mut compiled_module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),
         Ok(None) => Ok(None),

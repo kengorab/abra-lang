@@ -8,17 +8,18 @@ extern crate futures;
 
 mod js_value;
 
+use crate::js_value::compiled_module::JsCompiledModule;
+use crate::js_value::error::JsWrappedError;
+use futures::Future;
 use serde::ser::{Serializer, SerializeSeq};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::{Error, compile, compile_and_run};
 use abra_core::vm::value::{Obj, Value};
 use abra_core::vm::chunk::CompiledModule;
-use crate::js_value::compiled_module::JsCompiledModule;
-use crate::js_value::error::JsWrappedError;
-use futures::Future;
-use wasm_bindgen_futures::future_to_promise;
+use abra_core::vm::vm::VMContext;
 
 pub struct RunResult(Value);
 
@@ -75,6 +76,12 @@ impl<'a> Serialize for CompileResult<'a> {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
     let result = compile(input.to_string());
@@ -85,7 +92,11 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = runSync)]
 pub fn run(input: &str) -> JsValue {
-    let result = match compile_and_run(input.to_string()) {
+    let ctx = VMContext {
+        print: |input| log(input)
+    };
+
+    let result = match compile_and_run(input.to_string(), ctx) {
         Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
         Ok(None) => Ok(JsValue::UNDEFINED),
         Err(error) => JsValue::from_serde(&JsWrappedError(&error))
@@ -95,9 +106,13 @@ pub fn run(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = runAsync)]
 pub fn run_async(input: &str) -> js_sys::Promise {
+    let ctx = VMContext {
+        print: |input| log(input)
+    };
+
     let future = futures::future::ok(input.to_string())
-        .and_then(|input| {
-            match compile_and_run(input) {
+        .and_then(move |input| {
+            match compile_and_run(input, ctx) {
                 Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
                 Ok(None) => Ok(JsValue::UNDEFINED),
                 Err(error) => JsValue::from_serde(&JsWrappedError(&error))
