@@ -189,6 +189,7 @@ impl<'a> Lexer<'a> {
             '-' => Ok(Some(Token::Minus(pos))),
             '*' => Ok(Some(Token::Star(pos))),
             '/' => Ok(Some(Token::Slash(pos))),
+            '%' => Ok(Some(Token::Percent(pos))),
             '&' => {
                 let ch = self.expect_next()?;
                 if ch != '&' {
@@ -296,17 +297,18 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_operators() {
-        let input = "+ - * / < > ! =";
+        let input = "+ - * / % < > ! =";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
             Token::Minus(Position::new(1, 3)),
             Token::Star(Position::new(1, 5)),
             Token::Slash(Position::new(1, 7)),
-            Token::LT(Position::new(1, 9)),
-            Token::GT(Position::new(1, 11)),
-            Token::Bang(Position::new(1, 13)),
-            Token::Assign(Position::new(1, 15)),
+            Token::Percent(Position::new(1, 9)),
+            Token::LT(Position::new(1, 11)),
+            Token::GT(Position::new(1, 13)),
+            Token::Bang(Position::new(1, 15)),
+            Token::Assign(Position::new(1, 17)),
         ];
         assert_eq!(expected, tokens);
     }
