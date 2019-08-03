@@ -8,15 +8,16 @@ mod tests {
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
     use crate::vm::value::{Value, Obj};
-    use crate::vm::vm::VM;
+    use crate::vm::vm::{VM, VMContext};
 
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
         let mut module = compile("<test_module>", typed_ast).unwrap();
+        let ctx = VMContext::default();
 
-        let mut vm = VM::new(&mut module);
+        let mut vm = VM::new(&mut module, ctx);
         vm.run().unwrap()
     }
 
