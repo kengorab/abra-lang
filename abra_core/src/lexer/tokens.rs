@@ -18,6 +18,7 @@ pub enum Keyword {
     Var,
     If,
     Else,
+    While,
 }
 
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
@@ -33,6 +34,7 @@ pub enum Token {
     #[strum(to_string = "var", serialize = "Var")] Var(Position),
     #[strum(to_string = "if", serialize = "If")] If(Position),
     #[strum(to_string = "else", serialize = "Else")] Else(Position),
+    #[strum(to_string = "while", serialize = "While")] While(Position),
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
 
     #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
@@ -77,6 +79,7 @@ impl Token {
             Token::Var(pos) |
             Token::If(pos) |
             Token::Else(pos) |
+            Token::While(pos) |
             Token::Assign(pos) |
             Token::Plus(pos) |
             Token::Minus(pos) |
