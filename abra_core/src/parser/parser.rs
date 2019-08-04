@@ -326,9 +326,7 @@ impl Parser {
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
-        self.expect_next_token(TokenType::LParen)?;
         let condition = Box::new(self.parse_expr()?);
-        self.expect_next_token(TokenType::RParen)?;
 
         let if_block = self.parse_expr_or_block()?;
 
@@ -1598,87 +1596,87 @@ mod tests {
     fn parse_if_statement() -> TestResult {
         // Each phase of testing tests permutations of with/without braces
 
-        let ast = parse("if (3 < 4)   \"hello\"")?;
+        let ast = parse("if 3 < 4   \"hello\"")?;
         let expected = AstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(
                     AstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         BinaryNode {
-                            left: Box::new(int_literal!((1, 5), 3)),
+                            left: Box::new(int_literal!((1, 4), 3)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 4)),
+                            right: Box::new(int_literal!((1, 8), 4)),
                         },
                     )
                 ),
                 if_block: vec![
-                    string_literal!((1, 14), "hello")
+                    string_literal!((1, 12), "hello")
                 ],
                 else_block: None,
             },
         );
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" }")?;
+        let ast = parse("if 3 < 4 { \"hello\" }")?;
         assert_eq!(expected, ast[0]);
 
-        let ast = parse("if (3 < 4)   \"hello\"   else   \"world\"")?;
+        let ast = parse("if 3 < 4   \"hello\"   else   \"world\"")?;
         let expected = AstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(
                     AstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         BinaryNode {
-                            left: Box::new(int_literal!((1, 5), 3)),
+                            left: Box::new(int_literal!((1, 4), 3)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 4)),
+                            right: Box::new(int_literal!((1, 8), 4)),
                         },
                     )
                 ),
                 if_block: vec![
-                    string_literal!((1, 14), "hello")
+                    string_literal!((1, 12), "hello")
                 ],
                 else_block: Some(vec![
-                    string_literal!((1, 31), "world")
+                    string_literal!((1, 29), "world")
                 ]),
             },
         );
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" } else { \"world\" }")?;
+        let ast = parse("if 3 < 4 { \"hello\" } else { \"world\" }")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" } else   \"world\"")?;
+        let ast = parse("if 3 < 4 { \"hello\" } else   \"world\"")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4)   \"hello\"   else { \"world\" }")?;
+        let ast = parse("if 3 < 4   \"hello\"   else { \"world\" }")?;
         assert_eq!(expected, ast[0]);
 
-        let ast = parse("if (3 < 4)   \"hello\"   else if (true)   \"world\"   else   \"!\"")?;
+        let ast = parse("if 3 < 4   \"hello\"   else if true   \"world\"   else   \"!\"")?;
         let expected = AstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(
                     AstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         BinaryNode {
-                            left: Box::new(int_literal!((1, 5), 3)),
+                            left: Box::new(int_literal!((1, 4), 3)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 4)),
+                            right: Box::new(int_literal!((1, 8), 4)),
                         },
                     )
                 ),
                 if_block: vec![
-                    string_literal!((1, 14), "hello")
+                    string_literal!((1, 12), "hello")
                 ],
                 else_block: Some(vec![
                     AstNode::IfStatement(
-                        Token::If(Position::new(1, 29)),
+                        Token::If(Position::new(1, 27)),
                         IfNode {
-                            condition: Box::new(bool_literal!((1, 33), true)),
+                            condition: Box::new(bool_literal!((1, 30), true)),
                             if_block: vec![
-                                string_literal!((1, 41), "world")
+                                string_literal!((1, 37), "world")
                             ],
                             else_block: Some(vec![
-                                string_literal!((1, 58), "!")
+                                string_literal!((1, 54), "!")
                             ]),
                         },
                     )
@@ -1687,45 +1685,45 @@ mod tests {
         );
 
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" } else if (true)   \"world\"   else   \"!\"")?;
+        let ast = parse("if 3 < 4 { \"hello\" } else if true   \"world\"   else   \"!\"")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" } else if (true) { \"world\" } else   \"!\"")?;
+        let ast = parse("if 3 < 4 { \"hello\" } else if true { \"world\" } else   \"!\"")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4) { \"hello\" } else if (true) { \"world\" } else { \"!\" }")?;
+        let ast = parse("if 3 < 4 { \"hello\" } else if true { \"world\" } else { \"!\" }")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4)   \"hello\"   else if (true) { \"world\" } else { \"!\" }")?;
+        let ast = parse("if 3 < 4   \"hello\"   else if true { \"world\" } else { \"!\" }")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4)   \"hello\"   else if (true)   \"world\"   else { \"!\" }")?;
+        let ast = parse("if 3 < 4   \"hello\"   else if true   \"world\"   else { \"!\" }")?;
         assert_eq!(expected, ast[0]);
-        let ast = parse("if (3 < 4)   \"hello\"   else if (true) { \"world\" } else   \"!\"")?;
+        let ast = parse("if 3 < 4   \"hello\"   else if true { \"world\" } else   \"!\"")?;
         assert_eq!(expected, ast[0]);
 
         // Test with statement inside block
-        let ast = parse("if (3 < 4) { val a = \"hello\" a }")?;
+        let ast = parse("if 3 < 4 { val a = \"hello\" a }")?;
         let expected = AstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(
                     AstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         BinaryNode {
-                            left: Box::new(int_literal!((1, 5), 3)),
+                            left: Box::new(int_literal!((1, 4), 3)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 4)),
+                            right: Box::new(int_literal!((1, 8), 4)),
                         },
                     )
                 ),
                 if_block: vec![
                     AstNode::BindingDecl(
-                        Token::Val(Position::new(1, 14)),
+                        Token::Val(Position::new(1, 12)),
                         BindingDeclNode {
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
+                            ident: Token::Ident(Position::new(1, 16), "a".to_string()),
                             type_ann: None,
-                            expr: Some(Box::new(string_literal!((1, 22), "hello"))),
+                            expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         },
                     ),
-                    identifier!((1, 30), "a")
+                    identifier!((1, 28), "a")
                 ],
                 else_block: None,
             },
@@ -1737,7 +1735,7 @@ mod tests {
 
     #[test]
     fn parse_if_expression() -> TestResult {
-        let ast = parse("val str = if (3 < 4) \"hello\"")?;
+        let ast = parse("val str = if 3 < 4 \"hello\"")?;
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             BindingDeclNode {
@@ -1750,16 +1748,16 @@ mod tests {
                         IfNode {
                             condition: Box::new(
                                 AstNode::Binary(
-                                    Token::LT(Position::new(1, 17)),
+                                    Token::LT(Position::new(1, 16)),
                                     BinaryNode {
-                                        left: Box::new(int_literal!((1, 15), 3)),
+                                        left: Box::new(int_literal!((1, 14), 3)),
                                         op: BinaryOp::Lt,
-                                        right: Box::new(int_literal!((1, 19), 4)),
+                                        right: Box::new(int_literal!((1, 18), 4)),
                                     },
                                 )
                             ),
                             if_block: vec![
-                                string_literal!((1, 22), "hello")
+                                string_literal!((1, 20), "hello")
                             ],
                             else_block: None,
                         },
@@ -1769,7 +1767,7 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
-        let ast = parse("\"hello\" + if (3 < 4) \"world\" else \"!\"")?;
+        let ast = parse("\"hello\" + if 3 < 4 \"world\" else \"!\"")?;
         let expected = AstNode::Binary(
             Token::Plus(Position::new(1, 9)),
             BinaryNode {
@@ -1781,19 +1779,19 @@ mod tests {
                         IfNode {
                             condition: Box::new(
                                 AstNode::Binary(
-                                    Token::LT(Position::new(1, 17)),
+                                    Token::LT(Position::new(1, 16)),
                                     BinaryNode {
-                                        left: Box::new(int_literal!((1, 15), 3)),
+                                        left: Box::new(int_literal!((1, 14), 3)),
                                         op: BinaryOp::Lt,
-                                        right: Box::new(int_literal!((1, 19), 4)),
+                                        right: Box::new(int_literal!((1, 18), 4)),
                                     },
                                 )
                             ),
                             if_block: vec![
-                                string_literal!((1, 22), "world")
+                                string_literal!((1, 20), "world")
                             ],
                             else_block: Some(vec![
-                                string_literal!((1, 35), "!")
+                                string_literal!((1, 33), "!")
                             ]),
                         },
                     )
