@@ -1,7 +1,7 @@
 use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode};
 use crate::typechecker::types::Type;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
@@ -711,6 +711,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             args,
         };
         Ok(TypedAstNode::Invocation(token, node))
+    }
+
+    fn visit_while_loop(&mut self, _token: Token, _node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
     }
 }
 

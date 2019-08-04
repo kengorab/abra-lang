@@ -15,6 +15,7 @@ pub enum AstNode {
     IfStatement(Token, IfNode),
     IfExpression(Token, IfNode),
     Invocation(Token, InvocationNode),
+    WhileLoop(Token, WhileLoopNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -120,6 +121,12 @@ pub struct IfNode {
 pub struct InvocationNode {
     pub target: Box<AstNode>,
     pub args: Vec<(Option<Token>, AstNode)>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct WhileLoopNode {
+    pub condition: Box<AstNode>,
+    pub body: Vec<AstNode>
 }
 
 #[derive(Debug, PartialEq)]
