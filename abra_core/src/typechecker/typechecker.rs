@@ -1822,53 +1822,53 @@ mod tests {
 
     #[test]
     fn typecheck_if_statement() -> TestResult {
-        let typed_ast = typecheck("if (1 < 2) 1234")?;
+        let typed_ast = typecheck("if 1 < 2 1234")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
                 typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         TypedBinaryNode {
                             typ: Type::Bool,
-                            left: Box::new(int_literal!((1, 5), 1)),
+                            left: Box::new(int_literal!((1, 4), 1)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 2)),
+                            right: Box::new(int_literal!((1, 8), 2)),
                         },
                     )
                 ),
-                if_block: vec![int_literal!((1, 12), 1234)],
+                if_block: vec![int_literal!((1, 10), 1234)],
                 else_block: None,
             },
         );
         assert_eq!(expected, typed_ast[0]);
 
-        let typed_ast = typecheck("if (1 < 2) 1234 else 1 + 2")?;
+        let typed_ast = typecheck("if 1 < 2 1234 else 1 + 2")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
                 typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         TypedBinaryNode {
                             typ: Type::Bool,
-                            left: Box::new(int_literal!((1, 5), 1)),
+                            left: Box::new(int_literal!((1, 4), 1)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 2)),
+                            right: Box::new(int_literal!((1, 8), 2)),
                         },
                     )
                 ),
-                if_block: vec![int_literal!((1, 12), 1234)],
+                if_block: vec![int_literal!((1, 10), 1234)],
                 else_block: Some(vec![
                     TypedAstNode::Binary(
-                        Token::Plus(Position::new(1, 24)),
+                        Token::Plus(Position::new(1, 22)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(int_literal!((1, 22), 1)),
+                            left: Box::new(int_literal!((1, 20), 1)),
                             op: BinaryOp::Add,
-                            right: Box::new(int_literal!((1, 26), 2)),
+                            right: Box::new(int_literal!((1, 24), 2)),
                         },
                     )
                 ]),
@@ -1881,9 +1881,9 @@ mod tests {
 
     #[test]
     fn typecheck_if_statement_errors() {
-        let error = typecheck("if (4) { val a = \"hello\" a }").unwrap_err();
+        let error = typecheck("if 4 { val a = \"hello\" a }").unwrap_err();
         let expected = TypecheckerError::Mismatch {
-            token: Token::Int(Position::new(1, 5), 4),
+            token: Token::Int(Position::new(1, 4), 4),
             actual: Type::Int,
             expected: Type::Bool,
         };
@@ -1892,34 +1892,34 @@ mod tests {
 
     #[test]
     fn typecheck_if_statement_scopes() -> TestResult {
-        let typed_ast = typecheck("if (1 < 2) { val a = \"hello\" a }")?;
+        let typed_ast = typecheck("if 1 < 2 { val a = \"hello\" a }")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
                 typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
-                        Token::LT(Position::new(1, 7)),
+                        Token::LT(Position::new(1, 6)),
                         TypedBinaryNode {
                             typ: Type::Bool,
-                            left: Box::new(int_literal!((1, 5), 1)),
+                            left: Box::new(int_literal!((1, 4), 1)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 9), 2)),
+                            right: Box::new(int_literal!((1, 8), 2)),
                         },
                     )
                 ),
                 if_block: vec![
                     TypedAstNode::BindingDecl(
-                        Token::Val(Position::new(1, 14)),
+                        Token::Val(Position::new(1, 12)),
                         TypedBindingDeclNode {
-                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
+                            ident: Token::Ident(Position::new(1, 16), "a".to_string()),
                             is_mutable: false,
-                            expr: Some(Box::new(string_literal!((1, 22), "hello"))),
+                            expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                             scope_depth: 1,
                         },
                     ),
                     TypedAstNode::Identifier(
-                        Token::Ident(Position::new(1, 30), "a".to_string()),
+                        Token::Ident(Position::new(1, 28), "a".to_string()),
                         TypedIdentifierNode {
                             typ: Type::String,
                             is_mutable: false,
@@ -1933,7 +1933,7 @@ mod tests {
         assert_eq!(expected, typed_ast[0]);
 
         let typed_ast = typecheck(
-            "val a = \"hello\"\nif (1 < 2) { val b = \"world\" a + b } else { a + \"!\" }"
+            "val a = \"hello\"\nif 1 < 2 { val b = \"world\" a + b } else { a + \"!\" }"
         )?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(2, 1)),
@@ -1941,32 +1941,32 @@ mod tests {
                 typ: Type::Unit,
                 condition: Box::new(
                     TypedAstNode::Binary(
-                        Token::LT(Position::new(2, 7)),
+                        Token::LT(Position::new(2, 6)),
                         TypedBinaryNode {
                             typ: Type::Bool,
-                            left: Box::new(int_literal!((2, 5), 1)),
+                            left: Box::new(int_literal!((2, 4), 1)),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((2, 9), 2)),
+                            right: Box::new(int_literal!((2, 8), 2)),
                         },
                     )
                 ),
                 if_block: vec![
                     TypedAstNode::BindingDecl(
-                        Token::Val(Position::new(2, 14)),
+                        Token::Val(Position::new(2, 12)),
                         TypedBindingDeclNode {
-                            ident: Token::Ident(Position::new(2, 18), "b".to_string()),
+                            ident: Token::Ident(Position::new(2, 16), "b".to_string()),
                             is_mutable: false,
-                            expr: Some(Box::new(string_literal!((2, 22), "world"))),
+                            expr: Some(Box::new(string_literal!((2, 20), "world"))),
                             scope_depth: 1,
                         },
                     ),
                     TypedAstNode::Binary(
-                        Token::Plus(Position::new(2, 32)),
+                        Token::Plus(Position::new(2, 30)),
                         TypedBinaryNode {
                             typ: Type::String,
                             left: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 30), "a".to_string()),
+                                    Token::Ident(Position::new(2, 28), "a".to_string()),
                                     TypedIdentifierNode {
                                         typ: Type::String,
                                         is_mutable: false,
@@ -1977,7 +1977,7 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 34), "b".to_string()),
+                                    Token::Ident(Position::new(2, 32), "b".to_string()),
                                     TypedIdentifierNode {
                                         typ: Type::String,
                                         is_mutable: false,
@@ -1990,12 +1990,12 @@ mod tests {
                 ],
                 else_block: Some(vec![
                     TypedAstNode::Binary(
-                        Token::Plus(Position::new(2, 47)),
+                        Token::Plus(Position::new(2, 45)),
                         TypedBinaryNode {
                             typ: Type::String,
                             left: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 45), "a".to_string()),
+                                    Token::Ident(Position::new(2, 43), "a".to_string()),
                                     TypedIdentifierNode {
                                         typ: Type::String,
                                         is_mutable: false,
@@ -2004,7 +2004,7 @@ mod tests {
                                 )
                             ),
                             op: BinaryOp::Add,
-                            right: Box::new(string_literal!((2, 49), "!")),
+                            right: Box::new(string_literal!((2, 47), "!")),
                         },
                     ),
                 ]),
