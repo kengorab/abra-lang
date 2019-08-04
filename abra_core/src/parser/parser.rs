@@ -156,7 +156,7 @@ impl Parser {
     fn get_precedence_for_token(tok: &Token) -> Precedence {
         match tok {
             Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
-            Token::Star(_) | Token::Slash(_) => Precedence::Multiplication,
+            Token::Star(_) | Token::Slash(_) | Token::Percent(_) => Precedence::Multiplication,
             Token::And(_) => Precedence::And,
             Token::Or(_) => Precedence::Or,
             Token::Elvis(_) => Precedence::Coalesce,
@@ -446,6 +446,7 @@ impl Parser {
             Token::Minus(_) => BinaryOp::Sub,
             Token::Star(_) => BinaryOp::Mul,
             Token::Slash(_) => BinaryOp::Div,
+            Token::Percent(_) => BinaryOp::Mod,
             Token::And(_) => BinaryOp::And,
             Token::Or(_) => BinaryOp::Or,
             Token::Elvis(_) => BinaryOp::Coalesce,
@@ -738,7 +739,7 @@ mod tests {
 
     #[test]
     fn parse_binary_precedence_numeric() -> TestResult {
-        let ast = parse("1 + 2 * 3")?;
+        let ast = parse("1 + 2 * 3 % 4")?;
         let expected = vec![
             Binary(
                 Token::Plus(Position::new(1, 3)),
@@ -747,11 +748,20 @@ mod tests {
                     op: BinaryOp::Add,
                     right: Box::new(
                         Binary(
-                            Token::Star(Position::new(1, 7)),
+                            Token::Percent(Position::new(1, 11)),
                             BinaryNode {
-                                left: Box::new(int_literal!((1, 5), 2)),
-                                op: BinaryOp::Mul,
-                                right: Box::new(int_literal!((1, 9), 3)),
+                                left: Box::new(
+                                    Binary(
+                                        Token::Star(Position::new(1, 7)),
+                                        BinaryNode {
+                                            left: Box::new(int_literal!((1, 5), 2)),
+                                            op: BinaryOp::Mul,
+                                            right: Box::new(int_literal!((1, 9), 3)),
+                                        },
+                                    )
+                                ),
+                                op: BinaryOp::Mod,
+                                right: Box::new(int_literal!((1, 13), 4)),
                             },
                         )
                     ),

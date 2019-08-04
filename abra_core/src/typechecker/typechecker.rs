@@ -226,6 +226,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
+                BinaryOp::Mod => unimplemented!(),
                 BinaryOp::And | BinaryOp::Or =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
