@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 
 pub trait TypedAstVisitor<V, E> {
@@ -18,6 +18,7 @@ pub trait TypedAstVisitor<V, E> {
             IfStatement(tok, node) => self.visit_if_statement(true, tok, node),
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
             Invocation(tok, node) => self.visit_invocation(tok, node),
+            WhileLoop(tok, node) => self.visit_while_loop(tok, node),
         }
     }
 
@@ -34,4 +35,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<V, E>;
     fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
     fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<V, E>;
+    fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<V, E>;
 }

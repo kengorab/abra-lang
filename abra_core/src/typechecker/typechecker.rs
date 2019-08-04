@@ -3,7 +3,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -713,8 +713,24 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         Ok(TypedAstNode::Invocation(token, node))
     }
 
-    fn visit_while_loop(&mut self, _token: Token, _node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
+        let WhileLoopNode { condition, body } = node;
+
+        let condition = self.visit(*condition)?;
+        if !condition.get_type().is_equivalent_to(&Type::Bool) {
+            let token = condition.get_token().clone();
+            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
+        }
+        let condition = Box::new(condition);
+
+        self.scopes.push(Scope::new(ScopeKind::Block));
+        let body: Result<Vec<_>, _> = body.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let body = body?;
+        self.scopes.pop();
+
+        Ok(TypedAstNode::WhileLoop(token, TypedWhileLoopNode { condition, body }))
     }
 }
 
@@ -2181,5 +2197,75 @@ mod tests {
             token: ident_token!((2, 1), "abc"),
         };
         assert_eq!(error, expected);
+    }
+
+    #[test]
+    fn typecheck_while_loop() -> TestResult {
+        let ast = typecheck("while true 1 + 1")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(1, 14)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(int_literal!((1, 12), 1)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 16), 1)),
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = typecheck("while true {\nval a = 1\na + 1 }")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                body: vec![
+                    TypedAstNode::BindingDecl(
+                        Token::Val(Position::new(2, 1)),
+                        TypedBindingDeclNode {
+                            scope_depth: 1,
+                            is_mutable: false,
+                            ident: ident_token!((2, 5), "a"),
+                            expr: Some(Box::new(int_literal!((2, 9), 1))),
+                        },
+                    ),
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(TypedAstNode::Identifier(
+                                ident_token!((3, 1), "a"),
+                                TypedIdentifierNode {
+                                    typ: Type::Int,
+                                    is_mutable: false,
+                                    scope_depth: 1,
+                                },
+                            )),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((3, 5), 1)),
+                        },
+                    )
+                ],
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn typecheck_while_loop_error() {
+        let error = typecheck("while 1 + 1 { println(123) }").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Plus(Position::new(1, 9)),
+            expected: Type::Bool,
+            actual: Type::Int
+        };
+        assert_eq!(expected, error)
     }
 }
