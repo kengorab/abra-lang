@@ -54,6 +54,7 @@ fn op_repr(op: &BinaryOp) -> String {
         BinaryOp::Sub => "-",
         BinaryOp::Mul => "*",
         BinaryOp::Div => "/",
+        BinaryOp::Mod => "%",
         BinaryOp::And => "&&",
         BinaryOp::Coalesce => "?:",
         BinaryOp::Or => "||",

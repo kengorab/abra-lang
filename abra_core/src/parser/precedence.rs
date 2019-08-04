@@ -12,7 +12,7 @@ pub enum Precedence {
     Comparison,
     // + -
     Addition,
-    // * /
+    // * / %
     Multiplication,
     // ?:
     Coalesce,

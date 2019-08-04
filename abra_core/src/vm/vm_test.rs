@@ -62,6 +62,14 @@ mod tests {
         let expected = Value::Float(2.36);
         assert_eq!(expected, result);
 
+        let result = interpret("7 % 5").unwrap();
+        let expected = Value::Int(2);
+        assert_eq!(expected, result);
+
+        let result = interpret("5.25 % 2.5").unwrap();
+        let expected = Value::Float(0.25);
+        assert_eq!(expected, result);
+
         let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
         let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
         assert_eq!(expected, result);

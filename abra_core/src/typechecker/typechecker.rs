@@ -226,6 +226,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
+                BinaryOp::Mod =>
+                    match (&ltype, &rtype) {
+                        (Type::Int, Type::Int) => Ok(Type::Int),
+                        (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
                 BinaryOp::And | BinaryOp::Or =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
@@ -833,6 +839,42 @@ mod tests {
                 right: Box::new(int_literal!((1, 5), 2)),
             },
         );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("1 % 2")?;
+        let expected = TypedAstNode::Binary(
+            Token::Percent(Position::new(1, 3)),
+            TypedBinaryNode {
+                typ: Type::Int,
+                left: Box::new(int_literal!((1, 1), 1)),
+                op: BinaryOp::Mod,
+                right: Box::new(int_literal!((1, 5), 2)),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("1.1 % 2")?;
+        let expected = TypedAstNode::Binary(
+            Token::Percent(Position::new(1, 5)),
+            TypedBinaryNode {
+                typ: Type::Float,
+                left: Box::new(float_literal!((1, 1), 1.1)),
+                op: BinaryOp::Mod,
+                right: Box::new(int_literal!((1, 7), 2)),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("1 % 2.3")?;
+        let expected = TypedAstNode::Binary(
+            Token::Percent(Position::new(1, 3)),
+            TypedBinaryNode {
+                typ: Type::Float,
+                left: Box::new(int_literal!((1, 1), 1)),
+                op: BinaryOp::Mod,
+                right: Box::new(float_literal!((1, 5), 2.3)),
+            },
+        );
         Ok(assert_eq!(expected, typed_ast[0]))
     }
 
@@ -930,6 +972,7 @@ mod tests {
             ("3.2 * \"str\"", Token::Star(Position::new(1, 5)), BinaryOp::Mul, Type::Float, Type::String),
             ("3 / \"str\"", Token::Slash(Position::new(1, 3)), BinaryOp::Div, Type::Int, Type::String),
             ("3.2 / \"str\"", Token::Slash(Position::new(1, 5)), BinaryOp::Div, Type::Float, Type::String),
+            ("3.2 % \"str\"", Token::Percent(Position::new(1, 5)), BinaryOp::Mod, Type::Float, Type::String),
             //
             ("\"str\" - 3", Token::Minus(Position::new(1, 7)), BinaryOp::Sub, Type::String, Type::Int),
             ("\"str\" - 3.2", Token::Minus(Position::new(1, 7)), BinaryOp::Sub, Type::String, Type::Float),
@@ -937,6 +980,7 @@ mod tests {
             ("\"str\" * 3.2", Token::Star(Position::new(1, 7)), BinaryOp::Mul, Type::String, Type::Float),
             ("\"str\" / 3", Token::Slash(Position::new(1, 7)), BinaryOp::Div, Type::String, Type::Int),
             ("\"str\" / 3.2", Token::Slash(Position::new(1, 7)), BinaryOp::Div, Type::String, Type::Float),
+            ("\"str\" % 3.2", Token::Percent(Position::new(1, 7)), BinaryOp::Mod, Type::String, Type::Float),
             //
             ("true + 1", Token::Plus(Position::new(1, 6)), BinaryOp::Add, Type::Bool, Type::Int),
             ("true + 1.0", Token::Plus(Position::new(1, 6)), BinaryOp::Add, Type::Bool, Type::Float),
@@ -953,6 +997,7 @@ mod tests {
             ("true / 1.0", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Float),
             ("true / \"str\"", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::String),
             ("true / false", Token::Slash(Position::new(1, 6)), BinaryOp::Div, Type::Bool, Type::Bool),
+            ("true % false", Token::Percent(Position::new(1, 6)), BinaryOp::Mod, Type::Bool, Type::Bool),
             //
             ("[1, 2][0] + 1", Token::Plus(Position::new(1, 11)), BinaryOp::Add, Type::Option(Box::new(Type::Int)), Type::Int),
             ("[0][1] + [2][3]", Token::Plus(Position::new(1, 8)), BinaryOp::Add, Type::Option(Box::new(Type::Int)), Type::Option(Box::new(Type::Int))),

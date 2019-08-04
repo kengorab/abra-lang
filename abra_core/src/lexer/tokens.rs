@@ -40,6 +40,7 @@ pub enum Token {
     #[strum(to_string = "-", serialize = "Minus")] Minus(Position),
     #[strum(to_string = "*", serialize = "Star")] Star(Position),
     #[strum(to_string = "/", serialize = "Slash")] Slash(Position),
+    #[strum(to_string = "%", serialize = "Percent")] Percent(Position),
     #[strum(to_string = "&&", serialize = "And")] And(Position),
     #[strum(to_string = "||", serialize = "Or")] Or(Position),
     #[strum(to_string = "?:", serialize = "Elvis")] Elvis(Position),
@@ -81,6 +82,7 @@ impl Token {
             Token::Minus(pos) |
             Token::Star(pos) |
             Token::Slash(pos) |
+            Token::Percent(pos) |
             Token::And(pos) |
             Token::Or(pos) |
             Token::Elvis(pos) |
