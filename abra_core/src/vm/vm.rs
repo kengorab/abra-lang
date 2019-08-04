@@ -251,10 +251,12 @@ impl<'a> VM<'a> {
                 Opcode::ISub => self.int_op(|a, b| a - b)?,
                 Opcode::IMul => self.int_op(|a, b| a * b)?,
                 Opcode::IDiv => self.int_op(|a, b| a / b)?,
+                Opcode::IMod => self.int_op(|a, b| a % b)?,
                 Opcode::FAdd => self.float_op(|a, b| a + b)?,
                 Opcode::FSub => self.float_op(|a, b| a - b)?,
                 Opcode::FMul => self.float_op(|a, b| a * b)?,
                 Opcode::FDiv => self.float_op(|a, b| a / b)?,
+                Opcode::FMod => self.float_op(|a, b| a % b)?,
                 Opcode::I2F => {
                     let val = pop_expect_int!(self)?;
                     self.push(Value::Float(val as f64))

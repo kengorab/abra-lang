@@ -220,6 +220,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             (BinaryOp::Mul, Type::Float) => Opcode::FMul,
             (BinaryOp::Div, Type::Int) => Opcode::IDiv,
             (BinaryOp::Div, Type::Float) => Opcode::FDiv,
+            (BinaryOp::Mod, Type::Int) => Opcode::IMod,
+            (BinaryOp::Mod, Type::Float) => Opcode::FMod,
             _ => unreachable!()
         };
 
@@ -701,6 +703,26 @@ mod tests {
                 ],
             }),
             constants: vec![Value::Int(5), Value::Float(3.4)],
+        };
+        assert_eq!(expected, chunk);
+
+        // Testing %, along with i2f
+        let chunk = compile("3.4 % 2.4 % 5");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![9, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::FMod as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::I2F as u8,
+                    Opcode::FMod as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![Value::Float(3.4), Value::Float(2.4), Value::Int(5)],
         };
         assert_eq!(expected, chunk);
     }
