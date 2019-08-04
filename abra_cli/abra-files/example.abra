@@ -1,19 +1,17 @@
-val arr = range(0, 15)
-println("Array: " + arr)
-
-var iterations = 0
-
-func fib(n: Int): Int {
-  iterations = iterations + 1
-
-  if n == 0 {
-    0
-  } else if n == 1 {
-    1
+var a = 1
+while a < 100 {
+  val msg = if a % 15 == 0 {
+    "Fizzbuzz"
+  } else if a % 5 == 0 {
+    "Buzz"
+  } else if a % 3 == 0 {
+    "Fizz"
   } else {
-    fib(n - 2) + fib(n - 1)
+    "" + a
   }
+
+  println(msg)
+  a = a + 1
 }
 
-println("Iterations: " + iterations)
-fib(8)
+println("Done!")

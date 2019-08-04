@@ -441,6 +441,11 @@ impl<'a> VM<'a> {
                         frame.ip += jump_offset;
                     }
                 }
+                Opcode::JumpB => {
+                    let jump_offset = self.read_byte_expect()?;
+                    let frame: &mut CallFrame = current_frame!(self);
+                    frame.ip -= jump_offset;
+                }
                 Opcode::Invoke => {
                     let func_name = pop_expect_string!(self)?;
                     let arity = self.read_byte_expect()?;

@@ -619,4 +619,46 @@ mod tests {
         });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_while_loop() {
+        let input = "\
+          var a = 0\n\
+          while a < 4 {\n\
+            a = a + 1\n\
+          }\n\
+          a\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_while_loop_fizzbuzzish() {
+        let input = "\
+          var i = 1\n\
+          var output = \"\"\n\
+          while i <= 20 {\n\
+            val msg = if i % 15 == 0 {\n\
+              \"Fb\"\n\
+            } else if i % 3 == 0 {\n\
+              \"F\"\n\
+            } else if i % 5 == 0 {\n\
+              \"B\"\n\
+            } else {\n\
+              \"\" + i\n\
+            }\n\
+            \n\
+            output = output + msg + \",\"\n\
+            i = i + 1\n\
+          }\n\
+          output\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj {
+            value: Box::new("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,".to_string())
+        });
+        assert_eq!(expected, result);
+    }
 }
