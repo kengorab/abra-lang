@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -56,7 +56,8 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
-        TypedAstNode::IfStatement(_, _) => false,
+        TypedAstNode::IfStatement(_, _) |
+        TypedAstNode::WhileLoop(_, _) => false,
         _ => true
     }
 }
@@ -536,6 +537,60 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_constant(value, line);
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(num_args as u8, line);
+        Ok(())
+    }
+
+    fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedWhileLoopNode { condition, body } = node;
+        let cond_slot_idx = self.get_current_chunk().code.len();
+        self.visit(*condition)?;
+
+        self.write_opcode(Opcode::JumpIfF, line);
+        self.write_byte(0, line); // <- Replaced after compiling loop body
+        let cond_jump_offset_slot_idx = self.get_current_chunk().code.len();
+
+        self.depth += 1;
+        let body_depth = self.depth;
+        let body_len = body.len();
+        for (idx, node) in (0..body_len).zip(body.into_iter()) {
+            let line = node.get_token().get_position().line;
+            let is_last_node = idx == body_len - 1;
+
+            let should_pop = should_pop_after_node(&node);
+            self.visit(node)?;
+
+            if should_pop {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
+            if is_last_node {
+                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+
+                for _ in 0..num_locals_to_pop {
+                    self.locals.pop(); // Remove from compiler's locals vector
+                    self.write_opcode(Opcode::Pop, line); // TODO: PopN
+                }
+            }
+        }
+
+        // Calculate the number of bytes needed to jump back in order to evaluate the cond again
+        let offset_to_cond = self.get_current_chunk().code.len()
+            .checked_sub(cond_slot_idx)
+            .expect("conditional offset slot should be <= end of loop body");
+        let offset_to_cond = offset_to_cond + 2; // Account for JumpB <imm>
+        self.write_opcode(Opcode::JumpB, line);
+        self.write_byte(offset_to_cond as u8, line);
+
+        // Calculate the number of bytes needed to initially skip over body, if cond was false
+        let chunk = self.get_current_chunk();
+        let body_len_bytes = chunk.code.len()
+            .checked_sub(cond_jump_offset_slot_idx)
+            .expect("jump offset slot should be <= end of loop body");
+        *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
+        self.depth -= 1;
+
         Ok(())
     }
 }
@@ -1479,6 +1534,91 @@ mod tests {
                 Value::Fn("inc".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("two".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_while_loop() {
+        let chunk = compile("\
+          var i = 0\n\
+          while i < 1 {\n\
+            i = i + 1\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![4, 7, 12, 1, 1, 1],
+                code: vec![
+                    Opcode::IConst0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::LT as u8,
+                    Opcode::JumpIfF as u8, 14,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::Pop as u8,
+                    Opcode::JumpB as u8, 21,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("i".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_while_loop_with_local() {
+        let chunk = compile("\
+          var i = 0\n\
+          while i < 1 {\n\
+            val newI = i + 1\n\
+            i = newI\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![4, 7, 5, 9, 1, 1, 1],
+                code: vec![
+                    Opcode::IConst0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::LT as u8,
+                    Opcode::JumpIfF as u8, 16,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::LLoad0 as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 0,
+                    Opcode::GLoad as u8,
+                    Opcode::Pop as u8,
+                    Opcode::Pop as u8,
+                    Opcode::JumpB as u8, 23,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("i".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);

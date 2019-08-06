@@ -17,6 +17,7 @@ pub enum TypedAstNode {
     IfStatement(Token, TypedIfNode),
     IfExpression(Token, TypedIfNode),
     Invocation(Token, TypedInvocationNode),
+    WhileLoop(Token, TypedWhileLoopNode),
 }
 
 impl TypedAstNode {
@@ -35,6 +36,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(token, _) => token,
             TypedAstNode::IfExpression(token, _) => token,
             TypedAstNode::Invocation(token, _) => token,
+            TypedAstNode::WhileLoop(token, _) => token,
         }
     }
 
@@ -51,7 +53,8 @@ impl TypedAstNode {
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) |
-            TypedAstNode::FunctionDecl(_, _) => Type::Unit,
+            TypedAstNode::FunctionDecl(_, _) |
+            TypedAstNode::WhileLoop(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
@@ -151,4 +154,10 @@ pub struct TypedInvocationNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub args: Vec<TypedAstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypedWhileLoopNode {
+    pub condition: Box<TypedAstNode>,
+    pub body: Vec<TypedAstNode>,
 }

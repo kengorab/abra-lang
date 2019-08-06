@@ -53,6 +53,7 @@ pub enum Opcode {
     LLoad,
     Jump,
     JumpIfF,
+    JumpB,
     Invoke,
     Pop,
     Return,
@@ -113,9 +114,10 @@ impl From<u8> for Opcode {
             49 => Opcode::LLoad,
             50 => Opcode::Jump,
             51 => Opcode::JumpIfF,
-            52 => Opcode::Invoke,
-            53 => Opcode::Pop,
-            54 => Opcode::Return,
+            52 => Opcode::JumpB,
+            53 => Opcode::Invoke,
+            54 => Opcode::Pop,
+            55 => Opcode::Return,
             _ => unreachable!()
         }
     }
@@ -127,6 +129,7 @@ impl Opcode {
             Opcode::Constant |
             Opcode::Jump |
             Opcode::JumpIfF |
+            Opcode::JumpB |
             Opcode::ArrMk |
             Opcode::LStore |
             Opcode::LLoad |

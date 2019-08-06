@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode};
 use crate::parser::precedence::Precedence;
 use crate::parser::parse_error::ParseError;
 
@@ -176,6 +176,7 @@ impl Parser {
             Token::Val(_) => self.parse_binding_decl(),
             Token::Var(_) => self.parse_binding_decl(),
             Token::If(_) => self.parse_if_statement(),
+            Token::While(_) => self.parse_while_statement(),
             _ => self.parse_expr(),
         }
     }
@@ -323,6 +324,14 @@ impl Parser {
             }
             _ => Ok(vec![self.parse_expr()?])
         }
+    }
+
+    fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        let condition = Box::new(self.parse_expr()?);
+
+        let body = self.parse_expr_or_block()?;
+        Ok(AstNode::WhileLoop(token, WhileLoopNode { condition, body }))
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
@@ -2010,5 +2019,64 @@ mod tests {
         let error = parse("abc(a + b: 2)").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 10)));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_while_loop() -> TestResult {
+        let ast = parse("while true 1 + 1")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                body: vec![
+                    AstNode::Binary(
+                        Token::Plus(Position::new(1, 14)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 12), 1)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 16), 1)),
+                        }
+                    )
+                ]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("while a < 3 {\nval a = 1\na + 1 }")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(
+                    AstNode::Binary(
+                        Token::LT(Position::new(1, 9)),
+                        BinaryNode {
+                            left: Box::new(AstNode::Identifier(ident_token!((1, 7), "a"))),
+                            op: BinaryOp::Lt,
+                            right: Box::new(int_literal!((1, 11), 3))
+                        }
+                    )
+                ),
+                body: vec![
+                    AstNode::BindingDecl(
+                        Token::Val(Position::new(2, 1)),
+                        BindingDeclNode {
+                            is_mutable: false,
+                            type_ann: None,
+                            ident: ident_token!((2, 5), "a"),
+                            expr: Some(Box::new(int_literal!((2, 9), 1)))
+                        }
+                    ),
+                    AstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        BinaryNode {
+                            left: Box::new(AstNode::Identifier(ident_token!((3, 1), "a"))),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((3, 5), 1)),
+                        }
+                    )
+                ]
+            }
+        );
+        Ok(assert_eq!(expected, ast[0]))
     }
 }

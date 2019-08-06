@@ -69,6 +69,12 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::While(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "while")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Ident(pos, val) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "ident")?;
