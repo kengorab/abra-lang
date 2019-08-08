@@ -746,15 +746,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Some(depth) => Ok(TypedAstNode::Break(token, depth)),
             None => Err(TypecheckerError::InvalidBreak(token))
         }
-//        let is_in_loop = depth.is_some();
-////            self.scopes.iter().rev()
-////            .filter(|s| s.kind == ScopeKind::Loop)
-////            .count() >= 1;
-//        if !is_in_loop {
-//            Err(TypecheckerError::InvalidBreak(token))
-//        } else {
-//            Ok(TypedAstNode::Break(token))
-//        }
     }
 }
 
