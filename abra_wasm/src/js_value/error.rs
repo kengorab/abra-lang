@@ -196,6 +196,13 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidBreak(token) => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidBreak")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

@@ -16,6 +16,7 @@ pub enum AstNode {
     IfExpression(Token, IfNode),
     Invocation(Token, InvocationNode),
     WhileLoop(Token, WhileLoopNode),
+    Break(Token)
 }
 
 #[derive(Debug, PartialEq)]

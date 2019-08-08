@@ -18,6 +18,7 @@ pub enum TypedAstNode {
     IfExpression(Token, TypedIfNode),
     Invocation(Token, TypedInvocationNode),
     WhileLoop(Token, TypedWhileLoopNode),
+    Break(Token, /* loop_depth: */ usize),
 }
 
 impl TypedAstNode {
@@ -37,6 +38,7 @@ impl TypedAstNode {
             TypedAstNode::IfExpression(token, _) => token,
             TypedAstNode::Invocation(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
+            TypedAstNode::Break(token, _) => token,
         }
     }
 
@@ -54,7 +56,8 @@ impl TypedAstNode {
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
-            TypedAstNode::WhileLoop(_, _) => Type::Unit,
+            TypedAstNode::WhileLoop(_, _) |
+            TypedAstNode::Break(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),

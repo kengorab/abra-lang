@@ -30,6 +30,7 @@ lazy_static! {
         keywords.insert("var", Keyword::Var);
         keywords.insert("func", Keyword::Func);
         keywords.insert("while", Keyword::While);
+        keywords.insert("break", Keyword::Break);
         keywords
     };
 }
@@ -180,6 +181,7 @@ impl<'a> Lexer<'a> {
                     Keyword::Var => Ok(Some(Token::Var(pos))),
                     Keyword::Func => Ok(Some(Token::Func(pos))),
                     Keyword::While => Ok(Some(Token::While(pos))),
+                    Keyword::Break => Ok(Some(Token::Break(pos))),
                 }
                 None => Ok(Some(Token::Ident(pos, s)))
             };
@@ -417,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_keywords() {
-        let input = "true false val var if else func while";
+        let input = "true false val var if else func while break";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
@@ -428,6 +430,7 @@ mod tests {
             Token::Else(Position::new(1, 23)),
             Token::Func(Position::new(1, 28)),
             Token::While(Position::new(1, 33)),
+            Token::Break(Position::new(1, 39)),
         ];
         assert_eq!(expected, tokens);
     }

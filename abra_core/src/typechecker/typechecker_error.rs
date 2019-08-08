@@ -20,6 +20,7 @@ pub enum TypecheckerError {
     IncorrectArity { token: Token, expected: usize, actual: usize },
     ParamNameMismatch { token: Token, expected: String, actual: String },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
+    InvalidBreak(Token),
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -85,6 +86,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
             TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
+            TypecheckerError::InvalidBreak(token) => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -214,6 +216,9 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line,
                     secondary_pos.line, secondary_pos.col, secondary_cursor_line
                 )
+            }
+            TypecheckerError::InvalidBreak(_token) => {
+                unimplemented!()
             }
         }
     }

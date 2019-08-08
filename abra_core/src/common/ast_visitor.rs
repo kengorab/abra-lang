@@ -19,6 +19,7 @@ pub trait AstVisitor<V, E> {
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
             Invocation(tok, node) => self.visit_invocation(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
+            Break(tok) => self.visit_break(tok),
         }
     }
 
@@ -36,4 +37,5 @@ pub trait AstVisitor<V, E> {
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<V, E>;
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<V, E>;
+    fn visit_break(&mut self, token: Token) -> Result<V, E>;
 }
