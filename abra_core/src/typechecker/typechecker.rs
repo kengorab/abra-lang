@@ -12,9 +12,11 @@ use std::slice::Iter;
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
 
+#[derive(Debug, PartialEq)]
 pub(crate) enum ScopeKind {
     Block,
     Function(/*token: */ Token, /*name: */ String),
+    Loop,
 }
 
 pub(crate) struct Scope {
@@ -723,7 +725,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let condition = Box::new(condition);
 
-        self.scopes.push(Scope::new(ScopeKind::Block));
+        self.scopes.push(Scope::new(ScopeKind::Loop));
         let body: Result<Vec<_>, _> = body.into_iter()
             .map(|node| self.visit(node))
             .collect();
@@ -731,6 +733,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         self.scopes.pop();
 
         Ok(TypedAstNode::WhileLoop(token, TypedWhileLoopNode { condition, body }))
+    }
+
+    fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+        let mut depth = None;
+        for (idx, s) in (0..self.scopes.len()).zip(self.scopes.iter()).rev() {
+            if s.kind == ScopeKind::Loop {
+                depth = Some(idx);
+            }
+        }
+        match depth {
+            Some(depth) => Ok(TypedAstNode::Break(token, depth)),
+            None => Err(TypecheckerError::InvalidBreak(token))
+        }
+//        let is_in_loop = depth.is_some();
+////            self.scopes.iter().rev()
+////            .filter(|s| s.kind == ScopeKind::Loop)
+////            .count() >= 1;
+//        if !is_in_loop {
+//            Err(TypecheckerError::InvalidBreak(token))
+//        } else {
+//            Ok(TypedAstNode::Break(token))
+//        }
     }
 }
 
@@ -2221,6 +2245,21 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
+        let ast = typecheck("while true { break }")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                body: vec![
+                    TypedAstNode::Break(
+                        Token::Break(Position::new(1, 14)),
+                        1
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
         let ast = typecheck("while true {\nval a = 1\na + 1 }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
@@ -2264,8 +2303,15 @@ mod tests {
         let expected = TypecheckerError::Mismatch {
             token: Token::Plus(Position::new(1, 9)),
             expected: Type::Bool,
-            actual: Type::Int
+            actual: Type::Int,
         };
+        assert_eq!(expected, error)
+    }
+
+    #[test]
+    fn typecheck_break_statement_error() {
+        let error = typecheck("if true { break }").unwrap_err();
+        let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 11)));
         assert_eq!(expected, error)
     }
 }

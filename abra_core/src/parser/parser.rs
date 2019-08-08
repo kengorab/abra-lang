@@ -177,6 +177,7 @@ impl Parser {
             Token::Var(_) => self.parse_binding_decl(),
             Token::If(_) => self.parse_if_statement(),
             Token::While(_) => self.parse_while_statement(),
+            Token::Break(_) => self.parse_break_statement(),
             _ => self.parse_expr(),
         }
     }
@@ -332,6 +333,11 @@ impl Parser {
 
         let body = self.parse_expr_or_block()?;
         Ok(AstNode::WhileLoop(token, WhileLoopNode { condition, body }))
+    }
+
+    fn parse_break_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        Ok(AstNode::Break(token))
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
@@ -2037,6 +2043,18 @@ mod tests {
                             right: Box::new(int_literal!((1, 16), 1)),
                         }
                     )
+                ]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("while true { break }")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                body: vec![
+                    AstNode::Break(Token::Break(Position::new(1, 14)))
                 ]
             }
         );

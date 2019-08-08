@@ -15,6 +15,7 @@ pub struct Compiler<'a> {
     module: CompiledModule<'a>,
     depth: usize,
     locals: Vec<Local>,
+    interrupt_offset_slots: Vec<usize>,
 }
 
 pub const MAIN_CHUNK_NAME: &str = "main";
@@ -29,6 +30,7 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
         current_chunk: MAIN_CHUNK_NAME.to_string(),
         depth: 0,
         locals: Vec::new(),
+        interrupt_offset_slots: Vec::new(),
     };
 
     let len = ast.len();
@@ -57,6 +59,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
+        TypedAstNode::Break(_, _) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::WhileLoop(_, _) => false,
         _ => true
     }
@@ -447,12 +450,28 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 let is_last_line = idx == block_len - 1;
 
                 let should_pop = should_pop_after_node(&node);
+                let is_interrupt = match &node {
+                    TypedAstNode::Break(_, _) => true,
+                    _ => false
+                };
                 compiler.visit(node)?;
 
                 // If we're in a statement and we should pop, then pop
                 // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
                 if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
                     compiler.write_opcode(Opcode::Pop, line);
+                }
+
+                // In an interrupt (ie. a break within a loop) the local-popping and jumping bytecode
+                // will already have been emitted in `visit_break`; all that needs to happen here is
+                // for the compiler to no longer care about the locals in this current scope.
+                // We also break out of the loop, since it's unnecessary to compile further than a break.
+                if is_interrupt {
+                    let num_locals_to_pop = compiler.get_num_locals_at_depth(&if_block_depth);
+                    for _ in 0..num_locals_to_pop {
+                        compiler.locals.pop();
+                    }
+                    break;
                 }
 
                 // This is documented in #35
@@ -559,10 +578,26 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             let is_last_node = idx == body_len - 1;
 
             let should_pop = should_pop_after_node(&node);
+            let is_interrupt = match &node {
+                TypedAstNode::Break(_, _) => true,
+                _ => false
+            };
             self.visit(node)?;
 
             if should_pop {
                 self.write_opcode(Opcode::Pop, line);
+            }
+
+            // In an interrupt (ie. a break) the local-popping and jumping bytecode
+            // will already have been emitted in `visit_break`; all that needs to happen here is
+            // for the compiler to no longer care about the locals in this current scope.
+            // We also break out of the loop, since it's unnecessary to compile further than a break.
+            if is_interrupt {
+                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+                for _ in 0..num_locals_to_pop {
+                    self.locals.pop(); // Remove from compiler's locals vector
+                }
+                break;
             }
 
             if is_last_node {
@@ -589,8 +624,36 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             .checked_sub(cond_jump_offset_slot_idx)
             .expect("jump offset slot should be <= end of loop body");
         *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
+
+        // Fill in any break-jump slots that have been accrued during compilation of this loop
+        let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
+        for slot_idx in interrupt_offset_slots {
+            let chunk = self.get_current_chunk();
+            let break_jump_offset = chunk.code.len()
+                .checked_sub(slot_idx)
+                .expect("break jump offset slots should be <= end of loop body");
+            *chunk.code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
+        }
         self.depth -= 1;
 
+        Ok(())
+    }
+
+    fn visit_break(&mut self, token: Token, loop_depth: usize) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        // Emit bytecode to pop locals from stack. The scope in which the break statement lives
+        // takes care of making sure the compiler's `locals` vec is in the correct state; here we
+        // just need to emit the runtime popping
+        let num_locals_to_pop = self.get_num_locals_at_depth(&loop_depth);
+        for _ in 0..num_locals_to_pop {
+            self.write_opcode(Opcode::Pop, line); // TODO: PopN
+        }
+
+        self.write_opcode(Opcode::Jump, line);
+        self.write_byte(0, line); // <- Replaced after compiling loop body (see visit_while_loop)
+        let offset_slot = self.get_current_chunk().code.len();
+        self.interrupt_offset_slots.push(offset_slot);
         Ok(())
     }
 }
@@ -1620,6 +1683,67 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("i".to_string()) }),
             ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_while_loop_with_break() {
+        let chunk = compile("\
+          while true {\n\
+            val i = 1\n\
+            break\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1, 3, 1, 1, 1],
+                code: vec![
+                    Opcode::T as u8,
+                    Opcode::JumpIfF as u8, 6,
+                    Opcode::IConst1 as u8,
+                    Opcode::Pop as u8,      // <
+                    Opcode::Jump as u8, 2,  // < These 3 instrs are generated by the break
+                    Opcode::JumpB as u8, 9,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          while true {\n\
+            val i = 1\n\
+            if i == 1 {\n\
+              val a = 2\n\
+              break\n\
+            }\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![3, 1, 5, 1, 4, 1, 1, 1, 1],
+                code: vec![
+                    Opcode::T as u8,
+                    Opcode::JumpIfF as u8, 14,
+                    Opcode::IConst1 as u8,
+                    Opcode::LLoad0 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::Eq as u8,
+                    Opcode::JumpIfF as u8, 5,
+                    Opcode::IConst2 as u8,
+                    Opcode::Pop as u8,      // <
+                    Opcode::Pop as u8,      // <
+                    Opcode::Jump as u8, 3,  // < These 4 instrs are generated by the break
+                    Opcode::Pop as u8,      // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
+                    Opcode::JumpB as u8, 17,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![],
         };
         assert_eq!(expected, chunk);
     }

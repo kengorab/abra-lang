@@ -19,6 +19,7 @@ pub trait TypedAstVisitor<V, E> {
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
             Invocation(tok, node) => self.visit_invocation(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
+            Break(tok, loop_depth) => self.visit_break(tok, loop_depth),
         }
     }
 
@@ -36,4 +37,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
     fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<V, E>;
+    fn visit_break(&mut self, token: Token, loop_depth: usize) -> Result<V, E>;
 }

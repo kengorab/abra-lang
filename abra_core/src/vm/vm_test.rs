@@ -661,4 +661,21 @@ mod tests {
         });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_while_loop_with_break() {
+        let input = "\
+          var a = 0\n\
+          while true {\n\
+            a = a + 1\n\
+            if a == 3 {\n\
+              break\n\
+            }\n\
+          }\n\
+          a\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+    }
 }

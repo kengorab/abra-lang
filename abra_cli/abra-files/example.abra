@@ -12,6 +12,9 @@ while a < 100 {
 
   println(msg)
   a = a + 1
+  if a > 20 {
+    break
+  }
 }
 
 println("Done!")
