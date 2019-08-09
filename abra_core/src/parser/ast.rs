@@ -15,6 +15,7 @@ pub enum AstNode {
     IfStatement(Token, IfNode),
     IfExpression(Token, IfNode),
     Invocation(Token, InvocationNode),
+    ForLoop(Token, ForLoopNode),
     WhileLoop(Token, WhileLoopNode),
     Break(Token)
 }
@@ -122,6 +123,14 @@ pub struct IfNode {
 pub struct InvocationNode {
     pub target: Box<AstNode>,
     pub args: Vec<(Option<Token>, AstNode)>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ForLoopNode {
+    pub iteratee: Token,
+    pub index_ident: Option<Token>,
+    pub iterator: Box<AstNode>,
+    pub body: Vec<AstNode>
 }
 
 #[derive(Debug, PartialEq)]

@@ -20,6 +20,8 @@ pub enum Keyword {
     Else,
     While,
     Break,
+    For,
+    In,
 }
 
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
@@ -37,6 +39,8 @@ pub enum Token {
     #[strum(to_string = "else", serialize = "Else")] Else(Position),
     #[strum(to_string = "while", serialize = "While")] While(Position),
     #[strum(to_string = "break", serialize = "Break")] Break(Position),
+    #[strum(to_string = "for", serialize = "For")] For(Position),
+    #[strum(to_string = "in", serialize = "In")] In(Position),
 
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
 
@@ -108,7 +112,9 @@ impl Token {
             Token::Colon(pos) |
             Token::Comma(pos) |
             Token::Question(pos) |
-            Token::Break(pos) => pos
+            Token::Break(pos) |
+            Token::For(pos) |
+            Token::In(pos) => pos
         };
         pos.clone()
     }
