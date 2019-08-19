@@ -3,7 +3,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -715,8 +715,39 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         Ok(TypedAstNode::Invocation(token, node))
     }
 
-    fn visit_for_loop(&mut self, _token: Token, _node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+    fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
+        let ForLoopNode { iteratee, index_ident, iterator, body } = node;
+        let iterator = self.visit(*iterator)?;
+        let iteratee_type = match iterator.get_type() {
+            Type::Array(inner) => {
+                inner
+            }
+            actual @ _ => {
+                return Err(TypecheckerError::Mismatch {
+                    token: iterator.get_token().clone(),
+                    expected: Type::Array(Box::new(Type::Any)),
+                    actual,
+                });
+            }
+        };
+        let iterator = Box::new(iterator);
+
+        let mut scope = Scope::new(ScopeKind::Loop);
+        let iteratee_name = Token::get_ident_name(&iteratee).clone();
+        scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), *iteratee_type, false));
+        if let Some(ident) = &index_ident {
+            let ident_name = Token::get_ident_name(&ident).clone();
+            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), Type::Int, false));
+        }
+        self.scopes.push(scope);
+
+        let body: Result<Vec<_>, _> = body.into_iter()
+            .map(|node| self.visit(node))
+            .collect();
+        let body = body?;
+        self.scopes.pop();
+
+        Ok(TypedAstNode::ForLoop(token, TypedForLoopNode { iteratee, index_ident, iterator, body }))
     }
 
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -2248,7 +2279,7 @@ mod tests {
                 body: vec![
                     TypedAstNode::Break(
                         Token::Break(Position::new(1, 14)),
-                        1
+                        1,
                     )
                 ],
             },
@@ -2307,6 +2338,99 @@ mod tests {
     fn typecheck_break_statement_error() {
         let error = typecheck("if true { break }").unwrap_err();
         let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 11)));
+        assert_eq!(expected, error)
+    }
+
+    #[test]
+    fn typecheck_for_loop() -> TestResult {
+        let ast = typecheck("val arr = [1, 2, 3]\nfor a in arr {\na + 1 }")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                iteratee: ident_token!((2, 5), "a"),
+                index_ident: None,
+                iterator: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 10), "arr"),
+                    TypedIdentifierNode {
+                        is_mutable: false,
+                        scope_depth: 0,
+                        typ: Type::Array(Box::new(Type::Int)),
+                    },
+                )),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(TypedAstNode::Identifier(
+                                ident_token!((3, 1), "a"),
+                                TypedIdentifierNode {
+                                    is_mutable: false,
+                                    scope_depth: 1,
+                                    typ: Type::Int,
+                                },
+                            )),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((3, 5), 1)),
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[1]);
+
+        let ast = typecheck("val arr = [1, 2, 3]\nfor a, i in arr {\na + i }")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                iteratee: ident_token!((2, 5), "a"),
+                index_ident: Some(ident_token!((2, 8), "i")),
+                iterator: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 13), "arr"),
+                    TypedIdentifierNode {
+                        is_mutable: false,
+                        scope_depth: 0,
+                        typ: Type::Array(Box::new(Type::Int)),
+                    },
+                )),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(TypedAstNode::Identifier(
+                                ident_token!((3, 1), "a"),
+                                TypedIdentifierNode {
+                                    is_mutable: false,
+                                    scope_depth: 1,
+                                    typ: Type::Int,
+                                },
+                            )),
+                            op: BinaryOp::Add,
+                            right: Box::new(TypedAstNode::Identifier(
+                                ident_token!((3, 5), "i"),
+                                TypedIdentifierNode {
+                                    is_mutable: false,
+                                    scope_depth: 1,
+                                    typ: Type::Int,
+                                },
+                            )),
+                        },
+                    )
+                ],
+            },
+        );
+        Ok(assert_eq!(expected, ast[1]))
+    }
+
+    #[test]
+    fn typecheck_for_loop_error() {
+        let error = typecheck("for a in 123 { a }").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(1, 10), 123),
+            expected: Type::Array(Box::new(Type::Any)),
+            actual: Type::Int,
+        };
         assert_eq!(expected, error)
     }
 }

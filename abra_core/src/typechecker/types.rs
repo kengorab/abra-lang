@@ -132,5 +132,8 @@ mod test {
     fn is_equivalent_to_any() {
         assert_eq!(false, Type::Any.is_equivalent_to(&Type::Bool));
         assert_eq!(true, Type::Bool.is_equivalent_to(&Type::Any));
+
+        assert_eq!(true, Type::Array(Box::new(Type::Int)).is_equivalent_to(&Type::Array(Box::new(Type::Any))));
+        assert_eq!(true, Type::Array(Box::new(Type::Array(Box::new(Type::Int)))).is_equivalent_to(&Type::Array(Box::new(Type::Any))));
     }
 }

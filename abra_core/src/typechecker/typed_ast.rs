@@ -17,6 +17,7 @@ pub enum TypedAstNode {
     IfStatement(Token, TypedIfNode),
     IfExpression(Token, TypedIfNode),
     Invocation(Token, TypedInvocationNode),
+    ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token, /* loop_depth: */ usize),
 }
@@ -37,6 +38,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(token, _) => token,
             TypedAstNode::IfExpression(token, _) => token,
             TypedAstNode::Invocation(token, _) => token,
+            TypedAstNode::ForLoop(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
             TypedAstNode::Break(token, _) => token,
         }
@@ -57,7 +59,8 @@ impl TypedAstNode {
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
-            TypedAstNode::Break(_, _) => Type::Unit,
+            TypedAstNode::Break(_, _) |
+            TypedAstNode::ForLoop(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
@@ -164,3 +167,12 @@ pub struct TypedWhileLoopNode {
     pub condition: Box<TypedAstNode>,
     pub body: Vec<TypedAstNode>,
 }
+
+#[derive(Debug, PartialEq)]
+pub struct TypedForLoopNode {
+    pub iteratee: Token,
+    pub index_ident: Option<Token>,
+    pub iterator: Box<TypedAstNode>,
+    pub body: Vec<TypedAstNode>,
+}
+

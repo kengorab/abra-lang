@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -557,6 +557,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(num_args as u8, line);
         Ok(())
+    }
+
+    fn visit_for_loop(&mut self, _token: Token, _node: TypedForLoopNode) -> Result<(), ()> {
+        unimplemented!()
     }
 
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<(), ()> {
