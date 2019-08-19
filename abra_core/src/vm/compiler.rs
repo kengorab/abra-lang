@@ -417,6 +417,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             IndexingMode::Index(idx) => {
                 self.visit(*idx)?;
                 self.write_opcode(Opcode::ArrLoad, line);
+                self.write_opcode(Opcode::OptMk, line);
             }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
@@ -630,6 +631,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
 
         // Fill in any break-jump slots that have been accrued during compilation of this loop
+        // Note: for nested loops, break-jumps will break out of inner loop only
         let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
         for slot_idx in interrupt_offset_slots {
             let chunk = self.get_current_chunk();
@@ -984,13 +986,14 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![11, 1],
+                lines: vec![12, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
                     Opcode::Constant as u8, 1,
                     Opcode::ArrMk as u8, 2,
                     Opcode::IConst2 as u8,
                     Opcode::ArrLoad as u8,
+                    Opcode::OptMk as u8,
                     Opcode::Constant as u8, 2,
                     Opcode::Coalesce as u8,
                     Opcode::Return as u8
@@ -1282,7 +1285,7 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![12, 1],
+                lines: vec![13, 1],
                 code: vec![
                     Opcode::IConst1 as u8,
                     Opcode::IConst2 as u8,
@@ -1294,6 +1297,7 @@ mod tests {
                     Opcode::IConst1 as u8,
                     Opcode::IAdd as u8,
                     Opcode::ArrLoad as u8,
+                    Opcode::OptMk as u8,
                     Opcode::Return as u8
                 ],
             }),
