@@ -1,6 +1,10 @@
+/*
+  Outer loop
+*/
 for a1, i1 in range(0, 5) {
   println("a1: " + a1 + " i1: " + i1)
 
+  // Inner loop
   for a2, i2 in range(0, 5) {
     println("a2: " + a2 + " i2: " + i2)
   }
