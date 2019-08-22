@@ -732,6 +732,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         };
         let iterator = Box::new(iterator);
 
+        self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where intrinsic variables $idx and $iter will be stored
         let mut scope = Scope::new(ScopeKind::Loop);
         let iteratee_name = Token::get_ident_name(&iteratee).clone();
         scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), *iteratee_type, false));
@@ -746,6 +747,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             .collect();
         let body = body?;
         self.scopes.pop();
+        self.scopes.pop(); // Pop loop intrinsic-variables outer block
 
         Ok(TypedAstNode::ForLoop(token, TypedForLoopNode { iteratee, index_ident, iterator, body }))
     }
@@ -2366,7 +2368,7 @@ mod tests {
                                 ident_token!((3, 1), "a"),
                                 TypedIdentifierNode {
                                     is_mutable: false,
-                                    scope_depth: 1,
+                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
                                     typ: Type::Int,
                                 },
                             )),
@@ -2402,7 +2404,7 @@ mod tests {
                                 ident_token!((3, 1), "a"),
                                 TypedIdentifierNode {
                                     is_mutable: false,
-                                    scope_depth: 1,
+                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
                                     typ: Type::Int,
                                 },
                             )),
@@ -2411,7 +2413,7 @@ mod tests {
                                 ident_token!((3, 5), "i"),
                                 TypedIdentifierNode {
                                     is_mutable: false,
-                                    scope_depth: 1,
+                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
                                     typ: Type::Int,
                                 },
                             )),
