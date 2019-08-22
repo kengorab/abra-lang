@@ -1,9 +1,10 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
+
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryOp, BinaryOp, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, TypeIdentifier, IndexingMode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode};
-use crate::parser::precedence::Precedence;
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
 use crate::parser::parse_error::ParseError;
+use crate::parser::precedence::Precedence;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut parser = Parser::new(tokens);
@@ -177,6 +178,7 @@ impl Parser {
             Token::Var(_) => self.parse_binding_decl(),
             Token::If(_) => self.parse_if_statement(),
             Token::While(_) => self.parse_while_statement(),
+            Token::For(_) => self.parse_for_statement(),
             Token::Break(_) => self.parse_break_statement(),
             _ => self.parse_expr(),
         }
@@ -325,6 +327,36 @@ impl Parser {
             }
             _ => Ok(vec![self.parse_expr()?])
         }
+    }
+
+    fn parse_for_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+
+        let iteratee = self.expect_next().and_then(|tok| {
+            match tok {
+                Token::Ident(_, _) => Ok(tok),
+                _ => Err(ParseError::ExpectedToken(TokenType::Ident, tok))
+            }
+        })?;
+
+        let index_ident = if let Some(Token::Comma(_)) = self.peek() {
+            self.expect_next()?; // Consume ','
+            let index_ident = self.expect_next().and_then(|tok| {
+                match tok {
+                    Token::Ident(_, _) => Ok(tok),
+                    _ => Err(ParseError::ExpectedToken(TokenType::Ident, tok))
+                }
+            })?;
+            Some(index_ident)
+        } else {
+            None
+        };
+
+        self.expect_next_token(TokenType::In)?;
+        let iterator = Box::new(self.parse_expr()?);
+        let body = self.parse_expr_or_block()?;
+
+        Ok(AstNode::ForLoop(token, ForLoopNode { iteratee, index_ident, iterator, body }))
     }
 
     fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -605,10 +637,11 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::lexer::tokens::{Token, Position};
-    use crate::parser::ast::AstNode::*;
     use crate::lexer::lexer::tokenize;
+    use crate::lexer::tokens::{Position, Token};
+    use crate::parser::ast::AstNode::*;
+
+    use super::*;
 
     type TestResult = Result<(), ParseError>;
 
@@ -2041,10 +2074,10 @@ mod tests {
                             left: Box::new(int_literal!((1, 12), 1)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((1, 16), 1)),
-                        }
+                        },
                     )
-                ]
-            }
+                ],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -2055,8 +2088,8 @@ mod tests {
                 condition: Box::new(bool_literal!((1, 7), true)),
                 body: vec![
                     AstNode::Break(Token::Break(Position::new(1, 14)))
-                ]
-            }
+                ],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -2070,8 +2103,8 @@ mod tests {
                         BinaryNode {
                             left: Box::new(AstNode::Identifier(ident_token!((1, 7), "a"))),
                             op: BinaryOp::Lt,
-                            right: Box::new(int_literal!((1, 11), 3))
-                        }
+                            right: Box::new(int_literal!((1, 11), 3)),
+                        },
                     )
                 ),
                 body: vec![
@@ -2081,8 +2114,8 @@ mod tests {
                             is_mutable: false,
                             type_ann: None,
                             ident: ident_token!((2, 5), "a"),
-                            expr: Some(Box::new(int_literal!((2, 9), 1)))
-                        }
+                            expr: Some(Box::new(int_literal!((2, 9), 1))),
+                        },
                     ),
                     AstNode::Binary(
                         Token::Plus(Position::new(3, 3)),
@@ -2090,11 +2123,75 @@ mod tests {
                             left: Box::new(AstNode::Identifier(ident_token!((3, 1), "a"))),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
-                        }
+                        },
                     )
-                ]
-            }
+                ],
+            },
         );
         Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_for_loop() -> TestResult {
+        let ast = parse("for a in [0, 1] { a }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                iteratee: ident_token!((1, 5), "a"),
+                index_ident: None,
+                iterator: Box::new(AstNode::Array(
+                    Token::LBrack(Position::new(1, 10)),
+                    ArrayNode {
+                        items: vec![
+                            Box::new(int_literal!((1, 11), 0)),
+                            Box::new(int_literal!((1, 14), 1))
+                        ]
+                    },
+                )),
+                body: vec![identifier!((1, 19), "a")],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("for a, i in [0, 1] { a }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                iteratee: ident_token!((1, 5), "a"),
+                index_ident: Some(ident_token!((1, 8), "i")),
+                iterator: Box::new(AstNode::Array(
+                    Token::LBrack(Position::new(1, 13)),
+                    ArrayNode {
+                        items: vec![
+                            Box::new(int_literal!((1, 14), 0)),
+                            Box::new(int_literal!((1, 17), 1))
+                        ]
+                    },
+                )),
+                body: vec![identifier!((1, 22), "a")],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_for_loop_error() {
+        let error = parse("for 123 in [0, 1] { a }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 5), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("for a [0, 1] { a }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::In, Token::LBrack(Position::new(1, 7)));
+        assert_eq!(expected, error);
+
+        let error = parse("for a in { a }").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::LBrace(Position::new(1, 10)));
+        assert_eq!(expected, error);
+
+        let error = parse("for a, in [0, 1] { a }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::In(Position::new(1, 8)));
+        assert_eq!(expected, error);
     }
 }

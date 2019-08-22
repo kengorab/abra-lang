@@ -1,20 +1,7 @@
-var a = 1
-while a < 100 {
-  val msg = if a % 15 == 0 {
-    "Fizzbuzz"
-  } else if a % 5 == 0 {
-    "Buzz"
-  } else if a % 3 == 0 {
-    "Fizz"
-  } else {
-    "" + a
-  }
+for a1, i1 in range(0, 5) {
+  println("a1: " + a1 + " i1: " + i1)
 
-  println(msg)
-  a = a + 1
-  if a > 20 {
-    break
+  for a2, i2 in range(0, 5) {
+    println("a2: " + a2 + " i2: " + i2)
   }
 }
-
-println("Done!")

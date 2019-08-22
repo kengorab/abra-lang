@@ -1,12 +1,11 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
+use crate::vm::vm::VMContext;
 use std::collections::HashMap;
 use std::slice::Iter;
-use crate::vm::vm::VMContext;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return Value::Nil.
-//#[derive(PartialEq, Eq, Hash)]
 type NativeAbraFn = fn(VMContext, Vec<Value>) -> Value;
 
 #[derive(PartialEq, Eq, Hash)]
@@ -50,6 +49,13 @@ fn native_fns() -> Vec<NativeFn> {
         native_fn: range,
     });
 
+    native_fns.push(NativeFn {
+        name: "arrayLen".to_string(),
+        args: vec![Type::Array(Box::new(Type::Any))],
+        return_type: Type::Int,
+        native_fn: arr_len,
+    });
+
     native_fns
 }
 
@@ -84,6 +90,16 @@ fn range(_ctx: VMContext, args: Vec<Value>) -> Value {
     }
 
     Value::Obj(Obj::ArrayObj { value: values })
+}
+
+// TODO: Replace this with a method invocation when Array::length is a thing
+fn arr_len(_ctx: VMContext, args: Vec<Value>) -> Value {
+    let val = if let Some(Value::Obj(Obj::ArrayObj { value })) = args.first() {
+        value.len()
+    } else {
+        panic!("arr_len requires an Array as first argument")
+    };
+    Value::Int(val as i64)
 }
 
 #[cfg(test)]

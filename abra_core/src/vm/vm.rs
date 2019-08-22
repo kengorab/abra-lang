@@ -324,6 +324,13 @@ impl<'a> VM<'a> {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
+                Opcode::OptMk => {
+                    let value = match self.pop_expect()? {
+                        Value::Nil => None,
+                        v @ _ => Some(Box::new(v))
+                    };
+                    self.push(Value::Obj(Obj::OptionObj { value }))
+                }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;
                     let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
@@ -339,27 +346,19 @@ impl<'a> VM<'a> {
                             let len = value.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
-                            let value = match (*value).chars().nth(idx as usize) {
-                                Some(ch) => Some(
-                                    Box::new(
-                                        Value::Obj(Obj::StringObj {
-                                            value: Box::new(ch.to_string())
-                                        })
-                                    )
-                                ),
-                                None => None
-                            };
-                            Value::Obj(Obj::OptionObj { value })
+                            match (*value).chars().nth(idx as usize) {
+                                Some(ch) => Value::Obj(Obj::StringObj { value: Box::new(ch.to_string()) }),
+                                None => Value::Nil
+                            }
                         }
                         Value::Obj(Obj::ArrayObj { value }) => {
                             let len = value.len() as i64;
-                            let value = if idx < -len || idx >= len {
-                                None
+                            if idx < -len || idx >= len {
+                                Value::Nil//None
                             } else {
                                 let idx = if idx < 0 { idx + len } else { idx };
-                                Some(value[idx as usize].clone())
-                            };
-                            Value::Obj(Obj::OptionObj { value })
+                                *value[idx as usize].clone()
+                            }
                         }
                         _ => unreachable!()
                     };

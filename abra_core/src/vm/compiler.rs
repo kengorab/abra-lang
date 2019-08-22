@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -60,6 +60,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::FunctionDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
         TypedAstNode::Break(_, _) | // This is here for completeness; the return type for this node should never matter
+        TypedAstNode::ForLoop(_, _) |
         TypedAstNode::WhileLoop(_, _) => false,
         _ => true
     }
@@ -88,6 +89,13 @@ impl<'a> Compiler<'a> {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
         const_idx
+    }
+
+    fn write_invoke(&mut self, fn_name: String, num_args: usize, line: usize) {
+        let fn_name = Value::Obj(Obj::StringObj { value: Box::new(fn_name.to_owned()) });
+        self.write_constant(fn_name, line);
+        self.write_opcode(Opcode::Invoke, line);
+        self.write_byte(num_args as u8, line);
     }
 
     fn write_int_constant(&mut self, number: u32, line: usize) {
@@ -154,13 +162,90 @@ impl<'a> Compiler<'a> {
     }
 
     fn get_binding_index(&self, ident: &String) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        for idx in 0..self.locals.len() {
+        for idx in (0..self.locals.len()).rev() {
             let Local(local_name, _) = self.locals.get(idx).unwrap();
             if local_name == ident {
                 return (idx, false);
             }
         }
         return (0, true);
+    }
+
+    // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
+    // not part of the TypedAstVisitor trait.
+    fn visit_loop_body(
+        &mut self,
+        body: Vec<TypedAstNode>,
+        cond_slot_idx: usize, // The slot representing the start of the loop conditional
+        cond_jump_offset_slot_idx: usize, // The slot representing the end of the loop
+    ) -> Result<usize, ()> {
+        let body_depth = self.depth;
+        let body_len = body.len();
+        let mut last_line = 0;
+        for (idx, node) in (0..body_len).zip(body.into_iter()) {
+            let line = node.get_token().get_position().line;
+            last_line = line;
+            let is_last_node = idx == body_len - 1;
+
+            let should_pop = should_pop_after_node(&node);
+            let is_interrupt = match &node {
+                TypedAstNode::Break(_, _) => true,
+                _ => false
+            };
+            self.visit(node)?;
+
+            if should_pop {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
+            // In an interrupt (ie. a break) the local-popping and jumping bytecode
+            // will already have been emitted in `visit_break`; all that needs to happen here is
+            // for the compiler to no longer care about the locals in this current scope.
+            // We also break out of the loop, since it's unnecessary to compile further than a break.
+            if is_interrupt {
+                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+                for _ in 0..num_locals_to_pop {
+                    self.locals.pop(); // Remove from compiler's locals vector
+                }
+                break;
+            }
+
+            if is_last_node {
+                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+
+                for _ in 0..num_locals_to_pop {
+                    self.locals.pop(); // Remove from compiler's locals vector
+                    self.write_opcode(Opcode::Pop, line); // TODO: PopN
+                }
+            }
+        }
+
+        // Calculate the number of bytes needed to jump back in order to evaluate the cond again
+        let offset_to_cond = self.get_current_chunk().code.len()
+            .checked_sub(cond_slot_idx)
+            .expect("conditional offset slot should be <= end of loop body");
+        let offset_to_cond = offset_to_cond + 2; // Account for JumpB <imm>
+        self.write_opcode(Opcode::JumpB, last_line);
+        self.write_byte(offset_to_cond as u8, last_line);
+
+        // Calculate the number of bytes needed to initially skip over body, if cond was false
+        let chunk = self.get_current_chunk();
+        let body_len_bytes = chunk.code.len()
+            .checked_sub(cond_jump_offset_slot_idx)
+            .expect("jump offset slot should be <= end of loop body");
+        *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
+
+        // Fill in any break-jump slots that have been accrued during compilation of this loop
+        // Note: for nested loops, break-jumps will break out of inner loop only
+        let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
+        for slot_idx in interrupt_offset_slots {
+            let chunk = self.get_current_chunk();
+            let break_jump_offset = chunk.code.len()
+                .checked_sub(slot_idx)
+                .expect("break jump offset slots should be <= end of loop body");
+            *chunk.code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
+        }
+        Ok(last_line)
     }
 }
 
@@ -417,6 +502,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             IndexingMode::Index(idx) => {
                 self.visit(*idx)?;
                 self.write_opcode(Opcode::ArrLoad, line);
+                self.write_opcode(Opcode::OptMk, line);
             }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
@@ -442,7 +528,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         #[inline]
         fn compile_block(compiler: &mut Compiler, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
             compiler.depth += 1;
-            let if_block_depth = compiler.depth; // TODO: Decrement depth after if block ends
+            let if_block_depth = compiler.depth;
 
             let block_len = block.len();
             for (idx, node) in (0..block_len).zip(block.into_iter()) {
@@ -552,10 +638,68 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             TypedAstNode::Identifier(ref token, _) => Token::get_ident_name(token),
             _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes
         };
-        let value = Value::Obj(Obj::StringObj { value: Box::new(name.to_owned()) });
-        self.write_constant(value, line);
-        self.write_opcode(Opcode::Invoke, line);
-        self.write_byte(num_args as u8, line);
+        self.write_invoke(name.to_owned(), num_args, line);
+        Ok(())
+    }
+
+    fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let TypedForLoopNode { iteratee, index_ident, iterator, body } = node;
+
+        // Push intrinsic variables $idx and $iter
+        self.depth += 1; // Create wrapper scope to hold invisible variables
+        self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
+        self.locals.push(Local("$idx".to_string(), self.depth));
+        self.visit(*iterator)?; // Local 1 is the iterator
+        self.locals.push(Local("$iter".to_string(), self.depth));
+
+        #[inline]
+        fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
+            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            compiler.write_load_local_instr(slot, line);
+        }
+
+        #[inline]
+        fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
+            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            compiler.write_store_local_instr(slot, line);
+        }
+
+        // Essentially: if $idx >= arrayLen($iter) { break }
+        let cond_slot_idx = self.get_current_chunk().code.len();
+        load_intrinsic(self, "$idx", line);
+        load_intrinsic(self, "$iter", line);
+        self.write_invoke("arrayLen".to_string(), 1, line);
+        self.write_opcode(Opcode::LT, line);
+        self.write_opcode(Opcode::JumpIfF, line);
+        self.write_byte(0, line); // <- Replaced after compiling loop body
+        let cond_jump_offset_slot_idx = self.get_current_chunk().code.len();
+
+        // Insert iteratee (bound to $iter[$idx]) and index bindings (if indexer expected) into loop scope
+        self.depth += 1;
+        load_intrinsic(self, "$iter", line);
+        load_intrinsic(self, "$idx", line);
+        self.write_opcode(Opcode::ArrLoad, line);
+        self.locals.push(Local(Token::get_ident_name(&iteratee).clone(), self.depth));
+        if let Some(ident) = index_ident {
+            let (slot, _) = self.get_binding_index(&"$idx".to_string());
+            self.write_load_local_instr(slot, line); // Load $idx
+            self.locals.push(Local(Token::get_ident_name(&ident).clone(), self.depth));
+        }
+        load_intrinsic(self, "$idx", line);
+        self.write_opcode(Opcode::IConst1, line);
+        self.write_opcode(Opcode::IAdd, line);
+        store_intrinsic(self, "$idx", line);
+
+        let last_line = self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
+
+        self.depth -= 1;
+        self.write_opcode(Opcode::Pop, last_line); // Pop $iter
+        self.locals.pop(); // Remove $iter from compiler's locals vector
+        self.write_opcode(Opcode::Pop, last_line); // Pop $idx
+        self.locals.pop(); // Remove $idx from compiler's locals vector
+        self.depth -= 1;
         Ok(())
     }
 
@@ -571,69 +715,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let cond_jump_offset_slot_idx = self.get_current_chunk().code.len();
 
         self.depth += 1;
-        let body_depth = self.depth;
-        let body_len = body.len();
-        for (idx, node) in (0..body_len).zip(body.into_iter()) {
-            let line = node.get_token().get_position().line;
-            let is_last_node = idx == body_len - 1;
-
-            let should_pop = should_pop_after_node(&node);
-            let is_interrupt = match &node {
-                TypedAstNode::Break(_, _) => true,
-                _ => false
-            };
-            self.visit(node)?;
-
-            if should_pop {
-                self.write_opcode(Opcode::Pop, line);
-            }
-
-            // In an interrupt (ie. a break) the local-popping and jumping bytecode
-            // will already have been emitted in `visit_break`; all that needs to happen here is
-            // for the compiler to no longer care about the locals in this current scope.
-            // We also break out of the loop, since it's unnecessary to compile further than a break.
-            if is_interrupt {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
-                for _ in 0..num_locals_to_pop {
-                    self.locals.pop(); // Remove from compiler's locals vector
-                }
-                break;
-            }
-
-            if is_last_node {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
-
-                for _ in 0..num_locals_to_pop {
-                    self.locals.pop(); // Remove from compiler's locals vector
-                    self.write_opcode(Opcode::Pop, line); // TODO: PopN
-                }
-            }
-        }
-
-        // Calculate the number of bytes needed to jump back in order to evaluate the cond again
-        let offset_to_cond = self.get_current_chunk().code.len()
-            .checked_sub(cond_slot_idx)
-            .expect("conditional offset slot should be <= end of loop body");
-        let offset_to_cond = offset_to_cond + 2; // Account for JumpB <imm>
-        self.write_opcode(Opcode::JumpB, line);
-        self.write_byte(offset_to_cond as u8, line);
-
-        // Calculate the number of bytes needed to initially skip over body, if cond was false
-        let chunk = self.get_current_chunk();
-        let body_len_bytes = chunk.code.len()
-            .checked_sub(cond_jump_offset_slot_idx)
-            .expect("jump offset slot should be <= end of loop body");
-        *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
-
-        // Fill in any break-jump slots that have been accrued during compilation of this loop
-        let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
-        for slot_idx in interrupt_offset_slots {
-            let chunk = self.get_current_chunk();
-            let break_jump_offset = chunk.code.len()
-                .checked_sub(slot_idx)
-                .expect("break jump offset slots should be <= end of loop body");
-            *chunk.code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
-        }
+        self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
         self.depth -= 1;
 
         Ok(())
@@ -980,13 +1062,14 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![11, 1],
+                lines: vec![12, 1],
                 code: vec![
                     Opcode::Constant as u8, 0,
                     Opcode::Constant as u8, 1,
                     Opcode::ArrMk as u8, 2,
                     Opcode::IConst2 as u8,
                     Opcode::ArrLoad as u8,
+                    Opcode::OptMk as u8,
                     Opcode::Constant as u8, 2,
                     Opcode::Coalesce as u8,
                     Opcode::Return as u8
@@ -1278,7 +1361,7 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![12, 1],
+                lines: vec![13, 1],
                 code: vec![
                     Opcode::IConst1 as u8,
                     Opcode::IConst2 as u8,
@@ -1290,6 +1373,7 @@ mod tests {
                     Opcode::IConst1 as u8,
                     Opcode::IAdd as u8,
                     Opcode::ArrLoad as u8,
+                    Opcode::OptMk as u8,
                     Opcode::Return as u8
                 ],
             }),
@@ -1613,7 +1697,7 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![4, 7, 12, 1, 1, 1],
+                lines: vec![4, 7, 15],
                 code: vec![
                     Opcode::IConst0 as u8,
                     Opcode::Constant as u8, 0,
@@ -1655,7 +1739,7 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![4, 7, 5, 9, 1, 1, 1],
+                lines: vec![4, 7, 5, 11, 1],
                 code: vec![
                     Opcode::IConst0 as u8,
                     Opcode::Constant as u8, 0,
@@ -1698,14 +1782,14 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![3, 1, 3, 1, 1, 1],
+                lines: vec![3, 1, 5, 1],
                 code: vec![
                     Opcode::T as u8,
                     Opcode::JumpIfF as u8, 6,
                     Opcode::IConst1 as u8,
                     Opcode::Pop as u8,      // <
                     Opcode::Jump as u8, 2,  // < These 3 instrs are generated by the break
-                    Opcode::JumpB as u8, 9,
+                    Opcode::JumpB as u8, 9, // These 2 get falsely attributed to the break, because of #32
                     Opcode::Return as u8
                 ],
             }),
@@ -1744,6 +1828,85 @@ mod tests {
                 ],
             }),
             constants: vec![],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_for_loop() {
+        let chunk = compile("\
+          val msg = \"Row: \"\n\
+          val arr = [1, 2]\n\
+          for a in arr {\n\
+            println(msg + a)\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 7, 20, 16],
+                code: vec![
+                    // val msg = "Row: "
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+
+                    // val arr = [1, 2]
+                    Opcode::IConst1 as u8,
+                    Opcode::IConst2 as u8,
+                    Opcode::ArrMk as u8, 2,
+                    Opcode::Constant as u8, 2,
+                    Opcode::GStore as u8,
+
+                    // val $idx = 0
+                    // val $iter = arr
+                    // if $idx < arrayLen($iter) {
+                    Opcode::IConst0 as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::GLoad as u8,
+                    Opcode::LLoad0 as u8,
+                    Opcode::LLoad1 as u8,
+                    Opcode::Constant as u8, 3,
+                    Opcode::Invoke as u8, 1,
+                    Opcode::LT as u8,
+                    Opcode::JumpIfF as u8, 20,
+
+                    // a = $iter[$idx]
+                    Opcode::LLoad1 as u8,
+                    Opcode::LLoad0 as u8,
+                    Opcode::ArrLoad as u8,
+
+                    // $idx += 1
+                    Opcode::LLoad0 as u8,
+                    Opcode::IConst1 as u8,
+                    Opcode::IAdd as u8,
+                    Opcode::LStore0 as u8,
+
+                    // println(msg + a)
+                    // <recur>
+                    Opcode::Constant as u8, 1,
+                    Opcode::GLoad as u8,
+                    Opcode::LLoad2 as u8,
+                    Opcode::StrConcat as u8,
+                    Opcode::Constant as u8, 4,
+                    Opcode::Invoke as u8, 1,
+                    Opcode::Pop as u8,
+                    Opcode::Pop as u8,
+                    Opcode::JumpB as u8, 29,
+
+                    // Cleanup/end
+                    Opcode::Pop as u8,
+                    Opcode::Pop as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("Row: ".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("msg".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("arr".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
+            ],
         };
         assert_eq!(expected, chunk);
     }
