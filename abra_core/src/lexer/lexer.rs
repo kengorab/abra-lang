@@ -196,7 +196,36 @@ impl<'a> Lexer<'a> {
             '+' => Ok(Some(Token::Plus(pos))),
             '-' => Ok(Some(Token::Minus(pos))),
             '*' => Ok(Some(Token::Star(pos))),
-            '/' => Ok(Some(Token::Slash(pos))),
+            '/' => {
+                if let Some('/') = self.peek() {
+                    self.expect_next()?; // Consume '/' token
+                    while let Some(ch) = self.peek() {
+                        if ch == &'\n' {
+                            break; // The \n will get picked up later on, to increment the line
+                        }
+                        self.expect_next()?; // Consume next token
+                    }
+                    self.next_token()
+                } else if let Some('*') = self.peek() {
+                    self.expect_next()?; // Consume '*' token
+                    while let Some(ch) = self.peek() {
+                        if ch == &'*' {
+                            self.expect_next()?; // Consume '*' token
+                            if let Some('/') = self.peek() {
+                                self.expect_next()?; // Consume '/' token
+                                break;
+                            }
+                        } else if ch.is_whitespace() {
+                            self.skip_whitespace(); // Use skip_whitespace to ensure newlines get counted
+                        } else {
+                            self.expect_next()?; // Consume next token
+                        }
+                    }
+                    self.next_token()
+                } else {
+                    Ok(Some(Token::Slash(pos)))
+                }
+            }
             '%' => Ok(Some(Token::Percent(pos))),
             '&' => {
                 let ch = self.expect_next()?;
@@ -449,6 +478,28 @@ mod tests {
             Token::Ident(Position::new(1, 1), "abc".to_string()),
             Token::Ident(Position::new(1, 5), "abc1".to_string()),
             Token::Ident(Position::new(1, 10), "abC_2".to_string()),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_single_line_comment() {
+        let input = "123\n// this should disappear\n456";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 123),
+            Token::Int(Position::new(3, 1), 456),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_line_comment() {
+        let input = "123\n/* this\nshould\n* disappear\n*/ 456";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 123),
+            Token::Int(Position::new(5, 4), 456),
         ];
         assert_eq!(expected, tokens);
     }
