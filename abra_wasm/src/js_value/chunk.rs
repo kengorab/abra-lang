@@ -17,7 +17,7 @@ impl<'a> Serialize for JsChunk<'a> {
         let mut bytecode = Vec::<(String, Option<u8>)>::new();
         let mut code = code.iter();
         while let Some(byte) = code.next() {
-            let op = Opcode::from(*byte);
+            let op = Opcode::from(byte);
             let imm = if op.expects_imm() {
                 code.next().map(|b| b.clone())
             } else { None };

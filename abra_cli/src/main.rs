@@ -1,5 +1,5 @@
 use std::env;
-use abra_core::{compile_and_run, Error};
+use abra_core::{compile_and_run, Error, compile_and_disassemble};
 use abra_core::common::display_error::DisplayError;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::VMContext;
@@ -29,6 +29,15 @@ fn main() {
                         }
                         _ => println!()
                     }
+//                    match compile_and_disassemble(contents.clone()) {
+//                        Ok(output) => println!("{}", output),
+//                        Err(error) => match error {
+//                            Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
+//                            Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
+//                            Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
+//                            Error::InterpretError(e) => eprintln!("{:?}", e),
+//                        }
+//                    }
                 }
                 Err(err) => {
                     eprintln!("Could not read file {}: {}", file_name, err);

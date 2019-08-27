@@ -1,0 +1,44 @@
+chunk_runLoop:
+  IConst0
+  IConst0
+  Constant 2  ; 5
+  Constant 3  ; "range"
+  Invoke 2
+label_1
+  LLoad0
+  LLoad1
+  Constant 4  ; "arrayLen"
+  Invoke 1
+  LT
+  JumpIfF 20  ; label_0
+  LLoad1
+  LLoad0
+  ArrLoad
+  LLoad0
+  LLoad0
+  IConst1
+  IAdd
+  LStore0
+  Constant 5  ; "Outer "
+  LLoad2
+  StrConcat
+  Constant 6  ; "println"
+  Invoke 1
+  Pop
+  Pop
+  JumpB 29  ; label_1
+label_0
+  Pop
+  Pop
+  Constant 7  ; "Done"
+  Constant 6  ; "println"
+  Invoke 1
+  Return
+
+chunk_main:
+  Constant 0  ; <func runLoop>
+  Constant 1  ; "runLoop"
+  GStore
+  Constant 1  ; "runLoop"
+  Invoke 0
+  Return

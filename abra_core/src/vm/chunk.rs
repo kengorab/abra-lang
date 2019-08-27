@@ -44,8 +44,9 @@ impl Debug for Chunk {
         loop {
             match bytecode.next() {
                 Some(&byte) => {
-                    write!(f, "{:?}", Opcode::from(byte))?;
-                    if Opcode::from(byte).expects_imm() {
+                    let opcode = Opcode::from(&byte);
+                    write!(f, "{:?}", opcode)?;
+                    if opcode.expects_imm() {
                         match bytecode.next() {
                             None => panic!("Byte expected after opcode"),
                             Some(&byte) => write!(f, ", {:?}", byte)?

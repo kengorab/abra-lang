@@ -54,7 +54,8 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
 }
 
 fn should_pop_after_node(node: &TypedAstNode) -> bool {
-    // Really this function could be `is_expression`
+    // Really this function could be `is_expression`, with the exception of invocations: invocation
+    // of Unit invokables results in no value pushed to the stack, so there is nothing to pop
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
@@ -62,6 +63,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::Break(_, _) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
         TypedAstNode::WhileLoop(_, _) => false,
+        TypedAstNode::Invocation(_, TypedInvocationNode { typ, .. }) => typ != &Type::Unit,
         _ => true
     }
 }
@@ -1844,7 +1846,7 @@ mod tests {
         let expected = CompiledModule {
             name: MODULE_NAME,
             chunks: with_main_chunk(Chunk {
-                lines: vec![5, 7, 20, 16],
+                lines: vec![5, 7, 20, 15],
                 code: vec![
                     // val msg = "Row: "
                     Opcode::Constant as u8, 0,
@@ -1869,7 +1871,7 @@ mod tests {
                     Opcode::Constant as u8, 3,
                     Opcode::Invoke as u8, 1,
                     Opcode::LT as u8,
-                    Opcode::JumpIfF as u8, 20,
+                    Opcode::JumpIfF as u8, 19,
 
                     // a = $iter[$idx]
                     Opcode::LLoad1 as u8,
@@ -1891,8 +1893,7 @@ mod tests {
                     Opcode::Constant as u8, 4,
                     Opcode::Invoke as u8, 1,
                     Opcode::Pop as u8,
-                    Opcode::Pop as u8,
-                    Opcode::JumpB as u8, 29,
+                    Opcode::JumpB as u8, 28,
 
                     // Cleanup/end
                     Opcode::Pop as u8,

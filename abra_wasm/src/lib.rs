@@ -16,7 +16,7 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
-use abra_core::{Error, compile, compile_and_run};
+use abra_core::{Error, compile, compile_and_run, compile_and_disassemble};
 use abra_core::vm::value::{Obj, Value};
 use abra_core::vm::chunk::CompiledModule;
 use abra_core::vm::vm::VMContext;
@@ -76,10 +76,43 @@ impl<'a> Serialize for CompileResult<'a> {
     }
 }
 
+pub struct DisassembleResult(Result<String, Error>);
+
+impl Serialize for DisassembleResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        use serde::ser::SerializeMap;
+
+        match &self.0 {
+            Ok(result) => {
+                let mut obj = serializer.serialize_map(Some(1))?;
+                obj.serialize_entry("success", &true)?;
+                obj.serialize_entry("disassembled", result)?;
+                obj.end()
+            }
+            Err(error) => {
+                let mut obj = serializer.serialize_map(Some(1))?;
+                obj.serialize_entry("success", &false)?;
+                obj.serialize_entry("error", &JsWrappedError(error))?;
+                obj.end()
+            }
+        }
+    }
+}
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+#[wasm_bindgen(js_name = disassemble)]
+pub fn disassemble(input: &str) -> JsValue {
+    let result = compile_and_disassemble(input.to_string());
+    let disassemble_result = DisassembleResult(result);
+    JsValue::from_serde(&disassemble_result)
+        .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = compile)]
