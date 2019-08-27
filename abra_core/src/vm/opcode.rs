@@ -60,8 +60,8 @@ pub enum Opcode {
     Return,
 }
 
-impl From<u8> for Opcode {
-    fn from(i: u8) -> Self {
+impl From<&u8> for Opcode {
+    fn from(i: &u8) -> Self {
         match i {
             0 => Opcode::Constant,
             1 => Opcode::Nil,

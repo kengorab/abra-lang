@@ -49,3 +49,8 @@ pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, E
         Err(e) => Err(Error::InterpretError(e)),
     }
 }
+
+pub fn compile_and_disassemble(input: String) -> Result<String, Error> {
+    let compiled_module = compile(input)?;
+    Ok(vm::disassembler::disassemble(&compiled_module))
+}

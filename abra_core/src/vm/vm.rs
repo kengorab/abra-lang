@@ -149,7 +149,7 @@ impl<'a> VM<'a> {
     }
 
     fn read_instr(&mut self) -> Option<Opcode> {
-        self.read_byte().map(|b| Opcode::from(b))
+        self.read_byte().map(|b| Opcode::from(&b))
     }
 
     fn int_op<F>(&mut self, f: F) -> Result<(), InterpretError>
@@ -218,7 +218,8 @@ impl<'a> VM<'a> {
         let CallFrame { stack_offset, .. } = current_frame!(self);
         let stack_slot = stack_slot + *stack_offset;
         let value = self.pop_expect()?;
-        Ok(self.stack_insert_at(stack_slot, value)) // TODO: Raise InterpretError when OOB stack_slot
+        self.stack_insert_at(stack_slot, value); // TODO: Raise InterpretError when OOB stack_slot
+        Ok(())
     }
 
     fn load(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
@@ -452,8 +453,9 @@ impl<'a> VM<'a> {
                     if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
                         let len = self.stack.len();
                         let args = self.stack.split_off(len - arity);
-                        let result: Value = native_fn(self.ctx.clone(), args);
-                        self.push(result);
+                        if let Some(value) = native_fn(self.ctx.clone(), args) {
+                            self.push(value);
+                        }
                         continue;
                     }
 

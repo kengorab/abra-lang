@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::slice::Iter;
 
 // Native functions must return a Value, even if they're of return type Unit.
-// If their return type is Unit, they should return Value::Nil.
-type NativeAbraFn = fn(VMContext, Vec<Value>) -> Value;
+// If their return type is Unit, they should return None//Value::Nil.
+type NativeAbraFn = fn(VMContext, Vec<Value>) -> Option<Value>;
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct NativeFn {
@@ -59,14 +59,14 @@ fn native_fns() -> Vec<NativeFn> {
     native_fns
 }
 
-fn println(ctx: VMContext, args: Vec<Value>) -> Value {
+fn println(ctx: VMContext, args: Vec<Value>) -> Option<Value> {
     let val = args.first().unwrap();
     let print_fn = ctx.print;
     print_fn(&format!("{}", val.to_string()));
-    Value::Nil
+    None
 }
 
-fn range(_ctx: VMContext, args: Vec<Value>) -> Value {
+fn range(_ctx: VMContext, args: Vec<Value>) -> Option<Value> {
     let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
         panic!("range requires an Int as first argument")
     };
@@ -89,17 +89,17 @@ fn range(_ctx: VMContext, args: Vec<Value>) -> Value {
         start += incr;
     }
 
-    Value::Obj(Obj::ArrayObj { value: values })
+    Some(Value::Obj(Obj::ArrayObj { value: values }))
 }
 
 // TODO: Replace this with a method invocation when Array::length is a thing
-fn arr_len(_ctx: VMContext, args: Vec<Value>) -> Value {
+fn arr_len(_ctx: VMContext, args: Vec<Value>) -> Option<Value> {
     let val = if let Some(Value::Obj(Obj::ArrayObj { value })) = args.first() {
         value.len()
     } else {
-        panic!("arr_len requires an Array as first argument")
+        panic!("arr_len requires an Array as first argument, got {:?}", args.first())
     };
-    Value::Int(val as i64)
+    Some(Value::Int(val as i64))
 }
 
 #[cfg(test)]
@@ -112,7 +112,7 @@ mod test {
 
         // Test w/ increment of 1
         let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5)]);
-        let expected = Value::Obj(Obj::ArrayObj {
+        let expected = Some(Value::Obj(Obj::ArrayObj {
             value: vec![
                 Box::new(Value::Int(0)),
                 Box::new(Value::Int(1)),
@@ -120,18 +120,18 @@ mod test {
                 Box::new(Value::Int(3)),
                 Box::new(Value::Int(4)),
             ]
-        });
+        }));
         assert_eq!(expected, arr);
 
         // Test w/ increment of 2
         let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5), Value::Int(2)]);
-        let expected = Value::Obj(Obj::ArrayObj {
+        let expected = Some(Value::Obj(Obj::ArrayObj {
             value: vec![
                 Box::new(Value::Int(0)),
                 Box::new(Value::Int(2)),
                 Box::new(Value::Int(4)),
             ]
-        });
+        }));
         assert_eq!(expected, arr);
     }
 
@@ -141,17 +141,17 @@ mod test {
 
         // Test w/ increment larger than range
         let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(5), Value::Int(5)]);
-        let expected = Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] });
+        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] }));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 1)
         let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(1)]);
-        let expected = Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] });
+        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] }));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 0) -> Empty array
         let arr = range(ctx.clone(), vec![Value::Int(0), Value::Int(0)]);
-        let expected = Value::Obj(Obj::ArrayObj { value: vec![] });
+        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![] }));
         assert_eq!(expected, arr);
     }
 }

@@ -726,4 +726,29 @@ mod tests {
         });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_for_loops_in_fns() {
+        let input = "\
+          var output = \"\"\n\
+          func innerLoop() {\n\
+            for a2, i2 in range(0, 2) {\n\
+              output = output + (\"Inner \" + a2) + \" \"\n\
+            }\n\
+          }\n\
+          func runLoop() {\n\
+            for a1, i1 in range(0, 2) {\n\
+              output = output + (\"Outer \" + a1) + \" [\"\n\
+              innerLoop()\n\
+              output = output + \"], \"
+            }\n\
+          }\n\
+          runLoop()\n\
+          output\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = "Outer 0 [Inner 0 Inner 1 ], Outer 1 [Inner 0 Inner 1 ], ";
+        let expected = Value::Obj(Obj::StringObj { value: Box::new(expected.to_string()) });
+        assert_eq!(expected, result);
+    }
 }
