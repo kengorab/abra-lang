@@ -74,7 +74,7 @@ pub struct CompiledModule<'a> {
 
 impl<'a> CompiledModule<'a> {
     pub fn new(name: &'a str) -> Self {
-        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new() /*bindings: Vec::new()*/ }
+        CompiledModule { name, chunks: HashMap::new(), constants: Vec::new() }
     }
 
     pub fn get_chunk(&mut self, name: String) -> Option<&mut Chunk> {

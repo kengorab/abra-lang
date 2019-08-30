@@ -117,7 +117,8 @@ pub fn disassemble(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
-    let result = compile(input.to_string());
+    let result = compile(input.to_string())
+        .map(|(module, _)| module);
     let compile_result = CompileResult(result);
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
