@@ -7,6 +7,7 @@ extern crate strum_macros;
 use crate::vm::value::Value;
 use crate::vm::chunk::CompiledModule;
 use crate::vm::vm::VMContext;
+use crate::vm::compiler::Metadata;
 
 pub mod builtins;
 pub mod common;
@@ -22,7 +23,7 @@ pub enum Error {
     InterpretError(vm::vm::InterpretError),
 }
 
-pub fn compile(input: String) -> Result<CompiledModule<'static>, Error> {
+pub fn compile(input: String) -> Result<(CompiledModule<'static>, Metadata), Error> {
     match lexer::lexer::tokenize(&input) {
         Err(e) => Err(Error::LexerError(e)),
         Ok(tokens) => match parser::parser::parse(tokens) {
@@ -31,8 +32,8 @@ pub fn compile(input: String) -> Result<CompiledModule<'static>, Error> {
                 match typechecker::typechecker::typecheck(ast) {
                     Err(e) => Err(Error::TypecheckerError(e)),
                     Ok((_, nodes)) => {
-                        let chunk = vm::compiler::compile("<default>", nodes).unwrap();
-                        Ok(chunk)
+                        let result = vm::compiler::compile("<default>", nodes).unwrap();
+                        Ok(result)
                     }
                 }
             }
@@ -41,7 +42,7 @@ pub fn compile(input: String) -> Result<CompiledModule<'static>, Error> {
 }
 
 pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
-    let mut compiled_module = compile(input)?;
+    let (mut compiled_module, _) = compile(input)?;
     let mut vm = vm::vm::VM::new(&mut compiled_module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),
@@ -51,6 +52,6 @@ pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, E
 }
 
 pub fn compile_and_disassemble(input: String) -> Result<String, Error> {
-    let compiled_module = compile(input)?;
-    Ok(vm::disassembler::disassemble(&compiled_module))
+    let (compiled_module, metadata) = compile(input)?;
+    Ok(vm::disassembler::disassemble(compiled_module, metadata))
 }

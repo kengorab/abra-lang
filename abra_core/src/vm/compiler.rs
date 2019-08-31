@@ -16,14 +16,24 @@ pub struct Compiler<'a> {
     depth: usize,
     locals: Vec<Local>,
     interrupt_offset_slots: Vec<usize>,
+    metadata: Metadata,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Metadata {
+    pub loads: Vec<String>,
+    pub stores: Vec<String>,
+    pub chunks: Vec<String>,
 }
 
 pub const MAIN_CHUNK_NAME: &str = "main";
 
-pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModule, ()> {
+pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<(CompiledModule, Metadata), ()> {
     let mut module = CompiledModule::new(module_name);
     let main_chunk = Chunk::new();
     module.add_chunk(MAIN_CHUNK_NAME.to_string(), main_chunk);
+
+    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), chunks: Vec::new() };
 
     let mut compiler = Compiler {
         module,
@@ -31,6 +41,7 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
         depth: 0,
         locals: Vec::new(),
         interrupt_offset_slots: Vec::new(),
+        metadata,
     };
 
     let len = ast.len();
@@ -50,7 +61,9 @@ pub fn compile(module_name: &str, ast: Vec<TypedAstNode>) -> Result<CompiledModu
     module.get_chunk(MAIN_CHUNK_NAME.to_string())
         .unwrap()
         .write(Opcode::Return as u8, last_line + 1);
-    Ok(module)
+
+    compiler.metadata.chunks.push(MAIN_CHUNK_NAME.to_string());
+    Ok((module, compiler.metadata))
 }
 
 fn should_pop_after_node(node: &TypedAstNode) -> bool {
@@ -397,6 +410,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.write_opcode(Opcode::GStore, line);
 
         self.module.add_chunk(func_name.to_owned(), Chunk::new());
+        self.metadata.chunks.push(func_name.to_string());
         let prev_chunk = self.current_chunk.clone();
         self.current_chunk = func_name.to_owned();
 
@@ -427,6 +441,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
                 if let Some(idx) = self.get_first_local_at_depth(&func_depth) {
                     self.write_store_local_instr(idx, line);
+
+                    // Push an empty string into metadata since this isn't a "real" store
+                    self.metadata.stores.push("".to_string());
                 }
                 for _ in 0..num_locals_to_pop {
                     self.locals.pop();
@@ -460,6 +477,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.write_opcode(Opcode::GLoad, line);
         } else {
             self.write_load_local_instr(local_idx, line);
+            self.metadata.loads.push(ident.clone());
         }
         Ok(())
     }
@@ -488,7 +506,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.write_opcode(Opcode::GLoad, line);
         } else {
             self.write_store_local_instr(local_idx, line);
+            self.metadata.stores.push(ident.clone());
             self.write_load_local_instr(local_idx, line);
+            self.metadata.loads.push(ident.clone());
         }
         Ok(())
     }
@@ -569,6 +589,9 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                     if !is_stmt {
                         if let Some(idx) = compiler.get_first_local_at_depth(&if_block_depth) {
                             compiler.write_store_local_instr(idx, line);
+
+                            // Push an empty string into metadata since this isn't a "real" store
+                            compiler.metadata.stores.push("".to_string());
                         }
                         for _ in 0..num_locals_to_pop {
                             compiler.locals.pop();
@@ -660,12 +683,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
             let (slot, _) = compiler.get_binding_index(&name.to_string());
             compiler.write_load_local_instr(slot, line);
+            compiler.metadata.loads.push(name.to_string());
         }
 
         #[inline]
         fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
             let (slot, _) = compiler.get_binding_index(&name.to_string());
             compiler.write_store_local_instr(slot, line);
+            compiler.metadata.stores.push(name.to_string());
         }
 
         // Essentially: if $idx >= arrayLen($iter) { break }
@@ -687,6 +712,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         if let Some(ident) = index_ident {
             let (slot, _) = self.get_binding_index(&"$idx".to_string());
             self.write_load_local_instr(slot, line); // Load $idx
+            self.metadata.loads.push("$idx".to_string());
             self.locals.push(Local(Token::get_ident_name(&ident).clone(), self.depth));
         }
         load_intrinsic(self, "$idx", line);
@@ -757,7 +783,7 @@ mod tests {
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
 
-        super::compile(MODULE_NAME, typed_ast).unwrap()
+        super::compile(MODULE_NAME, typed_ast).unwrap().0
     }
 
     fn with_main_chunk(chunk: Chunk) -> HashMap<String, Chunk> {

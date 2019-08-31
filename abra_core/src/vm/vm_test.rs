@@ -14,7 +14,7 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let mut module = compile("<test_module>", typed_ast).unwrap();
+        let (mut module, _) = compile("<test_module>", typed_ast).unwrap();
         let ctx = VMContext::default();
 
         let mut vm = VM::new(&mut module, ctx);
