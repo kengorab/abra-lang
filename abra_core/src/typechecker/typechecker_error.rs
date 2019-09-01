@@ -21,6 +21,7 @@ pub enum TypecheckerError {
     ParamNameMismatch { token: Token, expected: String, actual: String },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
+    InvalidRequiredArgPosition(Token),
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -41,7 +42,7 @@ fn type_repr(t: &Type) -> String {
         Type::Array(typ) => format!("{}[]", type_repr(typ)),
         Type::Option(typ) => format!("{}?", type_repr(typ)),
         Type::Fn(args, ret_type) => {
-            let args = args.iter().map(|(_, arg_type)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
+            let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
         Type::Unknown => "Unknown".to_string(),
@@ -87,6 +88,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
             TypecheckerError::InvalidBreak(token) => token.get_position(),
+            TypecheckerError::InvalidRequiredArgPosition(token) => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -218,6 +220,9 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::InvalidBreak(_token) => {
+                unimplemented!()
+            }
+            TypecheckerError::InvalidRequiredArgPosition(_token) => {
                 unimplemented!()
             }
         }

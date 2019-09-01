@@ -14,7 +14,7 @@ pub enum Type {
     Bool,
     Array(Box<Type>),
     Option(Box<Type>),
-    Fn(Vec<(String, Type)>, Box<Type>),
+    Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
 }
 
@@ -42,7 +42,13 @@ impl Type {
             }
             // For Fn types compare arities, param types, and return type
             (Fn(args1, ret1), Fn(args2, ret2)) => {
-                for ((_, t1), (_, t2)) in args1.iter().zip(args2.iter()) {
+                if args1.len() != args2.len() {
+                    return false;
+                }
+
+                // TODO: Factor in optional params here
+                // func abc(a: Int, b = 3) = a + b should satisfy a type of (Int, Int) => Int and also (Int) => Int
+                for ((_, t1, _), (_, t2, _)) in args1.iter().zip(args2.iter()) {
                     if !Type::is_equivalent_to(t1, t2) {
                         return false;
                     }

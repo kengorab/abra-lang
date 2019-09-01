@@ -418,7 +418,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let func_depth = self.depth;
 
         // Pop function arguments off stack and store in local bindings
-        for (arg_token, _) in args {
+        for (arg_token, _, _) in args {
             let ident = Token::get_ident_name(&arg_token);
 
             let local = Local(ident.clone(), self.depth);

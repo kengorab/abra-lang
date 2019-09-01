@@ -120,7 +120,7 @@ pub struct TypedFunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub args: Vec<(Token, Type)>,
+    pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
