@@ -382,12 +382,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         self.scopes.push(Scope::new(ScopeKind::Function(name.clone(), func_name.clone())));
         let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
         let mut arg_idents = HashMap::<String, Token>::new();
-        for (token, type_ident) in args {
+        for (token, type_ident, _) in args {
             let arg_name = Token::get_ident_name(&token).clone();
             if let Some(arg_tok) = arg_idents.get(&arg_name) {
                 return Err(TypecheckerError::DuplicateBinding { orig_ident: arg_tok.clone(), ident: token.clone() });
             }
             arg_idents.insert(arg_name, token.clone());
+
+            // TODO: fix
+            let type_ident = type_ident.unwrap();
 
             let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
             match arg_type {

@@ -89,7 +89,7 @@ pub struct FunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub args: Vec<(Token, TypeIdentifier)>,
+    pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
     pub body: Vec<AstNode>,
 }
