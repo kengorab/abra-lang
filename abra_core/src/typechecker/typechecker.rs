@@ -718,9 +718,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target = self.visit(*target)?;
         let target_type = target.get_type();
         let (args, ret_type) = if let Type::Fn(arg_types, ret_type) = target_type {
-            if arg_types.len() != args.len() {
-                return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: arg_types.len(), actual: args.len() });
+            let num_req_args = arg_types.iter()
+                .take_while(|(_, _, is_optional)| !*is_optional)
+                .count();
+            if args.len() < num_req_args || args.len() > arg_types.len() {
+                return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
             }
+
             let mut typed_args = Vec::<TypedAstNode>::new();
             for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
                 let (arg_name, arg) = arg;
@@ -2287,6 +2291,12 @@ mod tests {
             },
         );
         assert_eq!(node, &expected);
+
+        let ast = typecheck("\
+          func abc(a: Int, b = \"hello\") { b }\n\
+          abc(1)\
+        ");
+        assert_eq!(ast.is_ok(), true);
 
         Ok(())
     }

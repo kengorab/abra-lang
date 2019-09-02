@@ -28,7 +28,7 @@ pub enum AstLiteralNode {
     BoolLiteral(bool),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOp {
     Minus,
     Negate,
@@ -40,7 +40,7 @@ pub struct UnaryNode {
     pub expr: Box<AstNode>,
 }
 
-#[derive(Display, Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, Display, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -100,7 +100,7 @@ pub struct AssignmentNode {
     pub expr: Box<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum IndexingMode<T> {
     Index(Box<T>),
     Range(Option<Box<T>>, Option<Box<T>>),

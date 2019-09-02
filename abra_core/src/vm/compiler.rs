@@ -81,6 +81,11 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
     }
 }
 
+#[inline]
+fn fn_name_for_arity(fn_name: String, arity: usize) -> String {
+    format!("{}_${}", fn_name, arity)
+}
+
 impl<'a> Compiler<'a> {
     #[inline]
     fn get_current_chunk(&mut self) -> &mut Chunk {
@@ -399,7 +404,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     }
 
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, args, body, .. } = node;
+        let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth } = node;
         let func_name = Token::get_ident_name(&name);
 
         let line = token.get_position().line;
@@ -417,10 +422,12 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.depth += 1;
         let func_depth = self.depth;
 
-        // Pop function arguments off stack and store in local bindings
-        for (arg_token, _, _) in args {
-            let ident = Token::get_ident_name(&arg_token);
+        // Pop function arguments off stack and store in local bindings, also track # optional args
+        let mut num_optional_args = 0;
+        for (arg_token, _, default_value) in args.iter() {
+            if default_value.is_some() { num_optional_args += 1; }
 
+            let ident = Token::get_ident_name(arg_token);
             let local = Local(ident.clone(), self.depth);
             self.locals.push(local);
         }
@@ -460,6 +467,83 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         self.depth -= 1;
 
         self.current_chunk = prev_chunk;
+
+        if num_optional_args == 0 { return Ok(()); }
+
+        // --------- Additional code generation to handle optional arg fns ---------
+
+        let (req_args, opt_args) = {
+            let mut required_args: Vec<(Token, Type)> = Vec::new();
+            let mut optional_args: Vec<(Token, Type, TypedAstNode)> = Vec::new();
+
+            for (token, typ, default_value) in args.iter() {
+                match default_value {
+                    None => required_args.push((token.clone(), typ.clone())),
+                    Some(default_value) => optional_args.push((token.clone(), typ.clone(), default_value.clone()))
+                }
+            }
+
+            (required_args, optional_args)
+        };
+
+        // For each optional arg slot, generate code for a new function which calls the original but
+        // passes in the default values (see #29). Also see the invocation visitor for special logic
+        // when invoking these pseudo-fns
+        for num_optional in 0..num_optional_args {
+            let arity = req_args.len() + num_optional;
+            let fn_name = fn_name_for_arity(func_name.clone(), arity);
+
+            // Gather all of the arguments for the pseudo-fn's signature
+            let args = {
+                let mut args = Vec::with_capacity(arity);
+                for (token, typ) in req_args.clone() {
+                    args.push((token, typ, None));
+                }
+                for (token, typ, node) in opt_args.iter().take(num_optional) {
+                    args.push((token.clone(), typ.clone(), None));
+                }
+                args
+            };
+
+            // Generate the body for the pseudo-fn, which consists of passing along parameters, along
+            // with the default values for parameters, to the underlying "non-pseudo" fn
+            let body = {
+                let mut invocation_args = Vec::with_capacity(args.len());
+                let mut fn_type_args = Vec::with_capacity(args.len());
+                for (token, typ, _) in args.iter() {
+                    invocation_args.push(TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
+                        typ: typ.clone(),
+                        scope_depth: scope_depth + 1,
+                        is_mutable: false,
+                    }));
+                    fn_type_args.push((Token::get_ident_name(token).clone(), typ.clone(), false));
+                }
+                for (token, typ, default_value) in opt_args.iter().skip(num_optional) {
+                    invocation_args.push(default_value.clone());
+                    fn_type_args.push((Token::get_ident_name(token).clone(), typ.clone(), false));
+                }
+
+                let orig_fn_name_tok = Token::Ident(token.get_position(), func_name.clone());
+                vec![
+                    TypedAstNode::Invocation(orig_fn_name_tok.clone(), TypedInvocationNode {
+                        typ: ret_type.clone(),
+                        target: Box::new(TypedAstNode::Identifier(orig_fn_name_tok.clone(), TypedIdentifierNode {
+                            typ: Type::Fn(fn_type_args, Box::new(ret_type.clone())),
+                            scope_depth,
+                            is_mutable: false,
+                        })),
+                        args: invocation_args,
+                    })
+                ]
+            };
+
+            // Call the visitor fn to generate bytecode for the pseudo-fn. This should not loop
+            // infinitely, since these calls' signatures contain no arguments with default values
+            let name = Token::Ident(token.get_position(), fn_name);
+            let node = TypedFunctionDeclNode { name, scope_depth, ret_type: ret_type.clone(), args, body };
+            self.visit_function_decl(token.clone(), node)?;
+        }
+
         Ok(())
     }
 
@@ -660,10 +744,25 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         }
 
         let name = match *target {
-            TypedAstNode::Identifier(ref token, _) => Token::get_ident_name(token),
+            TypedAstNode::Identifier(ref token, TypedIdentifierNode { ref typ, .. }) => {
+                let arity = match typ {
+                    Type::Fn(args, _) => args.len(),
+                    _ => unreachable!() // This should have been caught during typechecking
+                };
+
+                // If invoking a function where the number of args passed does NOT match its arity,
+                // it must be a pseudo-fn used for handling default arg values. Dispatch to the
+                // pseudo-fn instead of the normal fn in this case
+                let fn_name = Token::get_ident_name(token).clone();
+                if num_args == arity {
+                    fn_name
+                } else {
+                    fn_name_for_arity(fn_name, num_args)
+                }
+            }
             _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes
         };
-        self.write_invoke(name.to_owned(), num_args, line);
+        self.write_invoke(name, num_args, line);
         Ok(())
     }
 
@@ -1656,6 +1755,67 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
                 Value::Fn("abc".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_declaration_default_args() {
+        let chunk = compile("func add(a: Int, b = 2) = a + b\nadd(1)\nadd(1, 2)");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: {
+                let mut chunks = HashMap::new();
+                chunks.insert("add".to_string(), Chunk {
+                    lines: vec![6],
+                    code: vec![
+                        Opcode::LLoad0 as u8,
+                        Opcode::LLoad1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                });
+                chunks.insert("add_$1".to_string(), Chunk {
+                    lines: vec![8],
+                    code: vec![
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::Invoke as u8, 2,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8,
+                    ],
+                });
+                chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
+                    lines: vec![10, 6, 6, 1],
+                    code: vec![
+                        Opcode::Constant as u8, 0,
+                        Opcode::Constant as u8, 1,
+                        Opcode::GStore as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::Constant as u8, 3,
+                        Opcode::GStore as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::Constant as u8, 3,
+                        Opcode::Invoke as u8, 1,
+                        Opcode::Pop as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::Invoke as u8, 2,
+                        Opcode::Return as u8
+                    ],
+                });
+                chunks
+            },
+            constants: vec![
+                Value::Fn("add".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("add".to_string()) }),
+                Value::Fn("add_$1".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("add_$1".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
