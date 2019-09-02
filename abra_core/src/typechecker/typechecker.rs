@@ -38,7 +38,9 @@ impl Scope {
         for NativeFn { name, args, return_type, .. } in native_fns {
             let token = Token::Ident(Position::new(0, 0), name.clone());
             let args: Vec<(String, Type, bool)> = (0..args.len()).zip(args.iter())
-                .map(|(idx, arg)| (format!("_{}", idx), arg.clone(), false))
+                .map(|(idx, (arg, default_value))| {
+                    (format!("_{}", idx), arg.clone(), default_value.is_some())
+                })
                 .collect();
             let typ = Type::Fn(args, Box::new(return_type.clone()));
             scope.bindings.insert(name.to_string(), ScopeBinding(token, typ, false));
@@ -410,7 +412,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                 }
                                 None => {
                                     if seen_optional_arg {
-                                        return Err(TypecheckerError::InvalidRequiredArgPosition(token))
+                                        return Err(TypecheckerError::InvalidRequiredArgPosition(token));
                                     }
                                     let arg_name = Token::get_ident_name(&token);
                                     self.add_binding(arg_name, &token, &arg_type, false);
@@ -1679,7 +1681,7 @@ mod tests {
         let expected = TypecheckerError::Mismatch {
             token: Token::String(Position::new(1, 28), "hello".to_string()),
             expected: Type::Bool,
-            actual: Type::String
+            actual: Type::String,
         };
         assert_eq!(expected, error);
 
