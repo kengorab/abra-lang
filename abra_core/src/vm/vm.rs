@@ -1,4 +1,4 @@
-use crate::builtins::native_fns::NATIVE_FNS_MAP;
+use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
@@ -451,9 +451,11 @@ impl<'a> VM<'a> {
                     let arity = self.read_byte_expect()?;
 
                     if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
+                        let native_fn: &NativeFn = native_fn;
+
                         let len = self.stack.len();
                         let args = self.stack.split_off(len - arity);
-                        if let Some(value) = native_fn(self.ctx.clone(), args) {
+                        if let Some(value) = native_fn.invoke(self.ctx.clone(), args) {
                             self.push(value);
                         }
                         continue;

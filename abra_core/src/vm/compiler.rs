@@ -82,7 +82,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
 }
 
 #[inline]
-fn fn_name_for_arity(fn_name: String, arity: usize) -> String {
+pub fn fn_name_for_arity(fn_name: String, arity: usize) -> String {
     format!("{}_${}", fn_name, arity)
 }
 
@@ -499,7 +499,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 for (token, typ) in req_args.clone() {
                     args.push((token, typ, None));
                 }
-                for (token, typ, node) in opt_args.iter().take(num_optional) {
+                for (token, typ, _) in opt_args.iter().take(num_optional) {
                     args.push((token.clone(), typ.clone(), None));
                 }
                 args
