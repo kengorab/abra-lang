@@ -37,8 +37,8 @@ impl Scope {
         let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
         for NativeFn { name, args, return_type, .. } in native_fns {
             let token = Token::Ident(Position::new(0, 0), name.clone());
-            let args: Vec<(String, Type)> = (0..args.len()).zip(args.iter())
-                .map(|(idx, arg)| (format!("_{}", idx), arg.clone()))
+            let args: Vec<(String, Type, bool)> = (0..args.len()).zip(args.iter())
+                .map(|(idx, arg)| (format!("_{}", idx), arg.clone(), false))
                 .collect();
             let typ = Type::Fn(args, Box::new(return_type.clone()));
             scope.bindings.insert(name.to_string(), ScopeBinding(token, typ, false));
@@ -380,22 +380,58 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
 
         self.scopes.push(Scope::new(ScopeKind::Function(name.clone(), func_name.clone())));
-        let mut typed_args = Vec::<(Token, Type)>::with_capacity(args.len());
+        let mut typed_args = Vec::<(Token, Type, Option<TypedAstNode>)>::with_capacity(args.len());
         let mut arg_idents = HashMap::<String, Token>::new();
-        for (token, type_ident) in args {
+        let mut seen_optional_arg = false;
+        for (token, type_ident, default_value) in args {
             let arg_name = Token::get_ident_name(&token).clone();
             if let Some(arg_tok) = arg_idents.get(&arg_name) {
                 return Err(TypecheckerError::DuplicateBinding { orig_ident: arg_tok.clone(), ident: token.clone() });
             }
             arg_idents.insert(arg_name, token.clone());
 
-            let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
-            match arg_type {
-                None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
-                Some(arg_type) => {
-                    let arg_name = Token::get_ident_name(&token);
-                    self.add_binding(arg_name, &token, &arg_type, false);
-                    typed_args.push((token, arg_type));
+            match type_ident {
+                Some(type_ident) => {
+                    let arg_type = Type::from_type_ident(&type_ident, self.get_types_in_scope());
+                    match arg_type {
+                        None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
+                        Some(arg_type) => {
+                            match default_value {
+                                Some(default_value) => {
+                                    seen_optional_arg = true;
+                                    let default_value = self.visit(default_value)?;
+                                    if default_value.get_type().is_equivalent_to(&arg_type) {
+                                        let arg_name = Token::get_ident_name(&token);
+                                        self.add_binding(arg_name, &token, &arg_type, false);
+                                        typed_args.push((token, arg_type, Some(default_value)));
+                                    } else {
+                                        return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
+                                    }
+                                }
+                                None => {
+                                    if seen_optional_arg {
+                                        return Err(TypecheckerError::InvalidRequiredArgPosition(token))
+                                    }
+                                    let arg_name = Token::get_ident_name(&token);
+                                    self.add_binding(arg_name, &token, &arg_type, false);
+                                    typed_args.push((token, arg_type, None));
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {
+                    match default_value {
+                        None => unreachable!(), // This should be caught during parsing
+                        Some(default_value) => {
+                            seen_optional_arg = true;
+                            let default_value = self.visit(default_value)?;
+                            let arg_type = default_value.get_type();
+                            let arg_name = Token::get_ident_name(&token);
+                            self.add_binding(arg_name, &token, &arg_type, false);
+                            typed_args.push((token, arg_type, Some(default_value)));
+                        }
+                    }
                 }
             }
         }
@@ -412,7 +448,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // this pop/push.
         let scope = self.scopes.pop().unwrap();
         let arg_types = args.iter()
-            .map(|(ident, typ)| (Token::get_ident_name(ident).clone(), typ.clone()))
+            .map(|(ident, typ, default_value)| {
+                (Token::get_ident_name(ident).clone(), typ.clone(), default_value.is_some())
+            })
             .collect::<Vec<_>>();
         let initial_ret_type = match &ret_type {
             None => Type::Unknown,
@@ -680,13 +718,17 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target = self.visit(*target)?;
         let target_type = target.get_type();
         let (args, ret_type) = if let Type::Fn(arg_types, ret_type) = target_type {
-            if arg_types.len() != args.len() {
-                return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: arg_types.len(), actual: args.len() });
+            let num_req_args = arg_types.iter()
+                .take_while(|(_, _, is_optional)| !*is_optional)
+                .count();
+            if args.len() < num_req_args || args.len() > arg_types.len() {
+                return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
             }
+
             let mut typed_args = Vec::<TypedAstNode>::new();
             for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
                 let (arg_name, arg) = arg;
-                let (expected_name, expected_arg_type) = expected;
+                let (expected_name, expected_arg_type, _) = expected;
 
                 if let Some(arg_name) = arg_name {
                     let passed_name = Token::get_ident_name(&arg_name);
@@ -1492,7 +1534,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
-                args: vec![(ident_token!((1, 10), "a"), Type::Int)],
+                args: vec![(ident_token!((1, 10), "a"), Type::Int, None)],
                 ret_type: Type::Int,
                 body: vec![
                     TypedAstNode::Binary(
@@ -1569,7 +1611,7 @@ mod tests {
         // Test that bindings assigned to functions have the proper type
         let (typechecker, _) = typecheck_get_typechecker("func abc(a: Int): Bool = a == 1\nval def = abc");
         let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("def").unwrap();
-        assert_eq!(&Type::Fn(vec![("a".to_string(), Type::Int)], Box::new(Type::Bool)), typ);
+        assert_eq!(&Type::Fn(vec![("a".to_string(), Type::Int, false)], Box::new(Type::Bool)), typ);
 
         Ok(())
     }
@@ -1582,7 +1624,7 @@ mod tests {
             _ => panic!("Node must be a FunctionDecl")
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Type::Int)
+            (ident_token!((1, 10), "a"), Type::Int, None)
         ];
         assert_eq!(&expected, args);
 
@@ -1592,9 +1634,32 @@ mod tests {
             _ => panic!("Node must be a FunctionDecl")
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Type::Int),
-            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool))),
-            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int))),
+            (ident_token!((1, 10), "a"), Type::Int, None),
+            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool)), None),
+            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int)), None),
+        ];
+        assert_eq!(&expected, args);
+
+        let typed_ast = typecheck("func abc(a: Int = 1, b = [1, 2, 3]) = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Type::Int, Some(int_literal!((1, 19), 1))),
+            (ident_token!((1, 22), "b"), Type::Array(Box::new(Type::Int)), Some(
+                TypedAstNode::Array(
+                    Token::LBrack(Position::new(1, 26)),
+                    TypedArrayNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        items: vec![
+                            Box::new(int_literal!((1, 27), 1)),
+                            Box::new(int_literal!((1, 30), 2)),
+                            Box::new(int_literal!((1, 33), 3)),
+                        ],
+                    },
+                )
+            )),
         ];
         assert_eq!(&expected, args);
 
@@ -1608,6 +1673,18 @@ mod tests {
             orig_ident: ident_token!((1, 10), "a"),
             ident: ident_token!((1, 18), "a"),
         };
+        assert_eq!(expected, error);
+
+        let error = typecheck("func abc(a: Int, b: Bool = \"hello\") = 123").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(1, 28), "hello".to_string()),
+            expected: Type::Bool,
+            actual: Type::String
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("func abc(a: Int, b = 1, c: Int) = 123").unwrap_err();
+        let expected = TypecheckerError::InvalidRequiredArgPosition(ident_token!((1, 25), "c"));
         assert_eq!(expected, error);
     }
 
@@ -2200,7 +2277,7 @@ mod tests {
                     ident_token!((2, 1), "abc"),
                     TypedIdentifierNode {
                         typ: Type::Fn(
-                            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::String)],
+                            vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
                             Box::new(Type::String),
                         ),
                         is_mutable: false,
@@ -2214,6 +2291,12 @@ mod tests {
             },
         );
         assert_eq!(node, &expected);
+
+        let ast = typecheck("\
+          func abc(a: Int, b = \"hello\") { b }\n\
+          abc(1)\
+        ");
+        assert_eq!(ast.is_ok(), true);
 
         Ok(())
     }

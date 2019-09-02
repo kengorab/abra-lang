@@ -63,7 +63,7 @@ impl<'a> Serialize for JsType<'a> {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
                 let args: Vec<(String, JsType)> = args.iter()
-                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("args", &args)?;
                 obj.serialize_entry("returnType", &JsType(return_type))?;

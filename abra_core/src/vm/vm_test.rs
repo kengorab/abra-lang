@@ -621,6 +621,24 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_default_args() {
+        let input = "\
+          func abc(a: Int = 2, b = 3, c = 5) { a * b * c }\n\
+          [abc(), abc(7), abc(7, 11), abc(7, 11, 13)]\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(30)),
+                Box::new(Value::Int(105)),
+                Box::new(Value::Int(385)),
+                Box::new(Value::Int(1001)),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_while_loop() {
         let input = "\
           var a = 0\n\

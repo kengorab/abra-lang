@@ -223,7 +223,7 @@ impl Parser {
 
         // Parsing args
         self.expect_next_token(TokenType::LParen)?;
-        let mut args: Vec<(Token, TypeIdentifier)> = Vec::new();
+        let mut args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)> = Vec::new();
         loop {
             let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
             match token {
@@ -233,9 +233,26 @@ impl Parser {
                 }
                 Token::Ident(_, _) => {
                     let arg_ident = self.expect_next()?;
-                    self.expect_next_token(TokenType::Colon)?;
-                    let type_ident = self.parse_type_identifier()?;
-                    args.push((arg_ident, type_ident));
+
+                    let type_ident = if let Token::Colon(_) = self.peek().ok_or(ParseError::UnexpectedEof)? {
+                        self.expect_next()?; // Consume ':'
+                        Some(self.parse_type_identifier()?)
+                    } else { None };
+
+                    let default_value = match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                        Token::Assign(_) => {
+                            self.expect_next()?; // Consume '='
+                            Some(self.parse_expr()?)
+                        }
+                        next_tok @ _ => {
+                            if type_ident.is_none() {
+                                return Err(ParseError::ExpectedToken(TokenType::Colon, next_tok.clone()))
+                            }
+                            None
+                        }
+                    };
+
+                    args.push((arg_ident, type_ident, default_value));
 
                     match self.peek().ok_or(ParseError::UnexpectedEof)? {
                         Token::Comma(_) => self.expect_next(),
@@ -1391,7 +1408,7 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") })
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None)
         ];
         assert_eq!(&expected, args);
 
@@ -1401,8 +1418,8 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }),
-            (ident_token!((1, 18), "b"), TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }) })
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }) }), None)
         ];
         assert_eq!(&expected, args);
 
@@ -1413,7 +1430,20 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") })
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None)
+        ];
+        assert_eq!(&expected, args);
+
+        // Testing default arg values
+        let ast = parse("func abc(a: Int, b: Int = 2, c = 4) = 123")?;
+        let args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }), Some(int_literal!((1, 27), 2))),
+            (ident_token!((1, 30), "c"), None, Some(int_literal!((1, 34), 4))),
         ];
         assert_eq!(&expected, args);
 
