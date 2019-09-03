@@ -22,6 +22,7 @@ pub enum Keyword {
     Break,
     For,
     In,
+    Type,
 }
 
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
@@ -41,6 +42,7 @@ pub enum Token {
     #[strum(to_string = "break", serialize = "Break")] Break(Position),
     #[strum(to_string = "for", serialize = "For")] For(Position),
     #[strum(to_string = "in", serialize = "In")] In(Position),
+    #[strum(to_string = "type", serialize = "Type")] Type(Position),
 
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
 
@@ -114,7 +116,8 @@ impl Token {
             Token::Question(pos) |
             Token::Break(pos) |
             Token::For(pos) |
-            Token::In(pos) => pos
+            Token::In(pos) |
+            Token::Type(pos) => pos
         };
         pos.clone()
     }
