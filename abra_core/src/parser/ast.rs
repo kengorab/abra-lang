@@ -9,6 +9,7 @@ pub enum AstNode {
     Array(Token, ArrayNode),
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
+    TypeDecl(Token, TypeDeclNode),
     Identifier(Token),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
@@ -17,7 +18,7 @@ pub enum AstNode {
     Invocation(Token, InvocationNode),
     ForLoop(Token, ForLoopNode),
     WhileLoop(Token, WhileLoopNode),
-    Break(Token)
+    Break(Token),
 }
 
 #[derive(Debug, PartialEq)]
@@ -92,6 +93,14 @@ pub struct FunctionDeclNode {
     pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
     pub body: Vec<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypeDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub fields: Vec<(Token, TypeIdentifier)>,
 }
 
 #[derive(Debug, PartialEq)]

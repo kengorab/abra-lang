@@ -2,7 +2,7 @@ use std::iter::Peekable;
 use std::vec::IntoIter;
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -176,6 +176,7 @@ impl Parser {
             Token::Func(_) => self.parse_func_decl(),
             Token::Val(_) => self.parse_binding_decl(),
             Token::Var(_) => self.parse_binding_decl(),
+            Token::Type(_) => self.parse_type_decl(),
             Token::If(_) => self.parse_if_statement(),
             Token::While(_) => self.parse_while_statement(),
             Token::For(_) => self.parse_for_statement(),
@@ -246,7 +247,7 @@ impl Parser {
                         }
                         next_tok @ _ => {
                             if type_ident.is_none() {
-                                return Err(ParseError::ExpectedToken(TokenType::Colon, next_tok.clone()))
+                                return Err(ParseError::ExpectedToken(TokenType::Colon, next_tok.clone()));
                             }
                             None
                         }
@@ -323,6 +324,41 @@ impl Parser {
         };
 
         Ok(AstNode::BindingDecl(token, BindingDeclNode { ident, is_mutable, type_ann, expr }))
+    }
+
+    fn parse_type_decl(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+
+        let name = self.expect_next().and_then(|tok| {
+            match tok {
+                Token::Ident(_, _) => Ok(tok),
+                _ => Err(ParseError::UnexpectedToken(tok))
+            }
+        })?;
+
+        self.expect_next_token(TokenType::LBrace)?;
+
+        let mut fields = Vec::new();
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            match token {
+                Token::RBrace(_) => break,
+                Token::Comma(_) => {
+                    self.expect_next()?; // Consume ','
+                }
+                Token::Ident(_, _) => {
+                    let field_name = self.expect_next()?;
+                    self.expect_next_token(TokenType::Colon)?;
+                    let field_type = self.parse_type_identifier()?;
+                    fields.push((field_name, field_type));
+                }
+                _ => return Err(ParseError::UnexpectedToken(token.clone()))
+            }
+        }
+
+        self.expect_next_token(TokenType::RBrace)?;
+
+        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields }))
     }
 
     #[inline]
@@ -1487,6 +1523,77 @@ mod tests {
 
         let error = parse("func abc(a: Int b: Int) = 123").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 17), "b".to_string()));
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_type_decl() -> TestResult {
+        let ast = parse("type Person {}")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("type Person { name: String }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") })],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("type Person { name: String, }")?; // Test trailing comma
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("type Person { name: String, age: Int }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![
+                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }),
+                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_error() {
+        let error = parse("type Person }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::LBrace, Token::RBrace(Position::new(1, 13)));
+        assert_eq!(expected, error);
+
+        let error = parse("type Person {").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("type Person { 1234 }").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 15), 1234));
+        assert_eq!(expected, error);
+
+        let error = parse("type Person { name }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 20)));
+        assert_eq!(expected, error);
+
+        let error = parse("type Person { name: }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::RBrace(Position::new(1, 21)));
+        assert_eq!(expected, error);
+
+        let error = parse("type Person { name: Int").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("type Person { name: 1234").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 21), 1234));
         assert_eq!(expected, error);
     }
 
