@@ -15,7 +15,9 @@ pub enum Type {
     Array(Box<Type>),
     Option(Box<Type>),
     Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
-    Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Unknown,
+    // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Struct { name: String, fields: Vec<(String, Type)> },
 }
 
 impl Type {
@@ -58,12 +60,16 @@ impl Type {
                 }
                 true
             }
+            // TODO
+            (Struct { name: name1, fields: fields1 }, Struct { name: name2, fields: fields2 }) => {
+                false
+            }
             (_, Any) => true,
             (_, _) => false
         }
     }
 
-    pub fn from_type_ident(type_ident: &TypeIdentifier, types: HashMap<String, Type>) -> Option<Type> {
+    pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Option<Type> {
         match type_ident {
             TypeIdentifier::Normal { ident } => {
                 let type_name = Token::get_ident_name(ident);
@@ -107,7 +113,7 @@ mod test {
         let ast = parse(tokens).unwrap();
         match ast.first().unwrap() {
             AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
-                Type::from_type_ident(&type_ann, base_types).unwrap()
+                Type::from_type_ident(&type_ann, &base_types).unwrap()
             }
             _ => unreachable!()
         }

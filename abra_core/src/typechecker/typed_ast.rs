@@ -11,6 +11,7 @@ pub enum TypedAstNode {
     Array(Token, TypedArrayNode),
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
+    TypeDecl(Token, TypedTypeDeclNode),
     Identifier(Token, TypedIdentifierNode),
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
@@ -32,6 +33,7 @@ impl TypedAstNode {
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
+            TypedAstNode::TypeDecl(token, _) => token,
             TypedAstNode::Identifier(token, _) => token,
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
@@ -58,6 +60,7 @@ impl TypedAstNode {
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
+            TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_, _) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
@@ -124,6 +127,14 @@ pub struct TypedFunctionDeclNode {
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedTypeDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub fields: Vec<(Token, Type)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

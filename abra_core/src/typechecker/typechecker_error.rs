@@ -9,6 +9,7 @@ pub enum TypecheckerError {
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
+    DuplicateType { ident: Token, orig_ident: Option<Token> },
     UnknownIdentifier { ident: Token },
     InvalidAssignmentTarget { token: Token },
     AssignmentToImmutable { orig_ident: Token, token: Token },
@@ -46,6 +47,7 @@ fn type_repr(t: &Type) -> String {
             format!("({}) => {}", args, type_repr(ret_type))
         }
         Type::Unknown => "Unknown".to_string(),
+        Type::Struct { name, .. } => name.to_string(),
     }
 }
 
@@ -76,6 +78,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
+            TypecheckerError::DuplicateType { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
             TypecheckerError::InvalidAssignmentTarget { token } => token.get_position(),
             TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
@@ -131,6 +134,21 @@ impl DisplayError for TypecheckerError {
                 let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::DuplicateType { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
+//                let ident = Token::get_ident_name(&ident);
+//                let first_msg = format!("Duplicate type '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+//
+//                let pos = orig_ident.get_position();
+//                let line = lines.get(pos.line - 1).expect("There should be a line");
+//
+//                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+//                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+//
+//                let second_msg = format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+//
+//                format!("{}\n{}", first_msg, second_msg)
+                unimplemented!()
             }
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
