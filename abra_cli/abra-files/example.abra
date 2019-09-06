@@ -2,3 +2,5 @@ type Person {
   name: String,
   age: Int
 }
+
+Person

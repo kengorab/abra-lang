@@ -72,6 +72,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
+        TypedAstNode::TypeDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
         TypedAstNode::Break(_, _) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
@@ -548,7 +549,23 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
-        unimplemented!()
+        let line = token.get_position().line;
+        let TypedTypeDeclNode { name, .. } = node;
+
+        let type_name = Token::get_ident_name(&name);
+        let const_idx = self.module.add_constant(Value::Type(type_name.clone()));
+        self.write_opcode(Opcode::Constant, line);
+        self.write_byte(const_idx, line);
+
+        if self.depth == 0 { // If it's a global...
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(type_name.clone()) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else { // ...otherwise, it's a local
+            let local = Local(type_name.clone(), self.depth);
+            self.locals.push(local);
+        }
+
+        Ok(())
     }
 
     fn visit_identifier(&mut self, token: Token, _node: TypedIdentifierNode) -> Result<(), ()> {

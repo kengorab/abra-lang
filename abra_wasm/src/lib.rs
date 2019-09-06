@@ -46,7 +46,8 @@ impl Serialize for RunResult {
                     Some(value) => serializer.serialize_some(&RunResult(*value.clone()))
                 }
             }
-            RunResult(Value::Fn(fn_name)) => serializer.serialize_str(fn_name)
+            RunResult(Value::Fn(fn_name)) => serializer.serialize_str(fn_name),
+            RunResult(Value::Type(type_name)) => serializer.serialize_str(type_name)
         }
     }
 }
