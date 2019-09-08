@@ -3,7 +3,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -331,7 +331,38 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerError> {
-        unimplemented!()
+        let MapNode { items } = node;
+
+        let mut fields = HashMap::<String, TypedAstNode>::new();
+        let mut field_types = Vec::<(String, Type)>::new();
+        let mut field_names = HashMap::<String, Token>::new();
+        for (field_name_tok, field_value) in items {
+            let field_name = Token::get_ident_name(&field_name_tok);
+            if let Some(orig_ident) = field_names.get(field_name) {
+                return Err(TypecheckerError::DuplicateBinding { orig_ident: orig_ident.clone(), ident: field_name_tok });
+            } else {
+                field_names.insert(field_name.clone(), field_name_tok.clone());
+            }
+
+            let field_value = self.visit(field_value)?;
+            let field_type = field_value.get_type();
+            field_types.push((field_name.clone(), field_type));
+            fields.insert(field_name.clone(), field_value);
+        }
+
+        let all_types = field_types.iter()
+            .map(|(_, typ)| typ)
+            .collect::<HashSet<&Type>>();
+        let homogeneous_type = if all_types.len() <= 1 {
+            match all_types.into_iter().next() {
+                Some(typ) => Some(Box::new(typ.clone())),
+                None => Some(Box::new(Type::Any))
+            }
+        } else {
+            None
+        };
+        let typ = Type::Map(field_types, homogeneous_type);
+        Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: fields }))
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -1463,6 +1494,90 @@ mod tests {
         assert_eq!(expected_type, typed_ast[0].get_type());
 
         // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]], which should be (Int | Float)[][]
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_map_empty() -> TestResult {
+        let typed_ast = typecheck("{}")?;
+        let expected = TypedAstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            TypedMapNode {
+                typ: Type::Map(vec![], Some(Box::new(Type::Any))),
+                items: HashMap::<String, TypedAstNode>::new(),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_map() -> TestResult {
+        // Homogeneous (simple)
+        let typed_ast = typecheck("{ a: 1, b: 2 }")?;
+        let expected = TypedAstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            TypedMapNode {
+                typ: Type::Map(vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)], Some(Box::new(Type::Int))),
+                items: {
+                    let mut items = HashMap::<String, TypedAstNode>::new();
+                    items.insert("a".to_string(), int_literal!((1, 6), 1));
+                    items.insert("b".to_string(), int_literal!((1, 12), 2));
+                    items
+                },
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Homogeneous (complex)
+        let typed_ast = typecheck("{ a: { c: true }, b: { c: false } }")?;
+        let nested_map_type = Type::Map(vec![("c".to_string(), Type::Bool)], Some(Box::new(Type::Bool)));
+        let expected = TypedAstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            TypedMapNode {
+                typ: Type::Map(
+                    vec![("a".to_string(), nested_map_type.clone()), ("b".to_string(), nested_map_type.clone())],
+                    Some(Box::new(nested_map_type.clone())),
+                ),
+                items: {
+                    let mut items = HashMap::<String, TypedAstNode>::new();
+                    items.insert("a".to_string(), TypedAstNode::Map(
+                        Token::LBrace(Position::new(1, 6)),
+                        TypedMapNode {
+                            typ: nested_map_type.clone(),
+                            items: {
+                                let mut items = HashMap::<String, TypedAstNode>::new();
+                                items.insert("c".to_string(), bool_literal!((1, 11), true));
+                                items
+                            },
+                        },
+                    ));
+                    items.insert("b".to_string(), TypedAstNode::Map(
+                        Token::LBrace(Position::new(1, 22)),
+                        TypedMapNode {
+                            typ: nested_map_type.clone(),
+                            items: {
+                                let mut items = HashMap::<String, TypedAstNode>::new();
+                                items.insert("c".to_string(), bool_literal!((1, 27), false));
+                                items
+                            },
+                        },
+                    ));
+                    items
+                },
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Non-homogeneous
+        let typed_ast = typecheck("{ a: 1, b: true, c: \"hello\" }")?;
+        let expected_type = Type::Map(
+            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Bool), ("c".to_string(), Type::String)],
+            None,
+        );
+        assert_eq!(expected_type, typed_ast[0].get_type());
 
         Ok(())
     }

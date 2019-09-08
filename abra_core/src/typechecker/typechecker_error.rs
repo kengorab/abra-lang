@@ -41,6 +41,16 @@ fn type_repr(t: &Type) -> String {
             format!("one of ({})", type_opts.join(", "))
         }
         Type::Array(typ) => format!("{}[]", type_repr(typ)),
+        Type::Map(fields, _) => {
+            if fields.is_empty() {
+                format!("{{}}")
+            } else {
+                let pairs = fields.iter()
+                    .map(|(name, typ)| format!("{}: {}", name, type_repr(typ)))
+                    .collect::<Vec<String>>().join(", ");
+                format!("{{ {} }}", pairs)
+            }
+        }
         Type::Option(typ) => format!("{}?", type_repr(typ)),
         Type::Fn(args, ret_type) => {
             let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");

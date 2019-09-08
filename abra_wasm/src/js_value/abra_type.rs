@@ -53,6 +53,16 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
+            Type::Map(fields, _) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Map")?;
+
+                let fields = fields.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect::<Vec<(String, JsType)>>();
+                obj.serialize_entry("fields", &fields)?;
+                obj.end()
+            }
             Type::Option(inner_type) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Option")?;
