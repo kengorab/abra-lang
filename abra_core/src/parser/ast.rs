@@ -7,6 +7,7 @@ pub enum AstNode {
     Binary(Token, BinaryNode),
     Grouped(Token, GroupedNode),
     Array(Token, ArrayNode),
+    Map(Token, MapNode),
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
     TypeDecl(Token, TypeDeclNode),
@@ -74,6 +75,11 @@ pub struct GroupedNode {
 #[derive(Debug, PartialEq)]
 pub struct ArrayNode {
     pub items: Vec<Box<AstNode>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct MapNode {
+    pub items: Vec<(Token, AstNode)>,
 }
 
 #[derive(Debug, PartialEq)]

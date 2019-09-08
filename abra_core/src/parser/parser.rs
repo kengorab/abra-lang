@@ -2,7 +2,7 @@ use std::iter::Peekable;
 use std::vec::IntoIter;
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -129,6 +129,7 @@ impl Parser {
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
+            Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
             Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
             Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
             _ => None,
@@ -680,6 +681,36 @@ impl Parser {
         Ok(AstNode::Array(token, ArrayNode { items }))
     }
 
+    fn parse_map_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        let mut item_expected = true;
+        let mut items = Vec::<(Token, AstNode)>::new();
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::RBrace(_) = token {
+                self.expect_next()?; // Consume '}' before ending loop
+                break;
+            } else if !item_expected {
+                return match self.peek() {
+                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    None => Err(ParseError::UnexpectedEof)
+                };
+            }
+
+            let field_name = self.expect_next_token(TokenType::Ident)?;
+            self.expect_next_token(TokenType::Colon)?;
+            let field_value = self.parse_expr()?;
+            items.push((field_name, field_value));
+
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::Comma(_) = token {
+                self.expect_next()?; // Consume comma
+            } else {
+                item_expected = false;
+            }
+        }
+        Ok(AstNode::Map(token, MapNode { items }))
+    }
+
     fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
         match &token {
             Token::Ident(_, _) => Ok(AstNode::Identifier(token)),
@@ -1229,6 +1260,62 @@ mod tests {
     }
 
     #[test]
+    fn parse_map_empty() -> TestResult {
+        let ast = parse("{}")?;
+        let expected = AstNode::Map(Token::LBrace(Position::new(1, 1)), MapNode { items: vec![] });
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_map_with_items() -> TestResult {
+        let ast = parse("{ a: 1, b: true }")?;
+        let expected = AstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            MapNode {
+                items: vec![
+                    (ident_token!((1, 3), "a"), int_literal!((1, 6), 1)),
+                    (ident_token!((1, 9), "b"), bool_literal!((1, 12), true)),
+                ]
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("{ a: 1, b: true, }")?; // Testing trailing commas
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_map_nested() -> TestResult {
+        let ast = parse("{ a: { a1: 1, a2: 2 }, b: true }")?;
+        let expected = AstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            MapNode {
+                items: vec![
+                    (ident_token!((1, 3), "a"), AstNode::Map(
+                        Token::LBrace(Position::new(1, 6)),
+                        MapNode {
+                            items: vec![
+                                (ident_token!((1, 8), "a1"), int_literal!((1, 12), 1)),
+                                (ident_token!((1, 15), "a2"), int_literal!((1, 19), 2)),
+                            ]
+                        },
+                    )),
+                    (ident_token!((1, 24), "b"), bool_literal!((1, 27), true)),
+                ]
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_map_error() {
+        let error = parse("{ 123: true }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 3), 123));
+        assert_eq!(expected, error);
+    }
+
+    #[test]
     fn parse_binding_decls_no_assignment() -> TestResult {
         let ast = parse("val abc\nvar abc")?;
         let expected = vec![
@@ -1497,10 +1584,6 @@ mod tests {
 
     #[test]
     fn parse_func_decl_error() {
-        let error = parse("func abc() = { 123 }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::LBrace(Position::new(1, 14)));
-        assert_eq!(expected, error);
-
         let error = parse("func (a: Int) = 123").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6)));
         assert_eq!(expected, error);
@@ -2324,7 +2407,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = parse("for a in { a }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::LBrace(Position::new(1, 10)));
+        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 14)));
         assert_eq!(expected, error);
 
         let error = parse("for a, in [0, 1] { a }").unwrap_err();
