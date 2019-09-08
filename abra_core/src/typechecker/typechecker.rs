@@ -717,26 +717,29 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target = self.visit(*target)?;
         let target_type = target.get_type();
 
-        let typ = match (target_type, &index) {
+        let typ = match (target_type.clone(), &index) {
             (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
             (Type::Array(inner_type), IndexingMode::Range(_, _)) => Ok(Type::Array(inner_type)),
             (Type::String, _) => Ok(Type::String),
-            (typ, _) => Err(TypecheckerError::Mismatch {
-                token: token.clone(),
-                expected: Type::Or(vec![Type::Array(Box::new(Type::Any)), Type::String]),
-                actual: typ,
-            })
+            (Type::Map(fields, homogeneous_type), IndexingMode::Index(_)) => {
+                match homogeneous_type {
+                    Some(typ) => Ok(Type::Option(typ)),
+                    None => Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type: Type::Map(fields, None) })
+                }
+            }
+            (typ, _) => Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type: typ })
         }?;
 
         let index = match index {
             IndexingMode::Index(idx) => {
                 let idx = self.visit(*idx)?;
-                match idx.get_type() {
-                    Type::Int => Ok(IndexingMode::Index(Box::new(idx))),
-                    typ @ _ => Err(TypecheckerError::Mismatch {
+                match (&target_type, idx.get_type()) {
+                    (Type::Array(_), Type::Int) | (Type::String, Type::Int) => Ok(IndexingMode::Index(Box::new(idx))),
+                    (Type::Map(_, _), Type::String) => Ok(IndexingMode::Index(Box::new(idx))),
+                    (target_type, selector_type) => Err(TypecheckerError::InvalidIndexingSelector {
                         token: idx.get_token().clone(),
-                        expected: Type::Int,
-                        actual: typ,
+                        target_type: target_type.clone(),
+                        selector_type,
                     })
                 }
             }
@@ -2126,24 +2129,45 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[1]);
 
+        let typed_ast = typecheck("val map = { a: 1, b: 2 }\nmap[\"a\"]")?;
+        let expected = TypedAstNode::Indexing(
+            Token::LBrack(Position::new(2, 4)),
+            TypedIndexingNode {
+                typ: Type::Option(Box::new(Type::Int)),
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 1), "map"),
+                    TypedIdentifierNode {
+                        typ: Type::Map(
+                            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
+                            Some(Box::new(Type::Int)),
+                        ),
+                        scope_depth: 0,
+                        is_mutable: false,
+                    },
+                )),
+                index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
         Ok(())
     }
 
     #[test]
     fn typecheck_indexing_errors() {
         let err = typecheck("[1, 2, 3][\"a\"]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidIndexingSelector {
             token: Token::String(Position::new(1, 11), "a".to_string()),
-            expected: Type::Int,
-            actual: Type::String,
+            target_type: Type::Array(Box::new(Type::Int)),
+            selector_type: Type::String,
         };
         assert_eq!(expected, err);
 
         let err = typecheck("\"abcd\"[[1, 2]]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidIndexingSelector {
             token: Token::LBrack(Position::new(1, 8)),
-            expected: Type::Int,
-            actual: Type::Array(Box::new(Type::Int)),
+            target_type: Type::String,
+            selector_type: Type::Array(Box::new(Type::Int)),
         };
         assert_eq!(expected, err);
 
@@ -2164,10 +2188,9 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = typecheck("123[0]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidIndexingTarget {
             token: Token::LBrack(Position::new(1, 4)),
-            expected: Type::Or(vec![Type::Array(Box::new(Type::Any)), Type::String]),
-            actual: Type::Int,
+            target_type: Type::Int,
         };
         assert_eq!(expected, err);
 
@@ -2176,6 +2199,27 @@ mod tests {
             token: Token::LBrack(Position::new(1, 23)),
             expected: Type::Int,
             actual: Type::Option(Box::new(Type::Int)),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("{ a: 1, b: 2 }[3]").unwrap_err();
+        let expected = TypecheckerError::InvalidIndexingSelector {
+            token: Token::Int(Position::new(1, 16), 3),
+            target_type: Type::Map(
+                vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
+                Some(Box::new(Type::Int)),
+            ),
+            selector_type: Type::Int,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("{ a: true, b: 2 }[\"a\"]").unwrap_err();
+        let expected = TypecheckerError::InvalidIndexingTarget {
+            token: Token::LBrack(Position::new(1, 18)),
+            target_type: Type::Map(
+                vec![("a".to_string(), Type::Bool), ("b".to_string(), Type::Int)],
+                None,
+            ),
         };
         assert_eq!(expected, err);
     }
