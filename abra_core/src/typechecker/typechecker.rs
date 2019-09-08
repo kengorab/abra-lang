@@ -599,7 +599,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 })
                 .collect(),
         };
-        self.add_binding(&new_type_name, &name, &new_type, false);
+        let binding_type = Type::Type(new_type_name.clone(), Box::new(new_type.clone()));
+        self.add_binding(&new_type_name, &name, &binding_type, false);
         self.add_type(new_type_name, name.clone(), new_type);
 
         Ok(TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields }))

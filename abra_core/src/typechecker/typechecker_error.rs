@@ -46,6 +46,7 @@ fn type_repr(t: &Type) -> String {
             let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
+        Type::Type(name, _) => name.to_string(),
         Type::Unknown => "Unknown".to_string(),
         Type::Struct { name, .. } => name.to_string(),
     }
@@ -135,7 +136,7 @@ impl DisplayError for TypecheckerError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypecheckerError::DuplicateType { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
+            TypecheckerError::DuplicateType { ident: _, orig_ident: _ } => { // orig_ident will be None if it's a builtin type
 //                let ident = Token::get_ident_name(&ident);
 //                let first_msg = format!("Duplicate type '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 //

@@ -3,4 +3,8 @@ type Person {
   age: Int
 }
 
+//val meg = Person({
+//  name: "Meg",
+//  age: 26
+//})
 Person
