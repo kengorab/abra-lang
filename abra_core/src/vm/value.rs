@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
@@ -48,6 +49,7 @@ pub enum Obj {
     StringObj { value: Box<String> },
     ArrayObj { value: Vec<Box<Value>> },
     OptionObj { value: Option<Box<Value>> },
+    MapObj { value: HashMap<String, Value> },
 }
 
 impl Obj {
@@ -64,6 +66,13 @@ impl Obj {
             Obj::OptionObj { value } => match value {
                 None => format!("None"),
                 Some(value) => value.to_string()
+            }
+            Obj::MapObj { value } => {
+                let items = value.iter()
+                    .map(|(key, value)| format!("{}: {}", key.to_string(), value.to_string()))
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{{ {} }}", items)
             }
         }
     }

@@ -13,6 +13,7 @@ pub enum Type {
     String,
     Bool,
     Array(Box<Type>),
+    Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
     Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
@@ -66,6 +67,18 @@ impl Type {
             }
             // TODO
             (Struct { name: _name1, fields: _fields1 }, Struct { name: _name2, fields: _fields2 }) => {
+                false
+            }
+            // TODO (This should be unreachable right now anwyay...)
+            (Map(_fields1, _), Map(_fields2, _)) => {
+                false
+            }
+            // TODO
+            (Struct { name: _name, fields: _fields1 }, Map(_fields2, _)) => {
+                false
+            }
+            // TODO
+            (Map(_fields1, _), Struct { name: _name, fields: _fields2 }) => {
                 false
             }
             (_, Any) => true,

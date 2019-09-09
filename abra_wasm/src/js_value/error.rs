@@ -220,6 +220,23 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidIndexingTarget { token, target_type } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidIndexingTarget")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidIndexingSelector { token, target_type, selector_type } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidIndexingSelector")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
+                    obj.serialize_entry("selectorType", &JsType(selector_type))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

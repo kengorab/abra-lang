@@ -54,7 +54,7 @@ pub enum InterpretError {
     StackEmpty,
     ConstIdxOutOfBounds,
     EndOfBytes,
-    TypeError(/*expected: */ String, /*actual:*/ String),
+    TypeError(/* expected: */ String, /* actual:*/ String),
     StackOverflow,
 }
 
@@ -62,12 +62,11 @@ struct CallFrame<'a> {
     ip: usize,
     chunk: &'a Chunk,
     stack_offset: usize,
+    name: String,
 }
 
 #[derive(Clone)]
-pub struct VMContext//<F>
-//    where F: Fn(String) -> ()
-{
+pub struct VMContext {
     pub print: fn(&str) -> ()
 }
 
@@ -96,7 +95,7 @@ const STACK_LIMIT: usize = 64;
 impl<'a> VM<'a> {
     pub fn new(module: &'a CompiledModule<'a>, ctx: VMContext) -> Self {
         let chunk = module.chunks.get(MAIN_CHUNK_NAME).unwrap();
-        let root_frame = CallFrame { ip: 0, chunk, stack_offset: 0 };
+        let root_frame = CallFrame { ip: 0, chunk, stack_offset: 0, name: MAIN_CHUNK_NAME.to_string() };
         VM {
             ctx,
             call_stack: vec![root_frame],
@@ -109,7 +108,12 @@ impl<'a> VM<'a> {
     fn stack_insert_at(&mut self, index: usize, value: Value) {
         match self.stack.get_mut(index) {
             Some(slot) => *slot = value,
-            None => panic!("No stack slot available at index {}", index)
+            None => {
+                let frame = self.call_stack.last().unwrap();
+                let chunk_name = &frame.name;
+                let offset = frame.ip;
+                panic!("Runtime error [{}+{}]:\n  No stack slot available at index {}", chunk_name, offset, index)
+            }
         }
     }
 
@@ -332,6 +336,28 @@ impl<'a> VM<'a> {
                     };
                     self.push(Value::Obj(Obj::OptionObj { value }))
                 }
+                Opcode::MapMk => {
+                    let size = self.read_byte_expect()?;
+                    let mut items = HashMap::with_capacity(size);
+                    for _ in 0..size {
+                        let value = self.pop_expect()?;
+                        let key = pop_expect_string!(self)?;
+                        items.insert(key, value);
+                    }
+                    self.push(Value::Obj(Obj::MapObj { value: items }));
+                }
+                Opcode::MapLoad => {
+                    let key = pop_expect_string!(self)?;
+                    if let Value::Obj(Obj::MapObj { value }) = self.pop_expect()? {
+                        let val = match value.get(&key) {
+                            Some(val) => val.clone(),
+                            None => Value::Nil
+                        };
+                        self.push(val)
+                    } else {
+                        unreachable!()
+                    }
+                }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;
                     let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
@@ -467,6 +493,7 @@ impl<'a> VM<'a> {
                         ip: 0,
                         chunk,
                         stack_offset: self.stack.len() - arity,
+                        name: func_name,
                     };
                     if self.call_stack.len() + 1 >= STACK_LIMIT {
                         break Err(InterpretError::StackOverflow);

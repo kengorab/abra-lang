@@ -27,6 +27,8 @@ impl Serialize for RunResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
+        use serde::ser::SerializeMap;
+
         match self {
             RunResult(Value::Nil) => serializer.serialize_none(),
             RunResult(Value::Int(val)) => serializer.serialize_i64(*val),
@@ -44,6 +46,13 @@ impl Serialize for RunResult {
                 Obj::OptionObj { value } => match value {
                     None => serializer.serialize_none(),
                     Some(value) => serializer.serialize_some(&RunResult(*value.clone()))
+                }
+                Obj::MapObj { value } => {
+                    let mut obj = serializer.serialize_map(Some((*value).len()))?;
+                    value.into_iter().for_each(|(key, val)| {
+                        obj.serialize_entry(key, &RunResult(val.clone())).unwrap();
+                    });
+                    obj.end()
                 }
             }
             RunResult(Value::Fn(fn_name)) => serializer.serialize_str(fn_name),

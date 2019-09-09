@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -378,6 +378,20 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
+    fn visit_map(&mut self, token: Token, node: TypedMapNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        let num_items = node.items.len();
+        for (key, value) in node.items {
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(key) }), line);
+            self.visit(value)?;
+        }
+
+        self.write_opcode(Opcode::MapMk, line);
+        self.write_byte(num_items as u8, line);
+        Ok(())
+    }
+
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
@@ -447,17 +461,22 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             if is_last_line {
                 let mut num_locals_to_pop = self.get_num_locals_at_depth(&func_depth);
 
-                if let Some(idx) = self.get_first_local_at_depth(&func_depth) {
-                    self.write_store_local_instr(idx, line);
+                let should_handle_return = ret_type != Type::Unit;
+                if should_handle_return {
+                    if let Some(idx) = self.get_first_local_at_depth(&func_depth) {
+                        self.write_store_local_instr(idx, line);
 
-                    // Push an empty string into metadata since this isn't a "real" store
-                    self.metadata.stores.push("".to_string());
+                        // Push an empty string into metadata since this isn't a "real" store
+                        self.metadata.stores.push("".to_string());
+                    }
                 }
                 for _ in 0..num_locals_to_pop {
                     self.locals.pop();
                 }
-                if num_locals_to_pop != 0 {
-                    num_locals_to_pop -= 1;
+                if should_handle_return {
+                    if num_locals_to_pop != 0 {
+                        num_locals_to_pop -= 1;
+                    }
                 }
                 for _ in 0..num_locals_to_pop {
                     self.write_opcode(Opcode::Pop, line);
@@ -622,13 +641,18 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let line = token.get_position().line;
 
         let TypedIndexingNode { target, index, .. } = node;
+        let is_map_target = if let Type::Map(_, _) = &target.get_type() { true } else { false };
 
         self.visit(*target)?;
 
         match index {
             IndexingMode::Index(idx) => {
                 self.visit(*idx)?;
-                self.write_opcode(Opcode::ArrLoad, line);
+                if is_map_target {
+                    self.write_opcode(Opcode::MapLoad, line);
+                } else {
+                    self.write_opcode(Opcode::ArrLoad, line);
+                }
                 self.write_opcode(Opcode::OptMk, line);
             }
             IndexingMode::Range(start, end) => {
@@ -1297,6 +1321,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_map_literal() {
+        let chunk = compile("{ a: 1, b: \"c\", d: true }");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![12, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Constant as u8, 3,
+                    Opcode::T as u8,
+                    Opcode::MapMk as u8, 3,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("d".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
         let expected = CompiledModule {
@@ -1590,6 +1642,30 @@ mod tests {
             ],
         };
         assert_eq!(expected, chunk);
+
+        let chunk = compile("{ a: 1, b: 2 }[\"a\"]");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![12, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::IConst1 as u8,
+                    Opcode::Constant as u8, 1,
+                    Opcode::IConst2 as u8,
+                    Opcode::MapMk as u8, 2,
+                    Opcode::Constant as u8, 0,
+                    Opcode::MapLoad as u8,
+                    Opcode::OptMk as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
     }
 
     #[test]
@@ -1776,6 +1852,50 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
                 Value::Fn("abc".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_declaration_returns_unit_type() {
+        let chunk = compile("\
+          func abc() {\n\
+            val a = 1\n\
+            println(\"hello\")\n\
+          }\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: {
+                let mut chunks = HashMap::new();
+                chunks.insert("abc".to_string(), Chunk {
+                    lines: vec![0, 1, 6, 1, 1],
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::Constant as u8, 3,
+                        Opcode::Invoke as u8, 1,
+                        Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
+                        Opcode::Return as u8,
+                    ],
+                });
+                chunks.insert(MAIN_CHUNK_NAME.to_string(), Chunk {
+                    lines: vec![5, 1],
+                    code: vec![
+                        Opcode::Constant as u8, 0,
+                        Opcode::Constant as u8, 1,
+                        Opcode::GStore as u8,
+                        Opcode::Return as u8
+                    ],
+                });
+                chunks
+            },
+            constants: vec![
+                Value::Fn("abc".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);

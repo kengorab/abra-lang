@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 
@@ -10,6 +10,7 @@ pub trait AstVisitor<V, E> {
             Binary(tok, node) => self.visit_binary(tok, node),
             Grouped(tok, node) => self.visit_grouped(tok, node),
             Array(tok, node) => self.visit_array(tok, node),
+            Map(tok, node) => self.visit_map_literal(tok, node),
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
             FunctionDecl(tok, node) => self.visit_func_decl(tok, node),
             TypeDecl(tok, node) => self.visit_type_decl(tok, node),
@@ -30,6 +31,7 @@ pub trait AstVisitor<V, E> {
     fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<V, E>;
     fn visit_grouped(&mut self, token: Token, node: GroupedNode) -> Result<V, E>;
     fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<V, E>;
+    fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<V, E>;
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<V, E>;
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<V, E>;
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<V, E>;

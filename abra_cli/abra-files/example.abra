@@ -1,10 +1,18 @@
-type Person {
-  name: String,
-  age: Int
-}
+//type Person {
+//  name: String,
+//  age: Int
+//}
 
 //val meg = Person({
 //  name: "Meg",
 //  age: 26
 //})
-Person
+//Person
+
+val ken = { firstName: "Ken", lastName: "Gorab" }
+func printName() {
+  val name = ken["firstName"]
+  println(name)
+}
+
+printName()
