@@ -333,7 +333,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerError> {
         let MapNode { items } = node;
 
-        let mut fields = HashMap::<String, TypedAstNode>::new();
+        let mut fields = Vec::<(String, TypedAstNode)>::new();
         let mut field_types = Vec::<(String, Type)>::new();
         let mut field_names = HashMap::<String, Token>::new();
         for (field_name_tok, field_value) in items {
@@ -347,7 +347,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let field_value = self.visit(field_value)?;
             let field_type = field_value.get_type();
             field_types.push((field_name.clone(), field_type));
-            fields.insert(field_name.clone(), field_value);
+            fields.push((field_name.clone(), field_value));
         }
 
         let all_types = field_types.iter()
@@ -1508,7 +1508,7 @@ mod tests {
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
                 typ: Type::Map(vec![], Some(Box::new(Type::Any))),
-                items: HashMap::<String, TypedAstNode>::new(),
+                items: vec![],
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1524,12 +1524,10 @@ mod tests {
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
                 typ: Type::Map(vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)], Some(Box::new(Type::Int))),
-                items: {
-                    let mut items = HashMap::<String, TypedAstNode>::new();
-                    items.insert("a".to_string(), int_literal!((1, 6), 1));
-                    items.insert("b".to_string(), int_literal!((1, 12), 2));
-                    items
-                },
+                items: vec![
+                    ("a".to_string(), int_literal!((1, 6), 1)),
+                    ("b".to_string(), int_literal!((1, 12), 2))
+                ],
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1544,32 +1542,22 @@ mod tests {
                     vec![("a".to_string(), nested_map_type.clone()), ("b".to_string(), nested_map_type.clone())],
                     Some(Box::new(nested_map_type.clone())),
                 ),
-                items: {
-                    let mut items = HashMap::<String, TypedAstNode>::new();
-                    items.insert("a".to_string(), TypedAstNode::Map(
+                items: vec![
+                    ("a".to_string(), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 6)),
                         TypedMapNode {
                             typ: nested_map_type.clone(),
-                            items: {
-                                let mut items = HashMap::<String, TypedAstNode>::new();
-                                items.insert("c".to_string(), bool_literal!((1, 11), true));
-                                items
-                            },
+                            items: vec![("c".to_string(), bool_literal!((1, 11), true))],
                         },
-                    ));
-                    items.insert("b".to_string(), TypedAstNode::Map(
+                    )),
+                    ("b".to_string(), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 22)),
                         TypedMapNode {
                             typ: nested_map_type.clone(),
-                            items: {
-                                let mut items = HashMap::<String, TypedAstNode>::new();
-                                items.insert("c".to_string(), bool_literal!((1, 27), false));
-                                items
-                            },
+                            items: vec![("c".to_string(), bool_literal!((1, 27), false))],
                         },
-                    ));
-                    items
-                },
+                    ))
+                ],
             },
         );
         assert_eq!(expected, typed_ast[0]);

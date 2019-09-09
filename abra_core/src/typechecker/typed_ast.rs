@@ -1,7 +1,6 @@
 use crate::typechecker::types::Type;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::lexer::tokens::Token;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedAstNode {
@@ -116,7 +115,7 @@ pub struct TypedArrayNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedMapNode {
     pub typ: Type,
-    pub items: HashMap<String, TypedAstNode>,
+    pub items: Vec<(String, TypedAstNode)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
