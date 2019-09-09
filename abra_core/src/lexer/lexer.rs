@@ -295,6 +295,7 @@ impl<'a> Lexer<'a> {
             '}' => Ok(Some(Token::RBrace(pos))),
             ',' => Ok(Some(Token::Comma(pos))),
             ':' => Ok(Some(Token::Colon(pos))),
+            '.' => Ok(Some(Token::Dot(pos))),
             _ => Ok(None)
         }
     }
@@ -336,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_operators() {
-        let input = "+ - * / % < > ! =";
+        let input = "+ - * / % < > ! = .";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
@@ -348,6 +349,7 @@ mod tests {
             Token::GT(Position::new(1, 13)),
             Token::Bang(Position::new(1, 15)),
             Token::Assign(Position::new(1, 17)),
+            Token::Dot(Position::new(1, 19)),
         ];
         assert_eq!(expected, tokens);
     }

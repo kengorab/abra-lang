@@ -1,7 +1,7 @@
 use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::typechecker::types::Type;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
@@ -921,6 +921,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Some(depth) => Ok(TypedAstNode::Break(token, depth)),
             None => Err(TypecheckerError::InvalidBreak(token))
         }
+    }
+
+    fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
+        unimplemented!()
     }
 }
 
