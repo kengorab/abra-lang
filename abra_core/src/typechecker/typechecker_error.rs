@@ -25,6 +25,7 @@ pub enum TypecheckerError {
     InvalidRequiredArgPosition(Token),
     InvalidIndexingTarget { token: Token, target_type: Type },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
+    UnknownMember { token: Token, target_type: Type },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -107,6 +108,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidRequiredArgPosition(token) => token.get_position(),
             TypecheckerError::InvalidIndexingTarget { token, .. } => token.get_position(),
             TypecheckerError::InvalidIndexingSelector { token, .. } => token.get_position(),
+            TypecheckerError::UnknownMember { token, .. } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -262,6 +264,9 @@ impl DisplayError for TypecheckerError {
                 unimplemented!()
             }
             TypecheckerError::InvalidIndexingSelector { token: _token, target_type: _target_type, selector_type: _selector_type } => {
+                unimplemented!()
+            }
+            TypecheckerError::UnknownMember { token: _token, target_type: _target_type } => {
                 unimplemented!()
             }
         }
