@@ -22,6 +22,7 @@ pub enum TypedAstNode {
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token, /* loop_depth: */ usize),
+    Accessor(Token, TypedAccessorNode),
 }
 
 impl TypedAstNode {
@@ -45,6 +46,7 @@ impl TypedAstNode {
             TypedAstNode::ForLoop(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
             TypedAstNode::Break(token, _) => token,
+            TypedAstNode::Accessor(token, _) => token,
         }
     }
 
@@ -73,6 +75,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(_, node) => node.typ.clone(),
             TypedAstNode::IfExpression(_, node) => node.typ.clone(),
             TypedAstNode::Invocation(_, node) => node.typ.clone(),
+            TypedAstNode::Accessor(_, node) => node.typ.clone(),
         }
     }
 }
@@ -194,5 +197,12 @@ pub struct TypedForLoopNode {
     pub index_ident: Option<Token>,
     pub iterator: Box<TypedAstNode>,
     pub body: Vec<TypedAstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedAccessorNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub field: Token
 }
 

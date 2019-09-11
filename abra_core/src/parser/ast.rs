@@ -20,6 +20,7 @@ pub enum AstNode {
     ForLoop(Token, ForLoopNode),
     WhileLoop(Token, WhileLoopNode),
     Break(Token),
+    Accessor(Token, AccessorNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -152,6 +153,12 @@ pub struct ForLoopNode {
 pub struct WhileLoopNode {
     pub condition: Box<AstNode>,
     pub body: Vec<AstNode>
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AccessorNode {
+    pub target: Box<AstNode>,
+    pub field: Token
 }
 
 #[derive(Debug, PartialEq)]

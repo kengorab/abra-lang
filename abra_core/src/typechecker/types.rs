@@ -78,8 +78,23 @@ impl Type {
                 false
             }
             // TODO
-            (Map(_fields1, _), Struct { name: _name, fields: _fields2 }) => {
-                false
+            (Map(provided_fields, _), Struct { fields: required_fields, .. }) => {
+                let provided_fields = provided_fields.iter()
+                    .map(|(name, typ)| (name.clone(), typ.clone()))
+                    .collect::<HashMap<_, _>>();
+                for (req_name, req_type) in required_fields {
+                    match provided_fields.get(req_name) {
+                        None => return false,
+                        Some(provided_type) => {
+                            if !provided_type.is_equivalent_to(req_type) {
+                                return false;
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
+                }
+                true
             }
             (_, Any) => true,
             (_, _) => false

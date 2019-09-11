@@ -2,7 +2,7 @@ use std::iter::Peekable;
 use std::vec::IntoIter;
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -151,6 +151,7 @@ impl Parser {
             Token::LBrack(_) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             Token::LParen(_) => Some(Box::new(Parser::parse_invocation)),
+            Token::Dot(_) => Some(Box::new(Parser::parse_accessor)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
     }
@@ -165,7 +166,7 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::LBrack(_) | Token::LParen(_) => Precedence::Call,
+            Token::Dot(_) | Token::LBrack(_) | Token::LParen(_) => Precedence::Call,
             _ => Precedence::None,
         }
     }
@@ -650,6 +651,12 @@ impl Parser {
         }
 
         Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
+    }
+
+    fn parse_accessor(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+        let dot = token;
+        let field = self.expect_next_token(TokenType::Ident)?;
+        Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field }))
     }
 
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -2201,6 +2208,24 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
+        let ast = parse("abc.def(4)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 8)),
+            InvocationNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::Dot(Position::new(1, 4)),
+                    AccessorNode {
+                        target: Box::new(identifier!((1, 1), "abc")),
+                        field: ident_token!((1, 5), "def")
+                    }
+                )),
+                args: vec![
+                    (None, int_literal!((1, 9), 4)),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
         Ok(())
     }
 
@@ -2413,5 +2438,42 @@ mod tests {
         let error = parse("for a, in [0, 1] { a }").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::In(Position::new(1, 8)));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_dot_accessor() -> TestResult {
+        let ast = parse("abc.def")?;
+        let expected = AstNode::Accessor(
+            Token::Dot(Position::new(1, 4)),
+            AccessorNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                field: ident_token!((1, 5), "def"),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc.def.ghi.jkl")?;
+        let expected = AstNode::Accessor(
+            Token::Dot(Position::new(1, 12)),
+            AccessorNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::Dot(Position::new(1, 8)),
+                    AccessorNode {
+                        target: Box::new(AstNode::Accessor(
+                            Token::Dot(Position::new(1, 4)),
+                            AccessorNode {
+                                target: Box::new(identifier!((1, 1), "abc")),
+                                field: ident_token!((1, 5), "def"),
+                            },
+                        )),
+                        field: ident_token!((1, 9), "ghi"),
+                    },
+                )),
+                field: ident_token!((1, 13), "jkl"),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 }

@@ -6,6 +6,7 @@ use crate::vm::compiler::MAIN_CHUNK_NAME;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
+use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 
 // Helper macros
 macro_rules! pop_expect_string {
@@ -348,15 +349,18 @@ impl<'a> VM<'a> {
                 }
                 Opcode::MapLoad => {
                     let key = pop_expect_string!(self)?;
-                    if let Value::Obj(Obj::MapObj { value }) = self.pop_expect()? {
-                        let val = match value.get(&key) {
-                            Some(val) => val.clone(),
-                            None => Value::Nil
-                        };
-                        self.push(val)
-                    } else {
-                        unreachable!()
-                    }
+                    let val = match self.pop_expect()? {
+                        Value::Obj(Obj::MapObj { value }) => {
+                            match value.get(&key) {
+                                Some(val) => val.clone(),
+                                None => Value::Nil
+                            }
+                        }
+                        value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, key),
+                        value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, key),
+                        _ => unreachable!()
+                    };
+                    self.push(val)
                 }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;

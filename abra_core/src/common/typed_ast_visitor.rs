@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 
 pub trait TypedAstVisitor<V, E> {
@@ -20,6 +20,7 @@ pub trait TypedAstVisitor<V, E> {
             IfStatement(tok, node) => self.visit_if_statement(true, tok, node),
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
             Invocation(tok, node) => self.visit_invocation(tok, node),
+            Accessor(tok, node) => self.visit_accessor(tok, node),
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok, loop_depth) => self.visit_break(tok, loop_depth),
@@ -41,6 +42,7 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<V, E>;
     fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<V, E>;
     fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<V, E>;
+    fn visit_accessor(&mut self, token: Token, node: TypedAccessorNode) -> Result<V, E>;
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<V, E>;
     fn visit_break(&mut self, token: Token, loop_depth: usize) -> Result<V, E>;

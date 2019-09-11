@@ -1,13 +1,14 @@
 use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::slice::Iter;
+use crate::builtins::native_types::fields_for_type;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -394,7 +395,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     None => Ok(ann_type),
                     Some(e) => {
                         if e.get_type().is_equivalent_to(&ann_type) {
-                            Ok(e.get_type())
+                            Ok(ann_type)
                         } else {
                             Err(TypecheckerError::Mismatch {
                                 token: e.get_token().clone(),
@@ -921,6 +922,36 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Some(depth) => Ok(TypedAstNode::Break(token, depth)),
             None => Err(TypecheckerError::InvalidBreak(token))
         }
+    }
+
+    fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
+        let AccessorNode { target, field } = node;
+        let target = self.visit(*target)?;
+
+        let field_name = Token::get_ident_name(&field);
+
+        let target_type = target.get_type();
+        let typ = match &target_type {
+            Type::Struct { fields, .. } => {
+                match fields.iter().find(|(name, _)| field_name == name) {
+                    Some((_, typ)) => Ok(typ.clone()),
+                    None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() })
+                }
+            }
+            typ @ _ => {
+                let field_type = fields_for_type(typ)
+                    .and_then(|fields| {
+                        fields.get(field_name.as_str())
+                            .map(|t| t.clone())
+                    });
+                match field_type {
+                    Some(typ) => Ok(typ.clone()),
+                    None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: typ.clone() })
+                }
+            }
+        }?;
+
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field }))
     }
 }
 
@@ -2760,5 +2791,88 @@ mod tests {
             actual: Type::Int,
         };
         assert_eq!(expected, error)
+    }
+
+    #[test]
+    fn typecheck_accessor() -> TestResult {
+        // Getting fields off structs
+        let typed_ast = typecheck("\
+          type Person { name: String }\n\
+          val p: Person = { name: \"Sam\" }\n\
+          p.name\n\
+        ")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(3, 2)),
+            TypedAccessorNode {
+                typ: Type::String,
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((3, 1), "p"),
+                    TypedIdentifierNode {
+                        typ: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String)] },
+                        scope_depth: 0,
+                        is_mutable: false,
+                    },
+                )),
+                field: ident_token!((3, 3), "name"),
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
+        // Getting field of builtin Array type
+        let typed_ast = typecheck("[1, 2, 3].length")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(1, 10)),
+            TypedAccessorNode {
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Array(
+                    Token::LBrack(Position::new(1, 1)),
+                    TypedArrayNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        items: vec![
+                            Box::new(int_literal!((1, 2), 1)),
+                            Box::new(int_literal!((1, 5), 2)),
+                            Box::new(int_literal!((1, 8), 3)),
+                        ],
+                    },
+                )),
+                field: ident_token!((1, 11), "length"),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Getting field of builtin String type
+        let typed_ast = typecheck("\"hello\".length")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(1, 8)),
+            TypedAccessorNode {
+                typ: Type::Int,
+                target: Box::new(string_literal!((1, 1), "hello")),
+                field: ident_token!((1, 9), "length"),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_accessor_error() {
+        let error = typecheck("\
+          type Person { name: String }\n\
+          val p: Person = { name: \"Sam\" }\n\
+          p.firstName\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((3, 3), "firstName"),
+            target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String)] },
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("true.value").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((1, 6), "value"),
+            target_type: Type::Bool,
+        };
+        assert_eq!(expected, error);
     }
 }
