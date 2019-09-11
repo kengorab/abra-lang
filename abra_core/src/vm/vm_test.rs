@@ -809,4 +809,32 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new(expected.to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_accessor_struct() {
+        let input = "\
+          type Person { name: String }\n\
+          val ken: Person = { name: \"Ken\" }\n\
+          ken.name\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_accessor_builtins() {
+        let tests = vec![
+            // Strings
+            ("\"\".length", Value::Int(0)),
+            ("\"hello\".length", Value::Int(5)),
+            // Arrays
+            ("[].length", Value::Int(0)),
+            ("[1, 2, 3, 4].length", Value::Int(4)),
+        ];
+        for (input, expected) in tests.into_iter() {
+            let result = interpret(input).unwrap();
+            assert_eq!(expected, result);
+        }
+    }
 }

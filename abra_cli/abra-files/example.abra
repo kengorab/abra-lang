@@ -16,4 +16,5 @@ val ken: Person = {
   age: 27
 }
 
-ken.name
+val name = ken.name.firstName + " " + ken.name.lastName
+println("Name: " + name + ", length: " + name.length)

@@ -812,7 +812,16 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
     }
 
     fn visit_accessor(&mut self, token: Token, node: TypedAccessorNode) -> Result<(), ()> {
-        unimplemented!()
+        let line = token.get_position().line;
+        let TypedAccessorNode { target, field, .. } = node;
+
+        self.visit(*target)?;
+
+        let field_name = Token::get_ident_name(&field).clone();
+        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(field_name) }), line);
+
+        self.write_opcode(Opcode::MapLoad, line);
+        Ok(())
     }
 
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<(), ()> {
@@ -2238,6 +2247,65 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("arr".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_accessor() {
+        // Accessing fields of structs
+        let chunk = compile("\
+          type Person { name: String }\n\
+          val ken: Person = { name: \"Ken\" }\n\
+          ken.name\n\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 9, 6, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Constant as u8, 3,
+                    Opcode::MapMk as u8, 1,
+                    Opcode::Constant as u8, 4,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 4,
+                    Opcode::GLoad as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::MapLoad as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Type("Person".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("ken".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        // Accessing fields of structs
+        let chunk = compile("\"hello\".length");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::MapLoad as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("length".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);

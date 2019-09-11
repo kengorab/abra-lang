@@ -1,10 +1,10 @@
 use crate::typechecker::types::Type;
-use crate::vm::value::Value;
+use crate::vm::value::{Value, Obj};
 use std::collections::HashMap;
 
-trait NativeType {
+pub trait NativeType {
     fn fields(typ: &Type) -> HashMap<&str, Type>;
-    fn get_field_value(&self, field: String) -> &Value;
+    fn get_field_value(value: &Value, field: String) -> Value;
 }
 
 pub fn fields_for_type(typ: &Type) -> Option<HashMap<&str, Type>> {
@@ -15,9 +15,7 @@ pub fn fields_for_type(typ: &Type) -> Option<HashMap<&str, Type>> {
     }
 }
 
-pub struct NativeArray {
-    pub length: Value,
-}
+pub struct NativeArray {}
 
 impl NativeType for NativeArray {
     fn fields(typ: &Type) -> HashMap<&str, Type> {
@@ -30,17 +28,19 @@ impl NativeType for NativeArray {
         }
     }
 
-    fn get_field_value(&self, field: String) -> &Value {
-        match field.as_str() {
-            "length" => &self.length,
-            _ => unreachable!()
+    fn get_field_value(value: &Value, field: String) -> Value {
+        if let Value::Obj(Obj::ArrayObj { value }) = value {
+            match field.as_str() {
+                "length" => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else {
+            unreachable!()
         }
     }
 }
 
-pub struct NativeString {
-    pub length: Value,
-}
+pub struct NativeString {}
 
 impl NativeType for NativeString {
     fn fields(_typ: &Type) -> HashMap<&str, Type> {
@@ -49,10 +49,14 @@ impl NativeType for NativeString {
         fields
     }
 
-    fn get_field_value(&self, field: String) -> &Value {
-        match field.as_str() {
-            "length" => &self.length,
-            _ => unreachable!()
+    fn get_field_value(value: &Value, field: String) -> Value {
+        if let Value::Obj(Obj::StringObj { value }) = value {
+            match field.as_str() {
+                "length" => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else {
+            unreachable!()
         }
     }
 }
