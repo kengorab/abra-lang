@@ -9,6 +9,7 @@ mod tests {
     use crate::vm::compiler::compile;
     use crate::vm::value::{Value, Obj};
     use crate::vm::vm::{VM, VMContext};
+    use std::collections::HashMap;
 
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
@@ -207,6 +208,45 @@ mod tests {
         let result = interpret("[1, 2] == \"hello\"").unwrap();
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
+    }
+
+    #[inline]
+    fn sorted_map_obj_values(value: Value) -> Vec<(String, Value)> {
+        if let Value::Obj(Obj::MapObj { value }) = value {
+            let mut pairs = value.into_iter().collect::<Vec<(String, Value)>>();
+            pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
+            pairs
+        } else {
+            panic!("Result should be a MapObj")
+        }
+    }
+
+    #[test]
+    fn interpret_map() {
+        let result = interpret("{ a: 1, b: \"hello\", c: true }").unwrap();
+        let result_pairs = sorted_map_obj_values(result);
+        let expected_pairs = vec![
+            ("a".to_string(), Value::Int(1)),
+            ("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })),
+            ("c".to_string(), Value::Bool(true)),
+        ];
+        assert_eq!(expected_pairs, result_pairs);
+
+        let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
+        let result_pairs = sorted_map_obj_values(result);
+        let expected_pairs = vec![
+            ("a".to_string(), Value::Obj(Obj::MapObj {
+                value: {
+                    let mut items = HashMap::new();
+                    items.insert("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }));
+                    items
+                }
+            })),
+            ("c".to_string(), Value::Obj(Obj::ArrayObj {
+                value: vec![Box::new(Value::Int(1)), Box::new(Value::Int(2))]
+            })),
+        ];
+        assert_eq!(expected_pairs, result_pairs);
     }
 
     #[test]
@@ -768,5 +808,33 @@ mod tests {
         let expected = "Outer 0 [Inner 0 Inner 1 ], Outer 1 [Inner 0 Inner 1 ], ";
         let expected = Value::Obj(Obj::StringObj { value: Box::new(expected.to_string()) });
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_accessor_struct() {
+        let input = "\
+          type Person { name: String }\n\
+          val ken: Person = { name: \"Ken\" }\n\
+          ken.name\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_accessor_builtins() {
+        let tests = vec![
+            // Strings
+            ("\"\".length", Value::Int(0)),
+            ("\"hello\".length", Value::Int(5)),
+            // Arrays
+            ("[].length", Value::Int(0)),
+            ("[1, 2, 3, 4].length", Value::Int(4)),
+        ];
+        for (input, expected) in tests.into_iter() {
+            let result = interpret(input).unwrap();
+            assert_eq!(expected, result);
+        }
     }
 }

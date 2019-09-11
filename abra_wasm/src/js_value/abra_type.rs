@@ -53,6 +53,16 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
+            Type::Map(fields, _) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Map")?;
+
+                let fields = fields.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect::<Vec<(String, JsType)>>();
+                obj.serialize_entry("fields", &fields)?;
+                obj.end()
+            }
             Type::Option(inner_type) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Option")?;
@@ -69,9 +79,25 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("returnType", &JsType(return_type))?;
                 obj.end()
             }
+            Type::Type(name, _) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Type")?;
+                obj.serialize_entry("name", name)?;
+                obj.end()
+            }
             Type::Unknown => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("kind", "Unknown")?;
+                obj.end()
+            }
+            Type::Struct { name, fields } => {
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "Struct")?;
+                obj.serialize_entry("name", name)?;
+                let fields: Vec<(String, JsType)> = fields.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("fields", &fields)?;
                 obj.end()
             }
         }

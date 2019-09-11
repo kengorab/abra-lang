@@ -7,8 +7,10 @@ pub enum AstNode {
     Binary(Token, BinaryNode),
     Grouped(Token, GroupedNode),
     Array(Token, ArrayNode),
+    Map(Token, MapNode),
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
+    TypeDecl(Token, TypeDeclNode),
     Identifier(Token),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
@@ -17,7 +19,8 @@ pub enum AstNode {
     Invocation(Token, InvocationNode),
     ForLoop(Token, ForLoopNode),
     WhileLoop(Token, WhileLoopNode),
-    Break(Token)
+    Break(Token),
+    Accessor(Token, AccessorNode),
 }
 
 #[derive(Debug, PartialEq)]
@@ -76,6 +79,11 @@ pub struct ArrayNode {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct MapNode {
+    pub items: Vec<(Token, AstNode)>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct BindingDeclNode {
     // Must be a Token::Ident
     pub ident: Token,
@@ -92,6 +100,14 @@ pub struct FunctionDeclNode {
     pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
     pub body: Vec<AstNode>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TypeDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub fields: Vec<(Token, TypeIdentifier)>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -137,6 +153,12 @@ pub struct ForLoopNode {
 pub struct WhileLoopNode {
     pub condition: Box<AstNode>,
     pub body: Vec<AstNode>
+}
+
+#[derive(Debug, PartialEq)]
+pub struct AccessorNode {
+    pub target: Box<AstNode>,
+    pub field: Token
 }
 
 #[derive(Debug, PartialEq)]

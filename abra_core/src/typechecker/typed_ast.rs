@@ -9,8 +9,10 @@ pub enum TypedAstNode {
     Binary(Token, TypedBinaryNode),
     Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
+    Map(Token, TypedMapNode),
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
+    TypeDecl(Token, TypedTypeDeclNode),
     Identifier(Token, TypedIdentifierNode),
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
@@ -20,6 +22,7 @@ pub enum TypedAstNode {
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token, /* loop_depth: */ usize),
+    Accessor(Token, TypedAccessorNode),
 }
 
 impl TypedAstNode {
@@ -30,8 +33,10 @@ impl TypedAstNode {
             TypedAstNode::Binary(token, _) => token,
             TypedAstNode::Grouped(token, _) => token,
             TypedAstNode::Array(token, _) => token,
+            TypedAstNode::Map(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
+            TypedAstNode::TypeDecl(token, _) => token,
             TypedAstNode::Identifier(token, _) => token,
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
@@ -41,6 +46,7 @@ impl TypedAstNode {
             TypedAstNode::ForLoop(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
             TypedAstNode::Break(token, _) => token,
+            TypedAstNode::Accessor(token, _) => token,
         }
     }
 
@@ -56,8 +62,10 @@ impl TypedAstNode {
             TypedAstNode::Binary(_, node) => node.typ.clone(),
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
+            TypedAstNode::Map(_, node) => node.typ.clone(),
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
+            TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_, _) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
@@ -67,6 +75,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(_, node) => node.typ.clone(),
             TypedAstNode::IfExpression(_, node) => node.typ.clone(),
             TypedAstNode::Invocation(_, node) => node.typ.clone(),
+            TypedAstNode::Accessor(_, node) => node.typ.clone(),
         }
     }
 }
@@ -107,6 +116,12 @@ pub struct TypedArrayNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TypedMapNode {
+    pub typ: Type,
+    pub items: Vec<(String, TypedAstNode)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedBindingDeclNode {
     // Must be a Token::Ident
     pub ident: Token,
@@ -124,6 +139,14 @@ pub struct TypedFunctionDeclNode {
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedTypeDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub fields: Vec<(Token, Type)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -174,5 +197,12 @@ pub struct TypedForLoopNode {
     pub index_ident: Option<Token>,
     pub iterator: Box<TypedAstNode>,
     pub body: Vec<TypedAstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedAccessorNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub field: Token
 }
 

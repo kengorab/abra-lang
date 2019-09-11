@@ -1,44 +1,25 @@
-chunk_runLoop:
-  IConst0
-  IConst0
-  Constant 2  ; 5
-  Constant 3  ; "range"
-  Invoke 2
-label_1
-  LLoad0
-  LLoad1
-  Constant 4  ; "arrayLen"
-  Invoke 1
-  LT
-  JumpIfF 20  ; label_0
-  LLoad1
-  LLoad0
-  ArrLoad
-  LLoad0
-  LLoad0
-  IConst1
-  IAdd
-  LStore0
-  Constant 5  ; "Outer "
-  LLoad2
-  StrConcat
-  Constant 6  ; "println"
-  Invoke 1
-  Pop
-  Pop
-  JumpB 29  ; label_1
-label_0
-  Pop
-  Pop
-  Constant 7  ; "Done"
-  Constant 6  ; "println"
+chunk_printName:
+  Constant 4	; "ken"
+  GLoad
+  Constant 0	; "firstName"
+  MapLoad
+  OptMk
+  LLoad0	; name
+  Constant 7	; "println"
   Invoke 1
   Return
 
 chunk_main:
-  Constant 0  ; <func runLoop>
-  Constant 1  ; "runLoop"
+  Constant 0	; "firstName"
+  Constant 1	; "Ken"
+  Constant 2	; "lastName"
+  Constant 3	; "Gorab"
+  MapMk 2
+  Constant 4	; "ken"
   GStore
-  Constant 1  ; "runLoop"
+  Constant 5	; <func printName>
+  Constant 6	; "printName"
+  GStore
+  Constant 6	; "printName"
   Invoke 0
   Return

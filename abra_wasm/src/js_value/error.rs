@@ -108,6 +108,16 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
                     obj.end()
                 }
+                TypecheckerError::DuplicateType { ident, orig_ident } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateType")?;
+                    obj.serialize_entry("ident", &JsToken(ident))?;
+                    if let Some(orig_ident) = orig_ident {
+                        obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
+                    }
+                    obj.end()
+                }
                 TypecheckerError::UnknownIdentifier { ident } => {
                     let mut obj = serializer.serialize_map(Some(3))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
@@ -208,6 +218,31 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidRequiredArgPosition")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidIndexingTarget { token, target_type } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidIndexingTarget")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidIndexingSelector { token, target_type, selector_type } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidIndexingSelector")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
+                    obj.serialize_entry("selectorType", &JsType(selector_type))?;
+                    obj.end()
+                }
+                TypecheckerError::UnknownMember { token, target_type } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "unknownMember")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.end()
                 }
             }

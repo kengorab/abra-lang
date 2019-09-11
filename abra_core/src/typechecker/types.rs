@@ -13,14 +13,17 @@ pub enum Type {
     String,
     Bool,
     Array(Box<Type>),
+    Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
     Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
+    Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
+    Struct { name: String, fields: Vec<(String, Type)> },
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
 }
 
 impl Type {
     pub fn is_equivalent_to(&self, target_type: &Type) -> bool {
-        use Type::*;
+        use self::Type::*;
 
         // TODO: Test this, esp the complex cases
         match (self, target_type) {
@@ -29,12 +32,12 @@ impl Type {
             (String, String) | (Bool, Bool) | (Any, Any) => true,
             // For Array / Option types, compare inner type
             (Array(t1), Array(t2)) |
-            (Option(t1), Option(t2)) => Type::is_equivalent_to(t1, t2),
+            (Option(t1), Option(t2)) => self::Type::is_equivalent_to(t1, t2),
             (Or(t1s), Or(t2s)) => {
-                let t1s = HashSet::<Type>::from_iter(t1s.clone().into_iter());
-                let t2s = HashSet::<Type>::from_iter(t2s.clone().into_iter());
+                let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
+                let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
                 for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                    if !Type::is_equivalent_to(t1, t2) {
+                    if !self::Type::is_equivalent_to(t1, t2) {
                         return false;
                     }
                 }
@@ -49,12 +52,47 @@ impl Type {
                 // TODO: Factor in optional params here
                 // func abc(a: Int, b = 3) = a + b should satisfy a type of (Int, Int) => Int and also (Int) => Int
                 for ((_, t1, _), (_, t2, _)) in args1.iter().zip(args2.iter()) {
-                    if !Type::is_equivalent_to(t1, t2) {
+                    if !self::Type::is_equivalent_to(t1, t2) {
                         return false;
                     }
                 }
-                if !Type::is_equivalent_to(ret1, ret2) {
+                if !self::Type::is_equivalent_to(ret1, ret2) {
                     return false;
+                }
+                true
+            }
+            // TODO
+            (Type(_name1, _t1), Type(_name2, _t2)) => {
+                false
+            }
+            // TODO
+            (Struct { name: _name1, fields: _fields1 }, Struct { name: _name2, fields: _fields2 }) => {
+                false
+            }
+            // TODO (This should be unreachable right now anwyay...)
+            (Map(_fields1, _), Map(_fields2, _)) => {
+                false
+            }
+            // TODO
+            (Struct { name: _name, fields: _fields1 }, Map(_fields2, _)) => {
+                false
+            }
+            // TODO
+            (Map(provided_fields, _), Struct { fields: required_fields, .. }) => {
+                let provided_fields = provided_fields.iter()
+                    .map(|(name, typ)| (name.clone(), typ.clone()))
+                    .collect::<HashMap<_, _>>();
+                for (req_name, req_type) in required_fields {
+                    match provided_fields.get(req_name) {
+                        None => return false,
+                        Some(provided_type) => {
+                            if !provided_type.is_equivalent_to(req_type) {
+                                return false;
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
                 }
                 true
             }
@@ -63,7 +101,7 @@ impl Type {
         }
     }
 
-    pub fn from_type_ident(type_ident: &TypeIdentifier, types: HashMap<String, Type>) -> Option<Type> {
+    pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Option<Type> {
         match type_ident {
             TypeIdentifier::Normal { ident } => {
                 let type_name = Token::get_ident_name(ident);
@@ -91,8 +129,8 @@ mod test {
     use crate::parser::ast::{AstNode, BindingDeclNode};
     use super::*;
 
-    fn parse_type_ident<S: Into<std::string::String>>(input: S) -> Type {
-        let base_types: HashMap<std::string::String, Type> = {
+    fn parse_type_ident<S: Into<std::string::String>>(input: S) -> super::Type {
+        let base_types: HashMap<std::string::String, super::Type> = {
             let mut types = HashMap::new();
             types.insert("Int".to_string(), Int);
             types.insert("Float".to_string(), Float);
@@ -107,7 +145,7 @@ mod test {
         let ast = parse(tokens).unwrap();
         match ast.first().unwrap() {
             AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
-                Type::from_type_ident(&type_ann, base_types).unwrap()
+                super::Type::from_type_ident(&type_ann, &base_types).unwrap()
             }
             _ => unreachable!()
         }
@@ -136,10 +174,10 @@ mod test {
 
     #[test]
     fn is_equivalent_to_any() {
-        assert_eq!(false, Type::Any.is_equivalent_to(&Type::Bool));
-        assert_eq!(true, Type::Bool.is_equivalent_to(&Type::Any));
+        assert_eq!(false, Any.is_equivalent_to(&Bool));
+        assert_eq!(true, Bool.is_equivalent_to(&Any));
 
-        assert_eq!(true, Type::Array(Box::new(Type::Int)).is_equivalent_to(&Type::Array(Box::new(Type::Any))));
-        assert_eq!(true, Type::Array(Box::new(Type::Array(Box::new(Type::Int)))).is_equivalent_to(&Type::Array(Box::new(Type::Any))));
+        assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any))));
+        assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any))));
     }
 }

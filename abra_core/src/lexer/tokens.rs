@@ -22,6 +22,7 @@ pub enum Keyword {
     Break,
     For,
     In,
+    Type,
 }
 
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
@@ -41,6 +42,7 @@ pub enum Token {
     #[strum(to_string = "break", serialize = "Break")] Break(Position),
     #[strum(to_string = "for", serialize = "For")] For(Position),
     #[strum(to_string = "in", serialize = "In")] In(Position),
+    #[strum(to_string = "type", serialize = "Type")] Type(Position),
 
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
 
@@ -70,6 +72,7 @@ pub enum Token {
     #[strum(to_string = ":", serialize = "Colon")] Colon(Position),
     #[strum(to_string = ",", serialize = "Comma")] Comma(Position),
     #[strum(to_string = "?", serialize = "Question")] Question(Position),
+    #[strum(to_string = ".", serialize = "Dot")] Dot(Position),
 }
 
 impl Token {
@@ -79,7 +82,6 @@ impl Token {
             Token::Float(pos, _) |
             Token::String(pos, _) |
             Token::Bool(pos, _) |
-            Token::Ident(pos, _) => pos,
 
             Token::Func(pos) |
             Token::Val(pos) |
@@ -87,6 +89,13 @@ impl Token {
             Token::If(pos) |
             Token::Else(pos) |
             Token::While(pos) |
+            Token::Break(pos) |
+            Token::For(pos) |
+            Token::In(pos) |
+            Token::Type(pos) |
+
+            Token::Ident(pos, _) => pos,
+
             Token::Assign(pos) |
             Token::Plus(pos) |
             Token::Minus(pos) |
@@ -103,6 +112,7 @@ impl Token {
             Token::Eq(pos) |
             Token::Neq(pos) |
             Token::Bang(pos) |
+
             Token::LParen(pos) |
             Token::RParen(pos) |
             Token::LBrack(pos) |
@@ -112,9 +122,7 @@ impl Token {
             Token::Colon(pos) |
             Token::Comma(pos) |
             Token::Question(pos) |
-            Token::Break(pos) |
-            Token::For(pos) |
-            Token::In(pos) => pos
+            Token::Dot(pos) => pos
         };
         pos.clone()
     }
