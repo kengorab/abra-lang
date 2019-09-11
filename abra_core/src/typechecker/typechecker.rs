@@ -8,6 +8,7 @@ use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::slice::Iter;
+use crate::builtins::native_types::fields_for_type;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -938,7 +939,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
             }
             typ @ _ => {
-                Ok(typ.clone())
+                let field_type = fields_for_type(typ)
+                    .and_then(|fields| {
+                        fields.get(field_name.as_str())
+                            .map(|t| t.clone())
+                    });
+                match field_type {
+                    Some(typ) => Ok(typ.clone()),
+                    None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: typ.clone() })
+                }
             }
         }?;
 
@@ -2809,33 +2818,45 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[2]);
 
-        // TODO: Getting fields off builtins
-//        let typed_ast = typecheck("[1, 2, 3].length")?;
-//        let expected = TypedAstNode::Accessor(
-//            Token::Dot(Position::new(1, 10)),
-//            TypedAccessorNode {
-//                typ: Type::Int,
-//                target: Box::new(TypedAstNode::Array(
-//                    Token::LBrack(Position::new(1, 1)),
-//                    TypedArrayNode {
-//                        typ: Type::Array(Box::new(Type::Int)),
-//                        items: vec![
-//                            Box::new(int_literal!((1, 2), 1)),
-//                            Box::new(int_literal!((1, 5), 2)),
-//                            Box::new(int_literal!((1, 8), 3)),
-//                        ]
-//                    },
-//                )),
-//                field: ident_token!((1, 11), "length"),
-//            },
-//        );
-//        assert_eq!(expected, typed_ast[0]);
+        // Getting field of builtin Array type
+        let typed_ast = typecheck("[1, 2, 3].length")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(1, 10)),
+            TypedAccessorNode {
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Array(
+                    Token::LBrack(Position::new(1, 1)),
+                    TypedArrayNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        items: vec![
+                            Box::new(int_literal!((1, 2), 1)),
+                            Box::new(int_literal!((1, 5), 2)),
+                            Box::new(int_literal!((1, 8), 3)),
+                        ],
+                    },
+                )),
+                field: ident_token!((1, 11), "length"),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Getting field of builtin String type
+        let typed_ast = typecheck("\"hello\".length")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(1, 8)),
+            TypedAccessorNode {
+                typ: Type::Int,
+                target: Box::new(string_literal!((1, 1), "hello")),
+                field: ident_token!((1, 9), "length"),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
 
         Ok(())
     }
 
     #[test]
-    fn typecheck_accessor_structs_error() {
+    fn typecheck_accessor_error() {
         let error = typecheck("\
           type Person { name: String }\n\
           val p: Person = { name: \"Sam\" }\n\
@@ -2844,6 +2865,13 @@ mod tests {
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
             target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String)] },
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("true.value").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((1, 6), "value"),
+            target_type: Type::Bool,
         };
         assert_eq!(expected, error);
     }
