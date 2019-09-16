@@ -95,7 +95,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Struct")?;
                 obj.serialize_entry("name", name)?;
                 let fields: Vec<(String, JsType)> = fields.iter()
-                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("fields", &fields)?;
                 obj.end()

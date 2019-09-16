@@ -1,4 +1,4 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
 use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
@@ -6,6 +6,7 @@ use crate::vm::opcode::Opcode;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
+use std::collections::HashSet;
 
 #[derive(Debug, PartialEq)]
 pub struct Local(/* name: */ String, /* scope_depth: */ usize);
@@ -383,6 +384,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let num_items = node.items.len();
         for (key, value) in node.items {
+            let key = Token::get_ident_name(&key).clone();
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(key) }), line);
             self.visit(value)?;
         }
@@ -808,6 +810,22 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes
         };
         self.write_invoke(name, num_args, line);
+        Ok(())
+    }
+
+    fn visit_instantiation(&mut self, token: Token, node: TypedInstantiationNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+        let TypedInstantiationNode { typ, fields } = node;
+
+        let num_fields = fields.len();
+        for (field_name, field_value) in fields {
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(field_name) }), line);
+            self.visit(field_value)?;
+        }
+
+        self.write_opcode(Opcode::MapMk, line);
+        self.write_byte(num_fields as u8, line);
+
         Ok(())
     }
 
@@ -1424,6 +1442,85 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Int(5),
                 Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_struct_type() {
+        // Test assignment from map literal to struct type
+        let chunk = compile("\
+          type Person { name: String }\n\
+          val meg = Person({ name: \"Meg\" })\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 9, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Constant as u8, 3,
+                    Opcode::MapMk as u8, 1,
+                    Opcode::Constant as u8, 4,
+                    Opcode::GStore as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Type("Person".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("Meg".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("meg".to_string()) }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        // Test assignment with default field values
+        let chunk = compile("\
+          type Person { name: String, age: Int = 0 }\n\
+          val someBaby = Person({ name: \"Unnamed\" })\n\
+          val anAdult = Person({ name: \"Some Name\", age: 29 })\n\
+        ");
+        let expected = CompiledModule {
+            name: MODULE_NAME,
+            chunks: with_main_chunk(Chunk {
+                lines: vec![5, 6, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                code: vec![
+                    Opcode::Constant as u8, 0,
+                    Opcode::Constant as u8, 1,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Constant as u8, 3,
+                    Opcode::Constant as u8, 4,
+                    Opcode::IConst0 as u8,
+                    Opcode::MapMk as u8, 2,
+                    Opcode::Constant as u8, 5,
+                    Opcode::GStore as u8,
+                    Opcode::Constant as u8, 2,
+                    Opcode::Constant as u8, 6,
+                    Opcode::Constant as u8, 4,
+                    Opcode::Constant as u8, 7,
+                    Opcode::MapMk as u8, 2,
+                    Opcode::Constant as u8, 8,
+                    Opcode::GStore as u8,
+                    Opcode::Return as u8
+                ],
+            }),
+            constants: vec![
+                Value::Type("Person".to_string()),
+                Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("Unnamed".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("age".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("someBaby".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("Some Name".to_string()) }),
+                Value::Int(29),
+                Value::Obj(Obj::StringObj { value: Box::new("anAdult".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);

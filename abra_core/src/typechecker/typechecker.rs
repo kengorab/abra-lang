@@ -1,14 +1,14 @@
 use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
+use crate::builtins::native_types::fields_for_type;
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::typechecker::types::Type;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
 use crate::typechecker::typechecker_error::TypecheckerError;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::slice::Iter;
-use crate::builtins::native_types::fields_for_type;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -23,7 +23,7 @@ pub(crate) enum ScopeKind {
 pub(crate) struct Scope {
     pub(crate) kind: ScopeKind,
     pub(crate) bindings: HashMap<String, ScopeBinding>,
-    pub(crate) types: HashMap<String, (Type, Option<Token>)>,
+    pub(crate) types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
 }
 
 impl Scope {
@@ -100,16 +100,16 @@ impl Typechecker {
         types
     }
 
-    fn add_type(&mut self, name: String, ident: Token, typ: Type) {
+    fn add_type(&mut self, name: String, type_decl_node: TypedAstNode, typ: Type) {
         let scope = self.scopes.last_mut().unwrap();
-        scope.types.insert(name, (typ, Some(ident)));
+        scope.types.insert(name, (typ, Some(type_decl_node)));
     }
 
-    fn get_type(&self, name: &String) -> Option<(Type, Option<Token>)> {
+    fn get_type(&self, name: &String) -> Option<(Type, Option<TypedAstNode>)> {
         for scope in self.scopes.iter().rev() {
-            for (type_name, (typ, tok)) in scope.types.iter() {
+            for (type_name, (typ, type_decl_node)) in scope.types.iter() {
                 if type_name == name {
-                    return Some((typ.clone(), tok.clone()));
+                    return Some((typ.clone(), type_decl_node.clone()));
                 }
             }
         }
@@ -334,7 +334,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerError> {
         let MapNode { items } = node;
 
-        let mut fields = Vec::<(String, TypedAstNode)>::new();
+        let mut fields = Vec::<(Token, TypedAstNode)>::new();
         let mut field_types = Vec::<(String, Type)>::new();
         let mut field_names = HashMap::<String, Token>::new();
         for (field_name_tok, field_value) in items {
@@ -348,7 +348,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let field_value = self.visit(field_value)?;
             let field_type = field_value.get_type();
             field_types.push((field_name.clone(), field_type));
-            fields.push((field_name.clone(), field_value));
+            fields.push((field_name_tok.clone(), field_value));
         }
 
         let all_types = field_types.iter()
@@ -359,9 +359,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Some(typ) => Some(Box::new(typ.clone())),
                 None => Some(Box::new(Type::Any))
             }
-        } else {
-            None
-        };
+        } else { None };
         let typ = Type::Map(field_types, homogeneous_type);
         Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: fields }))
     }
@@ -607,13 +605,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let new_type_name = Token::get_ident_name(&name).clone();
         let all_types = self.get_types_in_scope();
 
-        if let Some((_, token)) = self.get_type(&new_type_name) {
+        if let Some((_, typed_decl_node)) = self.get_type(&new_type_name) {
+            let token = typed_decl_node.map(|node| node.get_token().clone());
             return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
         }
 
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
-            .map(|(field_name, field_type)| {
+            .map(|(field_name, field_type, default_value)| {
                 let field_type = Type::from_type_ident(&field_type, &all_types)
                     .ok_or(TypecheckerError::UnknownType { type_ident: field_type.get_ident() })?;
                 let field_name_str = Token::get_ident_name(&field_name);
@@ -622,24 +621,34 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 } else {
                     field_names.insert(field_name_str.clone(), field_name.clone());
                 }
-                Ok((field_name, field_type))
+                let default_value = if let Some(default_value) = default_value {
+                    let default_value = self.visit(default_value)?;
+                    let default_value_type = default_value.get_type();
+                    if !default_value_type.is_equivalent_to(&field_type) {
+                        return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), actual: default_value_type, expected: field_type });
+                    } else {
+                        Some(default_value)
+                    }
+                } else { None };
+                Ok((field_name, field_type, default_value))
             })
-            .collect::<Result<Vec<(Token, Type)>, _>>();
+            .collect::<Result<Vec<(Token, Type, Option<TypedAstNode>)>, _>>();
         let fields = fields?;
 
         let new_type = Type::Struct {
             name: new_type_name.clone(),
             fields: fields.iter()
-                .map(|(name, typ)| {
-                    (Token::get_ident_name(name).clone(), typ.clone())
+                .map(|(name, typ, default_value)| {
+                    (Token::get_ident_name(name).clone(), typ.clone(), default_value.is_some())
                 })
                 .collect(),
         };
         let binding_type = Type::Type(new_type_name.clone(), Box::new(new_type.clone()));
         self.add_binding(&new_type_name, &name, &binding_type, false);
-        self.add_type(new_type_name, name.clone(), new_type);
 
-        Ok(TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields }))
+        let type_decl = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields });
+        self.add_type(new_type_name, type_decl.clone(), new_type);
+        Ok(type_decl)
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -814,44 +823,113 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let InvocationNode { target, args } = node;
         let target = self.visit(*target)?;
         let target_type = target.get_type();
-        let (args, ret_type) = if let Type::Fn(arg_types, ret_type) = target_type {
-            let num_req_args = arg_types.iter()
-                .take_while(|(_, _, is_optional)| !*is_optional)
-                .count();
-            if args.len() < num_req_args || args.len() > arg_types.len() {
-                return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
+        match target_type {
+            Type::Fn(arg_types, ret_type) => {
+                let num_req_args = arg_types.iter()
+                    .take_while(|(_, _, is_optional)| !*is_optional)
+                    .count();
+                if args.len() < num_req_args || args.len() > arg_types.len() {
+                    return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
+                }
+
+                let mut typed_args = Vec::<TypedAstNode>::new();
+                for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
+                    let (arg_name, arg) = arg;
+                    let (expected_name, expected_arg_type, _) = expected;
+
+                    if let Some(arg_name) = arg_name {
+                        let passed_name = Token::get_ident_name(&arg_name);
+                        if passed_name != expected_name {
+                            return Err(TypecheckerError::ParamNameMismatch { token: arg_name.clone(), expected: expected_name.clone(), actual: passed_name.clone() });
+                        }
+                    }
+
+                    let arg = self.visit(arg)?;
+                    let arg_type = arg.get_type();
+                    if !arg_type.is_equivalent_to(expected_arg_type) {
+                        return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                    }
+                    typed_args.push(arg);
+                }
+
+                Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: *ret_type, target: Box::new(target), args: typed_args }))
             }
+            Type::Type(_, t) => match *t.clone() {
+                Type::Struct { name, fields: expected_fields } => {
+                    if args.len() != 1 {
+                        return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: 1, actual: args.len() });
+                    }
+                    let (arg_name, arg) = args.into_iter().next().unwrap();
+                    if let Some(arg_name) = arg_name {
+                        // Type instantiation invocations should have no named parameters
+                        let passed_name = Token::get_ident_name(&arg_name);
+                        return Err(TypecheckerError::ParamNameMismatch { token: arg_name.clone(), expected: "".to_string(), actual: passed_name.clone() });
+                    }
 
-            let mut typed_args = Vec::<TypedAstNode>::new();
-            for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
-                let (arg_name, arg) = arg;
-                let (expected_name, expected_arg_type, _) = expected;
+                    let arg = self.visit(arg)?;
+                    match &arg {
+                        TypedAstNode::Map(tok, TypedMapNode { items, .. }) => {
+                            let expected_fields_map = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
+                                (_, Some(TypedAstNode::TypeDecl(_, TypedTypeDeclNode { fields, .. }))) => {
+                                    fields.iter()
+                                        .map(|(name, typ, default_value)| {
+                                            let name = Token::get_ident_name(name).clone();
+                                            (name, (typ.clone(), default_value.clone()))
+                                        })
+                                        .collect::<HashMap<String, (Type, Option<TypedAstNode>)>>()
+                                }
+                                _ => unreachable!()
+                            };
 
-                if let Some(arg_name) = arg_name {
-                    let passed_name = Token::get_ident_name(&arg_name);
-                    if passed_name != expected_name {
-                        return Err(TypecheckerError::ParamNameMismatch { token: arg_name.clone(), expected: expected_name.clone(), actual: passed_name.clone() });
+                            let mut fields = Vec::<(String, TypedAstNode)>::new();
+                            let mut field_names = HashMap::<String, Token>::new();
+
+                            // First, check that provided fields match the expected fields
+                            for (field_tok, field_value) in items.iter() {
+                                let field_name = Token::get_ident_name(field_tok);
+                                if let Some(orig_ident) = field_names.get(field_name) {
+                                    return Err(TypecheckerError::DuplicateBinding { orig_ident: orig_ident.clone(), ident: field_tok.clone() });
+                                } else {
+                                    field_names.insert(field_name.clone(), field_tok.clone());
+                                }
+
+                                match expected_fields_map.get(field_name) {
+                                    Some((expected_type, _)) => {
+                                        let field_type = field_value.get_type();
+                                        if !field_type.is_equivalent_to(expected_type) {
+                                            return Err(TypecheckerError::Mismatch { token: field_tok.clone(), expected: expected_type.clone(), actual: field_type.clone() });
+                                        }
+                                        fields.push((field_name.clone(), field_value.clone()))
+                                    }
+                                    None => {
+                                        // Since I can't destructure and also bind, redeclare here
+                                        let target_type = Type::Struct { name, fields: expected_fields };
+                                        return Err(TypecheckerError::UnknownMember { token: field_tok.clone(), target_type });
+                                    }
+                                }
+                            }
+
+                            // Then, check to make sure there are no unsupplied non-default-valued fields
+                            for (field_name, (field_type, default_value)) in expected_fields_map {
+                                let is_required = default_value.is_none();
+                                if !field_names.contains_key(&field_name) {
+                                    if is_required {
+                                        return Err(TypecheckerError::MissingRequiredField { token: tok.clone(), field: (field_name, field_type) });
+                                    } else {
+                                        fields.push((field_name, default_value.unwrap()))
+                                    }
+                                }
+                            }
+
+                            Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), fields }))
+                        }
+                        _ => return Err(TypecheckerError::InvalidInstantiationParam { token: arg.get_token().clone() })
                     }
                 }
-
-                let arg = self.visit(arg)?;
-                let arg_type = arg.get_type();
-                if !arg_type.is_equivalent_to(expected_arg_type) {
-                    return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
-                }
-                typed_args.push(arg);
+                _ => unreachable!("No Types other than Structs can be wrapped by Type at the moment")
             }
-            (typed_args, *ret_type)
-        } else {
-            return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone() });
-        };
-
-        let node = TypedInvocationNode {
-            typ: ret_type,
-            target: Box::new(target),
-            args,
-        };
-        Ok(TypedAstNode::Invocation(token, node))
+            _ => return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone() })
+        }
     }
 
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -933,8 +1011,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target_type = target.get_type();
         let typ = match &target_type {
             Type::Struct { fields, .. } => {
-                match fields.iter().find(|(name, _)| field_name == name) {
-                    Some((_, typ)) => Ok(typ.clone()),
+                match fields.iter().find(|(name, _, _)| field_name == name) {
+                    Some((_, typ, _)) => Ok(typ.clone()),
                     None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() })
                 }
             }
@@ -1556,8 +1634,8 @@ mod tests {
             TypedMapNode {
                 typ: Type::Map(vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)], Some(Box::new(Type::Int))),
                 items: vec![
-                    ("a".to_string(), int_literal!((1, 6), 1)),
-                    ("b".to_string(), int_literal!((1, 12), 2))
+                    (ident_token!((1, 3), "a"), int_literal!((1, 6), 1)),
+                    (ident_token!((1, 9), "b"), int_literal!((1, 12), 2))
                 ],
             },
         );
@@ -1574,18 +1652,18 @@ mod tests {
                     Some(Box::new(nested_map_type.clone())),
                 ),
                 items: vec![
-                    ("a".to_string(), TypedAstNode::Map(
+                    (ident_token!((1, 3), "a"), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 6)),
                         TypedMapNode {
                             typ: nested_map_type.clone(),
-                            items: vec![("c".to_string(), bool_literal!((1, 11), true))],
+                            items: vec![(ident_token!((1, 8), "c"), bool_literal!((1, 11), true))],
                         },
                     )),
-                    ("b".to_string(), TypedAstNode::Map(
+                    (ident_token!((1, 19), "b"), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 22)),
                         TypedMapNode {
                             typ: nested_map_type.clone(),
-                            items: vec![("c".to_string(), bool_literal!((1, 27), false))],
+                            items: vec![(ident_token!((1, 24), "c"), bool_literal!((1, 27), false))],
                         },
                     ))
                 ],
@@ -1938,7 +2016,7 @@ mod tests {
             TypedTypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((1, 15), "name"), Type::String)
+                    (ident_token!((1, 15), "name"), Type::String, None)
                 ],
             },
         );
@@ -1946,7 +2024,29 @@ mod tests {
         let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
         let expected_type = Type::Struct {
             name: "Person".to_string(),
-            fields: vec![("name".to_string(), Type::String)],
+            fields: vec![("name".to_string(), Type::String, false)],
+        };
+        assert_eq!(expected_type, typ);
+
+        let (typechecker, typed_ast) = typecheck_get_typechecker("type Person { name: String, age: Int = 0 }");
+        let expected = TypedAstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypedTypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![
+                    (ident_token!((1, 15), "name"), Type::String, None),
+                    (ident_token!((1, 29), "age"), Type::Int, Some(int_literal!((1, 40), 0)))
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
+        let expected_type = Type::Struct {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String, false),
+                ("age".to_string(), Type::Int, true),
+            ],
         };
         assert_eq!(expected_type, typ);
 
@@ -1961,6 +2061,10 @@ mod tests {
 
         let error = typecheck("type Person { age: Int, age: String }").unwrap_err();
         let expected = TypecheckerError::DuplicateBinding { orig_ident: ident_token!((1, 15), "age"), ident: ident_token!((1, 25), "age") };
+        assert_eq!(expected, error);
+
+        let error = typecheck("type Person { age: String = true }").unwrap_err();
+        let expected = TypecheckerError::Mismatch { token: Token::Bool(Position::new(1, 29), true), expected: Type::String, actual: Type::Bool };
         assert_eq!(expected, error);
     }
 
@@ -2576,6 +2680,52 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_invocation_instantiation() -> TestResult {
+        let typed_ast = typecheck("\
+          type Person { name: String }\n\
+          Person({ name: \"Ken\" })\
+        ")?;
+        let expected = TypedAstNode::Instantiation(
+            Token::LParen(Position::new(2, 7)),
+            TypedInstantiationNode {
+                typ: Type::Struct {
+                    name: "Person".to_string(),
+                    fields: vec![("name".to_string(), Type::String, false)],
+                },
+                fields: vec![
+                    ("name".to_string(), string_literal!((2, 16), "Ken"))
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        // Test with default parameters
+        let typed_ast = typecheck("\
+          type Person { name: String, age: Int = 0 }\n\
+          Person({ name: \"Ken\" })\
+        ")?;
+        let expected = TypedAstNode::Instantiation(
+            Token::LParen(Position::new(2, 7)),
+            TypedInstantiationNode {
+                typ: Type::Struct {
+                    name: "Person".to_string(),
+                    fields: vec![
+                        ("name".to_string(), Type::String, false),
+                        ("age".to_string(), Type::Int, true),
+                    ],
+                },
+                fields: vec![
+                    ("name".to_string(), string_literal!((2, 16), "Ken")),
+                    ("age".to_string(), int_literal!((1, 40), 0)),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
     fn typecheck_invocation_errors() {
         let error = typecheck("func abc() {}\nabc(1, 2)").unwrap_err();
         let expected = TypecheckerError::IncorrectArity {
@@ -2606,6 +2756,81 @@ mod tests {
             token: ident_token!((2, 1), "abc"),
         };
         assert_eq!(error, expected);
+    }
+
+    #[test]
+    fn typecheck_invocation_instantiation_error() {
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person()\
+        ").unwrap_err();
+        let expected = TypecheckerError::IncorrectArity {
+            token: ident_token!((2, 1), "Person"),
+            expected: 1,
+            actual: 0,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person(args: 1)\
+        ").unwrap_err();
+        let expected = TypecheckerError::ParamNameMismatch {
+            token: ident_token!((2, 8), "args"),
+            expected: "".to_string(),
+            actual: "args".to_string()
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person(1)\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidInstantiationParam {
+            token: Token::Int(Position::new(2, 8), 1),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person({ name: 123 })\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: ident_token!((2, 10), "name"),
+            expected: Type::String,
+            actual: Type::Int,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person({ age: 123, name: \"Ken\" })\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((2, 10), "age"),
+            target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)] },
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person({ name: \"Meg\", name: \"Ken\" })\
+        ").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            orig_ident: ident_token!((2, 10), "name"),
+            ident: ident_token!((2, 23), "name"),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person { name: String }\n\
+          Person({})\
+        ").unwrap_err();
+        let expected = TypecheckerError::MissingRequiredField {
+            token: Token::LBrace(Position::new(2, 8)),
+            field: ("name".to_string(), Type::String),
+        };
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -2808,12 +3033,41 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((3, 1), "p"),
                     TypedIdentifierNode {
-                        typ: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String)] },
+                        typ: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)] },
                         scope_depth: 0,
                         is_mutable: false,
                     },
                 )),
                 field: ident_token!((3, 3), "name"),
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
+        // Getting fields off structs with default field values
+        let typed_ast = typecheck("\
+          type Person { name: String, age: Int = 0 }\n\
+          val p: Person = { name: \"Sam\" }\n\
+          p.age\n\
+        ")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(3, 2)),
+            TypedAccessorNode {
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((3, 1), "p"),
+                    TypedIdentifierNode {
+                        typ: Type::Struct {
+                            name: "Person".to_string(),
+                            fields: vec![
+                                ("name".to_string(), Type::String, false),
+                                ("age".to_string(), Type::Int, true),
+                            ],
+                        },
+                        scope_depth: 0,
+                        is_mutable: false,
+                    },
+                )),
+                field: ident_token!((3, 3), "age"),
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -2864,7 +3118,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
-            target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String)] },
+            target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)] },
         };
         assert_eq!(expected, error);
 

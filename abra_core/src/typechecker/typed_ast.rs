@@ -19,6 +19,7 @@ pub enum TypedAstNode {
     IfStatement(Token, TypedIfNode),
     IfExpression(Token, TypedIfNode),
     Invocation(Token, TypedInvocationNode),
+    Instantiation(Token, TypedInstantiationNode),
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token, /* loop_depth: */ usize),
@@ -43,6 +44,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(token, _) => token,
             TypedAstNode::IfExpression(token, _) => token,
             TypedAstNode::Invocation(token, _) => token,
+            TypedAstNode::Instantiation(token, _) => token,
             TypedAstNode::ForLoop(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
             TypedAstNode::Break(token, _) => token,
@@ -75,6 +77,7 @@ impl TypedAstNode {
             TypedAstNode::IfStatement(_, node) => node.typ.clone(),
             TypedAstNode::IfExpression(_, node) => node.typ.clone(),
             TypedAstNode::Invocation(_, node) => node.typ.clone(),
+            TypedAstNode::Instantiation(_, node) => node.typ.clone(),
             TypedAstNode::Accessor(_, node) => node.typ.clone(),
         }
     }
@@ -118,7 +121,7 @@ pub struct TypedArrayNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedMapNode {
     pub typ: Type,
-    pub items: Vec<(String, TypedAstNode)>,
+    pub items: Vec<(Token, TypedAstNode)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -146,7 +149,7 @@ pub struct TypedTypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub fields: Vec<(Token, Type)>,
+    pub fields: Vec<(Token, Type, Option<TypedAstNode>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,6 +186,12 @@ pub struct TypedInvocationNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub args: Vec<TypedAstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedInstantiationNode {
+    pub typ: Type,
+    pub fields: Vec<(String, TypedAstNode)>
 }
 
 #[derive(Clone, Debug, PartialEq)]
