@@ -17,7 +17,7 @@ pub enum Type {
     Option(Box<Type>),
     Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
-    Struct { name: String, fields: Vec<(String, Type)> },
+    Struct { name: String, fields: Vec<(String, Type, bool)> },
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
 }
 
@@ -82,7 +82,9 @@ impl Type {
                 let provided_fields = provided_fields.iter()
                     .map(|(name, typ)| (name.clone(), typ.clone()))
                     .collect::<HashMap<_, _>>();
-                for (req_name, req_type) in required_fields {
+                for (req_name, req_type, has_default_value) in required_fields {
+                    if *has_default_value { continue }
+
                     match provided_fields.get(req_name) {
                         None => return false,
                         Some(provided_type) => {

@@ -245,6 +245,22 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.end()
                 }
+                TypecheckerError::MissingRequiredField { token, field: (name, typ) } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "missingRequiredField")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("fieldName", name)?;
+                    obj.serialize_entry("fieldType", &JsType(typ))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidInstantiationParam { token} => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidInstantiationParam")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

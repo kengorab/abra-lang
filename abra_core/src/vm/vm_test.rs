@@ -814,11 +814,21 @@ mod tests {
     fn interpret_accessor_struct() {
         let input = "\
           type Person { name: String }\n\
-          val ken: Person = { name: \"Ken\" }\n\
+          val ken = Person({ name: \"Ken\" })\n\
           ken.name\n\
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) });
+        assert_eq!(expected, result);
+
+        // Test with default value
+        let input = "\
+          type Person { name: String, age: Int = 0 }\n\
+          val aBaby = Person({ name: \"Baby\" })\n\
+          aBaby.age\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(0);
         assert_eq!(expected, result);
     }
 

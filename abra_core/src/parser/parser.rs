@@ -352,7 +352,12 @@ impl Parser {
                     let field_name = self.expect_next()?;
                     self.expect_next_token(TokenType::Colon)?;
                     let field_type = self.parse_type_identifier()?;
-                    fields.push((field_name, field_type));
+                    let default_value = if let Some(Token::Assign(_)) = self.peek() {
+                        self.expect_next()?; // Consume '='
+                        Some(self.parse_expr()?)
+                    } else { None };
+
+                    fields.push((field_name, field_type, default_value));
                 }
                 _ => return Err(ParseError::UnexpectedToken(token.clone()))
             }
@@ -1633,7 +1638,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
-                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") })],
+                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None)],
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1646,8 +1651,22 @@ mod tests {
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }),
-                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }),
+                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
+                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }, None),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Testing with default value
+        let ast = parse("type Person { name: String, isHappy: Bool = true }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![
+                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
+                    (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool") }, Some(bool_literal!((1, 45), true)))
                 ],
             },
         );
@@ -2216,8 +2235,8 @@ mod tests {
                     Token::Dot(Position::new(1, 4)),
                     AccessorNode {
                         target: Box::new(identifier!((1, 1), "abc")),
-                        field: ident_token!((1, 5), "def")
-                    }
+                        field: ident_token!((1, 5), "def"),
+                    },
                 )),
                 args: vec![
                     (None, int_literal!((1, 9), 4)),

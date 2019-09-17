@@ -107,7 +107,7 @@ pub struct TypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub fields: Vec<(Token, TypeIdentifier)>,
+    pub fields: Vec<(Token, TypeIdentifier, Option<AstNode>)>,
 }
 
 #[derive(Debug, PartialEq)]
