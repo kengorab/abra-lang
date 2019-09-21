@@ -155,6 +155,7 @@ pub struct TypedTypeDeclNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedIdentifierNode {
     pub typ: Type,
+    pub name: String,
     pub is_mutable: bool,
     pub scope_depth: usize,
 }

@@ -675,6 +675,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
                 let node = TypedIdentifierNode {
                     typ: typ.clone(),
+                    name: name.clone(),
                     is_mutable: is_mutable.clone(),
                     scope_depth,
                 };
@@ -1822,7 +1823,7 @@ mod tests {
                             typ: Type::Int,
                             left: Box::new(TypedAstNode::Identifier(
                                 ident_token!((1, 20), "a"),
-                                TypedIdentifierNode { typ: Type::Int, is_mutable: false, scope_depth: 1 },
+                                TypedIdentifierNode { typ: Type::Int, name: "a".to_string(), is_mutable: false, scope_depth: 1 },
                             )),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((1, 24), 1)),
@@ -1865,6 +1866,7 @@ mod tests {
                         Token::Ident(Position::new(1, 29), "a".to_string()),
                         TypedIdentifierNode {
                             typ: Type::Array(Box::new(Type::Int)),
+                            name: "a".to_string(),
                             is_mutable: false,
                             scope_depth: 1,
                         },
@@ -2084,9 +2086,10 @@ mod tests {
                 },
             ),
             TypedAstNode::Identifier(
-                Token::Ident(Position::new(2, 1), "abc".to_string()),
+                ident_token!((2, 1), "abc"),
                 TypedIdentifierNode {
                     typ: Type::Int,
+                    name: "abc".to_string(),
                     is_mutable: false,
                     scope_depth: 0,
                 },
@@ -2130,9 +2133,10 @@ mod tests {
                 TypedAssignmentNode {
                     typ: Type::Int,
                     target: Box::new(TypedAstNode::Identifier(
-                        Token::Ident(Position::new(2, 1), "abc".to_string()),
+                        ident_token!((2, 1), "abc"),
                         TypedIdentifierNode {
                             typ: Type::Int,
+                            name: "abc".to_string(),
                             is_mutable: true,
                             scope_depth: 0,
                         },
@@ -2176,9 +2180,10 @@ mod tests {
                 typ: Type::Option(Box::new(Type::Int)),
                 target: Box::new(
                     TypedAstNode::Identifier(
-                        Token::Ident(Position::new(2, 1), "abc".to_string()),
+                        ident_token!((2, 1), "abc"),
                         TypedIdentifierNode {
                             typ: Type::Array(Box::new(Type::Int)),
+                            name: "abc".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
                         },
@@ -2196,9 +2201,10 @@ mod tests {
                 typ: Type::Array(Box::new(Type::Int)),
                 target: Box::new(
                     TypedAstNode::Identifier(
-                        Token::Ident(Position::new(3, 1), "abc".to_string()),
+                        ident_token!((3, 1), "abc"),
                         TypedIdentifierNode {
                             typ: Type::Array(Box::new(Type::Int)),
+                            name: "abc".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
                         },
@@ -2207,9 +2213,10 @@ mod tests {
                 index: IndexingMode::Range(
                     Some(Box::new(
                         TypedAstNode::Identifier(
-                            Token::Ident(Position::new(3, 5), "idx".to_string()),
+                            ident_token!((3, 5), "idx"),
                             TypedIdentifierNode {
                                 typ: Type::Int,
+                                name: "idx".to_string(),
                                 is_mutable: false,
                                 scope_depth: 0,
                             },
@@ -2237,9 +2244,10 @@ mod tests {
                                 op: BinaryOp::Mul,
                                 left: Box::new(
                                     TypedAstNode::Identifier(
-                                        Token::Ident(Position::new(2, 8), "idx".to_string()),
+                                        ident_token!((2, 8), "idx"),
                                         TypedIdentifierNode {
                                             typ: Type::Int,
+                                            name: "idx".to_string(),
                                             is_mutable: false,
                                             scope_depth: 0,
                                         },
@@ -2266,6 +2274,7 @@ mod tests {
                             vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
                             Some(Box::new(Type::Int)),
                         ),
+                        name: "map".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
                     },
@@ -2448,9 +2457,10 @@ mod tests {
                         },
                     ),
                     TypedAstNode::Identifier(
-                        Token::Ident(Position::new(1, 28), "a".to_string()),
+                        ident_token!((1, 28), "a"),
                         TypedIdentifierNode {
                             typ: Type::String,
+                            name: "a".to_string(),
                             is_mutable: false,
                             scope_depth: 1,
                         },
@@ -2495,9 +2505,10 @@ mod tests {
                             typ: Type::String,
                             left: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 28), "a".to_string()),
+                                    ident_token!((2, 28), "a"),
                                     TypedIdentifierNode {
                                         typ: Type::String,
+                                        name: "a".to_string(),
                                         is_mutable: false,
                                         scope_depth: 0,
                                     },
@@ -2506,9 +2517,10 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 32), "b".to_string()),
+                                    ident_token!((2, 32), "b"),
                                     TypedIdentifierNode {
                                         typ: Type::String,
+                                        name: "b".to_string(),
                                         is_mutable: false,
                                         scope_depth: 1,
                                     },
@@ -2524,9 +2536,10 @@ mod tests {
                             typ: Type::String,
                             left: Box::new(
                                 TypedAstNode::Identifier(
-                                    Token::Ident(Position::new(2, 43), "a".to_string()),
+                                    ident_token!((2, 43), "a"),
                                     TypedIdentifierNode {
                                         typ: Type::String,
+                                        name: "a".to_string(),
                                         is_mutable: false,
                                         scope_depth: 0,
                                     },
@@ -2634,6 +2647,7 @@ mod tests {
                     ident_token!((2, 1), "abc"),
                     TypedIdentifierNode {
                         typ: Type::Fn(vec![], Box::new(Type::Unit)),
+                        name: "abc".to_string(),
                         is_mutable: false,
                         scope_depth: 0,
                     },
@@ -2660,6 +2674,7 @@ mod tests {
                             vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
                             Box::new(Type::String),
                         ),
+                        name: "abc".to_string(),
                         is_mutable: false,
                         scope_depth: 0,
                     },
@@ -2900,6 +2915,7 @@ mod tests {
                                 ident_token!((3, 1), "a"),
                                 TypedIdentifierNode {
                                     typ: Type::Int,
+                                    name: "a".to_string(),
                                     is_mutable: false,
                                     scope_depth: 1,
                                 },
@@ -2943,9 +2959,10 @@ mod tests {
                 iterator: Box::new(TypedAstNode::Identifier(
                     ident_token!((2, 10), "arr"),
                     TypedIdentifierNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        name: "arr".to_string(),
                         is_mutable: false,
                         scope_depth: 0,
-                        typ: Type::Array(Box::new(Type::Int)),
                     },
                 )),
                 body: vec![
@@ -2956,9 +2973,10 @@ mod tests {
                             left: Box::new(TypedAstNode::Identifier(
                                 ident_token!((3, 1), "a"),
                                 TypedIdentifierNode {
+                                    typ: Type::Int,
+                                    name: "a".to_string(),
                                     is_mutable: false,
                                     scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                    typ: Type::Int,
                                 },
                             )),
                             op: BinaryOp::Add,
@@ -2979,9 +2997,10 @@ mod tests {
                 iterator: Box::new(TypedAstNode::Identifier(
                     ident_token!((2, 13), "arr"),
                     TypedIdentifierNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        name: "arr".to_string(),
                         is_mutable: false,
                         scope_depth: 0,
-                        typ: Type::Array(Box::new(Type::Int)),
                     },
                 )),
                 body: vec![
@@ -2992,18 +3011,20 @@ mod tests {
                             left: Box::new(TypedAstNode::Identifier(
                                 ident_token!((3, 1), "a"),
                                 TypedIdentifierNode {
+                                    typ: Type::Int,
+                                    name: "a".to_string(),
                                     is_mutable: false,
                                     scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                    typ: Type::Int,
                                 },
                             )),
                             op: BinaryOp::Add,
                             right: Box::new(TypedAstNode::Identifier(
                                 ident_token!((3, 5), "i"),
                                 TypedIdentifierNode {
+                                    typ: Type::Int,
+                                    name: "i".to_string(),
                                     is_mutable: false,
                                     scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                    typ: Type::Int,
                                 },
                             )),
                         },
@@ -3041,6 +3062,7 @@ mod tests {
                     ident_token!((3, 1), "p"),
                     TypedIdentifierNode {
                         typ: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)] },
+                        name: "p".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
                     },
@@ -3070,6 +3092,7 @@ mod tests {
                                 ("age".to_string(), Type::Int, true),
                             ],
                         },
+                        name: "p".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
                     },

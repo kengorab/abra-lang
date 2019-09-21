@@ -532,8 +532,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                 let mut invocation_args = Vec::with_capacity(args.len());
                 let mut fn_type_args = Vec::with_capacity(args.len());
                 for (token, typ, _) in args.iter() {
+                    let name = Token::get_ident_name(token).clone();
                     invocation_args.push(TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
                         typ: typ.clone(),
+                        name,
                         scope_depth: scope_depth + 1,
                         is_mutable: false,
                     }));
@@ -550,6 +552,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                         typ: ret_type.clone(),
                         target: Box::new(TypedAstNode::Identifier(orig_fn_name_tok.clone(), TypedIdentifierNode {
                             typ: Type::Fn(fn_type_args, Box::new(ret_type.clone())),
+                            name: func_name.clone(),
                             scope_depth,
                             is_mutable: false,
                         })),
@@ -588,11 +591,11 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         Ok(())
     }
 
-    fn visit_identifier(&mut self, token: Token, _node: TypedIdentifierNode) -> Result<(), ()> {
+    fn visit_identifier(&mut self, token: Token, node: TypedIdentifierNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let ident = Token::get_ident_name(&token);
+        let ident = node.name;
 
-        let (local_idx, is_global) = self.get_binding_index(ident);
+        let (local_idx, is_global) = self.get_binding_index(&ident);
         if is_global {
             let const_idx = self.module.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
             let const_idx = const_idx.unwrap();
