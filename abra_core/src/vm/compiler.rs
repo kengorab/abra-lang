@@ -6,7 +6,6 @@ use crate::vm::opcode::Opcode;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use std::collections::HashSet;
 
 #[derive(Debug, PartialEq)]
 pub struct Local(/* name: */ String, /* scope_depth: */ usize);
@@ -815,7 +814,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
     fn visit_instantiation(&mut self, token: Token, node: TypedInstantiationNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedInstantiationNode { typ, fields } = node;
+        let TypedInstantiationNode { fields, .. } = node;
 
         let num_fields = fields.len();
         for (field_name, field_value) in fields {

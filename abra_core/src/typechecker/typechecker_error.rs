@@ -17,7 +17,7 @@ pub enum TypecheckerError {
     UnknownType { type_ident: Token },
     MissingIfExprBranch { if_token: Token, is_if_branch: bool },
     IfExprBranchMismatch { if_token: Token, if_type: Type, else_type: Type },
-    InvalidInvocationTarget { token: Token },
+    InvalidInvocationTarget { token: Token, target_type: Type },
     IncorrectArity { token: Token, expected: usize, actual: usize },
     ParamNameMismatch { token: Token, expected: String, actual: String },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
@@ -26,7 +26,7 @@ pub enum TypecheckerError {
     InvalidIndexingTarget { token: Token, target_type: Type },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     UnknownMember { token: Token, target_type: Type },
-    MissingRequiredField { token: Token, field: (String, Type) },
+    MissingRequiredField { token: Token, target_type: Type, field: (String, Type) },
     InvalidInstantiationParam { token: Token },
 }
 
@@ -102,7 +102,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
             TypecheckerError::MissingIfExprBranch { if_token, .. } => if_token.get_position(),
             TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
-            TypecheckerError::InvalidInvocationTarget { token } => token.get_position(),
+            TypecheckerError::InvalidInvocationTarget { token, .. } => token.get_position(),
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
             TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
@@ -156,20 +156,23 @@ impl DisplayError for TypecheckerError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypecheckerError::DuplicateType { ident: _, orig_ident: _ } => { // orig_ident will be None if it's a builtin type
-//                let ident = Token::get_ident_name(&ident);
-//                let first_msg = format!("Duplicate type '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
-//
-//                let pos = orig_ident.get_position();
-//                let line = lines.get(pos.line - 1).expect("There should be a line");
-//
-//                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
-//                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
-//
-//                let second_msg = format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
-//
-//                format!("{}\n{}", first_msg, second_msg)
-                unimplemented!()
+            TypecheckerError::DuplicateType { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
+                let ident = Token::get_ident_name(&ident);
+                let first_msg = format!("Duplicate type '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let second_msg = match orig_ident {
+                    Some(orig_ident) => {
+                        let pos = orig_ident.get_position();
+                        let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                        let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                        let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+                        format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line)
+                    }
+                    None => format!("'{}' already declared as built-in type", ident)
+                };
+
+                format!("{}\n{}", first_msg, second_msg)
             }
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
@@ -234,14 +237,33 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line, type_repr(if_type), type_repr(else_type)
                 )
             }
-            TypecheckerError::InvalidInvocationTarget { token: _ } => {
-                unimplemented!()
+            TypecheckerError::InvalidInvocationTarget { target_type, .. } => {
+                format!(
+                    "Cannot call target as function: ({}:{})\n{}\n\
+                    Type {} is not invokeable",
+                    pos.line, pos.col, cursor_line, type_repr(target_type)
+                )
             }
-            TypecheckerError::IncorrectArity { token: _, expected: _, actual: _ } => {
-                unimplemented!()
+            TypecheckerError::IncorrectArity { expected, actual, .. } => {
+                format!(
+                    "Incorrect arity for invocation: ({}:{})\n{}\n\
+                    Expected {} argument{}, but {} were passed",
+                    pos.line, pos.col, cursor_line,
+                    expected, if *expected == 1 { "" } else { "s" }, actual
+                )
             }
-            TypecheckerError::ParamNameMismatch { token: _, expected: _, actual: _ } => {
-                unimplemented!()
+            TypecheckerError::ParamNameMismatch { expected, actual, .. } => {
+                if expected.is_empty() {
+                    format!(
+                        "Parameter name mismatch: ({}:{})\n{}\nExpected no name, but saw '{}'",
+                        pos.line, pos.col, cursor_line, actual
+                    )
+                } else {
+                    format!(
+                        "Parameter name mismatch: ({}:{})\n{}\nExpected name '{}', but saw '{}'",
+                        pos.line, pos.col, cursor_line, expected, actual
+                    )
+                }
             }
             TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
                 let secondary_pos = orig_token.get_position();
@@ -259,25 +281,62 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::InvalidBreak(_token) => {
-                unimplemented!()
+                format!(
+                    "Unexpected break keyword: ({}:{})\n{}\nA break keyword cannot appear outside of a loop",
+                    pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::InvalidRequiredArgPosition(_token) => {
-                unimplemented!()
+                format!(
+                    "Invalid position for non-optional parameter: ({}:{})\n{}\n\
+                    Required parameters must all be listed before any optional parameters",
+                    pos.line, pos.col, cursor_line
+                )
             }
-            TypecheckerError::InvalidIndexingTarget { token: _token, target_type: _target_type } => {
-                unimplemented!()
+            TypecheckerError::InvalidIndexingTarget { target_type, .. } => {
+                let first_line = format!(
+                    "Unsupported indexing operation: ({}:{})\n{}",
+                    pos.line, pos.col, cursor_line
+                );
+                let second_line = match target_type {
+                    Type::Map(_, _) => format!("Cannot index into maps whose values are not all the same type"),
+                    typ @ _ => format!("Type {} is not indexable", type_repr(typ))
+                };
+                format!("{}\n{}", first_line, second_line)
             }
-            TypecheckerError::InvalidIndexingSelector { token: _token, target_type: _target_type, selector_type: _selector_type } => {
-                unimplemented!()
+            TypecheckerError::InvalidIndexingSelector { target_type, selector_type, .. } => {
+                format!(
+                    "Invalid type for indexing operator argument: ({}:{})\n{}\n\
+                    Cannot index into a target of type {}, using a selector of type {}",
+                    pos.line, pos.col, cursor_line, type_repr(target_type), type_repr(selector_type)
+                )
             }
-            TypecheckerError::UnknownMember { token: _token, target_type: _target_type } => {
-                unimplemented!()
+            TypecheckerError::UnknownMember { token, target_type } => {
+                let field_name = Token::get_ident_name(token);
+
+                format!(
+                    "Unknown member '{}': ({}:{})\n{}\n\
+                    Type {} does not have a member with name '{}'",
+                    field_name, pos.line, pos.col,
+                    cursor_line,
+                    type_repr(target_type), field_name
+                )
             }
-            TypecheckerError::MissingRequiredField { token: _token, field: (_name, _type) } => {
-                unimplemented!()
+            TypecheckerError::MissingRequiredField { target_type, field: (name, typ), .. } => {
+                format!(
+                    "Missing required field '{}': ({}:{})\n{}\n\
+                    Constructing an instance of type {} requires a field '{}' of type {}",
+                    name, pos.line, pos.col,
+                    cursor_line,
+                    type_repr(target_type), name, type_repr(typ)
+                )
             }
-            TypecheckerError::InvalidInstantiationParam { token: _ } => {
-                unimplemented!()
+            TypecheckerError::InvalidInstantiationParam { .. } => {
+                format!(
+                    "Invalid instantiation argument: ({}:{})\n{}\n\
+                    The argument to a type instantiation must be a map literal",
+                    pos.line, pos.col, cursor_line
+                )
             }
         }
     }
@@ -369,6 +428,40 @@ Binding already declared in scope at (1:5)
          ^"
         );
 
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_duplicate_type() {
+        let src = "type Abc {}\ntype Abc { a: Int }".to_string();
+        let err = TypecheckerError::DuplicateType {
+            ident: Token::Ident(Position::new(2, 6), "Abc".to_string()),
+            orig_ident: Some(Token::Ident(Position::new(1, 6), "Abc".to_string())),
+        };
+
+        let expected = format!("\
+Duplicate type 'Abc' (2:6)
+  |  type Abc {{ a: Int }}
+          ^
+Type already declared in scope at (1:6)
+  |  type Abc {{}}
+          ^"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        // Test builtin type
+        let src = "type Int {}".to_string();
+        let err = TypecheckerError::DuplicateType {
+            ident: Token::Ident(Position::new(1, 6), "Int".to_string()),
+            orig_ident: None,
+        };
+
+        let expected = format!("\
+Duplicate type 'Int' (1:6)
+  |  type Int {{}}
+          ^
+'Int' already declared as built-in type"
+        );
         assert_eq!(expected, err.get_message(&src));
     }
 
@@ -523,6 +616,74 @@ The if-branch had type String, but the else-branch had type Int"
     }
 
     #[test]
+    fn test_invalid_invocation_target() {
+        let src = "\"hello\"(a: 1, b: 4)".to_string();
+        let err = TypecheckerError::InvalidInvocationTarget {
+            token: Token::String(Position::new(1, 1), "hello".to_string()),
+            target_type: Type::String,
+        };
+
+        let expected = format!("\
+Cannot call target as function: (1:1)
+  |  \"hello\"(a: 1, b: 4)
+     ^
+Type String is not invokeable"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_incorrect_arity() {
+        let src = "func abc(a: Int) { a }\nabc(1, 2, 3)".to_string();
+        let err = TypecheckerError::IncorrectArity {
+            token: Token::Ident(Position::new(2, 1), "abc".to_string()),
+            expected: 1,
+            actual: 3,
+        };
+
+        let expected = format!("\
+Incorrect arity for invocation: (2:1)
+  |  abc(1, 2, 3)
+     ^
+Expected 1 argument, but 3 were passed"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_param_name_mismatch() {
+        let src = "someFunc(arg: \"hello\")".to_string();
+        let err = TypecheckerError::ParamNameMismatch {
+            token: Token::Ident(Position::new(1, 10), "arg".to_string()),
+            expected: "arg0".to_string(),
+            actual: "arg".to_string(),
+        };
+
+        let expected = format!("\
+Parameter name mismatch: (1:10)
+  |  someFunc(arg: \"hello\")
+              ^
+Expected name 'arg0', but saw 'arg'"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "println(arg: \"hello\")".to_string();
+        let err = TypecheckerError::ParamNameMismatch {
+            token: Token::Ident(Position::new(1, 9), "arg".to_string()),
+            expected: "".to_string(),
+            actual: "arg".to_string(),
+        };
+
+        let expected = format!("\
+Parameter name mismatch: (1:9)
+  |  println(arg: \"hello\")
+             ^
+Expected no name, but saw 'arg'"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
     fn test_recursive_call_no_return_type() {
         let src = "func abc() {\nabc()\n}".to_string();
         let err = TypecheckerError::RecursiveRefWithoutReturnType {
@@ -538,6 +699,159 @@ Functions that contain recursive references must explicitly declare their return
 Missing return type annotation here (1:6):
   |  func abc() {{
           ^"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_break() {
+        let src = "func abc() { break }".to_string();
+        let err = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 14)));
+
+        let expected = format!("\
+Unexpected break keyword: (1:14)
+  |  func abc() {{ break }}
+                  ^
+A break keyword cannot appear outside of a loop"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_required_arg_position() {
+        let src = "func abc(a = 3, b: Int) = a + b".to_string();
+        let err = TypecheckerError::InvalidRequiredArgPosition(Token::Ident(Position::new(1, 17), "b".to_string()));
+
+        let expected = format!("\
+Invalid position for non-optional parameter: (1:17)
+  |  func abc(a = 3, b: Int) = a + b
+                     ^
+Required parameters must all be listed before any optional parameters"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_indexing_target() {
+        // Testing non-homogeneous maps
+        let src = "val m = { a: \"hello\", b: 3 }\nm[\"a\"]".to_string();
+        let err = TypecheckerError::InvalidIndexingTarget {
+            token: Token::LBrack(Position::new(2, 2)),
+            target_type: Type::Map(
+                vec![("a".to_string(), Type::String), ("b".to_string(), Type::Int)],
+                None,
+            ),
+        };
+
+        let expected = format!("\
+Unsupported indexing operation: (2:2)
+  |  m[\"a\"]
+      ^
+Cannot index into maps whose values are not all the same type"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        // Testing other types
+        let src = "123[1]".to_string();
+        let err = TypecheckerError::InvalidIndexingTarget {
+            token: Token::LBrack(Position::new(1, 4)),
+            target_type: Type::Int,
+        };
+
+        let expected = format!("\
+Unsupported indexing operation: (1:4)
+  |  123[1]
+        ^
+Type Int is not indexable"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_indexing_selector() {
+        let src = "\"abc\"[\"d\"]".to_string();
+        let err = TypecheckerError::InvalidIndexingSelector {
+            token: Token::LBrack(Position::new(1, 6)),
+            target_type: Type::String,
+            selector_type: Type::String,
+        };
+
+        let expected = format!("\
+Invalid type for indexing operator argument: (1:6)
+  |  \"abc\"[\"d\"]
+          ^
+Cannot index into a target of type String, using a selector of type String"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_unknown_member() {
+        let src = "[1, 2, 3].size".to_string();
+        let err = TypecheckerError::UnknownMember {
+            token: Token::Ident(Position::new(1, 11), "size".to_string()),
+            target_type: Type::Array(Box::new(Type::Int)),
+        };
+
+        let expected = format!("\
+Unknown member 'size': (1:11)
+  |  [1, 2, 3].size
+               ^
+Type Int[] does not have a member with name 'size'"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "type P { name: String}\nval p = Person({ nAme: \"hello\" })".to_string();
+        let err = TypecheckerError::UnknownMember {
+            token: Token::Ident(Position::new(2, 18), "nAme".to_string()),
+            target_type: Type::Struct {
+                name: "Person".to_string(),
+                fields: vec![("name".to_string(), Type::String, false)],
+            },
+        };
+
+        let expected = format!("\
+Unknown member 'nAme': (2:18)
+  |  val p = Person({{ nAme: \"hello\" }})
+                      ^
+Type Person does not have a member with name 'nAme'"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_missing_required_field() {
+        let src = "type Person { name: String }\nval p = Person({})".to_string();
+        let err = TypecheckerError::MissingRequiredField {
+            token: Token::LBrace(Position::new(2, 16)),
+            target_type: Type::Struct {
+                name: "Person".to_string(),
+                fields: vec![("name".to_string(), Type::String, false)],
+            },
+            field: ("name".to_string(), Type::String),
+        };
+
+        let expected = format!("\
+Missing required field 'name': (2:16)
+  |  val p = Person({{}})
+                    ^
+Constructing an instance of type Person requires a field 'name' of type String"
+        );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_instantiation_param() {
+        let src = "type Person { name: String }\nval m = { name: \"Ken\" }\nval p = Person(m)".to_string();
+        let err = TypecheckerError::InvalidInstantiationParam {
+            token: Token::Ident(Position::new(3, 16), "m".to_string())
+        };
+
+        let expected = format!("\
+Invalid instantiation argument: (3:16)
+  |  val p = Person(m)
+                    ^
+The argument to a type instantiation must be a map literal"
         );
         assert_eq!(expected, err.get_message(&src));
     }

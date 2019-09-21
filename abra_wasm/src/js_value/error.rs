@@ -172,11 +172,12 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("elseType", &JsType(else_type))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidInvocationTarget { token } => {
-                    let mut obj = serializer.serialize_map(Some(3))?;
+                TypecheckerError::InvalidInvocationTarget { token, target_type } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidInvocationTarget")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.end()
                 }
                 TypecheckerError::IncorrectArity { token, expected, actual } => {
@@ -245,11 +246,12 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.end()
                 }
-                TypecheckerError::MissingRequiredField { token, field: (name, typ) } => {
-                    let mut obj = serializer.serialize_map(Some(5))?;
+                TypecheckerError::MissingRequiredField { token, target_type, field: (name, typ) } => {
+                    let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "missingRequiredField")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.serialize_entry("fieldName", name)?;
                     obj.serialize_entry("fieldType", &JsType(typ))?;
                     obj.end()

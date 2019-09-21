@@ -914,7 +914,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                 let is_required = default_value.is_none();
                                 if !field_names.contains_key(&field_name) {
                                     if is_required {
-                                        return Err(TypecheckerError::MissingRequiredField { token: tok.clone(), field: (field_name, field_type) });
+                                        // Since I can't destructure and also bind, redeclare here
+                                        let target_type = Type::Struct { name, fields: expected_fields };
+                                        return Err(TypecheckerError::MissingRequiredField { token: tok.clone(), target_type, field: (field_name, field_type) });
                                     } else {
                                         fields.push((field_name, default_value.unwrap()))
                                     }
@@ -923,12 +925,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                             Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), fields }))
                         }
-                        _ => return Err(TypecheckerError::InvalidInstantiationParam { token: arg.get_token().clone() })
+                        _ => Err(TypecheckerError::InvalidInstantiationParam { token: arg.get_token().clone() })
                     }
                 }
                 _ => unreachable!("No Types other than Structs can be wrapped by Type at the moment")
             }
-            _ => return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone() })
+            target_type @ _ => Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
         }
     }
 
@@ -2754,6 +2756,7 @@ mod tests {
         let error = typecheck("val abc = [1, 2]\nabc()").unwrap_err();
         let expected = TypecheckerError::InvalidInvocationTarget {
             token: ident_token!((2, 1), "abc"),
+            target_type: Type::Array(Box::new(Type::Int)),
         };
         assert_eq!(error, expected);
     }
@@ -2778,7 +2781,7 @@ mod tests {
         let expected = TypecheckerError::ParamNameMismatch {
             token: ident_token!((2, 8), "args"),
             expected: "".to_string(),
-            actual: "args".to_string()
+            actual: "args".to_string(),
         };
         assert_eq!(expected, error);
 
@@ -2828,6 +2831,10 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::MissingRequiredField {
             token: Token::LBrace(Position::new(2, 8)),
+            target_type: Type::Struct {
+                name: "Person".to_string(),
+                fields: vec![("name".to_string(), Type::String, false)]
+            },
             field: ("name".to_string(), Type::String),
         };
         assert_eq!(expected, error);
