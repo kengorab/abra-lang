@@ -65,9 +65,9 @@ impl Type {
             (Type(_name1, _t1), Type(_name2, _t2)) => {
                 false
             }
-            // TODO
-            (Struct { name: _name1, fields: _fields1 }, Struct { name: _name2, fields: _fields2 }) => {
-                false
+            // TODO (improve this (obviously))
+            (Struct { name: name1, fields: _fields1 }, Struct { name: name2, fields: _fields2 }) => {
+                name1 == name2
             }
             // TODO (This should be unreachable right now anwyay...)
             (Map(_fields1, _), Map(_fields2, _)) => {
