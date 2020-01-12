@@ -22,7 +22,6 @@ pub struct Compiler {
 pub struct Metadata {
     pub loads: Vec<String>,
     pub stores: Vec<String>,
-    pub chunks: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +31,7 @@ pub struct ObjFunction {
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(ObjFunction, Metadata), ()> {
-    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), chunks: Vec::new() };
+    let metadata = Metadata { loads: Vec::new(), stores: Vec::new() };
 
     let mut compiler = Compiler {
         function: ObjFunction { constants: Vec::new(), code: Vec::new() },

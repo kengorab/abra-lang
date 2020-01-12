@@ -1,3 +1,6 @@
-func add(a: Int, b = 2) = a + b
+func add(a: Int, b = 2) =
+  if (b == 2) a + b
+  else a + b
+
 println(add(1))
 println(add(1, 2))

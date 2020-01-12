@@ -1,5 +1,6 @@
 use crate::vm::compiler::{Metadata, ObjFunction};
 use crate::vm::opcode::Opcode;
+use crate::vm::value::Value;
 use std::collections::HashMap;
 
 pub fn disassemble(function: ObjFunction, metadata: Metadata) -> String {
@@ -20,11 +21,11 @@ struct Disassembler {
 }
 
 impl Disassembler {
-    fn disassemble_chunk(&mut self, name: String) -> Vec<String> {
+    fn disassemble_bytecode(&mut self, name: String, code: Vec<u8>) -> Vec<String> {
         let mut labels: HashMap<usize, String> = HashMap::new();
 
         let mut slot_idx: i8 = -1;
-        let mut code = self.function.code.iter();
+        let mut code = code.iter();
         let mut disassembled = Vec::new();
         while let Some(byte) = code.next() {
             let slot_idx_orig = slot_idx;
@@ -86,12 +87,12 @@ impl Disassembler {
         }
 
         let mut output = Vec::<String>::new();
-        output.push(format!("\nchunk_{}:\n", name).to_string());
+        output.push(format!("\n{}:\n", name).to_string());
 
         let mut offset = 0;
         for (line, num_bytes) in disassembled.into_iter() {
             if let Some(label) = labels.get(&offset) {
-                output.push(format!("{}\n", label));
+                output.push(format!("{}:\n", label));
             }
             output.push(format!("  {}\n", line));
             offset += num_bytes as usize;
@@ -103,8 +104,22 @@ impl Disassembler {
     pub fn disassemble(&mut self) -> String {
         let mut output = Vec::<String>::new();
 
-        let mut disassembled = self.disassemble_chunk("".to_string());
+        let main_name = "entrypoint $main".to_string();
+
+        let mut disassembled = self.disassemble_bytecode(main_name, self.function.code.clone());
         output.append(&mut disassembled);
+
+        let constants = self.function.constants.clone();
+        let iter = constants.iter().filter_map(|val| {
+            match val {
+                Value::Fn { name, code, .. } => Some((format!("fn {}", name.clone()), code.clone())),
+                _ => None,
+            }
+        });
+        for (name, code) in iter {
+            let mut disassembled = self.disassemble_bytecode(name, code);
+            output.append(&mut disassembled);
+        }
 
         output.into_iter().collect()
     }
