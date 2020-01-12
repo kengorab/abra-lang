@@ -8,7 +8,7 @@ extern crate futures;
 
 mod js_value;
 
-use crate::js_value::compiled_module::JsCompiledModule;
+use crate::js_value::obj_function::JsObjFunction;
 use crate::js_value::error::JsWrappedError;
 use futures::Future;
 use serde::ser::{Serializer, SerializeSeq};
@@ -18,8 +18,8 @@ use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::{Error, compile, compile_and_run, compile_and_disassemble};
 use abra_core::vm::value::{Obj, Value};
-use abra_core::vm::chunk::CompiledModule;
 use abra_core::vm::vm::VMContext;
+use abra_core::vm::compiler::ObjFunction;
 
 pub struct RunResult(Value);
 
@@ -55,15 +55,15 @@ impl Serialize for RunResult {
                     obj.end()
                 }
             }
-            RunResult(Value::Fn(fn_name)) => serializer.serialize_str(fn_name),
+            RunResult(Value::Fn { name: fn_name, .. }) => serializer.serialize_str(fn_name),
             RunResult(Value::Type(type_name)) => serializer.serialize_str(type_name)
         }
     }
 }
 
-pub struct CompileResult<'a>(Result<CompiledModule<'a>, Error>);
+pub struct CompileResult(Result<ObjFunction, Error>);
 
-impl<'a> Serialize for CompileResult<'a> {
+impl Serialize for CompileResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
@@ -73,7 +73,7 @@ impl<'a> Serialize for CompileResult<'a> {
             Ok(module) => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("success", &true)?;
-                obj.serialize_entry("compiledModule", &JsCompiledModule(module))?;
+                obj.serialize_entry("topLevelFunction", &JsObjFunction(module))?;
                 obj.end()
             }
             Err(error) => {

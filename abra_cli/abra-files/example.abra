@@ -1,20 +1,3 @@
-type Name {
-  firstName: String,
-  lastName: String
-}
-
-type Person {
-  name: Name,
-  age: Int
-}
-
-val ken: Person = {
-  name: {
-    firstName: "Ken",
-    lastName: "Gorab"
-  },
-  age: 27
-}
-
-val name = ken.name.firstName + " " + ken.name.lastName
-println("Name: " + name + ", length: " + name.length)
+func add(a: Int, b = 2) = a + b
+println(add(1))
+println(add(1, 2))

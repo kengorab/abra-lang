@@ -1,11 +1,11 @@
 /* tslint:disable */
 
-import { CompiledModule } from './types/compiled-module'
 import { Error } from './types/error'
+import { ObjFunction } from './types/obj-function'
 
 export interface CompileSuccess {
     success: true,
-    compiledModule: CompiledModule
+    topLevelFunction: ObjFunction
 }
 
 export interface CompileFailure {

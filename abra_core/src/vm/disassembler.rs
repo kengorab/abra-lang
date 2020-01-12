@@ -1,33 +1,30 @@
-use crate::vm::chunk::{CompiledModule, Chunk};
-use crate::vm::compiler::{MAIN_CHUNK_NAME, Metadata};
+use crate::vm::compiler::{Metadata, ObjFunction};
 use crate::vm::opcode::Opcode;
 use std::collections::HashMap;
 
-pub fn disassemble(module: CompiledModule, metadata: Metadata) -> String {
+pub fn disassemble(function: ObjFunction, metadata: Metadata) -> String {
     let mut disassembler = Disassembler {
         current_load: 0,
         current_store: 0,
-        module,
+        function,
         metadata,
     };
     disassembler.disassemble()
 }
 
-struct Disassembler<'a> {
+struct Disassembler {
     current_load: usize,
     current_store: usize,
-    module: CompiledModule<'a>,
+    function: ObjFunction,
     metadata: Metadata,
 }
 
-impl<'a> Disassembler<'a> {
+impl Disassembler {
     fn disassemble_chunk(&mut self, name: String) -> Vec<String> {
-        let chunk = self.module.chunks.get(&name)
-            .expect(&format!("There should be a chunk named {}", name));
         let mut labels: HashMap<usize, String> = HashMap::new();
 
         let mut slot_idx: i8 = -1;
-        let mut code = chunk.code.iter();
+        let mut code = self.function.code.iter();
         let mut disassembled = Vec::new();
         while let Some(byte) = code.next() {
             let slot_idx_orig = slot_idx;
@@ -48,7 +45,7 @@ impl<'a> Disassembler<'a> {
             match opcode {
                 Opcode::Constant => {
                     let imm = imm.expect("Constant requires an immediate");
-                    let constant = self.module.constants.get(*imm as usize)
+                    let constant = self.function.constants.get(*imm as usize)
                         .expect("The constant at the index should exist");
                     acc.push(format!("\t; {}", constant))
                 }
@@ -106,11 +103,8 @@ impl<'a> Disassembler<'a> {
     pub fn disassemble(&mut self) -> String {
         let mut output = Vec::<String>::new();
 
-        let chunks = self.metadata.chunks.clone().into_iter();
-        for chunk_name in chunks {
-            let mut disassembled = self.disassemble_chunk(chunk_name.clone());
-            output.append(&mut disassembled);
-        }
+        let mut disassembled = self.disassemble_chunk("".to_string());
+        output.append(&mut disassembled);
 
         output.into_iter().collect()
     }

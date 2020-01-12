@@ -1,7 +1,5 @@
 import './abra-types'
 import './binary-op'
-import './chunk'
-import './compiled-module'
 import './error'
 import './position'
 import './token'

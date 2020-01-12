@@ -1,18 +1,19 @@
-use abra_core::vm::chunk::Chunk;
+use crate::js_value::value::JsWrappedValue;
 use serde::{Serialize, Serializer};
+use abra_core::vm::compiler::ObjFunction;
 use abra_core::vm::opcode::Opcode;
 
-pub struct JsChunk<'a>(pub &'a Chunk);
+pub struct JsObjFunction<'a>(pub &'a ObjFunction);
 
-impl<'a> Serialize for JsChunk<'a> {
+impl<'a> Serialize for JsObjFunction<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
         use serde::ser::SerializeMap;
 
-        let Chunk { code, .. } = self.0;
+        let ObjFunction { constants, code } = self.0;
 
-        let mut obj = serializer.serialize_map(Some(2))?;
+        let mut obj = serializer.serialize_map(Some(4))?;
 
         let mut bytecode = Vec::<(String, Option<u8>)>::new();
         let mut code = code.iter();
@@ -23,8 +24,13 @@ impl<'a> Serialize for JsChunk<'a> {
             } else { None };
             bytecode.push((op.to_string(), imm));
         }
-
         obj.serialize_entry("code", &bytecode)?;
+
+        let constants: Vec<JsWrappedValue> = constants.iter()
+            .map(|v| JsWrappedValue(v))
+            .collect();
+        obj.serialize_entry("constants", &constants)?;
+
         obj.end()
     }
 }

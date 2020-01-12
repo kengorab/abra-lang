@@ -1,25 +1,29 @@
-chunk_printName:
-  Constant 4	; "ken"
-  GLoad
-  Constant 0	; "firstName"
-  MapLoad
-  OptMk
-  LLoad0	; name
-  Constant 7	; "println"
+chunk_:
+  IConst0
+  IConst1
+  Constant 0	; 21
+  Constant 1	; "~range_$2"
+  Invoke 2
+label_1
+  LLoad1	; $iter
+  LLoad0	; $idx
+  Constant 2	; "~arrayLen"
+  Invoke 2
+  LT
+  JumpIfF 15	; label_0
+  LLoad1	; $iter
+  LLoad0	; $idx
+  ArrLoad
+  LLoad0	; $idx
+  IConst1
+  IAdd
+  LStore0	; $idx
+  LLoad2	; i
+  Constant 3	; "~println"
   Invoke 1
-  Return
-
-chunk_main:
-  Constant 0	; "firstName"
-  Constant 1	; "Ken"
-  Constant 2	; "lastName"
-  Constant 3	; "Gorab"
-  MapMk 2
-  Constant 4	; "ken"
-  GStore
-  Constant 5	; <func printName>
-  Constant 6	; "printName"
-  GStore
-  Constant 6	; "printName"
-  Invoke 0
+  Pop
+  JumpB 24	; label_1
+label_0
+  Pop
+  Pop
   Return
