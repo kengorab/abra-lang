@@ -1,8 +1,7 @@
 use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
-use crate::vm::chunk::{CompiledModule, Chunk};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
-use crate::vm::compiler::MAIN_CHUNK_NAME;
+use crate::vm::compiler::ObjFunction;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -59,9 +58,10 @@ pub enum InterpretError {
     StackOverflow,
 }
 
-struct CallFrame<'a> {
+struct CallFrame {
     ip: usize,
-    chunk: &'a Chunk,
+    code: Vec<u8>,
+    constants: Vec<Value>,
     stack_offset: usize,
     name: String,
 }
@@ -83,24 +83,22 @@ impl VMContext {
     }
 }
 
-pub struct VM<'a> {
+pub struct VM {
     ctx: VMContext,
-    call_stack: Vec<CallFrame<'a>>,
-    module: &'a CompiledModule<'a>,
+    call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
 }
 
 const STACK_LIMIT: usize = 64;
 
-impl<'a> VM<'a> {
-    pub fn new(module: &'a CompiledModule<'a>, ctx: VMContext) -> Self {
-        let chunk = module.chunks.get(MAIN_CHUNK_NAME).unwrap();
-        let root_frame = CallFrame { ip: 0, chunk, stack_offset: 0, name: MAIN_CHUNK_NAME.to_string() };
+impl VM {
+    pub fn new(func: ObjFunction, ctx: VMContext) -> Self {
+        let name = "$main".to_string();
+        let root_frame = CallFrame { ip: 0, code: func.code, constants: func.constants, stack_offset: 0, name };
         VM {
             ctx,
             call_stack: vec![root_frame],
-            module,
             stack: Vec::new(),
             globals: HashMap::new(),
         }
@@ -138,10 +136,10 @@ impl<'a> VM<'a> {
 
     fn read_byte(&mut self) -> Option<u8> {
         let frame: &mut CallFrame = current_frame!(self);
-        if frame.chunk.code.len() == frame.ip {
+        if frame.code.len() == frame.ip {
             None
         } else {
-            let instr = frame.chunk.code[frame.ip];
+            let instr = frame.code[frame.ip];
             frame.ip += 1;
             Some(instr)
         }
@@ -242,7 +240,8 @@ impl<'a> VM<'a> {
             match instr {
                 Opcode::Constant => {
                     let const_idx = self.read_byte_expect()?;
-                    let val = self.module.constants.get(const_idx)
+                    let CallFrame { constants, .. } = current_frame!(self);
+                    let val = constants.get(const_idx)
                         .ok_or(InterpretError::ConstIdxOutOfBounds)?
                         .clone();
                     self.push(val)
@@ -477,32 +476,46 @@ impl<'a> VM<'a> {
                     frame.ip -= jump_offset;
                 }
                 Opcode::Invoke => {
-                    let func_name = pop_expect_string!(self)?;
+                    let target = self.pop_expect()?;
                     let arity = self.read_byte_expect()?;
 
-                    if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
-                        let native_fn: &NativeFn = native_fn;
+                    match target {
+                        Value::Obj(Obj::StringObj { value }) => {
+                            if !value.starts_with("~") {
+                                return Err(InterpretError::TypeError("Function".to_string(), "String".to_string()));
+                            }
 
-                        let len = self.stack.len();
-                        let args = self.stack.split_off(len - arity);
-                        if let Some(value) = native_fn.invoke(self.ctx.clone(), args) {
-                            self.push(value);
+                            let func_name = value.replace("~", "");
+                            if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
+                                let native_fn: &NativeFn = native_fn;
+
+                                let len = self.stack.len();
+                                let args = self.stack.split_off(len - arity);
+                                if let Some(value) = native_fn.invoke(self.ctx.clone(), args) {
+                                    self.push(value);
+                                }
+                                continue;
+                            } else {
+                                unreachable!() // A native fn that exists in bytecode but not at runtime is "impossible"
+                            }
                         }
-                        continue;
-                    }
-
-                    let chunk = self.module.chunks.get(&func_name).unwrap();
-
-                    let frame = CallFrame {
-                        ip: 0,
-                        chunk,
-                        stack_offset: self.stack.len() - arity,
-                        name: func_name,
-                    };
-                    if self.call_stack.len() + 1 >= STACK_LIMIT {
-                        break Err(InterpretError::StackOverflow);
-                    } else {
-                        self.call_stack.push(frame);
+                        Value::Fn { name, code, constants } => {
+                            let frame = CallFrame {
+                                ip: 0,
+                                code,
+                                constants,
+                                stack_offset: self.stack.len() - arity,
+                                name,
+                            };
+                            if self.call_stack.len() + 1 >= STACK_LIMIT {
+                                break Err(InterpretError::StackOverflow);
+                            } else {
+                                self.call_stack.push(frame);
+                            }
+                        }
+                        v @ _ => {
+                            return Err(InterpretError::TypeError("Function".to_string(), v.to_string()));
+                        }
                     }
                 }
                 Opcode::Pop => {

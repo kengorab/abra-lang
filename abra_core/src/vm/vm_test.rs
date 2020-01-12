@@ -10,15 +10,16 @@ mod tests {
     use crate::vm::value::{Value, Obj};
     use crate::vm::vm::{VM, VMContext};
     use std::collections::HashMap;
+    use crate::vm::opcode::Opcode;
 
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let (mut module, _) = compile("<test_module>", typed_ast).unwrap();
+        let (func, _) = compile(typed_ast).unwrap();
         let ctx = VMContext::default();
 
-        let mut vm = VM::new(&mut module, ctx);
+        let mut vm = VM::new(func, ctx);
         vm.run().unwrap()
     }
 
@@ -544,12 +545,26 @@ mod tests {
     #[test]
     fn interpret_func_declaration() {
         let input = "\
+          val ghi = \"hello\"
           func abc(a: Int): Int = 123
           val def = abc
           def
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Fn("abc".to_string());
+        let expected = Value::Fn {
+            name: "abc".to_string(),
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("ghi".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Int(123),
+            ],
+            code: vec![
+                Opcode::Constant as u8, 3,
+                Opcode::LStore0 as u8,
+                Opcode::Return as u8
+            ],
+        };
         assert_eq!(expected, result);
     }
 

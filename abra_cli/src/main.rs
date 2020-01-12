@@ -30,7 +30,9 @@ fn main() {
                         _ => println!()
                     }
 //                    match compile_and_disassemble(contents.clone()) {
-//                        Ok(output) => println!("{}", output),
+//                        Ok(output) => {
+//                            println!("{}", output)
+//                        },
 //                        Err(error) => match error {
 //                            Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
 //                            Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),

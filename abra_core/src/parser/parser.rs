@@ -119,8 +119,6 @@ impl Parser {
     }
 
     fn get_prefix_rule(&self, tok: &Token) -> Option<Box<PrefixFn>> {
-        use self::Parser;
-
         match tok {
             Token::Int(_, _) |
             Token::Float(_, _) |
