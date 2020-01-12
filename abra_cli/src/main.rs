@@ -32,7 +32,7 @@ struct DisassembleOpts {
     out_file: Option<String>,
 }
 
-fn main() -> Result<(), !> {
+fn main() -> Result<(), ()> {
     let opts: Opts = Opts::parse();
 
     match opts.sub_cmd {
@@ -41,7 +41,7 @@ fn main() -> Result<(), !> {
     }
 }
 
-fn cmd_compile_and_run(opts: RunOpts) -> Result<(), !> {
+fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let contents = read_file(&opts.file_name)?;
 
     let ctx = VMContext {
@@ -65,7 +65,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), !> {
     Ok(())
 }
 
-fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), !> {
+fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let contents = read_file(&opts.file_name)?;
 
     match compile_and_disassemble(contents.clone()) {
@@ -86,16 +86,16 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), !> {
     Ok(())
 }
 
-fn read_file(file_name: &String) -> Result<String, !> {
+fn read_file(file_name: &String) -> Result<String, ()> {
     std::fs::read_to_string(file_name).map_err(|err| {
         eprintln!("Could not read file {}: {}", file_name, err);
-        std::process::exit(1)
+        std::process::exit(1);
     })
 }
 
-fn write_file(file_name: &String, output: String) -> Result<(), !> {
+fn write_file(file_name: &String, output: String) -> Result<(), ()> {
     std::fs::write(file_name, output).map_err(|err| {
         eprintln!("Could not write to file {}: {}", file_name, err);
-        std::process::exit(1)
+        std::process::exit(1);
     })
 }
