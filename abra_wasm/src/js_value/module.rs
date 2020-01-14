@@ -1,17 +1,17 @@
 use crate::js_value::value::JsWrappedValue;
 use serde::{Serialize, Serializer};
-use abra_core::vm::compiler::ObjFunction;
+use abra_core::vm::compiler::Module;
 use abra_core::vm::opcode::Opcode;
 
-pub struct JsObjFunction<'a>(pub &'a ObjFunction);
+pub struct JsModule<'a>(pub &'a Module);
 
-impl<'a> Serialize for JsObjFunction<'a> {
+impl<'a> Serialize for JsModule<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
         use serde::ser::SerializeMap;
 
-        let ObjFunction { constants, code } = self.0;
+        let Module { constants, code } = self.0;
 
         let mut obj = serializer.serialize_map(Some(4))?;
 

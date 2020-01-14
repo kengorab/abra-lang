@@ -1,7 +1,7 @@
 use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
-use crate::vm::compiler::ObjFunction;
+use crate::vm::compiler::Module;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -61,7 +61,6 @@ pub enum InterpretError {
 struct CallFrame {
     ip: usize,
     code: Vec<u8>,
-    constants: Vec<Value>,
     stack_offset: usize,
     name: String,
 }
@@ -85,6 +84,7 @@ impl VMContext {
 
 pub struct VM {
     ctx: VMContext,
+    constants: Vec<Value>,
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
@@ -93,11 +93,13 @@ pub struct VM {
 const STACK_LIMIT: usize = 64;
 
 impl VM {
-    pub fn new(func: ObjFunction, ctx: VMContext) -> Self {
+    pub fn new(module: Module, ctx: VMContext) -> Self {
         let name = "$main".to_string();
-        let root_frame = CallFrame { ip: 0, code: func.code, constants: func.constants, stack_offset: 0, name };
+        let Module { code, constants } = module;
+        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name };
         VM {
             ctx,
+            constants,
             call_stack: vec![root_frame],
             stack: Vec::new(),
             globals: HashMap::new(),
@@ -240,8 +242,7 @@ impl VM {
             match instr {
                 Opcode::Constant => {
                     let const_idx = self.read_byte_expect()?;
-                    let CallFrame { constants, .. } = current_frame!(self);
-                    let val = constants.get(const_idx)
+                    let val = self.constants.get(const_idx)
                         .ok_or(InterpretError::ConstIdxOutOfBounds)?
                         .clone();
                     self.push(val)
@@ -499,11 +500,10 @@ impl VM {
                                 unreachable!() // A native fn that exists in bytecode but not at runtime is "impossible"
                             }
                         }
-                        Value::Fn { name, code, constants } => {
+                        Value::Fn { name, code } => {
                             let frame = CallFrame {
                                 ip: 0,
                                 code,
-                                constants,
                                 stack_offset: self.stack.len() - arity,
                                 name,
                             };

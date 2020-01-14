@@ -8,7 +8,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Obj(Obj),
-    Fn { name: String, code: Vec<u8>, constants: Vec<Value> },
+    Fn { name: String, code: Vec<u8> },
     Type(String),
     Nil,
 }
@@ -37,7 +37,7 @@ impl Display for Value {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
-            Value::Fn{ name, .. } => write!(f, "<func {}>", name),
+            Value::Fn { name, .. } => write!(f, "<func {}>", name),
             Value::Type(name) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),
         }

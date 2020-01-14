@@ -16,10 +16,10 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let (func, _) = compile(typed_ast).unwrap();
+        let (module, _) = compile(typed_ast).unwrap();
         let ctx = VMContext::default();
 
-        let mut vm = VM::new(func, ctx);
+        let mut vm = VM::new(module, ctx);
         vm.run().unwrap()
     }
 
@@ -553,12 +553,6 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Fn {
             name: "abc".to_string(),
-            constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("ghi".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                Value::Int(123),
-            ],
             code: vec![
                 Opcode::Constant as u8, 3,
                 Opcode::LStore0 as u8,

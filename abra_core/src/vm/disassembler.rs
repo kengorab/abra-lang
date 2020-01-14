@@ -1,13 +1,13 @@
-use crate::vm::compiler::{Metadata, ObjFunction};
+use crate::vm::compiler::{Metadata, Module};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::Value;
 use std::collections::HashMap;
 
-pub fn disassemble(function: ObjFunction, metadata: Metadata) -> String {
+pub fn disassemble(module: Module, metadata: Metadata) -> String {
     let mut disassembler = Disassembler {
         current_load: 0,
         current_store: 0,
-        function,
+        module,
         metadata,
     };
     disassembler.disassemble()
@@ -16,7 +16,7 @@ pub fn disassemble(function: ObjFunction, metadata: Metadata) -> String {
 struct Disassembler {
     current_load: usize,
     current_store: usize,
-    function: ObjFunction,
+    module: Module,
     metadata: Metadata,
 }
 
@@ -46,7 +46,7 @@ impl Disassembler {
             match opcode {
                 Opcode::Constant => {
                     let imm = imm.expect("Constant requires an immediate");
-                    let constant = self.function.constants.get(*imm as usize)
+                    let constant = self.module.constants.get(*imm as usize)
                         .expect("The constant at the index should exist");
                     acc.push(format!("\t; {}", constant))
                 }
@@ -106,13 +106,13 @@ impl Disassembler {
 
         let main_name = "entrypoint $main".to_string();
 
-        let mut disassembled = self.disassemble_bytecode(main_name, self.function.code.clone());
+        let mut disassembled = self.disassemble_bytecode(main_name, self.module.code.clone());
         output.append(&mut disassembled);
 
-        let constants = self.function.constants.clone();
+        let constants = self.module.constants.clone();
         let iter = constants.iter().filter_map(|val| {
             match val {
-                Value::Fn { name, code, .. } => Some((format!("fn {}", name.clone()), code.clone())),
+                Value::Fn { name, code } => Some((format!("fn {}", name.clone()), code.clone())),
                 _ => None,
             }
         });

@@ -6,7 +6,7 @@ extern crate strum_macros;
 
 use crate::vm::value::Value;
 use crate::vm::vm::VMContext;
-use crate::vm::compiler::{Metadata, ObjFunction};
+use crate::vm::compiler::{Metadata, Module};
 
 pub mod builtins;
 pub mod common;
@@ -22,7 +22,7 @@ pub enum Error {
     InterpretError(vm::vm::InterpretError),
 }
 
-pub fn compile(input: String) -> Result<(ObjFunction, Metadata), Error> {
+pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
     match lexer::lexer::tokenize(&input) {
         Err(e) => Err(Error::LexerError(e)),
         Ok(tokens) => match parser::parser::parse(tokens) {
@@ -41,8 +41,8 @@ pub fn compile(input: String) -> Result<(ObjFunction, Metadata), Error> {
 }
 
 pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
-    let (top_level_fn, _) = compile(input)?;
-    let mut vm = vm::vm::VM::new(top_level_fn, ctx);
+    let (module, _) = compile(input)?;
+    let mut vm = vm::vm::VM::new(module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),
         Ok(None) => Ok(None),

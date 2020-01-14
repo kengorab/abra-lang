@@ -11,7 +11,8 @@ use crate::builtins::native_fns::NATIVE_FNS_MAP;
 pub struct Local(/* name: */ String, /* scope_depth: */ usize);
 
 pub struct Compiler {
-    function: ObjFunction,
+    code: Vec<u8>,
+    constants: Vec<Value>,
     depth: usize,
     locals: Vec<Local>,
     interrupt_offset_slots: Vec<usize>,
@@ -25,16 +26,17 @@ pub struct Metadata {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ObjFunction {
+pub struct Module {
     pub constants: Vec<Value>,
     pub code: Vec<u8>,
 }
 
-pub fn compile(ast: Vec<TypedAstNode>) -> Result<(ObjFunction, Metadata), ()> {
+pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
     let metadata = Metadata { loads: Vec::new(), stores: Vec::new() };
 
     let mut compiler = Compiler {
-        function: ObjFunction { constants: Vec::new(), code: Vec::new() },
+        code: Vec::new(),
+        constants: Vec::new(),
         depth: 0,
         locals: Vec::new(),
         interrupt_offset_slots: Vec::new(),
@@ -55,7 +57,8 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(ObjFunction, Metadata), ()> {
     }
     compiler.write_opcode(Opcode::Return, last_line + 1);
 
-    Ok((compiler.function, compiler.metadata))
+    let module = Module { constants: compiler.constants, code: compiler.code };
+    Ok((module, compiler.metadata))
 }
 
 fn should_pop_after_node(node: &TypedAstNode) -> bool {
@@ -87,19 +90,19 @@ impl Compiler {
 
     #[inline]
     fn write_byte(&mut self, byte: u8, _line: usize) { // TODO: Fix lines
-        self.function.code.push(byte);
+        self.code.push(byte);
     }
 
     pub fn add_constant(&mut self, value: Value) -> u8 {
         self.get_constant_index(&value)
             .unwrap_or_else(|| {
-                self.function.constants.push(value);
-                (self.function.constants.len() - 1) as u8
+                self.constants.push(value);
+                (self.constants.len() - 1) as u8
             })
     }
 
     fn get_constant_index(&self, value: &Value) -> Option<u8> {
-        self.function.constants.iter()
+        self.constants.iter()
             .position(|v| v == value)
             .map(|v| v as u8)
     }
@@ -234,7 +237,7 @@ impl Compiler {
         }
 
         // Calculate the number of bytes needed to jump back in order to evaluate the cond again
-        let offset_to_cond = self.function.code.len()
+        let offset_to_cond = self.code.len()
             .checked_sub(cond_slot_idx)
             .expect("conditional offset slot should be <= end of loop body");
         let offset_to_cond = offset_to_cond + 2; // Account for JumpB <imm>
@@ -242,21 +245,21 @@ impl Compiler {
         self.write_byte(offset_to_cond as u8, last_line);
 
         // Calculate the number of bytes needed to initially skip over body, if cond was false
-        let chunk = &mut self.function;
-        let body_len_bytes = chunk.code.len()
+        let code = &mut self.code;
+        let body_len_bytes = code.len()
             .checked_sub(cond_jump_offset_slot_idx)
             .expect("jump offset slot should be <= end of loop body");
-        *chunk.code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
+        *code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
 
         // Fill in any break-jump slots that have been accrued during compilation of this loop
         // Note: for nested loops, break-jumps will break out of inner loop only
         let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
         for slot_idx in interrupt_offset_slots {
-            let chunk = &mut self.function;
-            let break_jump_offset = chunk.code.len()
+            let code = &mut self.code;
+            let break_jump_offset = code.len()
                 .checked_sub(slot_idx)
                 .expect("break jump offset slots should be <= end of loop body");
-            *chunk.code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
+            *code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
         }
         Ok(last_line)
     }
@@ -420,9 +423,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
         self.write_opcode(Opcode::GStore, line);
 
-        let prev_function = self.function.clone();
-        self.function = ObjFunction { constants: prev_function.constants.clone(), code: Vec::new() };
-        //                                       ^^^ TODO: Fix this need to duplicate parent scope's constants
+        let prev_code = self.code.clone();
+        self.code = Vec::new();
+        // TODO: std::mem::swap?
 
         self.depth += 1;
         let func_depth = self.depth;
@@ -476,13 +479,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Return, last_line);
         self.depth -= 1;
 
-        let ObjFunction { code, constants } = self.function.clone();
-        self.function = prev_function;
-        let const_idx = self.add_constant(Value::Fn {
-            name: func_name.clone(),
-            code,
-            constants,
-        });
+        let code = self.code.clone();
+        self.code = prev_code;
+        // TODO: std::mem::swap?
+
+        let const_idx = self.add_constant(Value::Fn { name: func_name.clone(), code });
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
         self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
@@ -754,7 +755,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.visit(*condition)?;
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling if-block
-        let jump_offset_slot_idx = self.function.code.len();
+        let jump_offset_slot_idx = self.code.len();
 
         compile_block(self, if_block, is_stmt)?;
         if else_block.is_some() {
@@ -762,19 +763,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_byte(0, line); // <- Replaced after compiling else-block
         }
 
-        let chunk = &mut self.function;
-        let if_block_len = chunk.code.len().checked_sub(jump_offset_slot_idx)
+        let code = &mut self.code;
+        let if_block_len = code.len().checked_sub(jump_offset_slot_idx)
             .expect("jump offset slot should be <= end of if-block");
-        *chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
+        *code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
 
-        let jump_offset_slot_idx = chunk.code.len();
+        let jump_offset_slot_idx = code.len();
 
         if let Some(else_block) = else_block {
             compile_block(self, else_block, is_stmt)?;
-            let chunk = &mut self.function;
-            let else_block_len = chunk.code.len().checked_sub(jump_offset_slot_idx)
+            let code = &mut self.code;
+            let else_block_len = code.len().checked_sub(jump_offset_slot_idx)
                 .expect("jump offset slot should be <= end of else-block");
-            *chunk.code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
+            *code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
         }
         Ok(())
     }
@@ -890,7 +891,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
 
         // Essentially: if $idx >= arrayLen($iter) { break }
-        let cond_slot_idx = self.function.code.len();
+        let cond_slot_idx = self.code.len();
         load_intrinsic(self, "$idx", line);
         load_intrinsic(self, "$iter", line);
         self.write_constant(Value::Obj(Obj::StringObj { value: Box::new("~arrayLen".to_string()) }), line);
@@ -899,7 +900,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
-        let cond_jump_offset_slot_idx = self.function.code.len();
+        let cond_jump_offset_slot_idx = self.code.len();
 
         // Insert iteratee (bound to $iter[$idx]) and index bindings (if indexer expected) into loop scope
         self.depth += 1;
@@ -933,12 +934,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         let TypedWhileLoopNode { condition, body } = node;
-        let cond_slot_idx = self.function.code.len();
+        let cond_slot_idx = self.code.len();
         self.visit(*condition)?;
 
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
-        let cond_jump_offset_slot_idx = self.function.code.len();
+        let cond_jump_offset_slot_idx = self.code.len();
 
         self.depth += 1;
         self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
@@ -960,7 +961,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.write_opcode(Opcode::Jump, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body (see visit_while_loop)
-        let offset_slot = self.function.code.len();
+        let offset_slot = self.code.len();
         self.interrupt_offset_slots.push(offset_slot);
         Ok(())
     }
@@ -973,7 +974,7 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
 
-    fn compile(input: &str) -> ObjFunction {
+    fn compile(input: &str) -> Module {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
@@ -984,7 +985,7 @@ mod tests {
     #[test]
     fn compile_empty() {
         let chunk = compile("");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Return as u8
             ],
@@ -996,7 +997,7 @@ mod tests {
     #[test]
     fn compile_literals() {
         let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Pop as u8,
@@ -1025,7 +1026,7 @@ mod tests {
     #[test]
     fn compile_unary() {
         let chunk = compile("-5");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Invert as u8,
@@ -1036,7 +1037,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("-2.3");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Invert as u8,
@@ -1047,7 +1048,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("!false");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::F as u8,
                 Opcode::Negate as u8,
@@ -1061,7 +1062,7 @@ mod tests {
     #[test]
     fn compile_binary_numeric() {
         let chunk = compile("5 + 6");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1074,7 +1075,7 @@ mod tests {
 
         // Testing i2f and order of ops
         let chunk = compile("1 - -5 * 3.4 / 5");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::I2F as u8,
@@ -1095,7 +1096,7 @@ mod tests {
 
         // Testing %, along with i2f
         let chunk = compile("3.4 % 2.4 % 5");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1113,7 +1114,7 @@ mod tests {
     #[test]
     fn compile_binary_grouped() {
         let chunk = compile("(1 + 2) * 3");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1130,7 +1131,7 @@ mod tests {
     #[test]
     fn compile_binary_str_concat() {
         let chunk = compile("\"abc\" + \"def\"");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1145,7 +1146,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("1 + \"a\" + 3.4");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
@@ -1165,7 +1166,7 @@ mod tests {
     #[test]
     fn compile_binary_boolean() {
         let chunk = compile("true && true || false");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::T as u8,
                 Opcode::T as u8,
@@ -1182,7 +1183,7 @@ mod tests {
     #[test]
     fn compile_binary_comparisons() {
         let chunk = compile("1 <= 5 == 3.4 >= 5.6");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
@@ -1198,7 +1199,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"a\" < \"b\" != 4");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1218,7 +1219,7 @@ mod tests {
     #[test]
     fn compile_binary_coalesce() {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1242,7 +1243,7 @@ mod tests {
     #[test]
     fn compile_array_primitives() {
         let chunk = compile("[1, 2]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1254,7 +1255,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("[\"a\", \"b\", \"c\"]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1274,7 +1275,7 @@ mod tests {
     #[test]
     fn compile_array_nested() {
         let chunk = compile("[[1, 2], [3, 4, 5]]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1294,7 +1295,7 @@ mod tests {
     #[test]
     fn compile_map_literal() {
         let chunk = compile("{ a: 1, b: \"c\", d: true }");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::IConst1 as u8,
@@ -1318,7 +1319,7 @@ mod tests {
     #[test]
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1330,7 +1331,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("var unset: Bool\nvar set = true");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0,
@@ -1348,7 +1349,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1378,7 +1379,7 @@ mod tests {
           type Person { name: String }\n\
           val meg = Person({ name: \"Meg\" })\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1406,7 +1407,7 @@ mod tests {
           val someBaby = Person({ name: \"Unnamed\" })\n\
           val anAdult = Person({ name: \"Some Name\", age: 29 })\n\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1445,7 +1446,7 @@ mod tests {
     #[test]
     fn compile_ident() {
         let chunk = compile("val abc = 123\nabc");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1462,7 +1463,7 @@ mod tests {
     #[test]
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 // var a = 1
                 Opcode::IConst1 as u8,
@@ -1499,7 +1500,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("var a = 1\na = 2\nval b = 3");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 // var a = 1
                 Opcode::IConst1 as u8,
@@ -1529,7 +1530,7 @@ mod tests {
     #[test]
     fn compile_assignment_scopes() {
         let chunk = compile("var a = 1\nfunc abc() { a = 3 }");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
@@ -1555,10 +1556,6 @@ mod tests {
                         Opcode::GLoad as u8,
                         Opcode::Return as u8
                     ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                    ],
                 },
             ],
         };
@@ -1568,7 +1565,7 @@ mod tests {
     #[test]
     fn compile_indexing() {
         let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1588,7 +1585,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[1 + 1:]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::IConst1 as u8,
@@ -1605,7 +1602,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[-1:4]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::IConst1 as u8,
@@ -1621,7 +1618,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("\"some string\"[:1 + 1]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::IConst0 as u8,
@@ -1638,7 +1635,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("{ a: 1, b: 2 }[\"a\"]");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::IConst1 as u8,
@@ -1661,7 +1658,7 @@ mod tests {
     #[test]
     fn compile_if_else_statements() {
         let chunk = compile("if (1 == 2) 123 else 456");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1679,7 +1676,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) 123");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1694,7 +1691,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) { } else { 456 }");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1710,7 +1707,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
@@ -1741,7 +1738,7 @@ mod tests {
             a + 1\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -1777,7 +1774,7 @@ mod tests {
             c\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
@@ -1815,12 +1812,6 @@ mod tests {
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                    ],
                 }
             ],
         };
@@ -1835,18 +1826,20 @@ mod tests {
             println(\"hello\")\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GStore as u8,
-                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 3,
                 Opcode::Constant as u8, 0,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("~println".to_string()) }),
                 Value::Fn {
                     name: "abc".to_string(),
                     code: vec![
@@ -1857,11 +1850,6 @@ mod tests {
                         Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
                         Opcode::Return as u8,
                     ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("~println".to_string()) }),
-                    ],
                 },
             ],
         };
@@ -1871,7 +1859,7 @@ mod tests {
     #[test]
     fn compile_function_declaration_default_args() {
         let chunk = compile("func add(a: Int, b = 2) = a + b\nadd(1)\nadd(1, 2)");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
@@ -1909,9 +1897,6 @@ mod tests {
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("add".to_string()) }),
-                    ],
                 },
                 Value::Obj(Obj::StringObj { value: Box::new("add_$1".to_string()) }),
                 Value::Fn {
@@ -1924,24 +1909,6 @@ mod tests {
                         Opcode::Invoke as u8, 2,
                         Opcode::LStore0 as u8,
                         Opcode::Return as u8,
-                    ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("add".to_string()) }),
-                        Value::Fn {
-                            name: "add".to_string(),
-                            code: vec![
-                                Opcode::LLoad0 as u8,
-                                Opcode::LLoad1 as u8,
-                                Opcode::IAdd as u8,
-                                Opcode::LStore0 as u8,
-                                Opcode::Pop as u8,
-                                Opcode::Return as u8,
-                            ],
-                            constants: vec![
-                                Value::Obj(Obj::StringObj { value: Box::new("add".to_string()) }),
-                            ],
-                        },
-                        Value::Obj(Obj::StringObj { value: Box::new("add_$1".to_string()) }),
                     ],
                 },
             ],
@@ -1958,7 +1925,7 @@ mod tests {
           }\n
           val two = inc(number: one)\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 0,
@@ -1990,10 +1957,6 @@ mod tests {
                         Opcode::LStore0 as u8,
                         Opcode::Return as u8,
                     ],
-                    constants: vec![
-                        Value::Obj(Obj::StringObj { value: Box::new("one".to_string()) }),
-                        Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) }),
-                    ],
                 },
                 Value::Obj(Obj::StringObj { value: Box::new("two".to_string()) }),
             ],
@@ -2009,7 +1972,7 @@ mod tests {
             i = i + 1\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
@@ -2047,7 +2010,7 @@ mod tests {
             i = newI\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
@@ -2086,7 +2049,7 @@ mod tests {
             break\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::T as u8,
                 Opcode::JumpIfF as u8, 6,
@@ -2109,7 +2072,7 @@ mod tests {
             }\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::T as u8,
                 Opcode::JumpIfF as u8, 14,
@@ -2140,7 +2103,7 @@ mod tests {
             println(msg + a)\n\
           }\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 // val msg = "Row: "
                 Opcode::Constant as u8, 0,
@@ -2213,7 +2176,7 @@ mod tests {
           val ken: Person = { name: \"Ken\" }\n\
           ken.name\n\
         ");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
@@ -2241,7 +2204,7 @@ mod tests {
 
         // Accessing fields of structs
         let chunk = compile("\"hello\".length");
-        let expected = ObjFunction {
+        let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
