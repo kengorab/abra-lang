@@ -1,6 +1,10 @@
-func add(a: Int, b = 2) =
-  if (b == 2) a + b
-  else a + b
-
-println(add(1))
-println(add(1, 2))
+val greeting = "Hello"
+func exclaim(word: String) {
+  val abc = 123
+  word + "!"
+}
+func greet(recipient: String) {
+  greeting + ", " + exclaim(recipient)
+}
+val languageName = "Abra"
+greet(languageName) + " " + greet(languageName)

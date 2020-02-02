@@ -130,7 +130,7 @@ impl From<&u8> for Opcode {
 }
 
 impl Opcode {
-    pub fn expects_imm(&self) -> bool {
+    pub fn num_expected_imms(&self) -> u8 {
         match self {
             Opcode::Constant |
             Opcode::Jump |
@@ -139,9 +139,9 @@ impl Opcode {
             Opcode::ArrMk |
             Opcode::MapMk |
             Opcode::LStore |
-            Opcode::LLoad |
-            Opcode::Invoke => true,
-            _ => false
+            Opcode::LLoad => 1,
+            Opcode::Invoke => 2,
+            _ => 0
         }
     }
 }

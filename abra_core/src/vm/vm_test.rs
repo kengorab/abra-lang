@@ -556,6 +556,7 @@ mod tests {
             code: vec![
                 Opcode::Constant as u8, 3,
                 Opcode::LStore0 as u8,
+                Opcode::Pop as u8,
                 Opcode::Return as u8
             ],
         };
@@ -577,6 +578,11 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Int(6);
         assert_eq!(expected, result);
+
+        // There should be nothing leftover on the stack after a non-returning function executes
+        let input = "println(\"hello\")";
+        let result = interpret(input);
+        assert_eq!(None, result);
     }
 
     #[test]
