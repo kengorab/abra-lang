@@ -478,7 +478,8 @@ impl VM {
                 }
                 Opcode::Invoke => {
                     let target = self.pop_expect()?;
-                    let arity = self.read_byte_expect()?;
+                    let mut arity = self.read_byte_expect()?;
+                    let has_return = self.read_byte_expect()? == 1;
 
                     match target {
                         Value::Obj(Obj::StringObj { value }) => {
@@ -492,6 +493,7 @@ impl VM {
 
                                 let len = self.stack.len();
                                 let args = self.stack.split_off(len - arity);
+                                if has_return { self.stack.pop(); } // <-- Pop off nil (<ret> placeholder) value
                                 if let Some(value) = native_fn.invoke(self.ctx.clone(), args) {
                                     self.push(value);
                                 }
@@ -501,6 +503,7 @@ impl VM {
                             }
                         }
                         Value::Fn { name, code } => {
+                            if has_return { arity += 1 }
                             let frame = CallFrame {
                                 ip: 0,
                                 code,

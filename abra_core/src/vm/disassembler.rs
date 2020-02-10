@@ -35,29 +35,31 @@ impl Disassembler {
             let opcode = Opcode::from(byte);
             acc.push(opcode.to_string());
 
-            let imm = if opcode.expects_imm() {
+            let num_expected_imms = opcode.num_expected_imms();
+            let mut imms = vec![];
+            for _ in 0..num_expected_imms {
                 slot_idx += 1;
-                code.next().map(|imm| {
+                imms.push(code.next().map(|imm| {
                     acc.push(format!(" {}", imm));
                     imm
-                })
-            } else { None };
+                }));
+            };
 
             match opcode {
                 Opcode::Constant => {
-                    let imm = imm.expect("Constant requires an immediate");
+                    let imm = imms[0].expect("Constant requires an immediate");
                     let constant = self.module.constants.get(*imm as usize)
                         .expect("The constant at the index should exist");
                     acc.push(format!("\t; {}", constant))
                 }
                 Opcode::JumpIfF | Opcode::Jump => {
-                    let imm = imm.expect("JumpIfF/Jump requires an immediate");
+                    let imm = imms[0].expect("JumpIfF/Jump requires an immediate");
                     let label = format!("label_{}", labels.len());
                     labels.insert((slot_idx + 1 + (*imm as i8)) as usize, label.clone());
                     acc.push(format!("\t; {}", label))
                 }
                 Opcode::JumpB => {
-                    let imm = imm.expect("JumpB requires an immediate");
+                    let imm = imms[0].expect("JumpB requires an immediate");
                     let label = format!("label_{}", labels.len());
                     labels.insert((slot_idx + 1 - (*imm as i8)) as usize, label.clone());
                     acc.push(format!("\t; {}", label))
@@ -78,6 +80,12 @@ impl Disassembler {
                     if !ident.is_empty() {
                         acc.push(format!("\t; {}", ident))
                     }
+                }
+                Opcode::Invoke => {
+                    let arity = imms[0].expect("Invoke requires an arity");
+                    let has_return = imms[1].expect("Invoke requires an arity") == &1;
+
+                    acc.push(format!("\t; (arity: {}, has_return: {})", arity, has_return))
                 }
                 _ => {}
             }

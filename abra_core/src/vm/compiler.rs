@@ -430,7 +430,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.depth += 1;
         let func_depth = self.depth;
 
-        // Pop function arguments off stack and store in local bindings, also track # optional args
+        // Push return slot as local idx 0, if return value exists
+        if ret_type != Type::Unit {
+            let local = Local("<ret>".to_string(), self.depth);
+            self.locals.push(local);
+        }
+
+        // Track function arguments in local bindings, also track # optional args.
+        // Argument values will already be on the stack.
         let mut num_optional_args = 0;
         for (arg_token, _, default_value) in args.iter() {
             if default_value.is_some() { num_optional_args += 1; }
@@ -448,6 +455,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             let should_pop = should_pop_after_node(&node);
             self.visit(node)?;
 
+            // Handle bare expressions
             if !is_last_line && should_pop {
                 self.write_opcode(Opcode::Pop, line);
             }
@@ -456,22 +464,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 let should_handle_return = ret_type != Type::Unit;
                 if should_handle_return {
-                    if let Some(idx) = self.get_first_local_at_depth(&func_depth) {
-                        self.write_store_local_instr(idx, line);
+                    self.write_store_local_instr(0, line);
 
-                        // Push an empty string into metadata since this isn't a "real" store
-                        self.metadata.stores.push("".to_string());
-                    }
+                    // Push an empty string into metadata since this isn't a "real" store
+                    self.metadata.stores.push("".to_string());
+                    num_locals_to_pop -= 1; // < Account for 0-idx <ret> slot
+                    self.locals.pop();      // <
                 }
+
                 for _ in 0..num_locals_to_pop {
                     self.locals.pop();
-                }
-                if should_handle_return {
-                    if num_locals_to_pop != 0 {
-                        num_locals_to_pop -= 1;
-                    }
-                }
-                for _ in 0..num_locals_to_pop {
                     self.write_opcode(Opcode::Pop, line);
                 }
             }
@@ -787,18 +789,22 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<(), ()> {
         let line = token.get_position().line;
         let TypedInvocationNode { target, args, .. } = node;
-
         let num_args = args.len();
-        for arg in args {
-            self.visit(arg)?;
-        }
 
-        match &*target {
+        let has_return = match &*target {
             TypedAstNode::Identifier(token, TypedIdentifierNode { typ, is_mutable, scope_depth, .. }) => {
-                let arity = match typ {
-                    Type::Fn(args, _) => args.len(),
+                let (arity, has_return) = match typ {
+                    Type::Fn(args, ret) => (args.len(), **ret != Type::Unit),
                     _ => unreachable!() // This should have been caught during typechecking
                 };
+
+                if has_return {
+                    self.write_opcode(Opcode::Nil, line);
+                }
+
+                for arg in args {
+                    self.visit(arg)?;
+                }
 
                 // If invoking a function where the number of args passed does NOT match its arity,
                 // it must be a pseudo-fn used for handling default arg values. Dispatch to the
@@ -827,11 +833,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     });
                     self.visit(new_target)?;
                 }
+                has_return
             }
             _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes (ie, fn literals)
         };
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(num_args as u8, line);
+        let incl_ret_slot_op = if has_return { 1 } else { 0 };
+        self.write_byte(incl_ret_slot_op, line);
         Ok(())
     }
 
@@ -893,10 +902,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Essentially: if $idx >= arrayLen($iter) { break }
         let cond_slot_idx = self.code.len();
         load_intrinsic(self, "$idx", line);
+        self.write_opcode(Opcode::Nil, line); // <-- Load <ret> slot for ~arrayLen builtin // TODO: Fix this shameful garbage
         load_intrinsic(self, "$iter", line);
         self.write_constant(Value::Obj(Obj::StringObj { value: Box::new("~arrayLen".to_string()) }), line);
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(1, line);
+        self.write_byte(1, line); // <-- 1 = has_return is true // TODO: See comment above about garbage
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
@@ -1554,6 +1565,7 @@ mod tests {
                         Opcode::GStore as u8,
                         Opcode::Constant as u8, 0,
                         Opcode::GLoad as u8,
+                        Opcode::LStore0 as u8,
                         Opcode::Return as u8
                     ],
                 },
@@ -1803,11 +1815,12 @@ mod tests {
                     code: vec![
                         Opcode::Constant as u8, 0,
                         Opcode::GLoad as u8,
-                        Opcode::LLoad0 as u8,
                         Opcode::LLoad1 as u8,
-                        Opcode::IAdd as u8,
                         Opcode::LLoad2 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LLoad3 as u8,
                         Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
                         Opcode::Pop as u8,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
@@ -1846,7 +1859,7 @@ mod tests {
                         Opcode::IConst1 as u8,
                         Opcode::Constant as u8, 1,
                         Opcode::Constant as u8, 2,
-                        Opcode::Invoke as u8, 1,
+                        Opcode::Invoke as u8, 1, 0,
                         Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
                         Opcode::Return as u8,
                     ],
@@ -1873,16 +1886,18 @@ mod tests {
                 Opcode::Constant as u8, 3,
                 Opcode::Constant as u8, 2,
                 Opcode::GStore as u8,
+                Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 1,
+                Opcode::Invoke as u8, 1, 1,
                 Opcode::Pop as u8,
+                Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 2,
+                Opcode::Invoke as u8, 2, 1,
                 Opcode::Return as u8
             ],
             constants: vec![
@@ -1890,10 +1905,11 @@ mod tests {
                 Value::Fn {
                     name: "add".to_string(),
                     code: vec![
-                        Opcode::LLoad0 as u8,
                         Opcode::LLoad1 as u8,
+                        Opcode::LLoad2 as u8,
                         Opcode::IAdd as u8,
                         Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
@@ -1902,12 +1918,14 @@ mod tests {
                 Value::Fn {
                     name: "add_$1".to_string(),
                     code: vec![
-                        Opcode::LLoad0 as u8,
+                        Opcode::Nil as u8,
+                        Opcode::LLoad1 as u8,
                         Opcode::IConst2 as u8,
                         Opcode::Constant as u8, 0,
                         Opcode::GLoad as u8,
-                        Opcode::Invoke as u8, 2,
+                        Opcode::Invoke as u8, 2, 1,
                         Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
                 },
@@ -1936,11 +1954,12 @@ mod tests {
                 Opcode::Constant as u8, 2,
                 Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
+                Opcode::Nil as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Constant as u8, 1,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 1,
+                Opcode::Invoke as u8, 1, 1,
                 Opcode::Constant as u8, 3,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
@@ -1951,10 +1970,11 @@ mod tests {
                 Value::Fn {
                     name: "inc".to_string(),
                     code: vec![
-                        Opcode::LLoad0 as u8,
+                        Opcode::LLoad1 as u8,
                         Opcode::IConst1 as u8,
                         Opcode::IAdd as u8,
                         Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
                 },
@@ -2124,11 +2144,12 @@ mod tests {
                 Opcode::Constant as u8, 2,
                 Opcode::GLoad as u8,
                 Opcode::LLoad0 as u8,
+                Opcode::Nil as u8,
                 Opcode::LLoad1 as u8,
                 Opcode::Constant as u8, 3,
-                Opcode::Invoke as u8, 1,
+                Opcode::Invoke as u8, 1, 1,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 19,
+                Opcode::JumpIfF as u8, 20,
 
                 // a = $iter[$idx]
                 Opcode::LLoad1 as u8,
@@ -2148,9 +2169,9 @@ mod tests {
                 Opcode::LLoad2 as u8,
                 Opcode::StrConcat as u8,
                 Opcode::Constant as u8, 4,
-                Opcode::Invoke as u8, 1,
+                Opcode::Invoke as u8, 1, 0,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 28,
+                Opcode::JumpB as u8, 31,
 
                 // Cleanup/end
                 Opcode::Pop as u8,
