@@ -3,8 +3,17 @@ func exclaim(word: String) {
   val abc = 123
   word + "!"
 }
+
 func greet(recipient: String) {
-  greeting + ", " + exclaim(recipient)
+  func return2(a: Int) {
+    func add1(b: Int) { b + 1 }
+    add1(a) + 1
+  }
+
+  func comma(ch: String) { ch + " " }
+
+  greeting + comma(",") + exclaim(recipient) + return2(0)
 }
+
 val languageName = "Abra"
 greet(languageName) + " " + greet(languageName)

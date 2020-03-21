@@ -585,7 +585,7 @@ mod tests {
         assert_eq!(None, result);
     }
 
-    #[test]
+    #[test] // Note: this is like a pseudo-closure test, since the variables are globals...
     fn interpret_func_invocation_closure() {
         let input = "\
           val a = 1\n\
@@ -598,6 +598,21 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(18);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_nested() {
+        let input = "\
+          func getSum(): Int {\n\
+            func ret1(): Int { 1 }\n\
+            func add1(n: Int): Int { n + 1 }\n\
+            ret1() + add1(ret1())\n\
+          }\n\
+          getSum()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
         assert_eq!(expected, result);
     }
 
