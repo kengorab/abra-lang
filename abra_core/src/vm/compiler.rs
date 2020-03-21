@@ -171,20 +171,24 @@ impl Compiler {
     }
 
     fn get_first_local_at_depth(&self, target_depth: &usize) -> Option<usize> {
-        (0..self.locals.len()).zip(self.locals.iter()).rev()
+        self.locals.iter().enumerate().rev()
             .filter(|(_, Local(_, depth))| depth == target_depth)
             .map(|(idx, _)| idx)
             .min()
     }
 
     fn get_binding_index(&self, ident: &String) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        for idx in (0..self.locals.len()).rev() {
-            let Local(local_name, _) = self.locals.get(idx).unwrap();
+        for (idx, Local(local_name, _)) in self.locals.iter().enumerate().rev() {
             if local_name == ident {
                 return (idx, false);
             }
         }
         return (0, true);
+    }
+
+    fn push_local<S: AsRef<str>>(&mut self, name: S) {
+        let local = Local(name.as_ref().to_string(), self.depth);
+        self.locals.push(local);
     }
 
     // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
@@ -195,7 +199,6 @@ impl Compiler {
         cond_slot_idx: usize, // The slot representing the start of the loop conditional
         cond_jump_offset_slot_idx: usize, // The slot representing the end of the loop
     ) -> Result<usize, ()> {
-        let body_depth = self.depth;
         let body_len = body.len();
         let mut last_line = 0;
         for (idx, node) in (0..body_len).zip(body.into_iter()) {
@@ -219,7 +222,7 @@ impl Compiler {
             // for the compiler to no longer care about the locals in this current scope.
             // We also break out of the loop, since it's unnecessary to compile further than a break.
             if is_interrupt {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+                let num_locals_to_pop = self.get_num_locals_at_depth(&self.depth);
                 for _ in 0..num_locals_to_pop {
                     self.locals.pop(); // Remove from compiler's locals vector
                 }
@@ -227,7 +230,7 @@ impl Compiler {
             }
 
             if is_last_node {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&body_depth);
+                let num_locals_to_pop = self.get_num_locals_at_depth(&self.depth);
 
                 for _ in 0..num_locals_to_pop {
                     self.locals.pop(); // Remove from compiler's locals vector
@@ -403,13 +406,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(ident) }), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
-            let local = Local(ident, self.depth);
             if let Some(node) = expr {
                 self.visit(*node)?;
             } else {
                 self.write_opcode(Opcode::Nil, line);
             }
-            self.locals.push(local);
+            self.push_local(ident);
         }
         Ok(())
     }
@@ -432,8 +434,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Push return slot as local idx 0, if return value exists
         if ret_type != Type::Unit {
-            let local = Local("<ret>".to_string(), self.depth);
-            self.locals.push(local);
+            self.push_local("<ret>");
         }
 
         // Track function arguments in local bindings, also track # optional args.
@@ -443,8 +444,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             if default_value.is_some() { num_optional_args += 1; }
 
             let ident = Token::get_ident_name(arg_token);
-            let local = Local(ident.clone(), self.depth);
-            self.locals.push(local);
+            self.push_local(ident);
         }
 
         let body_len = body.len();
@@ -587,8 +587,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(type_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
-            let local = Local(type_name.clone(), self.depth);
-            self.locals.push(local);
+            self.push_local(type_name);
         }
 
         Ok(())
@@ -881,9 +880,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Push intrinsic variables $idx and $iter
         self.depth += 1; // Create wrapper scope to hold invisible variables
         self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
-        self.locals.push(Local("$idx".to_string(), self.depth));
+        self.push_local("$idx");
         self.visit(*iterator)?; // Local 1 is the iterator
-        self.locals.push(Local("$iter".to_string(), self.depth));
+        self.push_local("$iter");
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
@@ -918,12 +917,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
-        self.locals.push(Local(Token::get_ident_name(&iteratee).clone(), self.depth));
+        self.push_local(Token::get_ident_name(&iteratee));
         if let Some(ident) = index_ident {
             let (slot, _) = self.get_binding_index(&"$idx".to_string());
             self.write_load_local_instr(slot, line); // Load $idx
             self.metadata.loads.push("$idx".to_string());
-            self.locals.push(Local(Token::get_ident_name(&ident).clone(), self.depth));
+            self.push_local(Token::get_ident_name(&ident));
         }
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::IConst1, line);
