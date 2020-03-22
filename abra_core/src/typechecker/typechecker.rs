@@ -2013,6 +2013,30 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_function_decl_inner_function() -> TestResult {
+        let typed_ast = typecheck("func a(): Int {\nfunc b() { 1 }\n b()\n}")?;
+        let func = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, func) => func,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        assert_eq!(Type::Int, func.ret_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_inner_function_err() {
+        let error = typecheck("func a(): Int {\nfunc b() { 1 }\n b + 1\n}").unwrap_err();
+        let expected = TypecheckerError::InvalidOperator {
+            token: Token::Plus(Position::new(3, 4)),
+            op: BinaryOp::Add,
+            ltype: Type::Fn(vec![], Box::new(Type::Int)),
+            rtype: Type::Int
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
     fn typecheck_type_decl() -> TestResult {
         let (typechecker, typed_ast) = typecheck_get_typechecker("type Person { name: String }");
         let expected = TypedAstNode::TypeDecl(

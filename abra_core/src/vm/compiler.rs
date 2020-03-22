@@ -177,13 +177,20 @@ impl Compiler {
             .min()
     }
 
-    fn get_binding_index(&self, ident: &String) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        for idx in (0..self.locals.len()).rev() {
-            let Local(local_name, _) = self.locals.get(idx).unwrap();
+    fn get_binding_index(&self, ident: &String, depth: usize) -> (/* local_idx: */ usize, /* is_global: */ bool) {
+        let locals_at_depth = self.locals.iter()
+            .filter(|Local(_, local_depth)| local_depth == & depth)
+            .rev()
+            .collect::<Vec<&Local>>();
+
+        let mut idx = locals_at_depth.len();
+        for Local(local_name, _) in locals_at_depth {
+            idx -= 1;
             if local_name == ident {
                 return (idx, false);
             }
         }
+
         return (0, true);
     }
 
@@ -419,9 +426,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let func_name = Token::get_ident_name(&name);
 
         let line = token.get_position().line;
-        self.write_int_constant(0, line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
-        self.write_opcode(Opcode::GStore, line);
+
+        if self.depth == 0 {
+            self.write_int_constant(0, line);
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else {
+            // TODO: Handle recursively-callable nested functions (will likely be covered when I implement closures)
+        }
 
         let prev_code = self.code.clone();
         self.code = Vec::new();
@@ -488,8 +500,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let const_idx = self.add_constant(Value::Fn { name: func_name.clone(), code });
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
-        self.write_opcode(Opcode::GStore, line);
+
+        if self.depth == 0 {
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else {
+            let local = Local(func_name.clone(), self.depth);
+            self.locals.push(local);
+        }
 
         if num_optional_args == 0 { return Ok(()); }
 
@@ -598,7 +616,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
         let ident = node.name;
 
-        let (local_idx, is_global) = self.get_binding_index(&ident);
+        let (local_idx, is_global) = self.get_binding_index(&ident, self.depth);
         if is_global {
             let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
             let const_idx = const_idx.unwrap();
@@ -624,7 +642,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.visit(*expr)?;
 
-        let (local_idx, is_global) = self.get_binding_index(&ident);
+        let (local_idx, is_global) = self.get_binding_index(&ident, self.depth);
         if is_global {
             let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
             let const_idx = const_idx.unwrap();
@@ -887,14 +905,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            let (slot, _) = compiler.get_binding_index(&name.to_string(), compiler.depth);
             compiler.write_load_local_instr(slot, line);
             compiler.metadata.loads.push(name.to_string());
         }
 
         #[inline]
         fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            let (slot, _) = compiler.get_binding_index(&name.to_string(), compiler.depth);
             compiler.write_store_local_instr(slot, line);
             compiler.metadata.stores.push(name.to_string());
         }
@@ -920,7 +938,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::ArrLoad, line);
         self.locals.push(Local(Token::get_ident_name(&iteratee).clone(), self.depth));
         if let Some(ident) = index_ident {
-            let (slot, _) = self.get_binding_index(&"$idx".to_string());
+            let (slot, _) = self.get_binding_index(&"$idx".to_string(), self.depth);
             self.write_load_local_instr(slot, line); // Load $idx
             self.metadata.loads.push("$idx".to_string());
             self.locals.push(Local(Token::get_ident_name(&ident).clone(), self.depth));
@@ -1929,6 +1947,61 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                 },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_declaration_with_inner() {
+        let chunk = compile("\
+          func abc(b: Int) {\n\
+            func def(g: Int) { g + 1 }
+            val c = b + def(b)\n\
+            c\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Fn {
+                    name: "def".to_string(),
+                    code: vec![
+                        Opcode::LLoad1 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                },
+                Value::Fn {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::Constant as u8, 1,
+                        Opcode::LLoad1 as u8,
+                        Opcode::Nil as u8,
+                        Opcode::LLoad1 as u8,
+                        Opcode::LLoad2 as u8,
+                        Opcode::Invoke as u8, 1, 1,
+                        Opcode::IAdd as u8,
+                        Opcode::LLoad3 as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                }
             ],
         };
         assert_eq!(expected, chunk);
