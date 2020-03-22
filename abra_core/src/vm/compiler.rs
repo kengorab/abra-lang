@@ -8,12 +8,18 @@ use crate::vm::value::{Value, Obj};
 use crate::builtins::native_fns::NATIVE_FNS_MAP;
 
 #[derive(Debug, PartialEq)]
-pub struct Local(/* name: */ String, /* scope_depth: */ usize);
+pub struct Local(/* name: */ String, /* scope_depth: */ usize, /* fn_depth: */ usize);
 
 pub struct Compiler {
     code: Vec<u8>,
     constants: Vec<Value>,
+    // Keeps track of arbitrary depth in code: incl loop-bodies, if-bodies, _and_ fn-bodies. This is
+    // a convenience abstraction to ensure proper popping of locals within _any_ scope.
     depth: usize,
+    // Keeps track of specifically depth in function bodies; does _not_ track any of the bodies that
+    // self.depth does. This is used to resolve locals in nested fns and closures.
+    // TODO: Refactor this to be a little cleaner
+    fn_depth: usize,
     locals: Vec<Local>,
     interrupt_offset_slots: Vec<usize>,
     metadata: Metadata,
@@ -38,6 +44,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         code: Vec::new(),
         constants: Vec::new(),
         depth: 0,
+        fn_depth: 0,
         locals: Vec::new(),
         interrupt_offset_slots: Vec::new(),
         metadata,
@@ -166,28 +173,48 @@ impl Compiler {
 
     fn get_num_locals_at_depth(&self, target_depth: &usize) -> usize {
         self.locals.iter().rev()
-            .filter(|Local(_, depth)| depth >= target_depth)
+            .filter(|Local(_, depth, _)| depth >= target_depth)
             .count()
     }
 
     fn get_first_local_at_depth(&self, target_depth: &usize) -> Option<usize> {
         self.locals.iter().enumerate().rev()
-            .filter(|(_, Local(_, depth))| depth == target_depth)
+            .filter(|(_, Local(_, depth, _))| depth == target_depth)
             .map(|(idx, _)| idx)
             .min()
     }
 
-    fn get_binding_index(&self, ident: &String) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        for (idx, Local(local_name, _)) in self.locals.iter().enumerate().rev() {
-            if local_name == ident {
+    fn _get_binding_index<S: AsRef<str>>(&self, ident: S, fn_depth: usize) -> (/* local_idx: */ usize, /* is_global: */ bool) {
+        // if fn_depth == 0 { // TODO: Revisit? maybe compare against -1? We _do_ need some base case
+        //     return (0, true);
+        // }
+
+        let locals_at_depth = self.locals.iter()
+            .filter(|Local(_, _, local_fn_depth)| local_fn_depth == &fn_depth)
+            .rev()
+            .collect::<Vec<&Local>>();
+
+        let mut idx = locals_at_depth.len();
+        for Local(local_name, _, _) in locals_at_depth {
+            idx -= 1;
+            if local_name == ident.as_ref() {
                 return (idx, false);
             }
         }
+
         return (0, true);
     }
 
+    // A local is resolved wrt the current function scope - any other notion of 'depth'
+    // (ie. loops/ifs/etc) is irrelevant. If a local is present in an upper func scope, then it
+    // should be captured as an `upvalue`.
+    // TODO: Implement upvalues + closures
+    fn resolve_local<S: AsRef<str>>(&self, ident: S) -> (/* local_idx: */ usize, /* is_global: */ bool) {
+        self._get_binding_index(ident, self.fn_depth)
+    }
+
     fn push_local<S: AsRef<str>>(&mut self, name: S) {
-        let local = Local(name.as_ref().to_string(), self.depth);
+        let local = Local(name.as_ref().to_string(), self.depth, self.fn_depth);
         self.locals.push(local);
     }
 
@@ -421,15 +448,21 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let func_name = Token::get_ident_name(&name);
 
         let line = token.get_position().line;
-        self.write_int_constant(0, line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
-        self.write_opcode(Opcode::GStore, line);
+
+        if self.depth == 0 {
+            self.write_int_constant(0, line);
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else {
+            // TODO: Handle recursively-callable nested functions (will likely be covered when I implement closures)
+        }
 
         let prev_code = self.code.clone();
         self.code = Vec::new();
         // TODO: std::mem::swap?
 
         self.depth += 1;
+        self.fn_depth += 1;
         let func_depth = self.depth;
 
         // Push return slot as local idx 0, if return value exists
@@ -480,6 +513,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
         self.write_opcode(Opcode::Return, last_line);
         self.depth -= 1;
+        self.fn_depth -= 1;
 
         let code = self.code.clone();
         self.code = prev_code;
@@ -488,8 +522,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let const_idx = self.add_constant(Value::Fn { name: func_name.clone(), code });
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
-        self.write_opcode(Opcode::GStore, line);
+
+        if self.depth == 0 {
+            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else {
+            self.push_local(func_name);
+        }
 
         if num_optional_args == 0 { return Ok(()); }
 
@@ -597,7 +636,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
         let ident = node.name;
 
-        let (local_idx, is_global) = self.get_binding_index(&ident);
+        let (local_idx, is_global) = self.resolve_local(&ident);
         if is_global {
             let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
             let const_idx = const_idx.unwrap();
@@ -623,7 +662,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.visit(*expr)?;
 
-        let (local_idx, is_global) = self.get_binding_index(&ident);
+        let (local_idx, is_global) = self.resolve_local(&ident);
         if is_global {
             let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
             let const_idx = const_idx.unwrap();
@@ -886,14 +925,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            let (slot, _) = compiler.resolve_local(&name.to_string());
             compiler.write_load_local_instr(slot, line);
             compiler.metadata.loads.push(name.to_string());
         }
 
         #[inline]
         fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.get_binding_index(&name.to_string());
+            let (slot, _) = compiler.resolve_local(&name.to_string());
             compiler.write_store_local_instr(slot, line);
             compiler.metadata.stores.push(name.to_string());
         }
@@ -919,7 +958,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::ArrLoad, line);
         self.push_local(Token::get_ident_name(&iteratee));
         if let Some(ident) = index_ident {
-            let (slot, _) = self.get_binding_index(&"$idx".to_string());
+            let (slot, _) = self.resolve_local(&"$idx".to_string());
             self.write_load_local_instr(slot, line); // Load $idx
             self.metadata.loads.push("$idx".to_string());
             self.push_local(Token::get_ident_name(&ident));
@@ -1928,6 +1967,61 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                 },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_function_declaration_with_inner() {
+        let chunk = compile("\
+          func abc(b: Int) {\n\
+            func def(g: Int) { g + 1 }
+            val c = b + def(b)\n\
+            c\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
+                Value::Fn {
+                    name: "def".to_string(),
+                    code: vec![
+                        Opcode::LLoad1 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                },
+                Value::Fn {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::Constant as u8, 1,
+                        Opcode::LLoad1 as u8,
+                        Opcode::Nil as u8,
+                        Opcode::LLoad1 as u8,
+                        Opcode::LLoad2 as u8,
+                        Opcode::Invoke as u8, 1, 1,
+                        Opcode::IAdd as u8,
+                        Opcode::LLoad3 as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                }
             ],
         };
         assert_eq!(expected, chunk);
