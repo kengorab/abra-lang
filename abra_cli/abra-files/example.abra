@@ -1,19 +1,8 @@
-val greeting = "Hello"
-func exclaim(word: String) {
-  val abc = 123
-  word + "!"
+func getSum(): Int {
+  func ret1(): Int { 1 }
+  func add1(n: Int): Int { n + 1 }
+
+  ret1() + add1(ret1())
 }
 
-func greet(recipient: String) {
-  func return2(a: Int) {
-    func add1(b: Int) { b + 1 }
-    add1(a) + 1
-  }
-
-  func comma(ch: String) { ch + " " }
-
-  greeting + comma(",") + exclaim(recipient) + return2(0)
-}
-
-val languageName = "Abra"
-greet(languageName) + " " + greet(languageName)
+getSum()

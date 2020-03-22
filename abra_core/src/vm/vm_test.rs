@@ -768,6 +768,28 @@ mod tests {
     }
 
     #[test]
+    fn interpret_nested_loops_with_break() {
+        let input = "\
+          var a = 0\n\
+          while true {\n\
+            a = a + 1\n\
+            while true {\n\
+              a = a + 1\n\
+              if a >= 3 { break }\n\
+            }\n\
+            if a > 3 {\n\
+              break\n\
+            }\n\
+          }\n\
+          a\
+        ";
+        let result = interpret(input).unwrap();
+        // If this returned 3, we'd know that `break` destroyed the outer loop too, but it doesn't
+        let expected = Value::Int(5);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_for_loop_fizzbuzzish() {
         let input = "\
           var output = \"\"\n\
