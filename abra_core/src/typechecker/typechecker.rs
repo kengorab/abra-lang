@@ -15,6 +15,7 @@ pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum ScopeKind {
+    Root,
     Block,
     Function(/*token: */ Token, /*name: */ String),
     Loop,
@@ -32,7 +33,7 @@ impl Scope {
     }
 
     fn root_scope() -> Self {
-        let mut scope = Scope::new(ScopeKind::Block);
+        let mut scope = Scope::new(ScopeKind::Root);
 
         // Populate root scope with root-level builtin functions
         let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
@@ -993,15 +994,25 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
-        let mut depth = None;
-        for (idx, s) in self.scopes.iter().enumerate().rev() {
-            if s.kind == ScopeKind::Loop {
-                depth = Some(idx);
-            }
-        }
-        match depth {
-            Some(depth) => Ok(TypedAstNode::Break(token, depth)),
-            None => Err(TypecheckerError::InvalidBreak(token))
+        let mut has_loop_parent = false;
+        for Scope { kind, .. } in self.scopes.iter().rev() {
+            match kind {
+                ScopeKind::Loop => {
+                    has_loop_parent = true;
+                    break;
+                }
+                ScopeKind::Root | ScopeKind::Function(_, _) => {
+                    has_loop_parent = false;
+                    break;
+                }
+                ScopeKind::Block => continue
+            };
+        };
+
+        if has_loop_parent {
+            Ok(TypedAstNode::Break(token))
+        } else {
+            Err(TypecheckerError::InvalidBreak(token))
         }
     }
 
@@ -2031,7 +2042,7 @@ mod tests {
             token: Token::Plus(Position::new(3, 4)),
             op: BinaryOp::Add,
             ltype: Type::Fn(vec![], Box::new(Type::Int)),
-            rtype: Type::Int
+            rtype: Type::Int,
         };
         assert_eq!(expected, error);
     }
@@ -2872,7 +2883,7 @@ mod tests {
             token: Token::LBrace(Position::new(2, 8)),
             target_type: Type::Struct {
                 name: "Person".to_string(),
-                fields: vec![("name".to_string(), Type::String, false)]
+                fields: vec![("name".to_string(), Type::String, false)],
             },
             field: ("name".to_string(), Type::String),
         };
@@ -2907,10 +2918,7 @@ mod tests {
             TypedWhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
                 body: vec![
-                    TypedAstNode::Break(
-                        Token::Break(Position::new(1, 14)),
-                        1,
-                    )
+                    TypedAstNode::Break(Token::Break(Position::new(1, 14)))
                 ],
             },
         );
@@ -2969,6 +2977,10 @@ mod tests {
     fn typecheck_break_statement_error() {
         let error = typecheck("if true { break }").unwrap_err();
         let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = typecheck("func abc() { break }").unwrap_err();
+        let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 

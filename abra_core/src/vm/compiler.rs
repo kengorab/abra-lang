@@ -80,7 +80,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::FunctionDecl(_, _) |
         TypedAstNode::TypeDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
-        TypedAstNode::Break(_, _) | // This is here for completeness; the return type for this node should never matter
+        TypedAstNode::Break(_) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
         TypedAstNode::WhileLoop(_, _) => false,
         TypedAstNode::Invocation(_, TypedInvocationNode { typ, .. }) => typ != &Type::Unit,
@@ -256,7 +256,7 @@ impl Compiler {
 
             let should_pop = should_pop_after_node(&node);
             let is_interrupt = match &node {
-                TypedAstNode::Break(_, _) => true,
+                TypedAstNode::Break(_) => true,
                 _ => false
             };
             self.visit(node)?;
@@ -744,7 +744,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 let should_pop = should_pop_after_node(&node);
                 let is_interrupt = match &node {
-                    TypedAstNode::Break(_, _) => true,
+                    TypedAstNode::Break(_) => true,
                     _ => false
                 };
                 compiler.visit(node)?;
@@ -1000,7 +1000,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         Ok(())
     }
 
-    fn visit_break(&mut self, token: Token, loop_depth: usize) -> Result<(), ()> {
+    fn visit_break(&mut self, token: Token) -> Result<(), ()> {
         let line = token.get_position().line;
 
         // Emit bytecode to pop locals from stack. The scope in which the break statement lives
