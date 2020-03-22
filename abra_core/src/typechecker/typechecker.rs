@@ -38,11 +38,11 @@ impl Scope {
         let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
         for NativeFn { name, args, return_type, .. } in native_fns {
             let token = Token::Ident(Position::new(0, 0), name.clone());
-            let args: Vec<(String, Type, bool)> = (0..args.len()).zip(args.iter())
+            let args = args.iter().enumerate()
                 .map(|(idx, (arg, default_value))| {
                     (format!("_{}", idx), arg.clone(), default_value.is_some())
                 })
-                .collect();
+                .collect::<Vec<(String, Type, bool)>>();
             let typ = Type::Fn(args, Box::new(return_type.clone()));
             scope.bindings.insert(name.to_string(), ScopeBinding(token, typ, false));
         }
@@ -130,7 +130,7 @@ impl Typechecker {
 
         self.scopes.push(Scope::new(ScopeKind::Block));
         let if_block_len = if_block.len();
-        let if_block: Result<Vec<_>, _> = (0..if_block_len).zip(if_block.into_iter())
+        let if_block: Result<Vec<_>, _> = if_block.into_iter().enumerate()
             .map(|(idx, mut node)| {
                 // If the last node of an if-expression is an if-statement, treat it as an if-expr.
                 // This is due to the fact that if-blocks are only treated as expressions in certain
@@ -154,7 +154,7 @@ impl Typechecker {
             None => None,
             Some(nodes) => {
                 let else_block_len = nodes.len();
-                let else_block: Result<Vec<_>, _> = (0..else_block_len).zip(nodes.into_iter())
+                let else_block: Result<Vec<_>, _> = nodes.into_iter().enumerate()
                     .map(|(idx, mut node)| {
                         if !is_stmt && idx == else_block_len - 1 {
                             if let AstNode::IfStatement(token, if_node) = node {
@@ -520,7 +520,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         // Typecheck function body
         let body_len = body.len();
-        let body: Result<Vec<TypedAstNode>, _> = (0..body_len).zip(body.into_iter())
+        let body: Result<Vec<TypedAstNode>, _> = body.into_iter().enumerate()
             .map(|(idx, node)| {
                 if idx == body_len - 1 {
                     // This is sufficiently gross to warrant a comment. This logic is similar to the
@@ -994,7 +994,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
     fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
         let mut depth = None;
-        for (idx, s) in (0..self.scopes.len()).zip(self.scopes.iter()).rev() {
+        for (idx, s) in self.scopes.iter().enumerate().rev() {
             if s.kind == ScopeKind::Loop {
                 depth = Some(idx);
             }

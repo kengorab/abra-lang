@@ -11,7 +11,7 @@ use crate::builtins::native_fns::NATIVE_FNS_MAP;
 pub struct Local(/* name: */ String, /* fn_depth: */ usize);
 
 #[derive(Debug, PartialEq)]
-enum ScopeKind { Root, If, Fn, Loop, Block }
+enum ScopeKind { Root, If, Func, Loop, Block }
 
 #[derive(Debug, PartialEq)]
 struct Scope {
@@ -56,7 +56,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
 
     let len = ast.len();
     let mut last_line = 0;
-    for (idx, node) in (0..len).zip(ast.into_iter()) {
+    for (idx, node) in ast.into_iter().enumerate() {
         let line = node.get_token().get_position().line;
         let should_pop = should_pop_after_node(&node);
         compiler.visit(node).unwrap();
@@ -204,7 +204,7 @@ impl Compiler {
     }
 
     fn get_fn_depth(&self) -> usize {
-        self.scopes.iter().filter(|s| s.kind == ScopeKind::Fn).count()
+        self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
 
     fn push_local<S: AsRef<str>>(&mut self, name: S) {
@@ -249,7 +249,7 @@ impl Compiler {
     ) -> Result<usize, ()> {
         let body_len = body.len();
         let mut last_line = 0;
-        for (idx, node) in (0..body_len).zip(body.into_iter()) {
+        for (idx, node) in body.into_iter().enumerate() {
             let line = node.get_token().get_position().line;
             last_line = line;
             let is_last_node = idx == body_len - 1;
@@ -478,7 +478,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.code = Vec::new();
         // TODO: std::mem::swap?
 
-        self.push_scope(ScopeKind::Fn);
+        self.push_scope(ScopeKind::Func);
 
         // Push return slot as local idx 0, if return value exists
         if ret_type != Type::Unit {
@@ -497,7 +497,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let body_len = body.len();
         let mut last_line = 0;
-        for (idx, node) in (0..body_len).zip(body.into_iter()) {
+        for (idx, node) in body.into_iter().enumerate() {
             last_line = node.get_token().get_position().line;
             let is_last_line = idx == body_len - 1;
             let should_pop = should_pop_after_node(&node);
@@ -738,7 +738,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             compiler.push_scope(ScopeKind::If);
 
             let block_len = block.len();
-            for (idx, node) in (0..block_len).zip(block.into_iter()) {
+            for (idx, node) in block.into_iter().enumerate() {
                 let line = node.get_token().get_position().line;
                 let is_last_line = idx == block_len - 1;
 
