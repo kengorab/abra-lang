@@ -8,18 +8,22 @@ use crate::vm::value::{Value, Obj};
 use crate::builtins::native_fns::NATIVE_FNS_MAP;
 
 #[derive(Debug, PartialEq)]
-pub struct Local(/* name: */ String, /* scope_depth: */ usize, /* fn_depth: */ usize);
+pub struct Local(/* name: */ String, /* fn_depth: */ usize);
+
+#[derive(Debug, PartialEq)]
+enum ScopeKind { Root, If, Fn, Loop, Block }
+
+#[derive(Debug, PartialEq)]
+struct Scope {
+    kind: ScopeKind,
+    num_locals: usize,
+    first_local_idx: Option<usize>,
+}
 
 pub struct Compiler {
     code: Vec<u8>,
     constants: Vec<Value>,
-    // Keeps track of arbitrary depth in code: incl loop-bodies, if-bodies, _and_ fn-bodies. This is
-    // a convenience abstraction to ensure proper popping of locals within _any_ scope.
-    depth: usize,
-    // Keeps track of specifically depth in function bodies; does _not_ track any of the bodies that
-    // self.depth does. This is used to resolve locals in nested fns and closures.
-    // TODO: Refactor this to be a little cleaner
-    fn_depth: usize,
+    scopes: Vec<Scope>,
     locals: Vec<Local>,
     interrupt_offset_slots: Vec<usize>,
     metadata: Metadata,
@@ -39,12 +43,12 @@ pub struct Module {
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
     let metadata = Metadata { loads: Vec::new(), stores: Vec::new() };
+    let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
     let mut compiler = Compiler {
         code: Vec::new(),
         constants: Vec::new(),
-        depth: 0,
-        fn_depth: 0,
+        scopes: vec![root_scope],
         locals: Vec::new(),
         interrupt_offset_slots: Vec::new(),
         metadata,
@@ -171,31 +175,18 @@ impl Compiler {
         }
     }
 
-    fn get_num_locals_at_depth(&self, target_depth: &usize) -> usize {
-        self.locals.iter().rev()
-            .filter(|Local(_, depth, _)| depth >= target_depth)
-            .count()
-    }
-
-    fn get_first_local_at_depth(&self, target_depth: &usize) -> Option<usize> {
-        self.locals.iter().enumerate().rev()
-            .filter(|(_, Local(_, depth, _))| depth == target_depth)
-            .map(|(idx, _)| idx)
-            .min()
-    }
-
     fn _get_binding_index<S: AsRef<str>>(&self, ident: S, fn_depth: usize) -> (/* local_idx: */ usize, /* is_global: */ bool) {
         // if fn_depth == 0 { // TODO: Revisit? maybe compare against -1? We _do_ need some base case
         //     return (0, true);
         // }
 
         let locals_at_depth = self.locals.iter()
-            .filter(|Local(_, _, local_fn_depth)| local_fn_depth == &fn_depth)
+            .filter(|Local(_, local_fn_depth)| local_fn_depth == &fn_depth)
             .rev()
             .collect::<Vec<&Local>>();
 
         let mut idx = locals_at_depth.len();
-        for Local(local_name, _, _) in locals_at_depth {
+        for Local(local_name, _) in locals_at_depth {
             idx -= 1;
             if local_name == ident.as_ref() {
                 return (idx, false);
@@ -208,14 +199,44 @@ impl Compiler {
     // A local is resolved wrt the current function scope - any other notion of 'depth'
     // (ie. loops/ifs/etc) is irrelevant. If a local is present in an upper func scope, then it
     // should be captured as an `upvalue`.
-    // TODO: Implement upvalues + closures
     fn resolve_local<S: AsRef<str>>(&self, ident: S) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        self._get_binding_index(ident, self.fn_depth)
+        self._get_binding_index(ident, self.get_fn_depth())
+    }
+
+    fn get_fn_depth(&self) -> usize {
+        self.scopes.iter().filter(|s| s.kind == ScopeKind::Fn).count()
     }
 
     fn push_local<S: AsRef<str>>(&mut self, name: S) {
-        let local = Local(name.as_ref().to_string(), self.depth, self.fn_depth);
+        let local = Local(name.as_ref().to_string(), self.get_fn_depth());
         self.locals.push(local);
+
+        let mut scope = self.scopes.pop().expect("There should always be at least 1 scope");
+        if scope.kind == ScopeKind::Root { unreachable!("We should never call push_local into root scope"); }
+        scope.num_locals += 1;
+        if scope.first_local_idx == None {
+            scope.first_local_idx = Some(self.locals.len() - 1);
+        }
+        self.scopes.push(scope);
+    }
+
+    fn push_scope(&mut self, kind: ScopeKind) {
+        self.scopes.push(Scope { kind, num_locals: 0, first_local_idx: None });
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn pop_scope_locals(&mut self) -> usize {
+        let &Scope { num_locals, .. } = self.current_scope();
+        let num_to_keep = self.locals.len() - num_locals;
+        self.locals.truncate(num_to_keep);
+        num_locals
+    }
+
+    fn current_scope(&self) -> &Scope {
+        self.scopes.last().expect("There should be at least 1 scope")
     }
 
     // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
@@ -249,18 +270,14 @@ impl Compiler {
             // for the compiler to no longer care about the locals in this current scope.
             // We also break out of the loop, since it's unnecessary to compile further than a break.
             if is_interrupt {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&self.depth);
-                for _ in 0..num_locals_to_pop {
-                    self.locals.pop(); // Remove from compiler's locals vector
-                }
+                self.pop_scope_locals();
                 break;
             }
 
             if is_last_node {
-                let num_locals_to_pop = self.get_num_locals_at_depth(&self.depth);
+                let num_pops = self.pop_scope_locals();
 
-                for _ in 0..num_locals_to_pop {
-                    self.locals.pop(); // Remove from compiler's locals vector
+                for _ in 0..num_pops {
                     self.write_opcode(Opcode::Pop, line); // TODO: PopN
                 }
             }
@@ -424,7 +441,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let TypedBindingDeclNode { ident, expr, .. } = node;
         let ident = Token::get_ident_name(&ident).clone();
 
-        if self.depth == 0 { // If it's a global...
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             if let Some(node) = expr {
                 self.visit(*node)?;
             } else {
@@ -449,7 +466,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
 
-        if self.depth == 0 {
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_int_constant(0, line);
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
@@ -461,9 +478,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.code = Vec::new();
         // TODO: std::mem::swap?
 
-        self.depth += 1;
-        self.fn_depth += 1;
-        let func_depth = self.depth;
+        self.push_scope(ScopeKind::Fn);
 
         // Push return slot as local idx 0, if return value exists
         if ret_type != Type::Unit {
@@ -493,7 +508,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 self.write_opcode(Opcode::Pop, line);
             }
             if is_last_line {
-                let mut num_locals_to_pop = self.get_num_locals_at_depth(&func_depth);
+                let mut num_pops = self.pop_scope_locals();
 
                 let should_handle_return = ret_type != Type::Unit;
                 if should_handle_return {
@@ -501,19 +516,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                     // Push an empty string into metadata since this isn't a "real" store
                     self.metadata.stores.push("".to_string());
-                    num_locals_to_pop -= 1; // < Account for 0-idx <ret> slot
-                    self.locals.pop();      // <
+                    num_pops -= 1; // < Account for 0-idx <ret> slot
                 }
 
-                for _ in 0..num_locals_to_pop {
-                    self.locals.pop();
+                for _ in 0..num_pops {
                     self.write_opcode(Opcode::Pop, line);
                 }
             }
         }
         self.write_opcode(Opcode::Return, last_line);
-        self.depth -= 1;
-        self.fn_depth -= 1;
+        self.pop_scope();
 
         let code = self.code.clone();
         self.code = prev_code;
@@ -523,7 +535,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
-        if self.depth == 0 {
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
         } else {
@@ -622,7 +634,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
-        if self.depth == 0 { // If it's a global...
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(type_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
@@ -723,8 +735,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<(), ()> {
         #[inline]
         fn compile_block(compiler: &mut Compiler, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
-            compiler.depth += 1;
-            let if_block_depth = compiler.depth;
+            compiler.push_scope(ScopeKind::If);
 
             let block_len = block.len();
             for (idx, node) in (0..block_len).zip(block.into_iter()) {
@@ -749,42 +760,33 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 // for the compiler to no longer care about the locals in this current scope.
                 // We also break out of the loop, since it's unnecessary to compile further than a break.
                 if is_interrupt {
-                    let num_locals_to_pop = compiler.get_num_locals_at_depth(&if_block_depth);
-                    for _ in 0..num_locals_to_pop {
-                        compiler.locals.pop();
-                    }
+                    compiler.pop_scope_locals();
                     break;
                 }
 
                 // This is documented in #35
                 if is_last_line {
-                    let mut num_locals_to_pop = compiler.get_num_locals_at_depth(&if_block_depth);
+                    let mut num_pops = compiler.pop_scope_locals();
 
                     if !is_stmt {
-                        if let Some(idx) = compiler.get_first_local_at_depth(&if_block_depth) {
+                        let first_local_idx = compiler.current_scope().first_local_idx;
+                        if let Some(idx) = first_local_idx {
                             compiler.write_store_local_instr(idx, line);
 
                             // Push an empty string into metadata since this isn't a "real" store
                             compiler.metadata.stores.push("".to_string());
                         }
-                        for _ in 0..num_locals_to_pop {
-                            compiler.locals.pop();
-                        }
-                        if num_locals_to_pop != 0 {
-                            num_locals_to_pop -= 1;
-                        }
-                    } else {
-                        for _ in 0..num_locals_to_pop {
-                            compiler.locals.pop();
+                        if num_pops != 0 {
+                            num_pops -= 1;
                         }
                     }
-                    for _ in 0..num_locals_to_pop {
+                    for _ in 0..num_pops {
                         compiler.write_opcode(Opcode::Pop, line);
                     }
                 }
             }
 
-            compiler.depth -= 1;
+            compiler.pop_scope();
             Ok(())
         }
 
@@ -917,7 +919,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let TypedForLoopNode { iteratee, index_ident, iterator, body } = node;
 
         // Push intrinsic variables $idx and $iter
-        self.depth += 1; // Create wrapper scope to hold invisible variables
+        self.push_scope(ScopeKind::Loop); // Create wrapper scope to hold invisible variables
         self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
         self.push_local("$idx");
         self.visit(*iterator)?; // Local 1 is the iterator
@@ -952,7 +954,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let cond_jump_offset_slot_idx = self.code.len();
 
         // Insert iteratee (bound to $iter[$idx]) and index bindings (if indexer expected) into loop scope
-        self.depth += 1;
+        self.push_scope(ScopeKind::Block);
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
@@ -970,12 +972,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let last_line = self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
 
-        self.depth -= 1;
+        self.pop_scope();
         self.write_opcode(Opcode::Pop, last_line); // Pop $iter
         self.locals.pop(); // Remove $iter from compiler's locals vector
         self.write_opcode(Opcode::Pop, last_line); // Pop $idx
         self.locals.pop(); // Remove $idx from compiler's locals vector
-        self.depth -= 1;
+
+        self.pop_scope();
         Ok(())
     }
 
@@ -990,9 +993,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_byte(0, line); // <- Replaced after compiling loop body
         let cond_jump_offset_slot_idx = self.code.len();
 
-        self.depth += 1;
+        self.push_scope(ScopeKind::Loop);
         self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
-        self.depth -= 1;
+        self.pop_scope();
 
         Ok(())
     }
@@ -1002,8 +1005,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Emit bytecode to pop locals from stack. The scope in which the break statement lives
         // takes care of making sure the compiler's `locals` vec is in the correct state; here we
-        // just need to emit the runtime popping
-        let num_locals_to_pop = self.get_num_locals_at_depth(&loop_depth);
+        // just need to emit the runtime popping. It's worth noting that locals in scopes deeper than
+        // the loop also need to be popped
+        let mut num_locals_to_pop = 0;
+        for scope in self.scopes.iter().rev() {
+            num_locals_to_pop += scope.num_locals;
+            if scope.kind == ScopeKind::Loop {
+                break;
+            }
+        }
         for _ in 0..num_locals_to_pop {
             self.write_opcode(Opcode::Pop, line); // TODO: PopN
         }
