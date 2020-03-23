@@ -22,7 +22,7 @@ pub enum TypedAstNode {
     Instantiation(Token, TypedInstantiationNode),
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
-    Break(Token, /* loop_depth: */ usize),
+    Break(Token),
     Accessor(Token, TypedAccessorNode),
 }
 
@@ -47,7 +47,7 @@ impl TypedAstNode {
             TypedAstNode::Instantiation(token, _) => token,
             TypedAstNode::ForLoop(token, _) => token,
             TypedAstNode::WhileLoop(token, _) => token,
-            TypedAstNode::Break(token, _) => token,
+            TypedAstNode::Break(token) => token,
             TypedAstNode::Accessor(token, _) => token,
         }
     }
@@ -69,7 +69,7 @@ impl TypedAstNode {
             TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
-            TypedAstNode::Break(_, _) |
+            TypedAstNode::Break(_) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
             TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
@@ -192,7 +192,7 @@ pub struct TypedInvocationNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedInstantiationNode {
     pub typ: Type,
-    pub fields: Vec<(String, TypedAstNode)>
+    pub fields: Vec<(String, TypedAstNode)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -213,6 +213,6 @@ pub struct TypedForLoopNode {
 pub struct TypedAccessorNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub field: Token
+    pub field: Token,
 }
 
