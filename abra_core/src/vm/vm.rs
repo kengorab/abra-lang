@@ -136,6 +136,16 @@ impl VM {
         self.stack.pop().ok_or(InterpretError::StackEmpty)
     }
 
+    fn pop_expect_n(&mut self, num: usize) -> Result<(), InterpretError> {
+        if self.stack.len() < num {
+            Err(InterpretError::StackEmpty)
+        } else {
+            let new_size = self.stack.len() - num;
+            self.stack.truncate(new_size);
+            Ok(())
+        }
+    }
+
     fn read_byte(&mut self) -> Option<u8> {
         let frame: &mut CallFrame = current_frame!(self);
         if frame.code.len() == frame.ip {
@@ -523,6 +533,10 @@ impl VM {
                 }
                 Opcode::Pop => {
                     self.pop_expect()?;
+                }
+                Opcode::PopN => {
+                    let num_to_pop = self.read_byte_expect()?;
+                    self.pop_expect_n(num_to_pop)?;
                 }
                 Opcode::Return => {
                     let is_main_frame = self.call_stack.len() == 1;
