@@ -8,7 +8,23 @@ use crate::vm::value::{Value, Obj};
 use crate::builtins::native_fns::NATIVE_FNS_MAP;
 
 #[derive(Debug, PartialEq)]
-pub struct Local(/* name: */ String, /* fn_depth: */ usize);
+pub struct Local {
+    name: String,
+    depth: usize,
+    is_captured: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum UpvalueCaptureKind {
+    Local { local_idx: usize },
+    Upvalue { upvalue_idx: usize },
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Upvalue {
+    capture_kind: UpvalueCaptureKind,
+    depth: usize,
+}
 
 #[derive(Debug, PartialEq)]
 enum ScopeKind { Root, If, Func, Loop, Block }
@@ -25,6 +41,7 @@ pub struct Compiler {
     constants: Vec<Value>,
     scopes: Vec<Scope>,
     locals: Vec<Local>,
+    upvalues: Vec<Upvalue>,
     interrupt_offset_slots: Vec<usize>,
     metadata: Metadata,
 }
@@ -33,6 +50,8 @@ pub struct Compiler {
 pub struct Metadata {
     pub loads: Vec<String>,
     pub stores: Vec<String>,
+    pub uv_loads: Vec<String>,
+    pub uv_stores: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,7 +61,7 @@ pub struct Module {
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
-    let metadata = Metadata { loads: Vec::new(), stores: Vec::new() };
+    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), uv_loads: Vec::new(), uv_stores: Vec::new(),  };
     let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
     let mut compiler = Compiler {
@@ -50,6 +69,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         constants: Vec::new(),
         scopes: vec![root_scope],
         locals: Vec::new(),
+        upvalues: Vec::new(),
         interrupt_offset_slots: Vec::new(),
         metadata,
     };
@@ -125,7 +145,7 @@ impl Compiler {
         const_idx
     }
 
-    fn write_pop(&mut self, num_pops: usize, line: usize) {
+    fn write_pops(&mut self, num_pops: usize, line: usize) {
         if num_pops == 1 {
             self.write_opcode(Opcode::Pop, line);
         } else if num_pops != 0 {
@@ -134,82 +154,122 @@ impl Compiler {
         }
     }
 
+    fn write_pops_for_closure(&mut self, popped_locals: Vec<Local>, line: usize) {
+        for local in popped_locals.iter().rev() {
+            if local.name == "<ret>" { continue }
+
+            let op = if local.is_captured { Opcode::CloseUpvalue } else { Opcode::Pop };
+            self.write_opcode(op, line);
+        }
+    }
+
     fn write_int_constant(&mut self, number: u32, line: usize) {
-        if number <= 4 {
-            let opcode = match number {
-                0 => Opcode::IConst0,
-                1 => Opcode::IConst1,
-                2 => Opcode::IConst2,
-                3 => Opcode::IConst3,
-                4 => Opcode::IConst4,
-                _ => unreachable!(), // Values greater than 4 are handled in the else-block
-            };
-            self.write_opcode(opcode, line);
-        } else {
-            self.write_constant(Value::Int(number as i64), line);
+        let ops = vec![Opcode::IConst0, Opcode::IConst1, Opcode::IConst2, Opcode::IConst3, Opcode::IConst4];
+        match ops.get(number as usize) {
+            Some(op) => self.write_opcode((*op).clone(), line),
+            None => {
+                self.write_constant(Value::Int(number as i64), line);
+            }
         }
     }
 
     fn write_store_local_instr(&mut self, stack_slot: usize, line: usize) {
-        if stack_slot <= 4 {
-            let opcode = match stack_slot {
-                0 => Opcode::LStore0,
-                1 => Opcode::LStore1,
-                2 => Opcode::LStore2,
-                3 => Opcode::LStore3,
-                4 => Opcode::LStore4,
-                _ => unreachable!(), // Values greater than 4 are handled in the else-block
-            };
-            self.write_opcode(opcode, line);
-        } else {
-            self.write_opcode(Opcode::LStore, line);
-            self.write_byte(stack_slot as u8, line);
+        let ops = vec![Opcode::LStore0, Opcode::LStore1, Opcode::LStore2, Opcode::LStore3, Opcode::LStore4];
+        match ops.get(stack_slot) {
+            Some(op) => self.write_opcode((*op).clone(), line),
+            None => {
+                self.write_opcode(Opcode::LStore, line);
+                self.write_byte(stack_slot as u8, line);
+            }
         }
     }
 
     fn write_load_local_instr(&mut self, stack_slot: usize, line: usize) {
-        if stack_slot <= 4 {
-            let opcode = match stack_slot {
-                0 => Opcode::LLoad0,
-                1 => Opcode::LLoad1,
-                2 => Opcode::LLoad2,
-                3 => Opcode::LLoad3,
-                4 => Opcode::LLoad4,
-                _ => unreachable!(), // Values greater than 4 are handled in the else-block
-            };
-            self.write_opcode(opcode, line);
-        } else {
-            self.write_opcode(Opcode::LLoad, line);
-            self.write_byte(stack_slot as u8, line);
+        let ops = vec![Opcode::LLoad0, Opcode::LLoad1, Opcode::LLoad2, Opcode::LLoad3, Opcode::LLoad4];
+        match ops.get(stack_slot) {
+            Some(op) => self.write_opcode((*op).clone(), line),
+            None => {
+                self.write_opcode(Opcode::LLoad, line);
+                self.write_byte(stack_slot as u8, line);
+            }
         }
     }
 
-    fn _get_binding_index<S: AsRef<str>>(&self, ident: S, fn_depth: usize) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        // if fn_depth == 0 { // TODO: Revisit? maybe compare against -1? We _do_ need some base case
-        //     return (0, true);
-        // }
-
-        let locals_at_depth = self.locals.iter()
-            .filter(|Local(_, local_fn_depth)| local_fn_depth == &fn_depth)
-            .rev()
-            .collect::<Vec<&Local>>();
-
-        let mut idx = locals_at_depth.len();
-        for Local(local_name, _) in locals_at_depth {
-            idx -= 1;
-            if local_name == ident.as_ref() {
-                return (idx, false);
+    fn write_store_upvalue_instr(&mut self, upvalue_idx: usize, line: usize) {
+        let ops = vec![Opcode::UStore0, Opcode::UStore1, Opcode::UStore2, Opcode::UStore3, Opcode::UStore4];
+        match ops.get(upvalue_idx) {
+            Some(op) => self.write_opcode((*op).clone(), line),
+            None => {
+                self.write_opcode(Opcode::UStore, line);
+                self.write_byte(upvalue_idx as u8, line);
             }
         }
+    }
 
-        return (0, true);
+    fn write_load_upvalue_instr(&mut self, upvalue_idx: usize, line: usize) {
+        let ops = vec![Opcode::ULoad0, Opcode::ULoad1, Opcode::ULoad2, Opcode::ULoad3, Opcode::ULoad4];
+        match ops.get(upvalue_idx) {
+            Some(op) => self.write_opcode((*op).clone(), line),
+            None => {
+                self.write_opcode(Opcode::ULoad, line);
+                self.write_byte(upvalue_idx as u8, line);
+            }
+        }
     }
 
     // A local is resolved wrt the current function scope - any other notion of 'depth'
     // (ie. loops/ifs/etc) is irrelevant. If a local is present in an upper func scope, then it
     // should be captured as an `upvalue`.
-    fn resolve_local<S: AsRef<str>>(&self, ident: S) -> (/* local_idx: */ usize, /* is_global: */ bool) {
-        self._get_binding_index(ident, self.get_fn_depth())
+    fn resolve_local<S: AsRef<str>>(&mut self, ident: S, depth: usize) -> Option<(&mut Local, usize)> {
+        let locals_at_depth = self.locals.iter_mut()
+            .filter(|Local { depth: local_depth, .. }| local_depth == &depth)
+            .rev()
+            .collect::<Vec<&mut Local>>();
+
+        let mut idx = locals_at_depth.len();
+        for local in locals_at_depth {
+            idx -= 1;
+            if local.name == ident.as_ref() {
+                return Some((local, idx));
+            }
+        }
+
+        return None;
+    }
+
+    fn resolve_upvalue<S: AsRef<str>>(&mut self, ident: S, depth: i64) -> Option<usize> {
+        if depth < 0 { return None; }
+        let depth = depth as usize;
+
+        #[inline]
+        fn add_upvalue(zelf: &mut Compiler, depth: usize, kind: UpvalueCaptureKind) -> usize {
+            for (idx, upvalue) in zelf.upvalues.iter().enumerate() {
+                if upvalue.capture_kind == kind {
+                    return idx;
+                }
+            }
+
+            zelf.upvalues.push(Upvalue { capture_kind: kind, depth });
+            zelf.upvalues.iter().filter(|uv| uv.depth == depth).count() - 1
+        }
+
+        match self.resolve_local(&ident, depth) {
+            Some((local, local_idx)) => {
+                local.is_captured = true;
+
+                let capture_kind = UpvalueCaptureKind::Local { local_idx };
+                let upvalue_idx = add_upvalue(self, depth, capture_kind);
+                Some(upvalue_idx)
+            }
+            None => match self.resolve_upvalue(ident, depth as i64 - 1) {
+                None => None,
+                Some(upvalue_idx) => {
+                    let capture_kind = UpvalueCaptureKind::Upvalue { upvalue_idx };
+                    let upvalue_idx = add_upvalue(self, depth, capture_kind);
+                    Some(upvalue_idx)
+                }
+            }
+        }
     }
 
     fn get_fn_depth(&self) -> usize {
@@ -217,8 +277,11 @@ impl Compiler {
     }
 
     fn push_local<S: AsRef<str>>(&mut self, name: S) {
-        let local = Local(name.as_ref().to_string(), self.get_fn_depth());
-        self.locals.push(local);
+        self.locals.push(Local {
+            name: name.as_ref().to_string(),
+            depth: self.get_fn_depth(),
+            is_captured: false,
+        });
 
         let mut scope = self.scopes.pop().expect("There should always be at least 1 scope");
         if scope.kind == ScopeKind::Root { unreachable!("We should never call push_local into root scope"); }
@@ -237,11 +300,10 @@ impl Compiler {
         self.scopes.pop();
     }
 
-    fn pop_scope_locals(&mut self) -> usize {
+    fn pop_scope_locals(&mut self) -> Vec<Local> {
         let &Scope { num_locals, .. } = self.current_scope();
-        let num_to_keep = self.locals.len() - num_locals;
-        self.locals.truncate(num_to_keep);
-        num_locals
+        let split_idx = ((self.locals.len() as i64) - (num_locals as i64)) as usize;
+        self.locals.split_off(split_idx)
     }
 
     fn current_scope(&self) -> &Scope {
@@ -284,8 +346,8 @@ impl Compiler {
             }
 
             if is_last_node {
-                let num_pops = self.pop_scope_locals();
-                self.write_pop(num_pops, line);
+                let num_pops = self.pop_scope_locals().len();
+                self.write_pops(num_pops, line);
             }
         }
 
@@ -514,17 +576,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 self.write_opcode(Opcode::Pop, line);
             }
             if is_last_line {
-                let mut num_pops = self.pop_scope_locals();
+                let popped_locals = self.pop_scope_locals();
 
                 let should_handle_return = ret_type != Type::Unit;
                 if should_handle_return {
                     self.write_store_local_instr(0, line);
-
-                    // Push an empty string into metadata since this isn't a "real" store
-                    self.metadata.stores.push("".to_string());
-                    num_pops -= 1; // < Account for 0-idx <ret> slot
+                    self.metadata.stores.push("<ret>".to_string());
                 }
-                self.write_pop(num_pops, line);
+                self.write_pops_for_closure(popped_locals, line);
             }
         }
         self.write_opcode(Opcode::Return, last_line);
@@ -534,9 +593,23 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.code = prev_code;
         // TODO: std::mem::swap?
 
-        let const_idx = self.add_constant(Value::Fn { name: func_name.clone(), code });
+        let fn_upvalues = self.upvalues.iter().rev()
+            .take_while(|uv| uv.depth == self.get_fn_depth())
+            .map(|uv| uv.clone())
+            .collect::<Vec<Upvalue>>();
+        self.upvalues.truncate(self.upvalues.len() - fn_upvalues.len());
+
+        let const_idx = self.add_constant(Value::Fn {
+            name: func_name.clone(),
+            code,
+            upvalues: fn_upvalues.clone(),
+        });
+
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
+        if !fn_upvalues.is_empty() {
+            self.write_opcode(Opcode::ClosureMk, line);
+        }
 
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
@@ -651,17 +724,29 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
         let ident = node.name;
 
-        let (local_idx, is_global) = self.resolve_local(&ident);
-        if is_global {
-            let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
-            let const_idx = const_idx.unwrap();
+        let scope_depth = self.get_fn_depth();
+        match self.resolve_local(&ident, scope_depth) {
+            Some((_, local_idx)) => { // Load local at index
+                self.write_load_local_instr(local_idx, line);
+                self.metadata.loads.push(ident.clone());
+            }
+            None => {
+                let upper_scope_depth = self.get_fn_depth() as i64 - 1;
+                match self.resolve_upvalue(&ident, upper_scope_depth) {
+                    Some(upvalue_idx) => { // Load upvalue from upper scope
+                        self.write_load_upvalue_instr(upvalue_idx, line);
+                        self.metadata.uv_loads.push(ident.clone());
+                    }
+                    None => { // Load global by name
+                        let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
+                        let const_idx = const_idx.unwrap();
 
-            self.write_opcode(Opcode::Constant, line);
-            self.write_byte(const_idx, line);
-            self.write_opcode(Opcode::GLoad, line);
-        } else {
-            self.write_load_local_instr(local_idx, line);
-            self.metadata.loads.push(ident.clone());
+                        self.write_opcode(Opcode::Constant, line);
+                        self.write_byte(const_idx, line);
+                        self.write_opcode(Opcode::GLoad, line);
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -677,22 +762,36 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.visit(*expr)?;
 
-        let (local_idx, is_global) = self.resolve_local(&ident);
-        if is_global {
-            let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
-            let const_idx = const_idx.unwrap();
+        let scope_depth = self.get_fn_depth();
+        match self.resolve_local(&ident, scope_depth) {
+            Some((_, local_idx)) => { // Store to local at index
+                self.write_store_local_instr(local_idx, line);
+                self.metadata.stores.push(ident.clone());
+                self.write_load_local_instr(local_idx, line);
+                self.metadata.loads.push(ident.clone());
+            }
+            None => {
+                let upper_scope_depth = self.get_fn_depth() as i64 - 1;
+                match self.resolve_upvalue(&ident, upper_scope_depth) {
+                    Some(upvalue_idx) => { // Store to upvalue at index
+                        self.write_store_upvalue_instr(upvalue_idx, line);
+                        self.metadata.uv_stores.push(ident.clone());
+                        self.write_load_upvalue_instr(upvalue_idx, line);
+                        self.metadata.uv_loads.push(ident.clone());
+                    }
+                    None => { // Store to global by name
+                        let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
+                        let const_idx = const_idx.unwrap();
 
-            self.write_opcode(Opcode::Constant, line);
-            self.write_byte(const_idx, line);
-            self.write_opcode(Opcode::GStore, line);
-            self.write_opcode(Opcode::Constant, line);
-            self.write_byte(const_idx, line);
-            self.write_opcode(Opcode::GLoad, line);
-        } else {
-            self.write_store_local_instr(local_idx, line);
-            self.metadata.stores.push(ident.clone());
-            self.write_load_local_instr(local_idx, line);
-            self.metadata.loads.push(ident.clone());
+                        self.write_opcode(Opcode::Constant, line);
+                        self.write_byte(const_idx, line);
+                        self.write_opcode(Opcode::GStore, line);
+                        self.write_opcode(Opcode::Constant, line);
+                        self.write_byte(const_idx, line);
+                        self.write_opcode(Opcode::GLoad, line);
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -769,7 +868,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 // This is documented in #35
                 if is_last_line {
-                    let mut num_pops = compiler.pop_scope_locals();
+                    let mut num_pops = compiler.pop_scope_locals().len();
 
                     if !is_stmt {
                         let first_local_idx = compiler.current_scope().first_local_idx;
@@ -783,7 +882,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                             num_pops -= 1;
                         }
                     }
-                    compiler.write_pop(num_pops, line);
+                    compiler.write_pops(num_pops, line);
                 }
             }
 
@@ -928,14 +1027,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.resolve_local(&name.to_string());
+            let (_, slot) = compiler.resolve_local(&name.to_string(), compiler.get_fn_depth()).unwrap();
             compiler.write_load_local_instr(slot, line);
             compiler.metadata.loads.push(name.to_string());
         }
 
         #[inline]
         fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
-            let (slot, _) = compiler.resolve_local(&name.to_string());
+            let (_, slot) = compiler.resolve_local(&name.to_string(), compiler.get_fn_depth()).unwrap();
             compiler.write_store_local_instr(slot, line);
             compiler.metadata.stores.push(name.to_string());
         }
@@ -961,7 +1060,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::ArrLoad, line);
         self.push_local(Token::get_ident_name(&iteratee));
         if let Some(ident) = index_ident {
-            let (slot, _) = self.resolve_local(&"$idx".to_string());
+            let (_, slot) = self.resolve_local(&"$idx".to_string(), self.get_fn_depth()).unwrap();
             self.write_load_local_instr(slot, line); // Load $idx
             self.metadata.loads.push("$idx".to_string());
             self.push_local(Token::get_ident_name(&ident));
@@ -1015,7 +1114,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 break;
             }
         }
-        self.write_pop(num_locals_to_pop, line);
+        self.write_pops(num_locals_to_pop, line);
 
         self.write_opcode(Opcode::Jump, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body (see visit_while_loop)
@@ -1519,6 +1618,119 @@ mod tests {
     }
 
     #[test]
+    fn compile_ident_upvalues() {
+        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { b + 1 }\n}");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Fn {
+                    name: "c".to_string(),
+                    code: vec![
+                        Opcode::ULoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![
+                        Upvalue {
+                            capture_kind: UpvalueCaptureKind::Local { local_idx: 1 },
+                            depth: 1
+                        }
+                    ],
+                },
+                Value::Fn {
+                    name: "a".to_string(),
+                    code: vec![
+                        Opcode::IConst3 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::ClosureMk as u8,
+                        Opcode::Pop as u8,
+                        Opcode::CloseUpvalue as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![],
+                },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_ident_upvalues_skip_level() {
+        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d() { b + 1 }\n}\n}");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Fn {
+                    name: "d".to_string(),
+                    code: vec![
+                        Opcode::ULoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::IAdd as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![
+                        Upvalue {
+                            capture_kind: UpvalueCaptureKind::Upvalue { upvalue_idx: 0 },
+                            depth: 2
+                        }
+                    ],
+                },
+                Value::Fn {
+                    name: "c".to_string(),
+                    code: vec![
+                        Opcode::Constant as u8, 1,
+                        Opcode::ClosureMk as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![
+                        Upvalue {
+                            capture_kind: UpvalueCaptureKind::Local { local_idx: 1 },
+                            depth: 1
+                        }
+                    ],
+                },
+                Value::Fn {
+                    name: "a".to_string(),
+                    code: vec![
+                        Opcode::IConst3 as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::ClosureMk as u8,
+                        Opcode::Pop as u8,
+                        Opcode::CloseUpvalue as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![],
+                },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Module {
@@ -1586,7 +1798,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_assignment_scopes() {
+    fn compile_assignment_globals() {
         let chunk = compile("var a = 1\nfunc abc() { a = 3 }");
         let expected = Module {
             code: vec![
@@ -1615,6 +1827,55 @@ mod tests {
                         Opcode::LStore0 as u8,
                         Opcode::Return as u8
                     ],
+                    upvalues: vec![],
+                },
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_assignment_upvalues() {
+        let chunk = compile("func outer() {\nvar a = 1\nfunc inner() { a = 3 }\n}");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Obj(Obj::StringObj { value: Box::new("outer".to_string()) }),
+                Value::Fn {
+                    name: "inner".to_string(),
+                    code: vec![
+                        Opcode::IConst3 as u8,
+                        Opcode::UStore0 as u8,
+                        Opcode::ULoad0 as u8,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![
+                        Upvalue {
+                            capture_kind: UpvalueCaptureKind::Local { local_idx: 0 },
+                            depth: 1,
+                        }
+                    ],
+                },
+                Value::Fn {
+                    name: "outer".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::Constant as u8, 1,
+                        Opcode::ClosureMk as u8,
+                        Opcode::Pop as u8,
+                        Opcode::CloseUpvalue as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
                 },
             ],
         };
@@ -1867,9 +2128,12 @@ mod tests {
                         Opcode::IAdd as u8,
                         Opcode::LLoad3 as u8,
                         Opcode::LStore0 as u8,
-                        Opcode::PopN as u8, 3,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 }
             ],
         };
@@ -1908,6 +2172,7 @@ mod tests {
                         Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 },
             ],
         };
@@ -1954,9 +2219,11 @@ mod tests {
                         Opcode::LLoad2 as u8,
                         Opcode::IAdd as u8,
                         Opcode::LStore0 as u8,
-                        Opcode::PopN as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 },
                 Value::Obj(Obj::StringObj { value: Box::new("add_$1".to_string()) }),
                 Value::Fn {
@@ -1972,6 +2239,7 @@ mod tests {
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 },
             ],
         };
@@ -2009,6 +2277,7 @@ mod tests {
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 },
                 Value::Fn {
                     name: "abc".to_string(),
@@ -2022,9 +2291,12 @@ mod tests {
                         Opcode::IAdd as u8,
                         Opcode::LLoad3 as u8,
                         Opcode::LStore0 as u8,
-                        Opcode::PopN as u8, 3,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 }
             ],
         };
@@ -2074,6 +2346,7 @@ mod tests {
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
+                    upvalues: vec![],
                 },
                 Value::Obj(Obj::StringObj { value: Box::new("two".to_string()) }),
             ],

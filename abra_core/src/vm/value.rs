@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use crate::vm::compiler::Upvalue;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
@@ -8,7 +9,7 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Obj(Obj),
-    Fn { name: String, code: Vec<u8> },
+    Fn { name: String, code: Vec<u8>, upvalues: Vec<Upvalue> },
     Type(String),
     Nil,
 }

@@ -1,4 +1,4 @@
-#[derive(Display, Debug, PartialEq)]
+#[derive(Clone, Display, Debug, PartialEq)]
 #[repr(u8)]
 pub enum Opcode {
     Constant = 0,
@@ -47,6 +47,12 @@ pub enum Opcode {
     LStore3,
     LStore4,
     LStore,
+    UStore0,
+    UStore1,
+    UStore2,
+    UStore3,
+    UStore4,
+    UStore,
     GLoad,
     LLoad0,
     LLoad1,
@@ -54,10 +60,18 @@ pub enum Opcode {
     LLoad3,
     LLoad4,
     LLoad,
+    ULoad0,
+    ULoad1,
+    ULoad2,
+    ULoad3,
+    ULoad4,
+    ULoad,
     Jump,
     JumpIfF,
     JumpB,
     Invoke,
+    ClosureMk,
+    CloseUpvalue,
     Pop,
     PopN,
     Return,
@@ -112,20 +126,34 @@ impl From<&u8> for Opcode {
             43 => Opcode::LStore3,
             44 => Opcode::LStore4,
             45 => Opcode::LStore,
-            46 => Opcode::GLoad,
-            47 => Opcode::LLoad0,
-            48 => Opcode::LLoad1,
-            49 => Opcode::LLoad2,
-            50 => Opcode::LLoad3,
-            51 => Opcode::LLoad4,
-            52 => Opcode::LLoad,
-            53 => Opcode::Jump,
-            54 => Opcode::JumpIfF,
-            55 => Opcode::JumpB,
-            56 => Opcode::Invoke,
-            57 => Opcode::Pop,
-            58 => Opcode::PopN,
-            59 => Opcode::Return,
+            46 => Opcode::UStore0,
+            47 => Opcode::UStore1,
+            48 => Opcode::UStore2,
+            49 => Opcode::UStore3,
+            50 => Opcode::UStore4,
+            51 => Opcode::UStore,
+            52 => Opcode::GLoad,
+            53 => Opcode::LLoad0,
+            54 => Opcode::LLoad1,
+            55 => Opcode::LLoad2,
+            56 => Opcode::LLoad3,
+            57 => Opcode::LLoad4,
+            58 => Opcode::LLoad,
+            59 => Opcode::ULoad0,
+            60 => Opcode::ULoad1,
+            61 => Opcode::ULoad2,
+            62 => Opcode::ULoad3,
+            63 => Opcode::ULoad4,
+            64 => Opcode::ULoad,
+            65 => Opcode::Jump,
+            66 => Opcode::JumpIfF,
+            67 => Opcode::JumpB,
+            68 => Opcode::Invoke,
+            69 => Opcode::ClosureMk,
+            70 => Opcode::CloseUpvalue,
+            71 => Opcode::Pop,
+            72 => Opcode::PopN,
+            73 => Opcode::Return,
             _ => unreachable!()
         }
     }
@@ -141,8 +169,10 @@ impl Opcode {
             Opcode::ArrMk |
             Opcode::MapMk |
             Opcode::LStore |
+            Opcode::UStore |
             Opcode::PopN |
-            Opcode::LLoad => 1,
+            Opcode::LLoad |
+            Opcode::ULoad => 1,
             Opcode::Invoke => 2,
             _ => 0
         }

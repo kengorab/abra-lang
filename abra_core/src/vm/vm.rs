@@ -58,11 +58,19 @@ pub enum InterpretError {
     StackOverflow,
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Upvalue {
+    pub slot_idx: usize,
+    pub is_closed: bool,
+    pub value: Option<Value>,
+}
+
 struct CallFrame {
     ip: usize,
     code: Vec<u8>,
     stack_offset: usize,
     name: String,
+    _upvalues: Vec<Upvalue>,
 }
 
 #[derive(Clone)]
@@ -88,6 +96,7 @@ pub struct VM {
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
+    _open_upvalues: HashMap<usize, Upvalue>,
 }
 
 const STACK_LIMIT: usize = 64;
@@ -96,13 +105,14 @@ impl VM {
     pub fn new(module: Module, ctx: VMContext) -> Self {
         let name = "$main".to_string();
         let Module { code, constants } = module;
-        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name };
+        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name, _upvalues: vec![] };
         VM {
             ctx,
             constants,
             call_stack: vec![root_frame],
             stack: Vec::new(),
             globals: HashMap::new(),
+            _open_upvalues: HashMap::new(),
         }
     }
 
@@ -451,6 +461,12 @@ impl VM {
                     let stack_slot = self.read_byte_expect()?;
                     self.store(stack_slot)?
                 }
+                Opcode::UStore0 |
+                Opcode::UStore1 |
+                Opcode::UStore2 |
+                Opcode::UStore3 |
+                Opcode::UStore4 |
+                Opcode::UStore => unimplemented!(),
                 Opcode::GLoad => {
                     let global_name: String = pop_expect_string!(self)?;
                     let value = self.globals.get(&global_name)
@@ -467,6 +483,12 @@ impl VM {
                     let stack_slot = self.read_byte_expect()?;
                     self.load(stack_slot)?
                 }
+                Opcode::ULoad0 |
+                Opcode::ULoad1 |
+                Opcode::ULoad2 |
+                Opcode::ULoad3 |
+                Opcode::ULoad4 |
+                Opcode::ULoad => unimplemented!(),
                 Opcode::Jump => {
                     let jump_offset = self.read_byte_expect()?;
 
@@ -512,13 +534,14 @@ impl VM {
                                 unreachable!() // A native fn that exists in bytecode but not at runtime is "impossible"
                             }
                         }
-                        Value::Fn { name, code } => {
+                        Value::Fn { name, code, upvalues: _upvalues } => {
                             if has_return { arity += 1 }
                             let frame = CallFrame {
                                 ip: 0,
                                 code,
                                 stack_offset: self.stack.len() - arity,
                                 name,
+                                _upvalues: vec![]
                             };
                             if self.call_stack.len() + 1 >= STACK_LIMIT {
                                 break Err(InterpretError::StackOverflow);
@@ -531,6 +554,8 @@ impl VM {
                         }
                     }
                 }
+                Opcode::CloseUpvalue => unimplemented!(),
+                Opcode::ClosureMk => unimplemented!(),
                 Opcode::Pop => {
                     self.pop_expect()?;
                 }
@@ -543,7 +568,7 @@ impl VM {
 
                     if is_main_frame {
                         let top = self.pop();
-                        break Ok(top);
+                        break Ok(top.clone());
                     } else {
                         // Pop off current frame, so the next loop will resume with the previous frame
                         self.call_stack.pop();

@@ -1,8 +1,11 @@
 func getSum(): Int {
-  func ret1(): Int { 1 }
-  func add1(n: Int): Int { n + 1 }
+  val one = 1
 
-  ret1() + add1(ret1())
+  func add1(n: Int): Int {
+    n + one
+  }
+
+  add1(2)
 }
 
 getSum()

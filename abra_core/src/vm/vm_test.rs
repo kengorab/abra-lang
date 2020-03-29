@@ -559,6 +559,7 @@ mod tests {
                 Opcode::Pop as u8,
                 Opcode::Return as u8
             ],
+            upvalues: vec![],
         };
         assert_eq!(expected, result);
     }
