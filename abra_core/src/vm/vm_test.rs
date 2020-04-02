@@ -618,6 +618,63 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_closures() {
+        let input = "\
+          func getCounter() {\n\
+            var count = 100\n\
+            func tick() { count = count + 1 }\n\
+            count = 0\n\
+            tick\n\
+          }\n\
+          val tick = getCounter()\n\
+          val results = [tick(), tick(), tick(), tick(), tick()]\n\
+          results\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(2)),
+                Box::new(Value::Int(3)),
+                Box::new(Value::Int(4)),
+                Box::new(Value::Int(5)),
+            ]
+        });
+        assert_eq!(expected, result);
+
+        // Test deeply nested upvalue access
+        let input = "\
+          func getCounter() {\n\
+            var count = 100\n\
+            func unnecessaryLayer1() {\n\
+              func unnecessaryLayer2() {\n\
+                func tick() { count = count + 1 }\n\
+                tick\n\
+              }\n\
+              unnecessaryLayer2\n\
+            }\n\
+            count = 0\n\
+            val l1 = unnecessaryLayer1()\n\
+            l1()
+          }\n\
+          val tick = getCounter()\n\
+          val results = [tick(), tick(), tick(), tick(), tick()]\n\
+          results\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(2)),
+                Box::new(Value::Int(3)),
+                Box::new(Value::Int(4)),
+                Box::new(Value::Int(5)),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_func_invocation_callstack() {
         let input = "\
           val greeting = \"Hello\"\n\
@@ -660,7 +717,7 @@ mod tests {
     }
 
     #[test]
-    fn interpret_func_invocation_recursion() {
+    fn interpret_func_invocation_recursion_global() {
         let input = "\
           func fib(n: Int): Int {\n\
             if (n == 0) {\n\
@@ -670,6 +727,41 @@ mod tests {
             } else {\n\
               fib(n - 2) + fib(n - 1)\n\
             }\n\
+          }\n\
+          \n\
+          [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::ArrayObj {
+            value: vec![
+                Box::new(Value::Int(0)),
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(1)),
+                Box::new(Value::Int(2)),
+                Box::new(Value::Int(3)),
+                Box::new(Value::Int(5)),
+                Box::new(Value::Int(8)),
+                Box::new(Value::Int(13)),
+                Box::new(Value::Int(21)),
+            ]
+        });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_recursion_closure() {
+        let input = "\
+          func fib(n: Int): Int {\n\
+            func fibInner(n: Int): Int {\n\
+              if (n == 0) {\n\
+                0\n\
+              } else if (n == 1) {\n\
+                1\n\
+              } else {\n\
+                fib(n - 2) + fib(n - 1)\n\
+              }\n\
+            }\n\
+            fibInner(n)\n\
           }\n\
           \n\
           [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\

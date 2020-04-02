@@ -72,6 +72,7 @@ pub enum Opcode {
     Invoke,
     ClosureMk,
     CloseUpvalue,
+    CloseUpvalueAndPop,
     Pop,
     PopN,
     Return,
@@ -151,9 +152,10 @@ impl From<&u8> for Opcode {
             68 => Opcode::Invoke,
             69 => Opcode::ClosureMk,
             70 => Opcode::CloseUpvalue,
-            71 => Opcode::Pop,
-            72 => Opcode::PopN,
-            73 => Opcode::Return,
+            71 => Opcode::CloseUpvalueAndPop,
+            72 => Opcode::Pop,
+            73 => Opcode::PopN,
+            74 => Opcode::Return,
             _ => unreachable!()
         }
     }

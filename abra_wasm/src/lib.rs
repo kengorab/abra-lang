@@ -56,6 +56,7 @@ impl Serialize for RunResult {
                 }
             }
             RunResult(Value::Fn { name: fn_name, .. }) => serializer.serialize_str(fn_name),
+            RunResult(Value::Closure { name: fn_name, .. }) => serializer.serialize_str(fn_name),
             RunResult(Value::Type(type_name)) => serializer.serialize_str(type_name)
         }
     }

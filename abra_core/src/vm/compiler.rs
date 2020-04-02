@@ -12,6 +12,7 @@ pub struct Local {
     name: String,
     depth: usize,
     is_captured: bool,
+    is_closed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -22,7 +23,7 @@ pub enum UpvalueCaptureKind {
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Upvalue {
-    capture_kind: UpvalueCaptureKind,
+    pub capture_kind: UpvalueCaptureKind,
     depth: usize,
 }
 
@@ -61,7 +62,7 @@ pub struct Module {
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
-    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), uv_loads: Vec::new(), uv_stores: Vec::new(),  };
+    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), uv_loads: Vec::new(), uv_stores: Vec::new() };
     let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
     let mut compiler = Compiler {
@@ -156,10 +157,13 @@ impl Compiler {
 
     fn write_pops_for_closure(&mut self, popped_locals: Vec<Local>, line: usize) {
         for local in popped_locals.iter().rev() {
-            if local.name == "<ret>" { continue }
+            if local.name == "<ret>".to_string() { continue }
 
-            let op = if local.is_captured { Opcode::CloseUpvalue } else { Opcode::Pop };
-            self.write_opcode(op, line);
+            if local.is_captured && !local.is_closed {
+                self.write_opcode(Opcode::CloseUpvalueAndPop, line);
+            } else {
+                self.write_opcode(Opcode::Pop, line);
+            }
         }
     }
 
@@ -229,7 +233,7 @@ impl Compiler {
         let mut idx = locals_at_depth.len();
         for local in locals_at_depth {
             idx -= 1;
-            if local.name == ident.as_ref() {
+            if local.name == ident.as_ref().to_string() {
                 return Some((local, idx));
             }
         }
@@ -244,8 +248,11 @@ impl Compiler {
         #[inline]
         fn add_upvalue(zelf: &mut Compiler, depth: usize, kind: UpvalueCaptureKind) -> usize {
             for (idx, upvalue) in zelf.upvalues.iter().enumerate() {
-                if upvalue.capture_kind == kind {
-                    return idx;
+                if upvalue.capture_kind == kind && upvalue.depth == depth {
+                    return match upvalue.capture_kind {
+                        UpvalueCaptureKind::Local {..} => idx,
+                        UpvalueCaptureKind::Upvalue { upvalue_idx } => upvalue_idx
+                    };
                 }
             }
 
@@ -281,6 +288,7 @@ impl Compiler {
             name: name.as_ref().to_string(),
             depth: self.get_fn_depth(),
             is_captured: false,
+            is_closed: false,
         });
 
         let mut scope = self.scopes.pop().expect("There should always be at least 1 scope");
@@ -529,7 +537,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth } = node;
+        let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth, is_recursive } = node;
         let func_name = Token::get_ident_name(&name);
 
         let line = token.get_position().line;
@@ -538,8 +546,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_int_constant(0, line);
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
-        } else {
-            // TODO: Handle recursively-callable nested functions (will likely be covered when I implement closures)
+        } else if is_recursive {
+            self.write_int_constant(0, line);
+            self.push_local(func_name);
         }
 
         let prev_code = self.code.clone();
@@ -614,6 +623,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(func_name.clone()) }), line);
             self.write_opcode(Opcode::GStore, line);
+        } else if is_recursive {
+            let scope_depth = self.get_fn_depth();
+            let (local, fn_local_idx) = self.resolve_local(func_name, scope_depth)
+                .expect("There should have been a function pre-defined with this name");
+            local.is_closed = true;
+            self.write_store_local_instr(fn_local_idx, line);
+            self.metadata.stores.push(func_name.clone());
+            self.write_opcode(Opcode::CloseUpvalue, line);
         } else {
             self.push_local(func_name);
         }
@@ -694,7 +711,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // Call the visitor fn to generate bytecode for the pseudo-fn. This should not loop
             // infinitely, since these calls' signatures contain no arguments with default values
             let name = Token::Ident(token.get_position(), fn_name);
-            let node = TypedFunctionDeclNode { name, scope_depth, ret_type: ret_type.clone(), args, body };
+            let node = TypedFunctionDeclNode { name, scope_depth, ret_type: ret_type.clone(), args, body, is_recursive };
             self.visit_function_decl(token.clone(), node)?;
         }
 
@@ -1655,7 +1672,7 @@ mod tests {
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
                         Opcode::Pop as u8,
-                        Opcode::CloseUpvalue as u8,
+                        Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
@@ -1719,7 +1736,7 @@ mod tests {
                         Opcode::Constant as u8, 2,
                         Opcode::ClosureMk as u8,
                         Opcode::Pop as u8,
-                        Opcode::CloseUpvalue as u8,
+                        Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
@@ -1872,7 +1889,7 @@ mod tests {
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
                         Opcode::Pop as u8,
-                        Opcode::CloseUpvalue as u8,
+                        Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Return as u8
                     ],
                     upvalues: vec![],
