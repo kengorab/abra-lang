@@ -1,8 +1,24 @@
-func getSum(): Int {
-  func ret1(): Int { 1 }
-  func add1(n: Int): Int { n + 1 }
+func getCounter() {
+  var count = 100
 
-  ret1() + add1(ret1())
+  func unnecessaryLayer1() {
+    func unnecessaryLayer2() {
+      func tick() {
+        count = count + 1
+      }
+
+      tick
+    }
+
+    unnecessaryLayer2
+  }
+
+  count = 0
+  val l2 = unnecessaryLayer1()
+  l2()
 }
 
-getSum()
+val tick = getCounter()
+println(tick())
+println(tick())
+println(tick())

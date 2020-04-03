@@ -1,11 +1,13 @@
 use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
+use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
+use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj};
-use crate::vm::compiler::Module;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
-use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
+use std::cell::RefCell;
+use std::sync::Arc;
 
 // Helper macros
 macro_rules! pop_expect_string {
@@ -58,11 +60,19 @@ pub enum InterpretError {
     StackOverflow,
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct Upvalue {
+    pub slot_idx: usize,
+    pub is_closed: bool,
+    pub val: Option<Value>,
+}
+
 struct CallFrame {
     ip: usize,
     code: Vec<u8>,
     stack_offset: usize,
     name: String,
+    upvalues: Vec<Arc<RefCell<Upvalue>>>,
 }
 
 #[derive(Clone)]
@@ -88,6 +98,7 @@ pub struct VM {
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
+    open_upvalues: HashMap<usize, Arc<RefCell<Upvalue>>>,
 }
 
 const STACK_LIMIT: usize = 64;
@@ -96,13 +107,15 @@ impl VM {
     pub fn new(module: Module, ctx: VMContext) -> Self {
         let name = "$main".to_string();
         let Module { code, constants } = module;
-        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name };
+        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name, upvalues: vec![] };
+
         VM {
             ctx,
             constants,
             call_stack: vec![root_frame],
             stack: Vec::new(),
             globals: HashMap::new(),
+            open_upvalues: HashMap::new(),
         }
     }
 
@@ -229,7 +242,7 @@ impl VM {
         Ok(())
     }
 
-    fn store(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+    fn store_local(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
         let CallFrame { stack_offset, .. } = current_frame!(self);
         let stack_slot = stack_slot + *stack_offset;
         let value = self.pop_expect()?;
@@ -237,11 +250,125 @@ impl VM {
         Ok(())
     }
 
-    fn load(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+    fn store_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
+        let frame = current_frame!(self);
+        let uv = frame.upvalues[upvalue_idx].clone();
+        let mut uv = (*uv).borrow_mut();
+
+        if uv.is_closed {
+            let value = self.pop_expect()?;
+            uv.val = Some(value);
+        } else {
+            self.store_local(uv.slot_idx)?;
+        }
+        Ok(())
+    }
+
+    fn load_local(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
         let CallFrame { stack_offset, .. } = current_frame!(self);
         let stack_slot = stack_slot + *stack_offset;
         let value = self.stack_get(stack_slot);
         Ok(self.push(value))
+    }
+
+    fn load_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
+        let frame = current_frame!(self);
+        let uv = frame.upvalues[upvalue_idx].clone();
+        let uv = uv.borrow();
+
+        if uv.is_closed {
+            // TODO: Note, this won't work for mutable upvalues, ie. `myArray.push(1)`
+            let val = uv.val.as_ref()
+                .expect("A closed upvalue should have a val")
+                .clone();
+            self.push(val);
+        } else {
+            self.load_local(uv.slot_idx)?;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn invoke(&mut self, arity: usize, name: String, code: Vec<u8>, upvalues: Vec<Arc<RefCell<Upvalue>>>) -> Result<(), InterpretError> {
+        let frame = CallFrame {
+            ip: 0,
+            code,
+            stack_offset: self.stack.len() - arity,
+            name,
+            upvalues,
+        };
+        if self.call_stack.len() + 1 >= STACK_LIMIT {
+            Err(InterpretError::StackOverflow)
+        } else {
+            Ok(self.call_stack.push(frame))
+        }
+    }
+
+    fn close_upvalues_from_idx(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+        let max_slot_idx = self.open_upvalues.keys().max();
+        if max_slot_idx.is_none() { return Ok(()) }
+
+        for idx in stack_slot..=*max_slot_idx.unwrap() {
+            match self.open_upvalues.remove(&idx) {
+                None => continue,
+                Some(uv) => {
+                    let mut uv = (*uv).borrow_mut();
+                    uv.is_closed = true;
+                    let value = self.stack_get(uv.slot_idx);
+                    uv.val = Some(value);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn close_upvalues_for_frame(&mut self) -> Result<(), InterpretError> {
+        let stack_offset = current_frame!(self).stack_offset.clone();
+        self.close_upvalues_from_idx(stack_offset)
+    }
+
+    fn close_upvalue(&mut self) -> Result<(), InterpretError> {
+        let cur_stack_slot = self.stack.len() - 1;
+        self.close_upvalues_from_idx(cur_stack_slot)
+    }
+
+    #[inline]
+    fn make_closure(&mut self) -> Result<(), InterpretError> {
+        let function = self.pop_expect()?;
+        let (name, code, upvalues) = match function {
+            Value::Fn { name, code, upvalues } => Ok((name, code, upvalues)),
+            v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
+        }?;
+
+        let captures = upvalues.iter().map(|uv| {
+            match uv.capture_kind {
+                UpvalueCaptureKind::Local { local_idx } => {
+                    let frame = current_frame!(self);
+                    let idx = frame.stack_offset + local_idx;
+
+                    match self.open_upvalues.get(&idx) {
+                        None => {
+                            let uv = Upvalue { slot_idx: idx, is_closed: false, val: None };
+                            let uv = Arc::new(RefCell::new(uv));
+                            self.open_upvalues.insert(idx, uv.clone());
+                            uv
+                        }
+                        Some(uv) => uv.clone(),
+                    }
+                }
+                UpvalueCaptureKind::Upvalue { upvalue_idx } => {
+                    let frame = current_frame!(self);
+                    frame.upvalues[upvalue_idx].clone()
+                }
+            }
+        });
+        // Because upvalues are discovered in static order (the order in which they're encountered
+        // in the code), but closed in _stack-pop_ order (aka, reversed), this needs to be reversed
+        // in order for the upvalue_idx's to line up properly.
+        let captures = captures.rev().collect::<Vec<_>>();
+
+        self.push(Value::Closure { name, code, captures });
+        Ok(())
     }
 
     pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
@@ -442,14 +569,23 @@ impl VM {
                     let value = self.pop_expect()?;
                     self.globals.insert(global_name, value);
                 }
-                Opcode::LStore0 => self.store(0)?,
-                Opcode::LStore1 => self.store(1)?,
-                Opcode::LStore2 => self.store(2)?,
-                Opcode::LStore3 => self.store(3)?,
-                Opcode::LStore4 => self.store(4)?,
+                Opcode::LStore0 => self.store_local(0)?,
+                Opcode::LStore1 => self.store_local(1)?,
+                Opcode::LStore2 => self.store_local(2)?,
+                Opcode::LStore3 => self.store_local(3)?,
+                Opcode::LStore4 => self.store_local(4)?,
                 Opcode::LStore => {
                     let stack_slot = self.read_byte_expect()?;
-                    self.store(stack_slot)?
+                    self.store_local(stack_slot)?
+                }
+                Opcode::UStore0 => self.store_upvalue(0)?,
+                Opcode::UStore1 => self.store_upvalue(1)?,
+                Opcode::UStore2 => self.store_upvalue(2)?,
+                Opcode::UStore3 => self.store_upvalue(3)?,
+                Opcode::UStore4 => self.store_upvalue(4)?,
+                Opcode::UStore => {
+                    let upvalue_idx = self.read_byte_expect()?;
+                    self.store_upvalue(upvalue_idx)?;
                 }
                 Opcode::GLoad => {
                     let global_name: String = pop_expect_string!(self)?;
@@ -458,14 +594,23 @@ impl VM {
                         .clone();
                     self.push(value);
                 }
-                Opcode::LLoad0 => self.load(0)?,
-                Opcode::LLoad1 => self.load(1)?,
-                Opcode::LLoad2 => self.load(2)?,
-                Opcode::LLoad3 => self.load(3)?,
-                Opcode::LLoad4 => self.load(4)?,
+                Opcode::LLoad0 => self.load_local(0)?,
+                Opcode::LLoad1 => self.load_local(1)?,
+                Opcode::LLoad2 => self.load_local(2)?,
+                Opcode::LLoad3 => self.load_local(3)?,
+                Opcode::LLoad4 => self.load_local(4)?,
                 Opcode::LLoad => {
                     let stack_slot = self.read_byte_expect()?;
-                    self.load(stack_slot)?
+                    self.load_local(stack_slot)?
+                }
+                Opcode::ULoad0 => self.load_upvalue(0)?,
+                Opcode::ULoad1 => self.load_upvalue(1)?,
+                Opcode::ULoad2 => self.load_upvalue(2)?,
+                Opcode::ULoad3 => self.load_upvalue(3)?,
+                Opcode::ULoad4 => self.load_upvalue(4)?,
+                Opcode::ULoad => {
+                    let upvalue_idx = self.read_byte_expect()?;
+                    self.load_upvalue(upvalue_idx)?;
                 }
                 Opcode::Jump => {
                     let jump_offset = self.read_byte_expect()?;
@@ -512,24 +657,26 @@ impl VM {
                                 unreachable!() // A native fn that exists in bytecode but not at runtime is "impossible"
                             }
                         }
-                        Value::Fn { name, code } => {
+                        Value::Fn { name, code, .. } => {
                             if has_return { arity += 1 }
-                            let frame = CallFrame {
-                                ip: 0,
-                                code,
-                                stack_offset: self.stack.len() - arity,
-                                name,
-                            };
-                            if self.call_stack.len() + 1 >= STACK_LIMIT {
-                                break Err(InterpretError::StackOverflow);
-                            } else {
-                                self.call_stack.push(frame);
-                            }
+                            let res = self.invoke(arity, name, code, vec![]);
+                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
+                        }
+                        Value::Closure { name, code, captures } => {
+                            if has_return { arity += 1 }
+                            let res = self.invoke(arity, name, code, captures);
+                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
                         }
                         v @ _ => {
                             return Err(InterpretError::TypeError("Function".to_string(), v.to_string()));
                         }
                     }
+                }
+                Opcode::ClosureMk => self.make_closure()?,
+                Opcode::CloseUpvalue => self.close_upvalue()?,
+                Opcode::CloseUpvalueAndPop => {
+                    self.close_upvalue()?;
+                    self.pop_expect()?;
                 }
                 Opcode::Pop => {
                     self.pop_expect()?;
@@ -543,8 +690,11 @@ impl VM {
 
                     if is_main_frame {
                         let top = self.pop();
-                        break Ok(top);
+                        break Ok(top.clone());
                     } else {
+                        // Ensure that any upvalues that are created in the current frame are closed
+                        self.close_upvalues_for_frame()?;
+
                         // Pop off current frame, so the next loop will resume with the previous frame
                         self.call_stack.pop();
                     }

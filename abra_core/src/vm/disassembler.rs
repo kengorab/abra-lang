@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub fn disassemble(module: Module, metadata: Metadata) -> String {
     let mut disassembler = Disassembler {
         current_load: 0,
+        current_uv_load: 0,
         current_store: 0,
         module,
         metadata,
@@ -15,6 +16,7 @@ pub fn disassemble(module: Module, metadata: Metadata) -> String {
 
 struct Disassembler {
     current_load: usize,
+    current_uv_load: usize,
     current_store: usize,
     module: Module,
     metadata: Metadata,
@@ -73,6 +75,15 @@ impl Disassembler {
                         acc.push(format!("\t; {}", ident))
                     }
                 }
+                Opcode::ULoad | Opcode::ULoad0 | Opcode::ULoad1 | Opcode::ULoad2 | Opcode::ULoad3 | Opcode::ULoad4 => {
+                    let ident = self.metadata.uv_loads.get(self.current_uv_load)
+                        .expect(&format!("There should be an upvalue load in the metadata at index {}", self.current_uv_load));
+                    self.current_uv_load += 1;
+
+                    if !ident.is_empty() {
+                        acc.push(format!("\t; {}", ident))
+                    }
+                }
                 Opcode::LStore | Opcode::LStore0 | Opcode::LStore1 | Opcode::LStore2 | Opcode::LStore3 | Opcode::LStore4 => {
                     let ident = self.metadata.stores.get(self.current_store)
                         .expect(&format!("There should be a store in the metadata at index {}", self.current_store));
@@ -87,6 +98,23 @@ impl Disassembler {
 
                     acc.push(format!("\t; (arity: {}, has_return: {})", arity, has_return))
                 }
+                // Opcode::ClosureMk => {
+                //     let num_captures = *imms[0].expect("ClosureMk requires num_captures");
+                //     let mut meta = vec![];
+                //     for uv in 0..num_captures {
+                //         let is_local = code.next().unwrap();
+                //         let index = code.next().unwrap();
+                //
+                //         acc.push(format!(" {} {}", is_local, index));
+                //
+                //         let label = if is_local == &1 { "local_idx" } else { "uv_idx" };
+                //         let comma = if uv < num_captures - 1 { ", " } else { "" };
+                //         meta.push(format!("uv_{}=({}:{}){}", uv, label, index, comma));
+                //     }
+                //
+                //     let meta = meta.into_iter().collect::<String>();
+                //     acc.push(format!("\t; ({})", meta));
+                // }
                 _ => {}
             }
 
@@ -120,7 +148,7 @@ impl Disassembler {
         let constants = self.module.constants.clone();
         let iter = constants.iter().filter_map(|val| {
             match val {
-                Value::Fn { name, code } => Some((format!("fn {}", name.clone()), code.clone())),
+                Value::Fn { name, code, .. } => Some((format!("fn {}", name.clone()), code.clone())),
                 _ => None,
             }
         });

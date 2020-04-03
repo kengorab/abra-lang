@@ -142,6 +142,7 @@ pub struct TypedFunctionDeclNode {
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
+    pub is_recursive: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

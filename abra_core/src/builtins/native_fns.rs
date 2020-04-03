@@ -11,24 +11,16 @@ type NativeAbraFn = fn(VMContext, Vec<Value>) -> Option<Value>;
 
 pub struct NativeFn {
     pub name: String,
-    pub args: Vec<(Type, Option<Value>)>,
+    pub args: Vec<Type>,
+    pub opt_args: Vec<Type>,
     pub return_type: Type,
     pub native_fn: NativeAbraFn,
 }
 
 impl NativeFn {
-    pub fn invoke(&self, ctx: VMContext, mut args: Vec<Value>) -> Option<Value> {
+    pub fn invoke(&self, ctx: VMContext, args: Vec<Value>) -> Option<Value> {
         let func = self.native_fn;
-
-        let first_default_arg_value = args.len();
-
-        let mut arguments = Vec::with_capacity(self.args.len());
-        arguments.append(&mut args);
-        for (_, val) in self.args.iter().skip(first_default_arg_value) {
-            arguments.push(val.as_ref().unwrap().clone())
-        }
-
-        func(ctx, arguments)
+        func(ctx, args)
     }
 }
 
@@ -46,14 +38,8 @@ fn native_fns_map() -> HashMap<String, &'static NativeFn> {
         map.insert(name.clone(), native_fn);
 
         // Insert all of the pseudo-fns for each native function with default args
-        let mut num_required_args = 0;
-        let mut num_optional_args = 0;
-        for (_, default_value) in native_fn.args.iter() {
-            match default_value {
-                None => num_required_args += 1,
-                Some(_) => num_optional_args += 1
-            }
-        }
+        let num_required_args = native_fn.args.len();
+        let num_optional_args = native_fn.opt_args.len();
         for num_opt in 0..num_optional_args {
             let arity = num_required_args + num_opt;
             let name = fn_name_for_arity(name.clone(), arity);
@@ -69,21 +55,24 @@ fn native_fns() -> Vec<NativeFn> {
 
     native_fns.push(NativeFn {
         name: "println".to_string(),
-        args: vec![(Type::Any, None)],
+        args: vec![Type::Any],
+        opt_args: vec![],
         return_type: Type::Unit,
         native_fn: println,
     });
 
     native_fns.push(NativeFn {
         name: "range".to_string(),
-        args: vec![(Type::Int, None), (Type::Int, None), (Type::Int, Some(Value::Int(1)))],
+        args: vec![Type::Int, Type::Int],
+        opt_args: vec![Type::Int],
         return_type: Type::Array(Box::new(Type::Int)),
         native_fn: range,
     });
 
     native_fns.push(NativeFn {
         name: "arrayLen".to_string(),
-        args: vec![(Type::Array(Box::new(Type::Any)), None)],
+        args: vec![Type::Array(Box::new(Type::Any))],
+        opt_args: vec![],
         return_type: Type::Int,
         native_fn: arr_len,
     });
@@ -105,8 +94,10 @@ fn range(_ctx: VMContext, args: Vec<Value>) -> Option<Value> {
     let end = if let Some(Value::Int(i)) = args.get(1) { *i } else {
         panic!("range requires an Int as second argument")
     };
-    let incr = if let Some(Value::Int(i)) = args.get(2) { *i } else {
-        panic!("range requires an Int as third argument")
+    let incr = match args.get(2) {
+        None => 1,
+        Some(Value::Int(i)) => *i,
+        Some(_) => panic!("range requires an Int as third argument")
     };
 
     let size = (end - start).abs() / incr;

@@ -1,6 +1,10 @@
+use crate::vm::vm;
+use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::cell::RefCell;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
@@ -8,7 +12,8 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Obj(Obj),
-    Fn { name: String, code: Vec<u8> },
+    Fn { name: String, code: Vec<u8>, upvalues: Vec<Upvalue> },
+    Closure { name: String, code: Vec<u8>, captures: Vec<Arc<RefCell<vm::Upvalue>>> },
     Type(String),
     Nil,
 }
@@ -20,7 +25,8 @@ impl Value {
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
-            Value::Fn { name, .. } => format!("<func {}>", name),
+            Value::Fn { name, .. } |
+            Value::Closure { name, .. } => format!("<func {}>", name),
             Value::Type(name) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
         }
@@ -37,7 +43,8 @@ impl Display for Value {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
-            Value::Fn { name, .. } => write!(f, "<func {}>", name),
+            Value::Fn { name, .. } |
+            Value::Closure { name, .. } => write!(f, "<func {}>", name),
             Value::Type(name) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),
         }

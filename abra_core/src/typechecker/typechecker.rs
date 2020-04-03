@@ -17,7 +17,7 @@ pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/
 pub(crate) enum ScopeKind {
     Root,
     Block,
-    Function(/*token: */ Token, /*name: */ String),
+    Function(/*token: */ Token, /*name: */ String, /*is_recursive: */ bool),
     Loop,
 }
 
@@ -37,13 +37,14 @@ impl Scope {
 
         // Populate root scope with root-level builtin functions
         let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
-        for NativeFn { name, args, return_type, .. } in native_fns {
+        for NativeFn { name, args, opt_args, return_type, .. } in native_fns {
             let token = Token::Ident(Position::new(0, 0), name.clone());
-            let args = args.iter().enumerate()
-                .map(|(idx, (arg, default_value))| {
-                    (format!("_{}", idx), arg.clone(), default_value.is_some())
-                })
-                .collect::<Vec<(String, Type, bool)>>();
+            let req_args = args.iter().enumerate()
+                .map(|(idx, arg)| (format!("_{}", idx), arg.clone(), false));
+            let opt_args = opt_args.iter().enumerate()
+                .map(|(idx, arg)| (format!("_{}", idx + args.len()), arg.clone(), true));
+            let args = req_args.chain(opt_args).collect();
+
             let typ = Type::Fn(args, Box::new(return_type.clone()));
             scope.bindings.insert(name.to_string(), ScopeBinding(token, typ, false));
         }
@@ -432,7 +433,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
 
-        self.scopes.push(Scope::new(ScopeKind::Function(name.clone(), func_name.clone())));
+        self.scopes.push(Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false)));
         let mut typed_args = Vec::<(Token, Type, Option<TypedAstNode>)>::with_capacity(args.len());
         let mut arg_idents = HashMap::<String, Token>::new();
         let mut seen_optional_arg = false;
@@ -567,7 +568,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             .collect();
         let body = body?;
         let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
-        self.scopes.pop();
+
+        let fn_scope = self.scopes.pop().unwrap();
+        let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
+            is_recursive
+        } else {
+            unreachable!("A function's scope should always be of ScopeKind::Function")
+        };
 
         let ret_type = match ret_type {
             None => body_type,
@@ -598,7 +605,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let scope_depth = self.scopes.len() - 1;
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -658,28 +665,33 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         match self.get_binding(name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
             Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
+                let binding_typ = typ.clone();
+                let is_mutable = is_mutable.clone();
+
                 if let Type::Fn(_, ret_type) = typ {
                     // Type::Unknown acts as the sentinel value for a not-fully typechecked function
-                    if **ret_type == Type::Unknown {
-                        for Scope { kind, .. } in self.scopes.iter().rev() {
-                            if let ScopeKind::Function(func_token, func_name) = kind {
-                                if name == func_name {
+                    let has_explicit_ret_type = **ret_type != Type::Unknown;
+
+                    for scope in self.scopes.iter_mut().rev() {
+                        if let ScopeKind::Function(func_token, func_name, _) = &scope.kind {
+                            if name == func_name {
+                                if !has_explicit_ret_type {
                                     // A function can't be referenced recursively unless it has a declared return type
                                     return Err(TypecheckerError::RecursiveRefWithoutReturnType {
                                         orig_token: func_token.clone(),
                                         token: token.clone(),
                                     });
+                                } else {
+                                    // If it has a declared return type, then everything's cool. We just need to
+                                    // mark this function as recursive. This value will be used downstream.
+                                    scope.kind = ScopeKind::Function(func_token.clone(), func_name.clone(), true);
                                 }
                             }
                         }
                     }
+
                 }
-                let node = TypedIdentifierNode {
-                    typ: typ.clone(),
-                    name: name.clone(),
-                    is_mutable: is_mutable.clone(),
-                    scope_depth,
-                };
+                let node = TypedIdentifierNode { typ: binding_typ, name: name.clone(), is_mutable, scope_depth };
                 Ok(TypedAstNode::Identifier(token, node))
             }
         }
@@ -1001,7 +1013,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     has_loop_parent = true;
                     break;
                 }
-                ScopeKind::Root | ScopeKind::Function(_, _) => {
+                ScopeKind::Root | ScopeKind::Function(_, _, _) => {
                     has_loop_parent = false;
                     break;
                 }
@@ -1811,6 +1823,7 @@ mod tests {
                     int_literal!((1, 14), 123)
                 ],
                 scope_depth: 0,
+                is_recursive: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1841,6 +1854,7 @@ mod tests {
                         })
                 ],
                 scope_depth: 0,
+                is_recursive: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1884,6 +1898,7 @@ mod tests {
                     )
                 ],
                 scope_depth: 0,
+                is_recursive: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2009,12 +2024,21 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_recursion() {
-        let (typechecker, _) = typecheck_get_typechecker("func abc(): Int {\nabc()\n}");
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int {\nabc()\n}");
         let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc")
             .expect("The function abc should be defined");
         let expected_type = Type::Fn(vec![], Box::new(Type::Int));
         assert_eq!(&expected_type, typ);
 
+        let is_recursive = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { is_recursive, .. }) => is_recursive,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        assert_eq!(&true, is_recursive);
+    }
+
+    #[test]
+    fn typecheck_function_decl_recursion_error() {
         let error = typecheck("func abc() {\nabc()\n}").unwrap_err();
         let expected = TypecheckerError::RecursiveRefWithoutReturnType {
             orig_token: ident_token!((1, 6), "abc"),
