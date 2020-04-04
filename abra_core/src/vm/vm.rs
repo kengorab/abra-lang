@@ -637,13 +637,8 @@ impl VM {
                     let has_return = self.read_byte_expect()? == 1;
 
                     match target {
-                        Value::Obj(Obj::StringObj { value }) => {
-                            if !value.starts_with("~") {
-                                return Err(InterpretError::TypeError("Function".to_string(), "String".to_string()));
-                            }
-
-                            let func_name = value.replace("~", "");
-                            if let Some(native_fn) = NATIVE_FNS_MAP.get(&func_name) {
+                        Value::Obj(Obj::StringObj { value: func_name }) => {
+                            if let Some(native_fn) = NATIVE_FNS_MAP.get(&*func_name) {
                                 let native_fn: &NativeFn = native_fn;
 
                                 let len = self.stack.len();
