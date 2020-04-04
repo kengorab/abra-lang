@@ -931,13 +931,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 let ident_name = Token::get_ident_name(token).clone();
 
                 // Temporary workaround for native functions - if the ident name matches a native fn
-                // name, prepend a ~ and push that string constant onto the stack; the VM handles
-                // this "invocation of a string" as a special case (separately from the invocation of
-                // a function object), and is only used for builtins.
-                // This is obviously terrible
+                // name, push that string constant onto the stack. The VM handles this "invocation
+                // of a string" as a special case (separately from the invocation of a function
+                // object), and is only used for builtins.  This is obviously terrible
                 if NATIVE_FNS_MAP.contains_key(&ident_name) {
-                    let native_ident_name = format!("~{}", ident_name);
-                    self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(native_ident_name) }), line);
+                    self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(ident_name) }), line);
                 } else {
                     let new_target = TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
                         typ: typ.clone(),
@@ -1019,7 +1017,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::Nil, line); // <-- Load <ret> slot for ~arrayLen builtin // TODO: Fix this shameful garbage
         load_intrinsic(self, "$iter", line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new("~arrayLen".to_string()) }), line);
+        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }), line);
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(1, line);
         self.write_byte(1, line); // <-- 1 = has_return is true // TODO: See comment above about garbage
@@ -2136,7 +2134,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("~println".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
                 Value::Fn {
                     name: "abc".to_string(),
                     code: vec![
@@ -2513,8 +2511,8 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("Row: ".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("msg".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("arr".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("~arrayLen".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("~println".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }),
+                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
