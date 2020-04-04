@@ -1,3 +1,4 @@
+use abra_core::builtins::native_fns::NativeFn;
 use abra_core::vm::value::{Value, Obj};
 use serde::{Serializer, Serialize};
 
@@ -35,7 +36,8 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.end()
             }
             Value::Fn { name: fn_name, .. } |
-            Value::Closure { name: fn_name, .. } => {
+            Value::Closure { name: fn_name, .. } |
+            Value::NativeFn(NativeFn { name: fn_name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "fn")?;
                 obj.serialize_entry("name", &fn_name)?;

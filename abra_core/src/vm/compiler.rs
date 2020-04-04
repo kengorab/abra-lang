@@ -1,11 +1,12 @@
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
+use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::vm::opcode::Opcode;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
+use crate::vm::opcode::Opcode;
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::native_fns::NATIVE_FNS_MAP;
+use crate::vm::prelude::Prelude;
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
@@ -45,6 +46,7 @@ pub struct Compiler {
     upvalues: Vec<Upvalue>,
     interrupt_offset_slots: Vec<usize>,
     metadata: Metadata,
+    prelude: Prelude,
 }
 
 #[derive(Debug, PartialEq)]
@@ -73,6 +75,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         upvalues: Vec::new(),
         interrupt_offset_slots: Vec::new(),
         metadata,
+        prelude: Prelude::new(),
     };
 
     let len = ast.len();
@@ -141,6 +144,11 @@ impl Compiler {
         const_idx
     }
 
+    #[inline] // This is could eventually stand to be deprecated
+    fn get_native_fn(name: &str) -> NativeFn {
+        NATIVE_FNS_MAP.get(name).unwrap().clone().clone()
+    }
+
     fn write_pops(&mut self, num_pops: usize, line: usize) {
         if num_pops == 1 {
             self.write_opcode(Opcode::Pop, line);
@@ -152,7 +160,7 @@ impl Compiler {
 
     fn write_pops_for_closure(&mut self, popped_locals: Vec<Local>, line: usize) {
         for local in popped_locals.iter().rev() {
-            if local.name == "<ret>".to_string() { continue }
+            if local.name == "<ret>".to_string() { continue; }
 
             if local.is_captured && !local.is_closed {
                 self.write_opcode(Opcode::CloseUpvalueAndPop, line);
@@ -245,7 +253,7 @@ impl Compiler {
             for (idx, upvalue) in zelf.upvalues.iter().enumerate() {
                 if upvalue.capture_kind == kind && upvalue.depth == depth {
                     return match upvalue.capture_kind {
-                        UpvalueCaptureKind::Local {..} => idx,
+                        UpvalueCaptureKind::Local { .. } => idx,
                         UpvalueCaptureKind::Upvalue { upvalue_idx } => upvalue_idx
                     };
                 }
@@ -578,7 +586,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                     let ident_node = TypedAstNode::Identifier(
                         arg_token.clone(),
-                        TypedIdentifierNode { typ: typ.clone(), name: ident.clone(), is_mutable: true, scope_depth }
+                        TypedIdentifierNode { typ: typ.clone(), name: ident.clone(), is_mutable: true, scope_depth },
                     );
                     let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
                     let default_param_value_node = TypedAstNode::IfStatement(
@@ -593,7 +601,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                                         right: Box::new(ident_node.clone()),
                                         op: BinaryOp::Eq,
                                         left: Box::new(nil_expr),
-                                    }
+                                    },
                                 )
                             ),
                             if_block: vec![
@@ -603,11 +611,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
                                         typ: typ.clone(),
                                         target: Box::new(ident_node),
                                         expr: Box::new(default_value_node.clone()),
-                                    }
+                                    },
                                 )
                             ],
                             else_block: None,
-                        }
+                        },
                     );
                     self.visit(default_param_value_node)?;
                 }
@@ -709,20 +717,28 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 self.write_load_local_instr(local_idx, line);
                 self.metadata.loads.push(ident.clone());
             }
-            None => {
+            None => { // Otherwise, if there's no local...
                 let upper_scope_depth = self.get_fn_depth() as i64 - 1;
                 match self.resolve_upvalue(&ident, upper_scope_depth) {
                     Some(upvalue_idx) => { // Load upvalue from upper scope
                         self.write_load_upvalue_instr(upvalue_idx, line);
                         self.metadata.uv_loads.push(ident.clone());
                     }
-                    None => { // Load global by name
+                    None => { // Otherwise, if there's no upvalue...
                         let const_idx = self.get_constant_index(&Value::Obj(Obj::StringObj { value: Box::new(ident.clone()) }));
-                        let const_idx = const_idx.unwrap();
-
-                        self.write_opcode(Opcode::Constant, line);
-                        self.write_byte(const_idx, line);
-                        self.write_opcode(Opcode::GLoad, line);
+                        match const_idx {
+                            Some(const_idx) => { // Load global by name
+                                self.write_opcode(Opcode::Constant, line);
+                                self.write_byte(const_idx, line);
+                                self.write_opcode(Opcode::GLoad, line);
+                            }
+                            None => { // Otherwise, if there's no global...
+                                // Load the value from the prelude
+                                let value = self.prelude.resolve_ident(&ident)
+                                    .expect(format!("There was no prelude value for identifier {}", ident).as_str());
+                                self.write_constant(value, line);
+                            }
+                        }
                     }
                 }
             }
@@ -930,20 +946,20 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 let ident_name = Token::get_ident_name(token).clone();
 
-                // Temporary workaround for native functions - if the ident name matches a native fn
-                // name, push that string constant onto the stack. The VM handles this "invocation
-                // of a string" as a special case (separately from the invocation of a function
-                // object), and is only used for builtins.  This is obviously terrible
-                if NATIVE_FNS_MAP.contains_key(&ident_name) {
-                    self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(ident_name) }), line);
-                } else {
-                    let new_target = TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
-                        typ: typ.clone(),
-                        name: ident_name,
-                        is_mutable: is_mutable.clone(),
-                        scope_depth: scope_depth.clone(),
-                    });
-                    self.visit(new_target)?;
+                match NATIVE_FNS_MAP.get(&ident_name) {
+                    Some(native_fn) => {
+                        let value = Value::NativeFn(native_fn.clone().clone());
+                        self.write_constant(value, line);
+                    }
+                    None => {
+                        let target = TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
+                            typ: typ.clone(),
+                            name: ident_name,
+                            is_mutable: is_mutable.clone(),
+                            scope_depth: scope_depth.clone(),
+                        });
+                        self.visit(target)?;
+                    }
                 }
 
                 (has_return, arity)
@@ -1017,10 +1033,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::Nil, line); // <-- Load <ret> slot for ~arrayLen builtin // TODO: Fix this shameful garbage
         load_intrinsic(self, "$iter", line);
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }), line);
+        self.write_constant(Value::NativeFn(Self::get_native_fn("arrayLen")), line);
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(1, line);
-        self.write_byte(1, line); // <-- 1 = has_return is true // TODO: See comment above about garbage
+        self.write_byte(1, line); // <-- 1 = has_return is true; See comment above about garbage
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
@@ -1617,7 +1633,7 @@ mod tests {
                     upvalues: vec![
                         Upvalue {
                             capture_kind: UpvalueCaptureKind::Local { local_idx: 1 },
-                            depth: 1
+                            depth: 1,
                         }
                     ],
                 },
@@ -1666,7 +1682,7 @@ mod tests {
                     upvalues: vec![
                         Upvalue {
                             capture_kind: UpvalueCaptureKind::Upvalue { upvalue_idx: 0 },
-                            depth: 2
+                            depth: 2,
                         }
                     ],
                 },
@@ -1681,7 +1697,7 @@ mod tests {
                     upvalues: vec![
                         Upvalue {
                             capture_kind: UpvalueCaptureKind::Local { local_idx: 1 },
-                            depth: 1
+                            depth: 1,
                         }
                     ],
                 },
@@ -2134,7 +2150,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
+                Value::NativeFn(Compiler::get_native_fn("println")),
                 Value::Fn {
                     name: "abc".to_string(),
                     code: vec![
@@ -2511,8 +2527,8 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("Row: ".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("msg".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("arr".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("arrayLen".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("println".to_string()) }),
+                Value::NativeFn(Compiler::get_native_fn("arrayLen")),
+                Value::NativeFn(Compiler::get_native_fn("println")),
             ],
         };
         assert_eq!(expected, chunk);

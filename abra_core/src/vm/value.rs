@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::sync::Arc;
+use crate::builtins::native_fns::NativeFn;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
@@ -14,6 +15,7 @@ pub enum Value {
     Obj(Obj),
     Fn { name: String, code: Vec<u8>, upvalues: Vec<Upvalue> },
     Closure { name: String, code: Vec<u8>, captures: Vec<Arc<RefCell<vm::Upvalue>>> },
+    NativeFn(NativeFn),
     Type(String),
     Nil,
 }
@@ -26,7 +28,8 @@ impl Value {
             Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
             Value::Fn { name, .. } |
-            Value::Closure { name, .. } => format!("<func {}>", name),
+            Value::Closure { name, .. } |
+            Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
             Value::Type(name) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
         }
@@ -44,7 +47,8 @@ impl Display for Value {
                 o @ _ => write!(f, "{}", o.to_string()),
             }
             Value::Fn { name, .. } |
-            Value::Closure { name, .. } => write!(f, "<func {}>", name),
+            Value::Closure { name, .. } |
+            Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
             Value::Type(name) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),
         }
