@@ -1,24 +1,16 @@
-func getCounter() {
-  var count = 100
+func getOne() {
+  println("called!")
 
-  func unnecessaryLayer1() {
-    func unnecessaryLayer2() {
-      func tick() {
-        count = count + 1
-      }
-
-      tick
-    }
-
-    unnecessaryLayer2
-  }
-
-  count = 0
-  val l2 = unnecessaryLayer1()
-  l2()
+  1
 }
 
-val tick = getCounter()
-println(tick())
-println(tick())
-println(tick())
+func outer() {
+  func abc(def = getOne(), ghi = def, jkl = def + ghi) {
+    def + ghi + jkl
+  }
+
+  abc
+}
+
+val fn = outer()
+fn()

@@ -109,11 +109,6 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
     }
 }
 
-#[inline]
-pub fn fn_name_for_arity(fn_name: String, arity: usize) -> String {
-    format!("{}_${}", fn_name, arity)
-}
-
 impl Compiler {
     #[inline]
     fn write_opcode(&mut self, opcode: Opcode, line: usize) {
@@ -283,7 +278,7 @@ impl Compiler {
         self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
 
-    fn push_local<S: AsRef<str>>(&mut self, name: S) {
+    fn push_local<S: AsRef<str>>(&mut self, name: S) -> usize {
         self.locals.push(Local {
             name: name.as_ref().to_string(),
             depth: self.get_fn_depth(),
@@ -291,13 +286,13 @@ impl Compiler {
             is_closed: false,
         });
 
-        let mut scope = self.scopes.pop().expect("There should always be at least 1 scope");
-        if scope.kind == ScopeKind::Root { unreachable!("We should never call push_local into root scope"); }
+        let mut scope = self.scopes.last_mut().unwrap();
         scope.num_locals += 1;
         if scope.first_local_idx == None {
             scope.first_local_idx = Some(self.locals.len() - 1);
         }
-        self.scopes.push(scope);
+
+        self.locals.len() - 1
     }
 
     fn push_scope(&mut self, kind: ScopeKind) {
@@ -536,6 +531,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
         Ok(())
     }
 
+    fn visit_nil(&mut self, token: Token) -> Result<(), ()> {
+        self.write_opcode(Opcode::Nil, token.get_position().line);
+        Ok(())
+    }
+
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
         let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth, is_recursive } = node;
         let func_name = Token::get_ident_name(&name);
@@ -564,12 +564,54 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Track function arguments in local bindings, also track # optional args.
         // Argument values will already be on the stack.
-        let mut num_optional_args = 0;
         for (arg_token, _, default_value) in args.iter() {
-            if default_value.is_some() { num_optional_args += 1; }
-
             let ident = Token::get_ident_name(arg_token);
             self.push_local(ident);
+
+            // This basically adds, for each default-valued parameter `p`:
+            // if (p == nil) { p = defaultValueForP }
+            match default_value {
+                None => continue,
+                Some(default_value_node) => {
+                    let pos = default_value_node.get_token().get_position();
+                    let typ = default_value_node.get_type();
+
+                    let ident_node = TypedAstNode::Identifier(
+                        arg_token.clone(),
+                        TypedIdentifierNode { typ: typ.clone(), name: ident.clone(), is_mutable: true, scope_depth }
+                    );
+                    let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
+                    let default_param_value_node = TypedAstNode::IfStatement(
+                        Token::If(pos.clone()),
+                        TypedIfNode {
+                            typ: Type::Unit,
+                            condition: Box::new(
+                                TypedAstNode::Binary(
+                                    Token::Eq(pos.clone()),
+                                    TypedBinaryNode {
+                                        typ: Type::Bool,
+                                        right: Box::new(ident_node.clone()),
+                                        op: BinaryOp::Eq,
+                                        left: Box::new(nil_expr),
+                                    }
+                                )
+                            ),
+                            if_block: vec![
+                                TypedAstNode::Assignment(
+                                    Token::Assign(pos.clone()),
+                                    TypedAssignmentNode {
+                                        typ: typ.clone(),
+                                        target: Box::new(ident_node),
+                                        expr: Box::new(default_value_node.clone()),
+                                    }
+                                )
+                            ],
+                            else_block: None,
+                        }
+                    );
+                    self.visit(default_param_value_node)?;
+                }
+            }
         }
 
         let body_len = body.len();
@@ -633,86 +675,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::CloseUpvalue, line);
         } else {
             self.push_local(func_name);
-        }
-
-        if num_optional_args == 0 { return Ok(()); }
-
-        // TODO: Pull this out into a separate function?
-        // --------- Additional code generation to handle optional arg fns ---------
-
-        let (req_args, opt_args) = {
-            let mut required_args: Vec<(Token, Type)> = Vec::new();
-            let mut optional_args: Vec<(Token, Type, TypedAstNode)> = Vec::new();
-
-            for (token, typ, default_value) in args.iter() {
-                match default_value {
-                    None => required_args.push((token.clone(), typ.clone())),
-                    Some(default_value) => optional_args.push((token.clone(), typ.clone(), default_value.clone()))
-                }
-            }
-
-            (required_args, optional_args)
-        };
-
-        // For each optional arg slot, generate code for a new function which calls the original but
-        // passes in the default values (see #29). Also see the invocation visitor for special logic
-        // when invoking these pseudo-fns
-        for num_optional in 0..num_optional_args {
-            let arity = req_args.len() + num_optional;
-            let fn_name = fn_name_for_arity(func_name.clone(), arity);
-
-            // Gather all of the arguments for the pseudo-fn's signature
-            let args = {
-                let mut args = Vec::with_capacity(arity);
-                for (token, typ) in req_args.clone() {
-                    args.push((token, typ, None));
-                }
-                for (token, typ, _) in opt_args.iter().take(num_optional) {
-                    args.push((token.clone(), typ.clone(), None));
-                }
-                args
-            };
-
-            // Generate the body for the pseudo-fn, which consists of passing along parameters, along
-            // with the default values for parameters, to the underlying "non-pseudo" fn
-            let body = {
-                let mut invocation_args = Vec::with_capacity(args.len());
-                let mut fn_type_args = Vec::with_capacity(args.len());
-                for (token, typ, _) in args.iter() {
-                    let name = Token::get_ident_name(token).clone();
-                    invocation_args.push(TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
-                        typ: typ.clone(),
-                        name,
-                        scope_depth: scope_depth + 1,
-                        is_mutable: false,
-                    }));
-                    fn_type_args.push((Token::get_ident_name(token).clone(), typ.clone(), false));
-                }
-                for (token, typ, default_value) in opt_args.iter().skip(num_optional) {
-                    invocation_args.push(default_value.clone());
-                    fn_type_args.push((Token::get_ident_name(token).clone(), typ.clone(), false));
-                }
-
-                let orig_fn_name_tok = Token::Ident(token.get_position(), func_name.clone());
-                vec![
-                    TypedAstNode::Invocation(orig_fn_name_tok.clone(), TypedInvocationNode {
-                        typ: ret_type.clone(),
-                        target: Box::new(TypedAstNode::Identifier(orig_fn_name_tok.clone(), TypedIdentifierNode {
-                            typ: Type::Fn(fn_type_args, Box::new(ret_type.clone())),
-                            name: func_name.clone(),
-                            scope_depth,
-                            is_mutable: false,
-                        })),
-                        args: invocation_args,
-                    })
-                ]
-            };
-
-            // Call the visitor fn to generate bytecode for the pseudo-fn. This should not loop
-            // infinitely, since these calls' signatures contain no arguments with default values
-            let name = Token::Ident(token.get_position(), fn_name);
-            let node = TypedFunctionDeclNode { name, scope_depth, ret_type: ret_type.clone(), args, body, is_recursive };
-            self.visit_function_decl(token.clone(), node)?;
         }
 
         Ok(())
@@ -946,9 +908,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<(), ()> {
         let line = token.get_position().line;
         let TypedInvocationNode { target, args, .. } = node;
-        let num_args = args.len();
 
-        let has_return = match &*target {
+        let (has_return, arity) = match &*target {
             TypedAstNode::Identifier(token, TypedIdentifierNode { typ, is_mutable, scope_depth, .. }) => {
                 let (arity, has_return) = match typ {
                     Type::Fn(args, ret) => (args.len(), **ret != Type::Unit),
@@ -959,19 +920,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     self.write_opcode(Opcode::Nil, line);
                 }
 
+                let num_args = args.len();
                 for arg in args {
                     self.visit(arg)?;
                 }
+                for _ in num_args..arity {
+                    self.write_opcode(Opcode::Nil, line);
+                }
 
-                // If invoking a function where the number of args passed does NOT match its arity,
-                // it must be a pseudo-fn used for handling default arg values. Dispatch to the
-                // pseudo-fn instead of the normal fn in this case
-                let fn_name = Token::get_ident_name(token).clone();
-                let ident_name = if num_args == arity {
-                    fn_name
-                } else {
-                    fn_name_for_arity(fn_name, num_args)
-                };
+                let ident_name = Token::get_ident_name(token).clone();
 
                 // Temporary workaround for native functions - if the ident name matches a native fn
                 // name, prepend a ~ and push that string constant onto the stack; the VM handles
@@ -990,12 +947,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     });
                     self.visit(new_target)?;
                 }
-                has_return
+
+                (has_return, arity)
             }
             _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes (ie, fn literals)
         };
         self.write_opcode(Opcode::Invoke, line);
-        self.write_byte(num_args as u8, line);
+        self.write_byte(arity as u8, line);
         let incl_ret_slot_op = if has_return { 1 } else { 0 };
         self.write_byte(incl_ret_slot_op, line);
         Ok(())
@@ -2207,17 +2165,12 @@ mod tests {
                 Opcode::Constant as u8, 1,
                 Opcode::Constant as u8, 0,
                 Opcode::GStore as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 2,
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 3,
-                Opcode::Constant as u8, 2,
-                Opcode::GStore as u8,
                 Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::Nil as u8,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 1, 1,
+                Opcode::Invoke as u8, 2, 1,
                 Opcode::Pop as u8,
                 Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
@@ -2232,27 +2185,19 @@ mod tests {
                 Value::Fn {
                     name: "add".to_string(),
                     code: vec![
+                        Opcode::Nil as u8,
+                        Opcode::LLoad2 as u8,
+                        Opcode::Eq as u8,
+                        Opcode::JumpIfF as u8, 4,
+                        Opcode::IConst2 as u8,
+                        Opcode::LStore2 as u8,
+                        Opcode::LLoad2 as u8,
+                        Opcode::Pop as u8,
                         Opcode::LLoad1 as u8,
                         Opcode::LLoad2 as u8,
                         Opcode::IAdd as u8,
                         Opcode::LStore0 as u8,
                         Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
-                    ],
-                    upvalues: vec![],
-                },
-                Value::Obj(Obj::StringObj { value: Box::new("add_$1".to_string()) }),
-                Value::Fn {
-                    name: "add_$1".to_string(),
-                    code: vec![
-                        Opcode::Nil as u8,
-                        Opcode::LLoad1 as u8,
-                        Opcode::IConst2 as u8,
-                        Opcode::Constant as u8, 0,
-                        Opcode::GLoad as u8,
-                        Opcode::Invoke as u8, 2, 1,
-                        Opcode::LStore0 as u8,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],

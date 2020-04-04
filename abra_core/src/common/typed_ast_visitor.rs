@@ -25,6 +25,7 @@ pub trait TypedAstVisitor<V, E> {
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok) => self.visit_break(tok),
+            _Nil(tok) => self.visit_nil(tok),
         }
     }
 
@@ -48,4 +49,5 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<V, E>;
     fn visit_break(&mut self, token: Token) -> Result<V, E>;
+    fn visit_nil(&mut self, token: Token) -> Result<V, E>;
 }

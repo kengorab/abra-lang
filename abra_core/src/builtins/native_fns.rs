@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::vm::compiler::fn_name_for_arity;
+// use crate::vm::compiler::fn_name_for_arity;
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VMContext;
 use std::collections::HashMap;
@@ -36,15 +36,6 @@ fn native_fns_map() -> HashMap<String, &'static NativeFn> {
     for native_fn in native_fns {
         let name = native_fn.name.clone();
         map.insert(name.clone(), native_fn);
-
-        // Insert all of the pseudo-fns for each native function with default args
-        let num_required_args = native_fn.args.len();
-        let num_optional_args = native_fn.opt_args.len();
-        for num_opt in 0..num_optional_args {
-            let arity = num_required_args + num_opt;
-            let name = fn_name_for_arity(name.clone(), arity);
-            map.insert(name, native_fn);
-        }
     }
 
     map
@@ -95,7 +86,7 @@ fn range(_ctx: VMContext, args: Vec<Value>) -> Option<Value> {
         panic!("range requires an Int as second argument")
     };
     let incr = match args.get(2) {
-        None => 1,
+        None | Some(Value::Nil) => 1,
         Some(Value::Int(i)) => *i,
         Some(_) => panic!("range requires an Int as third argument")
     };

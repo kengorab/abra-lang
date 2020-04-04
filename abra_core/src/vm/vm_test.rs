@@ -802,6 +802,55 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_default_args_closure() {
+        let input = "
+          var called = false
+          func getOne() {
+            called = true
+            1
+          }
+          func abc(def = getOne()) = def
+          abc(1)
+          called
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(false);
+        assert_eq!(expected, result);
+
+        let input = "
+          var called = false
+          func getOne() {
+            called = true
+            1
+          }
+          func abc(def = getOne()) = def
+          abc()
+          called
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_default_args_laziness() {
+        let input = "
+          func getOne() = 1
+          func outer() {
+            func abc(def = getOne(), ghi = def, jkl = def + ghi) {
+              def + ghi + jkl
+            }
+            abc
+          }
+          val fn = outer()
+          fn()
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_while_loop() {
         let input = "\
           var a = 0\n\
