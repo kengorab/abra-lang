@@ -24,6 +24,7 @@ pub enum TypedAstNode {
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token),
     Accessor(Token, TypedAccessorNode),
+    _Nil(Token),
 }
 
 impl TypedAstNode {
@@ -49,6 +50,7 @@ impl TypedAstNode {
             TypedAstNode::WhileLoop(token, _) => token,
             TypedAstNode::Break(token) => token,
             TypedAstNode::Accessor(token, _) => token,
+            TypedAstNode::_Nil(token) => token,
         }
     }
 
@@ -79,6 +81,7 @@ impl TypedAstNode {
             TypedAstNode::Invocation(_, node) => node.typ.clone(),
             TypedAstNode::Instantiation(_, node) => node.typ.clone(),
             TypedAstNode::Accessor(_, node) => node.typ.clone(),
+            TypedAstNode::_Nil(_) => Type::Any,
         }
     }
 }
