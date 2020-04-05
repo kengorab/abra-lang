@@ -654,8 +654,7 @@ mod tests {
               unnecessaryLayer2\n\
             }\n\
             count = 0\n\
-            val l1 = unnecessaryLayer1()\n\
-            l1()
+            unnecessaryLayer1()()\n\
           }\n\
           val tick = getCounter()\n\
           val results = [tick(), tick(), tick(), tick(), tick()]\n\
