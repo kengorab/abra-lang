@@ -1,4 +1,3 @@
-use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
@@ -637,20 +636,14 @@ impl VM {
                     let has_return = self.read_byte_expect()? == 1;
 
                     match target {
-                        Value::Obj(Obj::StringObj { value: func_name }) => {
-                            if let Some(native_fn) = NATIVE_FNS_MAP.get(&*func_name) {
-                                let native_fn: &NativeFn = native_fn;
-
-                                let len = self.stack.len();
-                                let args = self.stack.split_off(len - arity);
-                                if has_return { self.stack.pop(); } // <-- Pop off nil (<ret> placeholder) value
-                                if let Some(value) = native_fn.invoke(self.ctx.clone(), args) {
-                                    self.push(value);
-                                }
-                                continue;
-                            } else {
-                                unreachable!() // A native fn that exists in bytecode but not at runtime is "impossible"
+                        Value::NativeFn(native_fn) => {
+                            let num_args = self.stack.len() - arity;
+                            let args = self.stack.split_off(num_args);
+                            if has_return { self.stack.pop(); } // <-- Pop off nil (<ret> placeholder) value
+                            if let Some(value) = native_fn.invoke(&self.ctx, args) {
+                                self.push(value);
                             }
+                            continue;
                         }
                         Value::Fn { name, code, .. } => {
                             if has_return { arity += 1 }
