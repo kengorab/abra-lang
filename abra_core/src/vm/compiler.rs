@@ -925,47 +925,26 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
         let TypedInvocationNode { target, args, .. } = node;
 
-        let (has_return, arity) = match &*target {
-            TypedAstNode::Identifier(token, TypedIdentifierNode { typ, is_mutable, scope_depth, .. }) => {
-                let (arity, has_return) = match typ {
-                    Type::Fn(args, ret) => (args.len(), **ret != Type::Unit),
-                    _ => unreachable!() // This should have been caught during typechecking
-                };
-
-                if has_return {
-                    self.write_opcode(Opcode::Nil, line);
-                }
-
-                let num_args = args.len();
-                for arg in args {
-                    self.visit(arg)?;
-                }
-                for _ in num_args..arity {
-                    self.write_opcode(Opcode::Nil, line);
-                }
-
-                let ident_name = Token::get_ident_name(token).clone();
-
-                match NATIVE_FNS_MAP.get(&ident_name) {
-                    Some(native_fn) => {
-                        let value = Value::NativeFn(native_fn.clone().clone());
-                        self.write_constant(value, line);
-                    }
-                    None => {
-                        let target = TypedAstNode::Identifier(token.clone(), TypedIdentifierNode {
-                            typ: typ.clone(),
-                            name: ident_name,
-                            is_mutable: is_mutable.clone(),
-                            scope_depth: scope_depth.clone(),
-                        });
-                        self.visit(target)?;
-                    }
-                }
-
-                (has_return, arity)
-            }
-            _ => unreachable!() // TODO: Support other, non-identifier, invokable ast notes (ie, fn literals)
+        let typ = target.get_type();
+        let (arity, has_return) = match typ {
+            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
+            _ => unreachable!() // This should have been caught during typechecking
         };
+
+        if has_return {
+            self.write_opcode(Opcode::Nil, line);
+        }
+
+        let num_args = args.len();
+        for arg in args {
+            self.visit(arg)?;
+        }
+        for _ in num_args..arity {
+            self.write_opcode(Opcode::Nil, line);
+        }
+
+        self.visit(*target)?;
+
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(arity as u8, line);
         let incl_ret_slot_op = if has_return { 1 } else { 0 };
