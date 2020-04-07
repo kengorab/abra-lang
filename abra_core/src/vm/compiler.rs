@@ -935,12 +935,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::Nil, line);
         }
 
-        let num_args = args.len();
         for arg in args {
-            self.visit(arg)?;
-        }
-        for _ in num_args..arity {
-            self.write_opcode(Opcode::Nil, line);
+            match arg {
+                None => self.write_opcode(Opcode::Nil, line),
+                Some(arg) => self.visit(arg)?
+            }
         }
 
         self.visit(*target)?;

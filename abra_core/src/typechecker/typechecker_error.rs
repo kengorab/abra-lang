@@ -20,6 +20,7 @@ pub enum TypecheckerError {
     InvalidInvocationTarget { token: Token, target_type: Type },
     IncorrectArity { token: Token, expected: usize, actual: usize },
     ParamNameMismatch { token: Token, expected: String, actual: String },
+    UnexpectedParamName { token: Token },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
     InvalidRequiredArgPosition(Token),
@@ -27,7 +28,9 @@ pub enum TypecheckerError {
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     UnknownMember { token: Token, target_type: Type },
     MissingRequiredField { token: Token, target_type: Type, field: (String, Type) },
+    MissingRequiredParams { token: Token, missing_params: Vec<String> },
     InvalidInstantiationParam { token: Token },
+    InvalidMixedParamType { token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -105,6 +108,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidInvocationTarget { token, .. } => token.get_position(),
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
             TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
+            TypecheckerError::UnexpectedParamName { token } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
             TypecheckerError::InvalidBreak(token) => token.get_position(),
             TypecheckerError::InvalidRequiredArgPosition(token) => token.get_position(),
@@ -112,7 +116,9 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidIndexingSelector { token, .. } => token.get_position(),
             TypecheckerError::UnknownMember { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredField { token, .. } => token.get_position(),
+            TypecheckerError::MissingRequiredParams { token, .. } => token.get_position(),
             TypecheckerError::InvalidInstantiationParam { token } => token.get_position(),
+            TypecheckerError::InvalidMixedParamType { token } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -265,6 +271,13 @@ impl DisplayError for TypecheckerError {
                     )
                 }
             }
+            TypecheckerError::UnexpectedParamName { token } => {
+                let param_name = Token::get_ident_name(token);
+                format!(
+                    "Unexpected parameter name: ({}:{})\n{}\nThis function doesn't have a parameter called '{}'",
+                    pos.line, pos.col, cursor_line, param_name,
+                )
+            }
             TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
                 let secondary_pos = orig_token.get_position();
                 let line = lines.get(secondary_pos.line - 1).expect("There should be a line");
@@ -331,10 +344,27 @@ impl DisplayError for TypecheckerError {
                     type_repr(target_type), name, type_repr(typ)
                 )
             }
+            TypecheckerError::MissingRequiredParams { missing_params, .. } => {
+                let missing_params = missing_params.join(", ");
+                format!(
+                    "Missing required parameters in function call: ({}:{})\n{}\n\
+                    These parameters are required but missing: {}",
+                    pos.line, pos.col,
+                    cursor_line,
+                    missing_params
+                )
+            }
             TypecheckerError::InvalidInstantiationParam { .. } => {
                 format!(
                     "Invalid instantiation argument: ({}:{})\n{}\n\
                     The argument to a type instantiation must be a map literal",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidMixedParamType { .. } => {
+                format!(
+                    "Invalid function call: ({}:{})\n{}\n\
+                    Cannot mix named and positional arguments.",
                     pos.line, pos.col, cursor_line
                 )
             }

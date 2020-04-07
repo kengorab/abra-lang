@@ -1,16 +1,1 @@
-func getOne() {
-  println("called!")
-
-  1
-}
-
-func outer() {
-  func abc(def = getOne(), ghi = def, jkl = def + ghi) {
-    def + ghi + jkl
-  }
-
-  abc
-}
-
-val fn = outer()
-fn()
+range(1, 10)

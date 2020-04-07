@@ -829,31 +829,81 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target_type = target.get_type();
         match target_type {
             Type::Fn(arg_types, ret_type) => {
-                let num_req_args = arg_types.iter()
-                    .take_while(|(_, _, is_optional)| !*is_optional)
-                    .count();
-                if args.len() < num_req_args || args.len() > arg_types.len() {
-                    return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
+                let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
+                if num_named != 0 && num_named != args.len() {
+                    return Err(TypecheckerError::InvalidMixedParamType { token: target.get_token().clone() });
                 }
 
-                let mut typed_args = Vec::<TypedAstNode>::new();
-                for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
-                    let (arg_name, arg) = arg;
-                    let (expected_name, expected_arg_type, _) = expected;
+                let mut typed_args = Vec::<Option<TypedAstNode>>::new();
+                if num_named == 0 {
+                    let num_req_args = arg_types.iter()
+                        .take_while(|(_, _, is_optional)| !*is_optional)
+                        .count();
+                    if args.len() < num_req_args || args.len() > arg_types.len() {
+                        return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
+                    }
 
-                    if let Some(arg_name) = arg_name {
-                        let passed_name = Token::get_ident_name(&arg_name);
-                        if passed_name != expected_name {
-                            return Err(TypecheckerError::ParamNameMismatch { token: arg_name.clone(), expected: expected_name.clone(), actual: passed_name.clone() });
+                    for (arg, expected) in args.into_iter().zip(arg_types.iter()) {
+                        let (_, arg) = arg;
+                        let (_, expected_arg_type, _) = expected;
+                        let arg = self.visit(arg)?;
+                        let arg_type = arg.get_type();
+                        if !arg_type.is_equivalent_to(expected_arg_type) {
+                            return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                        }
+                        typed_args.push(Some(arg));
+                    }
+
+                    // Make sure to fill in any omitted optional positional arguments
+                    while typed_args.len() < arg_types.len() {
+                        typed_args.push(None);
+                    }
+                } else { // num_named should equal args.len()
+                    let args = args.into_iter()
+                        .map(|(arg_name_tok, node)| {
+                            let arg_name_tok = arg_name_tok.unwrap();
+                            let arg_name = Token::get_ident_name(&arg_name_tok);
+                            (arg_name.clone(), (arg_name_tok, node))
+                        })
+                        .collect::<HashMap<String, (Token, AstNode)>>();
+                    let expected_args = arg_types.iter()
+                        .map(|(arg_name, arg_type, is_optional)| (arg_name, (arg_type, is_optional)))
+                        .collect::<HashMap<&String, (&Type, &bool)>>();
+
+                    // Check for unexpected args passed
+                    for (arg_name, (arg_name_token, _)) in args.iter() {
+                        if !expected_args.contains_key(arg_name) {
+                            // Note: this overlaps slightly with the IncorrectArity error; if named args are provided,
+                            // this error will be raised for greater clarity, as opposed to IncorrectArity.
+                            return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() })
                         }
                     }
 
-                    let arg = self.visit(arg)?;
-                    let arg_type = arg.get_type();
-                    if !arg_type.is_equivalent_to(expected_arg_type) {
-                        return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                    // Ensure all expected args passed
+                    let mut missing_params = Vec::new();
+                    let mut args = args;
+                    for (arg_name, expected_arg_type, is_optional) in arg_types {
+                        match args.remove(&arg_name) {
+                            None => {
+                                if !is_optional {
+                                    missing_params.push(arg_name);
+                                } else {
+                                    typed_args.push(None);
+                                }
+                            }
+                            Some((_, arg)) => {
+                                let arg = self.visit(arg)?;
+                                let arg_type = arg.get_type();
+                                if !arg_type.is_equivalent_to(&expected_arg_type) {
+                                    return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                                }
+                                typed_args.push(Some(arg));
+                            }
+                        }
                     }
-                    typed_args.push(arg);
+                    if !missing_params.is_empty() {
+                        return Err(TypecheckerError::MissingRequiredParams { token: target.get_token().clone(), missing_params })
+                    }
                 }
 
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: *ret_type, target: Box::new(target), args: typed_args }))
@@ -2729,8 +2779,8 @@ mod tests {
                     },
                 )),
                 args: vec![
-                    int_literal!((2, 5), 1),
-                    string_literal!((2, 8), "2"),
+                    Some(int_literal!((2, 5), 1)),
+                    Some(string_literal!((2, 8), "2")),
                 ],
             },
         );
@@ -2802,10 +2852,31 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = typecheck("func abc(a: Int) {}\nabc(z: false)").unwrap_err();
-        let expected = TypecheckerError::ParamNameMismatch {
+        let expected = TypecheckerError::UnexpectedParamName {
             token: ident_token!((2, 5), "z"),
-            expected: "a".to_string(),
-            actual: "z".to_string(),
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("func abc(a: Int, b: Int) {}\nabc()").unwrap_err();
+        let expected = TypecheckerError::IncorrectArity {
+            token: ident_token!((2, 1), "abc"),
+            expected: 2,
+            actual: 0,
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("func abc(a: Int, b: Int) {}\nabc(a: 3)").unwrap_err();
+        let expected = TypecheckerError::MissingRequiredParams {
+            token: ident_token!((2, 1), "abc"),
+            missing_params: vec!["b".to_string()],
+        };
+        assert_eq!(error, expected);
+
+        let error = typecheck("func abc(a: Int) {}\nabc(false)").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Bool(Position::new(2, 5), false),
+            expected: Type::Int,
+            actual: Type::Bool,
         };
         assert_eq!(error, expected);
 
