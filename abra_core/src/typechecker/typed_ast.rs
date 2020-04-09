@@ -190,7 +190,7 @@ pub struct TypedIfNode {
 pub struct TypedInvocationNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub args: Vec<TypedAstNode>,
+    pub args: Vec<Option<TypedAstNode>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
