@@ -1498,10 +1498,9 @@ mod tests {
 
     #[test]
     fn compile_binding_decl_struct_type() {
-        // Test assignment from map literal to struct type
         let chunk = compile("\
           type Person { name: String }\n\
-          val meg = Person({ name: \"Meg\" })\
+          val meg = Person(name: \"Meg\")\
         ");
         let expected = Module {
             code: vec![
@@ -1528,8 +1527,8 @@ mod tests {
         // Test assignment with default field values
         let chunk = compile("\
           type Person { name: String, age: Int = 0 }\n\
-          val someBaby = Person({ name: \"Unnamed\" })\n\
-          val anAdult = Person({ name: \"Some Name\", age: 29 })\n\
+          val someBaby = Person(name: \"Unnamed\")\n\
+          val anAdult = Person(name: \"Some Name\", age: 29)\n\
         ");
         let expected = Module {
             code: vec![

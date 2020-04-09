@@ -2,5 +2,5 @@
 members = [
     "abra_cli",
     "abra_core",
-#    "abra_wasm",
+    "abra_wasm",
 ]

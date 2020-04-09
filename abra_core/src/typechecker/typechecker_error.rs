@@ -19,18 +19,17 @@ pub enum TypecheckerError {
     IfExprBranchMismatch { if_token: Token, if_type: Type, else_type: Type },
     InvalidInvocationTarget { token: Token, target_type: Type },
     IncorrectArity { token: Token, expected: usize, actual: usize },
-    ParamNameMismatch { token: Token, expected: String, actual: String },
     UnexpectedParamName { token: Token },
+    DuplicateParamName { token: Token },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
     InvalidRequiredArgPosition(Token),
     InvalidIndexingTarget { token: Token, target_type: Type },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     UnknownMember { token: Token, target_type: Type },
-    MissingRequiredField { token: Token, target_type: Type, field: (String, Type) },
     MissingRequiredParams { token: Token, missing_params: Vec<String> },
-    InvalidInstantiationParam { token: Token },
     InvalidMixedParamType { token: Token },
+    InvalidTypeFuncInvocation { token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -107,18 +106,20 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
             TypecheckerError::InvalidInvocationTarget { token, .. } => token.get_position(),
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
-            TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
+            // TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
             TypecheckerError::UnexpectedParamName { token } => token.get_position(),
+            TypecheckerError::DuplicateParamName { token } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
             TypecheckerError::InvalidBreak(token) => token.get_position(),
             TypecheckerError::InvalidRequiredArgPosition(token) => token.get_position(),
             TypecheckerError::InvalidIndexingTarget { token, .. } => token.get_position(),
             TypecheckerError::InvalidIndexingSelector { token, .. } => token.get_position(),
             TypecheckerError::UnknownMember { token, .. } => token.get_position(),
-            TypecheckerError::MissingRequiredField { token, .. } => token.get_position(),
+            // TypecheckerError::MissingRequiredField { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredParams { token, .. } => token.get_position(),
-            TypecheckerError::InvalidInstantiationParam { token } => token.get_position(),
+            // TypecheckerError::InvalidInstantiationParam { token } => token.get_position(),
             TypecheckerError::InvalidMixedParamType { token } => token.get_position(),
+            TypecheckerError::InvalidTypeFuncInvocation { token } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -258,24 +259,18 @@ impl DisplayError for TypecheckerError {
                     expected, if *expected == 1 { "" } else { "s" }, actual
                 )
             }
-            TypecheckerError::ParamNameMismatch { expected, actual, .. } => {
-                if expected.is_empty() {
-                    format!(
-                        "Parameter name mismatch: ({}:{})\n{}\nExpected no name, but saw '{}'",
-                        pos.line, pos.col, cursor_line, actual
-                    )
-                } else {
-                    format!(
-                        "Parameter name mismatch: ({}:{})\n{}\nExpected name '{}', but saw '{}'",
-                        pos.line, pos.col, cursor_line, expected, actual
-                    )
-                }
-            }
             TypecheckerError::UnexpectedParamName { token } => {
                 let param_name = Token::get_ident_name(token);
                 format!(
                     "Unexpected parameter name: ({}:{})\n{}\nThis function doesn't have a parameter called '{}'",
                     pos.line, pos.col, cursor_line, param_name,
+                )
+            }
+            TypecheckerError::DuplicateParamName { .. } => {
+                format!(
+                    "Duplicate parameter name: ({}:{})\n{}\n\
+                    A parameter of this name has already been passed",
+                    pos.line, pos.col, cursor_line,
                 )
             }
             TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
@@ -335,15 +330,6 @@ impl DisplayError for TypecheckerError {
                     type_repr(target_type), field_name
                 )
             }
-            TypecheckerError::MissingRequiredField { target_type, field: (name, typ), .. } => {
-                format!(
-                    "Missing required field '{}': ({}:{})\n{}\n\
-                    Constructing an instance of type {} requires a field '{}' of type {}",
-                    name, pos.line, pos.col,
-                    cursor_line,
-                    type_repr(target_type), name, type_repr(typ)
-                )
-            }
             TypecheckerError::MissingRequiredParams { missing_params, .. } => {
                 let missing_params = missing_params.join(", ");
                 format!(
@@ -354,17 +340,17 @@ impl DisplayError for TypecheckerError {
                     missing_params
                 )
             }
-            TypecheckerError::InvalidInstantiationParam { .. } => {
-                format!(
-                    "Invalid instantiation argument: ({}:{})\n{}\n\
-                    The argument to a type instantiation must be a map literal",
-                    pos.line, pos.col, cursor_line
-                )
-            }
             TypecheckerError::InvalidMixedParamType { .. } => {
                 format!(
                     "Invalid function call: ({}:{})\n{}\n\
                     Cannot mix named and positional arguments.",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidTypeFuncInvocation { .. } => {
+                format!(
+                    "Invalid instantiation call: ({}:{})\n{}\n\
+                    Constructor functions must be called with named parameters.",
                     pos.line, pos.col, cursor_line
                 )
             }
@@ -681,39 +667,6 @@ Expected 1 argument, but 3 were passed"
     }
 
     #[test]
-    fn test_param_name_mismatch() {
-        let src = "someFunc(arg: \"hello\")".to_string();
-        let err = TypecheckerError::ParamNameMismatch {
-            token: Token::Ident(Position::new(1, 10), "arg".to_string()),
-            expected: "arg0".to_string(),
-            actual: "arg".to_string(),
-        };
-
-        let expected = format!("\
-Parameter name mismatch: (1:10)
-  |  someFunc(arg: \"hello\")
-              ^
-Expected name 'arg0', but saw 'arg'"
-        );
-        assert_eq!(expected, err.get_message(&src));
-
-        let src = "println(arg: \"hello\")".to_string();
-        let err = TypecheckerError::ParamNameMismatch {
-            token: Token::Ident(Position::new(1, 9), "arg".to_string()),
-            expected: "".to_string(),
-            actual: "arg".to_string(),
-        };
-
-        let expected = format!("\
-Parameter name mismatch: (1:9)
-  |  println(arg: \"hello\")
-             ^
-Expected no name, but saw 'arg'"
-        );
-        assert_eq!(expected, err.get_message(&src));
-    }
-
-    #[test]
     fn test_recursive_call_no_return_type() {
         let src = "func abc() {\nabc()\n}".to_string();
         let err = TypecheckerError::RecursiveRefWithoutReturnType {
@@ -845,43 +798,6 @@ Unknown member 'nAme': (2:18)
   |  val p = Person({{ nAme: \"hello\" }})
                       ^
 Type Person does not have a member with name 'nAme'"
-        );
-        assert_eq!(expected, err.get_message(&src));
-    }
-
-    #[test]
-    fn test_missing_required_field() {
-        let src = "type Person { name: String }\nval p = Person({})".to_string();
-        let err = TypecheckerError::MissingRequiredField {
-            token: Token::LBrace(Position::new(2, 16)),
-            target_type: Type::Struct {
-                name: "Person".to_string(),
-                fields: vec![("name".to_string(), Type::String, false)],
-            },
-            field: ("name".to_string(), Type::String),
-        };
-
-        let expected = format!("\
-Missing required field 'name': (2:16)
-  |  val p = Person({{}})
-                    ^
-Constructing an instance of type Person requires a field 'name' of type String"
-        );
-        assert_eq!(expected, err.get_message(&src));
-    }
-
-    #[test]
-    fn test_invalid_instantiation_param() {
-        let src = "type Person { name: String }\nval m = { name: \"Ken\" }\nval p = Person(m)".to_string();
-        let err = TypecheckerError::InvalidInstantiationParam {
-            token: Token::Ident(Position::new(3, 16), "m".to_string())
-        };
-
-        let expected = format!("\
-Invalid instantiation argument: (3:16)
-  |  val p = Person(m)
-                    ^
-The argument to a type instantiation must be a map literal"
         );
         assert_eq!(expected, err.get_message(&src));
     }

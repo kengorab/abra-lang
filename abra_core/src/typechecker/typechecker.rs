@@ -827,6 +827,81 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let InvocationNode { target, args } = node;
         let target = self.visit(*target)?;
         let target_type = target.get_type();
+
+        #[inline]
+        fn verify_named_args_invocation(
+            zelf: &mut Typechecker,
+            invocation_target: Token,
+            args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
+            arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>
+        ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerError> {
+            // Check for duplicate named parameters
+            let mut seen = HashSet::new();
+            for (arg_name_tok, _) in args.iter() {
+                match arg_name_tok {
+                    None => continue,
+                    Some(arg_name_tok) => {
+                        let arg_name = Token::get_ident_name(arg_name_tok);
+                        if seen.contains(arg_name) {
+                            return Err(TypecheckerError::DuplicateParamName { token: arg_name_tok.clone() })
+                        }
+                        seen.insert(arg_name);
+                    }
+                }
+            }
+
+            let args = args.into_iter()
+                .map(|(arg_name_tok, node)| {
+                    let arg_name_tok = arg_name_tok.unwrap();
+                    let arg_name = Token::get_ident_name(&arg_name_tok);
+                    (arg_name.clone(), (arg_name_tok, node))
+                })
+                .collect::<HashMap<String, (Token, AstNode)>>();
+            let expected_args = arg_types.iter()
+                .map(|(arg_name, arg_type, is_optional)| (arg_name, (arg_type, is_optional)))
+                .collect::<HashMap<&String, (&Type, &bool)>>();
+
+            // Check for unexpected args
+            for (arg_name, (arg_name_token, _)) in args.iter() {
+                if !expected_args.contains_key(arg_name) {
+                    // Note: this overlaps slightly with the IncorrectArity error; if named args are provided,
+                    // this error will be raised for greater clarity, as opposed to IncorrectArity.
+                    return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() })
+                }
+            }
+
+            let mut typed_args = Vec::new();
+
+            // Ensure all expected args passed
+            let mut missing_params = Vec::new();
+            let mut args = args;
+            for (arg_name, expected_arg_type, is_optional) in arg_types {
+                match args.remove(&arg_name) {
+                    None => {
+                        if !is_optional {
+                            missing_params.push(arg_name);
+                        } else {
+                            typed_args.push((arg_name, None));
+                        }
+                    }
+                    Some((_, arg)) => {
+                        let arg = zelf.visit(arg)?;
+                        let arg_type = arg.get_type();
+                        if !arg_type.is_equivalent_to(&expected_arg_type) {
+                            return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                        }
+                        typed_args.push((arg_name, Some(arg)));
+                    }
+                }
+            }
+
+            if !missing_params.is_empty() {
+                Err(TypecheckerError::MissingRequiredParams { token: invocation_target, missing_params })
+            } else {
+                Ok(typed_args)
+            }
+        }
+
         match target_type {
             Type::Fn(arg_types, ret_type) => {
                 let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
@@ -834,8 +909,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     return Err(TypecheckerError::InvalidMixedParamType { token: target.get_token().clone() });
                 }
 
-                let mut typed_args = Vec::<Option<TypedAstNode>>::new();
-                if num_named == 0 {
+                let typed_args = if num_named == 0 {
+                    let mut typed_args = Vec::<Option<TypedAstNode>>::with_capacity(arg_types.len());
                     let num_req_args = arg_types.iter()
                         .take_while(|(_, _, is_optional)| !*is_optional)
                         .count();
@@ -858,131 +933,77 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     while typed_args.len() < arg_types.len() {
                         typed_args.push(None);
                     }
+                    typed_args
                 } else { // num_named should equal args.len()
-                    let args = args.into_iter()
-                        .map(|(arg_name_tok, node)| {
-                            let arg_name_tok = arg_name_tok.unwrap();
-                            let arg_name = Token::get_ident_name(&arg_name_tok);
-                            (arg_name.clone(), (arg_name_tok, node))
-                        })
-                        .collect::<HashMap<String, (Token, AstNode)>>();
-                    let expected_args = arg_types.iter()
-                        .map(|(arg_name, arg_type, is_optional)| (arg_name, (arg_type, is_optional)))
-                        .collect::<HashMap<&String, (&Type, &bool)>>();
-
-                    // Check for unexpected args passed
-                    for (arg_name, (arg_name_token, _)) in args.iter() {
-                        if !expected_args.contains_key(arg_name) {
-                            // Note: this overlaps slightly with the IncorrectArity error; if named args are provided,
-                            // this error will be raised for greater clarity, as opposed to IncorrectArity.
-                            return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() })
-                        }
-                    }
-
-                    // Ensure all expected args passed
-                    let mut missing_params = Vec::new();
-                    let mut args = args;
-                    for (arg_name, expected_arg_type, is_optional) in arg_types {
-                        match args.remove(&arg_name) {
-                            None => {
-                                if !is_optional {
-                                    missing_params.push(arg_name);
-                                } else {
-                                    typed_args.push(None);
-                                }
-                            }
-                            Some((_, arg)) => {
-                                let arg = self.visit(arg)?;
-                                let arg_type = arg.get_type();
-                                if !arg_type.is_equivalent_to(&expected_arg_type) {
-                                    return Err(TypecheckerError::Mismatch { token: arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
-                                }
-                                typed_args.push(Some(arg));
-                            }
-                        }
-                    }
-                    if !missing_params.is_empty() {
-                        return Err(TypecheckerError::MissingRequiredParams { token: target.get_token().clone(), missing_params })
-                    }
-                }
+                    let target_token = target.get_token().clone();
+                    verify_named_args_invocation(self, target_token, args, arg_types)?.into_iter()
+                        .map(|(_name, node)| node)
+                        .collect()
+                };
 
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: *ret_type, target: Box::new(target), args: typed_args }))
             }
             Type::Type(_, t) => match *t.clone() {
                 Type::Struct { name, fields: expected_fields } => {
+                    let target_token = target.get_token().clone();
+
+                    let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
+                    if args.len() != num_named {
+                        return Err(TypecheckerError::InvalidTypeFuncInvocation { token: target_token });
+                    }
+
+                    let typed_args = verify_named_args_invocation(self, target_token, args, expected_fields)?;
+
+                    let default_field_values = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
+                        (_, Some(TypedAstNode::TypeDecl(_, TypedTypeDeclNode { fields, .. }))) => {
+                            fields.iter()
+                                .map(|(name, _, default_value)| {
+                                    let name = Token::get_ident_name(name).clone();
+                                    (name, default_value.clone())
+                                })
+                                .filter_map(|(name, default_value)| default_value.map(|v| (name, v)))
+                                .collect::<HashMap<String, TypedAstNode>>()
+                        }
+                        _ => unreachable!()
+                    };
+
+                    let fields = typed_args.into_iter().map(|(name, node)| {
+                        match node {
+                            Some(node) => (name, node),
+                            None => {
+                                let default_value = default_field_values.get(&name).unwrap().clone();
+                                (name, default_value)
+                            }
+                        }
+                    }).collect();
+
+                    Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), fields }))
+                }
+                t @ Type::Int | t @ Type::Float | t @ Type::String | t @ Type::Bool => {
                     if args.len() != 1 {
                         return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: 1, actual: args.len() });
                     }
-                    let (arg_name, arg) = args.into_iter().next().unwrap();
-                    if let Some(arg_name) = arg_name {
-                        // Type instantiation invocations should have no named parameters
-                        let passed_name = Token::get_ident_name(&arg_name);
-                        return Err(TypecheckerError::ParamNameMismatch { token: arg_name.clone(), expected: "".to_string(), actual: passed_name.clone() });
-                    }
-
-                    let arg = self.visit(arg)?;
-                    match &arg {
-                        TypedAstNode::Map(tok, TypedMapNode { items, .. }) => {
-                            let expected_fields_map = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
-                                (_, Some(TypedAstNode::TypeDecl(_, TypedTypeDeclNode { fields, .. }))) => {
-                                    fields.iter()
-                                        .map(|(name, typ, default_value)| {
-                                            let name = Token::get_ident_name(name).clone();
-                                            (name, (typ.clone(), default_value.clone()))
-                                        })
-                                        .collect::<HashMap<String, (Type, Option<TypedAstNode>)>>()
-                                }
-                                _ => unreachable!()
-                            };
-
-                            let mut fields = Vec::<(String, TypedAstNode)>::new();
-                            let mut field_names = HashMap::<String, Token>::new();
-
-                            // First, check that provided fields match the expected fields
-                            for (field_tok, field_value) in items.iter() {
-                                let field_name = Token::get_ident_name(field_tok);
-                                if let Some(orig_ident) = field_names.get(field_name) {
-                                    return Err(TypecheckerError::DuplicateBinding { orig_ident: orig_ident.clone(), ident: field_tok.clone() });
-                                } else {
-                                    field_names.insert(field_name.clone(), field_tok.clone());
-                                }
-
-                                match expected_fields_map.get(field_name) {
-                                    Some((expected_type, _)) => {
-                                        let field_type = field_value.get_type();
-                                        if !field_type.is_equivalent_to(expected_type) {
-                                            return Err(TypecheckerError::Mismatch { token: field_tok.clone(), expected: expected_type.clone(), actual: field_type.clone() });
-                                        }
-                                        fields.push((field_name.clone(), field_value.clone()))
-                                    }
-                                    None => {
-                                        // Since I can't destructure and also bind, redeclare here
-                                        let target_type = Type::Struct { name, fields: expected_fields };
-                                        return Err(TypecheckerError::UnknownMember { token: field_tok.clone(), target_type });
-                                    }
-                                }
-                            }
-
-                            // Then, check to make sure there are no unsupplied non-default-valued fields
-                            for (field_name, (field_type, default_value)) in expected_fields_map {
-                                let is_required = default_value.is_none();
-                                if !field_names.contains_key(&field_name) {
-                                    if is_required {
-                                        // Since I can't destructure and also bind, redeclare here
-                                        let target_type = Type::Struct { name, fields: expected_fields };
-                                        return Err(TypecheckerError::MissingRequiredField { token: tok.clone(), target_type, field: (field_name, field_type) });
-                                    } else {
-                                        fields.push((field_name, default_value.unwrap()))
-                                    }
-                                }
-                            }
-
-                            Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), fields }))
+                    let mut args = args;
+                    let (arg_name, node) = args.remove(0);
+                    match arg_name {
+                        Some(arg_name_tok) => {
+                            return Err(TypecheckerError::UnexpectedParamName { token: arg_name_tok });
                         }
-                        _ => Err(TypecheckerError::InvalidInstantiationParam { token: arg.get_token().clone() })
+                        None => {
+                            let typed_arg = self.visit(node)?;
+                            let arg_type = typed_arg.get_type();
+                            if !arg_type.is_equivalent_to(&t) {
+                                return Err(TypecheckerError::Mismatch { token: typed_arg.get_token().clone(), expected: t.clone(), actual: arg_type });
+                            }
+
+                            match typed_arg {
+                                lit @ TypedAstNode::Literal(_, _) => Ok(lit),
+                                _ => unreachable!()
+                            }
+                        }
                     }
                 }
-                _ => unreachable!("No Types other than Structs can be wrapped by Type at the moment")
+                _ => unreachable!("Anything else should be caught by an UnknownIdentifier")
             }
             target_type @ _ => Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
         }
@@ -2799,7 +2820,7 @@ mod tests {
     fn typecheck_invocation_instantiation() -> TestResult {
         let typed_ast = typecheck("\
           type Person { name: String }\n\
-          Person({ name: \"Ken\" })\
+          Person(name: \"Ken\")\
         ")?;
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7)),
@@ -2809,7 +2830,7 @@ mod tests {
                     fields: vec![("name".to_string(), Type::String, false)],
                 },
                 fields: vec![
-                    ("name".to_string(), string_literal!((2, 16), "Ken"))
+                    ("name".to_string(), string_literal!((2, 14), "Ken"))
                 ],
             },
         );
@@ -2818,7 +2839,7 @@ mod tests {
         // Test with default parameters
         let typed_ast = typecheck("\
           type Person { name: String, age: Int = 0 }\n\
-          Person({ name: \"Ken\" })\
+          Person(name: \"Ken\")\
         ")?;
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7)),
@@ -2831,7 +2852,7 @@ mod tests {
                     ],
                 },
                 fields: vec![
-                    ("name".to_string(), string_literal!((2, 16), "Ken")),
+                    ("name".to_string(), string_literal!((2, 14), "Ken")),
                     ("age".to_string(), int_literal!((1, 40), 0)),
                 ],
             },
@@ -2897,15 +2918,14 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_invocation_instantiation_error() {
+    fn typecheck_invocation_struct_instantiation_error() {
         let error = typecheck("\
           type Person { name: String }\n\
           Person()\
         ").unwrap_err();
-        let expected = TypecheckerError::IncorrectArity {
+        let expected = TypecheckerError::MissingRequiredParams {
             token: ident_token!((2, 1), "Person"),
-            expected: 1,
-            actual: 0,
+            missing_params: vec!["name".to_string()],
         };
         assert_eq!(expected, error);
 
@@ -2913,10 +2933,8 @@ mod tests {
           type Person { name: String }\n\
           Person(args: 1)\
         ").unwrap_err();
-        let expected = TypecheckerError::ParamNameMismatch {
+        let expected = TypecheckerError::UnexpectedParamName {
             token: ident_token!((2, 8), "args"),
-            expected: "".to_string(),
-            actual: "args".to_string(),
         };
         assert_eq!(expected, error);
 
@@ -2924,17 +2942,17 @@ mod tests {
           type Person { name: String }\n\
           Person(1)\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidInstantiationParam {
-            token: Token::Int(Position::new(2, 8), 1),
+        let expected = TypecheckerError::InvalidTypeFuncInvocation {
+            token: ident_token!((2, 1), "Person"),
         };
         assert_eq!(expected, error);
 
         let error = typecheck("\
           type Person { name: String }\n\
-          Person({ name: 123 })\
+          Person(name: 123)\
         ").unwrap_err();
         let expected = TypecheckerError::Mismatch {
-            token: ident_token!((2, 10), "name"),
+            token: Token::Int(Position::new(2, 14), 123),
             expected: Type::String,
             actual: Type::Int,
         };
@@ -2942,35 +2960,48 @@ mod tests {
 
         let error = typecheck("\
           type Person { name: String }\n\
-          Person({ age: 123, name: \"Ken\" })\
+          Person(age: 123, name: \"Ken\")\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
-            token: ident_token!((2, 10), "age"),
-            target_type: Type::Struct { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)] },
+        let expected = TypecheckerError::UnexpectedParamName {
+            token: ident_token!((2, 8), "age"),
         };
         assert_eq!(expected, error);
 
         let error = typecheck("\
           type Person { name: String }\n\
-          Person({ name: \"Meg\", name: \"Ken\" })\
+          Person(name: \"Meg\", name: \"Ken\")\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
-            orig_ident: ident_token!((2, 10), "name"),
-            ident: ident_token!((2, 23), "name"),
+        let expected = TypecheckerError::DuplicateParamName {
+            token: ident_token!((2, 21), "name"),
         };
         assert_eq!(expected, error);
 
         let error = typecheck("\
           type Person { name: String }\n\
-          Person({})\
+          Person()\
         ").unwrap_err();
-        let expected = TypecheckerError::MissingRequiredField {
-            token: Token::LBrace(Position::new(2, 8)),
-            target_type: Type::Struct {
-                name: "Person".to_string(),
-                fields: vec![("name".to_string(), Type::String, false)],
-            },
-            field: ("name".to_string(), Type::String),
+        let expected = TypecheckerError::MissingRequiredParams {
+            token: ident_token!((2, 1), "Person"),
+            missing_params: vec!["name".to_string()],
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_invocation_primitive_instantiation_error() {
+        let error = typecheck("Int(1.2)").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Float(Position::new(1, 5), 1.2),
+            expected: Type::Int,
+            actual: Type::Float,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("String(1.2)").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Float(Position::new(1, 8), 1.2),
+            expected: Type::String,
+            actual: Type::Float,
         };
         assert_eq!(expected, error);
     }

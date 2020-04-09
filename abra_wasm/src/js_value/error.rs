@@ -189,13 +189,18 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("actual", actual)?;
                     obj.end()
                 }
-                TypecheckerError::ParamNameMismatch { token, expected, actual } => {
-                    let mut obj = serializer.serialize_map(Some(5))?;
+                TypecheckerError::UnexpectedParamName { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "paramNameMismatch")?;
+                    obj.serialize_entry("subKind", "unexpectedParamName")?;
                     obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("expected", expected)?;
-                    obj.serialize_entry("actual", actual)?;
+                    obj.end()
+                }
+                TypecheckerError::DuplicateParamName { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateParamName")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
                 TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token } => {
@@ -246,20 +251,25 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.end()
                 }
-                TypecheckerError::MissingRequiredField { token, target_type, field: (name, typ) } => {
-                    let mut obj = serializer.serialize_map(Some(6))?;
+                TypecheckerError::MissingRequiredParams { token, missing_params } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "missingRequiredField")?;
+                    obj.serialize_entry("subKind", "missingRequiredParams")?;
                     obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("targetType", &JsType(target_type))?;
-                    obj.serialize_entry("fieldName", name)?;
-                    obj.serialize_entry("fieldType", &JsType(typ))?;
+                    obj.serialize_entry("missingParams", missing_params)?;
                     obj.end()
                 }
-                TypecheckerError::InvalidInstantiationParam { token} => {
+                TypecheckerError::InvalidMixedParamType { token } => {
                     let mut obj = serializer.serialize_map(Some(3))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "invalidInstantiationParam")?;
+                    obj.serialize_entry("subKind", "invalidMixedParamType")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidTypeFuncInvocation { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidTypeFuncInvocation")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
