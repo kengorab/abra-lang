@@ -807,7 +807,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 } else {
                     self.write_opcode(Opcode::ArrLoad, line);
                 }
-                self.write_opcode(Opcode::OptMk, line);
             }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
@@ -1354,7 +1353,6 @@ mod tests {
                 Opcode::ArrMk as u8, 2,
                 Opcode::IConst2 as u8,
                 Opcode::ArrLoad as u8,
-                Opcode::OptMk as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::Coalesce as u8,
                 Opcode::Return as u8
@@ -1867,7 +1865,6 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IAdd as u8,
                 Opcode::ArrLoad as u8,
-                Opcode::OptMk as u8,
                 Opcode::Return as u8
             ],
             constants: vec![Value::Int(5)],
@@ -1934,7 +1931,6 @@ mod tests {
                 Opcode::MapMk as u8, 2,
                 Opcode::Constant as u8, 0,
                 Opcode::MapLoad as u8,
-                Opcode::OptMk as u8,
                 Opcode::Return as u8
             ],
             constants: vec![

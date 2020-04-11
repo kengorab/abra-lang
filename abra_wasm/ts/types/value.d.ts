@@ -40,7 +40,7 @@ export namespace Values {
 export type ObjectValue
     = ObjectValues.StringObj
     | ObjectValues.ArrayObj
-    | ObjectValues.OptionObj
+    | ObjectValues.MapObj
 
 export namespace ObjectValues {
     interface StringObj {
@@ -53,8 +53,8 @@ export namespace ObjectValues {
         value: Value[]
     }
 
-    interface OptionObj {
-        kind: 'optionObj',
-        value: Value | null
+    interface MapObj {
+        kind: 'mapObj',
+        value: [string, Value][]
     }
 }
