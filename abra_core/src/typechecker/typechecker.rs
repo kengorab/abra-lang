@@ -281,12 +281,37 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let typ = type_for_op(&token, &node.op, &typed_left, &typed_right)?;
 
-        Ok(TypedAstNode::Binary(token.clone(), TypedBinaryNode {
-            typ,
-            left: Box::new(typed_left),
-            op: node.op,
-            right: Box::new(typed_right),
-        }))
+        let pos = &token.get_position();
+        let typed_ast_node = match &node.op {
+            op @ BinaryOp::And |
+            op @ BinaryOp::Or => {
+                #[inline]
+                fn bool_lit(pos: &Position, b: bool) -> TypedAstNode {
+                    TypedAstNode::Literal(Token::Bool(pos.clone(), b), TypedLiteralNode::BoolLiteral(b))
+                }
+
+                let (if_block, else_block) = match op {
+                    BinaryOp::And => (typed_right, bool_lit(pos, false)),
+                    BinaryOp::Or => (bool_lit(pos, true), typed_right),
+                    _ => unreachable!()
+                };
+                TypedAstNode::IfExpression(Token::If(pos.clone()), TypedIfNode {
+                    typ,
+                    condition: Box::new(typed_left),
+                    if_block: vec![if_block],
+                    else_block: Some(vec![else_block]),
+                })
+            }
+            _ => {
+                TypedAstNode::Binary(token.clone(), TypedBinaryNode {
+                    typ,
+                    left: Box::new(typed_left),
+                    op: node.op,
+                    right: Box::new(typed_right),
+                })
+            }
+        };
+        Ok(typed_ast_node)
     }
 
     fn visit_grouped(&mut self, token: Token, node: GroupedNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -679,7 +704,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             }
                         }
                     }
-
                 }
                 let node = TypedIdentifierNode { typ: binding_typ, name: name.clone(), is_mutable, scope_depth };
                 Ok(TypedAstNode::Identifier(token, node))
@@ -833,7 +857,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             zelf: &mut Typechecker,
             invocation_target: Token,
             args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
-            arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>
+            arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
         ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerError> {
             // Check for duplicate named parameters
             let mut seen = HashSet::new();
@@ -843,7 +867,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Some(arg_name_tok) => {
                         let arg_name = Token::get_ident_name(arg_name_tok);
                         if seen.contains(arg_name) {
-                            return Err(TypecheckerError::DuplicateParamName { token: arg_name_tok.clone() })
+                            return Err(TypecheckerError::DuplicateParamName { token: arg_name_tok.clone() });
                         }
                         seen.insert(arg_name);
                     }
@@ -866,7 +890,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 if !expected_args.contains_key(arg_name) {
                     // Note: this overlaps slightly with the IncorrectArity error; if named args are provided,
                     // this error will be raised for greater clarity, as opposed to IncorrectArity.
-                    return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() })
+                    return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() });
                 }
             }
 
@@ -1422,25 +1446,28 @@ mod tests {
     #[test]
     fn typecheck_binary_boolean() -> TestResult {
         let typed_ast = typecheck("true && true || false")?;
-        let expected = TypedAstNode::Binary(
-            Token::Or(Position::new(1, 14)),
-            TypedBinaryNode {
-                typ: Type::Bool,
-                left: Box::new(
-                    TypedAstNode::Binary(
-                        Token::And(Position::new(1, 6)),
-                        TypedBinaryNode {
-                            typ: Type::Bool,
-                            left: Box::new(bool_literal!((1, 1), true)),
-                            op: BinaryOp::And,
-                            right: Box::new(bool_literal!((1, 9), true)),
-                        },
-                    ),
-                ),
-                op: BinaryOp::Or,
-                right: Box::new(bool_literal!((1, 17), false)),
-            },
-        );
+
+        let expected = TypedAstNode::IfExpression(Token::If(Position::new(1, 14)), TypedIfNode {
+            typ: Type::Bool,
+            condition: Box::new(
+                TypedAstNode::IfExpression(Token::If(Position::new(1, 6)), TypedIfNode {
+                    typ: Type::Bool,
+                    condition: Box::new(bool_literal!((1, 1), true)),
+                    if_block: vec![
+                        bool_literal!((1, 9), true),
+                    ],
+                    else_block: Some(vec![
+                        bool_literal!((1, 6), false), // <- pos is derived from && position
+                    ]),
+                }),
+            ),
+            if_block: vec![
+                bool_literal!((1, 14), true), // <- pos is derived from || position
+            ],
+            else_block: Some(vec![
+                bool_literal!((1, 17), false),
+            ]),
+        });
         Ok(assert_eq!(expected, typed_ast[0]))
     }
 
