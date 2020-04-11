@@ -80,16 +80,6 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
-            Obj::OptionObj { value } => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("kind", "optionObj")?;
-                let value = match value {
-                    Some(v) => Some(JsWrappedValue(v)),
-                    None => None
-                };
-                obj.serialize_entry("value", &value)?;
-                obj.end()
-            }
             Obj::MapObj { value } => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "mapObj")?;

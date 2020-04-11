@@ -44,10 +44,6 @@ impl Serialize for RunResult {
                     });
                     arr.end()
                 }
-                Obj::OptionObj { value } => match value {
-                    None => serializer.serialize_none(),
-                    Some(value) => serializer.serialize_some(&RunResult(*value.clone()))
-                }
                 Obj::MapObj { value } => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {

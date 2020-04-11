@@ -434,13 +434,10 @@ impl VM {
                 Opcode::Coalesce => { // TODO: Rewrite this using jumps when they're implemented!
                     let fallback = self.pop_expect()?;
 
-                    if let Value::Obj(Obj::OptionObj { value }) = self.pop_expect()? {
-                        match value {
-                            Some(value) => self.push(*value),
-                            None => self.push(fallback)
-                        }
-                    } else {
-                        unreachable!()
+                    let value = self.pop_expect()?;
+                    match value {
+                        Value::Nil => self.push(fallback),
+                        v @ _ => self.push(v)
                     }
                 }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
@@ -449,13 +446,6 @@ impl VM {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
-                Opcode::OptMk => {
-                    let value = match self.pop_expect()? {
-                        Value::Nil => None,
-                        v @ _ => Some(Box::new(v))
-                    };
-                    self.push(Value::Obj(Obj::OptionObj { value }))
-                }
                 Opcode::MapMk => {
                     let size = self.read_byte_expect()?;
                     let mut items = HashMap::with_capacity(size);
