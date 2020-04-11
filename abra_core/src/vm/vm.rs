@@ -427,23 +427,6 @@ impl VM {
                 }
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
-                Opcode::And | Opcode::Or => {
-                    // TODO: Short-circuiting
-                    if let Value::Bool(b) = self.pop_expect()? {
-                        if let Value::Bool(a) = self.pop_expect()? {
-                            let res = if let Opcode::And = instr {
-                                a && b
-                            } else {
-                                a || b
-                            };
-                            self.push(Value::Bool(res));
-                        } else {
-                            unreachable!()
-                        }
-                    } else {
-                        unreachable!()
-                    }
-                }
                 Opcode::Negate => {
                     let val = pop_expect_bool!(self)?;
                     self.push(Value::Bool(!val));

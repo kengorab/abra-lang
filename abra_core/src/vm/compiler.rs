@@ -433,8 +433,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let opcode = match (node.op, node_type) {
             (BinaryOp::Add, Type::String) => Opcode::StrConcat,
-            (BinaryOp::And, Type::Bool) => Opcode::And,
-            (BinaryOp::Or, Type::Bool) => Opcode::Or,
+            (BinaryOp::And, Type::Bool) |
+            (BinaryOp::Or, Type::Bool) => unreachable!("&& and || get transformed to if-exprs"),
             (BinaryOp::Lt, Type::Bool) => Opcode::LT,
             (BinaryOp::Lte, Type::Bool) => Opcode::LTE,
             (BinaryOp::Gt, Type::Bool) => Opcode::GT,
@@ -1293,10 +1293,14 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
+                Opcode::JumpIfF as u8, 3,
                 Opcode::T as u8,
-                Opcode::And as u8,
+                Opcode::Jump as u8, 1,
                 Opcode::F as u8,
-                Opcode::Or as u8,
+                Opcode::JumpIfF as u8, 3,
+                Opcode::T as u8,
+                Opcode::Jump as u8, 1,
+                Opcode::F as u8,
                 Opcode::Return as u8
             ],
             constants: vec![],

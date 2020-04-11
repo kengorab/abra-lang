@@ -93,6 +93,35 @@ mod tests {
     }
 
     #[test]
+    fn interpret_binary_boolean_short_circuiting() {
+        let preface = "\n\
+          var called = false\n\
+          func getTrue() {\n\
+            called = true\n\
+            true\n\
+          }\n\
+        ";
+
+        let input = format!("{}\n\
+          val res = true || getTrue()
+          res + \" \" + called",
+          preface
+        );
+        let result = interpret(&input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("true false".to_string()) });
+        assert_eq!(expected, result);
+
+        let input = format!("{}\n\
+          val res = false && getTrue()
+          res + \" \" + called",
+          preface
+        );
+        let result = interpret(&input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("false false".to_string()) });
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_binary_comparisons() {
         let cases = vec![
             // Testing <
