@@ -429,6 +429,33 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_binary(&mut self, token: Token, node: TypedBinaryNode) -> Result<(), ()> {
+        if node.op == BinaryOp::Coalesce {
+            let left = *node.left;
+            let right = *node.right;
+            let line = left.get_token().get_position().line;
+
+            // Duplicate coalesce's lval on stack, and compare against Nil. If it's Nil, pop off the
+            // duplicated value and eval the rval. If it's not, skip over that logic and do nothing.
+            // Top-of-stack will be the lval.
+            self.visit(left)?;
+            self.write_opcode(Opcode::Dup, line);
+            self.write_opcode(Opcode::Nil, line);
+            self.write_opcode(Opcode::Eq, line);
+            self.write_opcode(Opcode::JumpIfF, line);
+            self.write_byte(0, line); // <- Replaced after compiling if-block
+            let jump_offset_slot_idx = self.code.len();
+
+            self.write_opcode(Opcode::Pop, line);
+            self.visit(right)?;
+
+            let code = &mut self.code;
+            let if_block_len = code.len().checked_sub(jump_offset_slot_idx)
+                .expect("jump offset slot should be <= end of if-block");
+            *code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
+
+            return Ok(())
+        }
+
         let node_type = &node.typ;
 
         let opcode = match (node.op, node_type) {
@@ -441,7 +468,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             (BinaryOp::Gte, Type::Bool) => Opcode::GTE,
             (BinaryOp::Eq, _) => Opcode::Eq,
             (BinaryOp::Neq, _) => Opcode::Neq,
-            (BinaryOp::Coalesce, _) => Opcode::Coalesce,
+            (BinaryOp::Coalesce, _) => unreachable!("Coalesce is handled in the if-block above"),
 
             (BinaryOp::Add, Type::Int) => Opcode::IAdd,
             (BinaryOp::Add, Type::Float) => Opcode::FAdd,
@@ -1353,8 +1380,12 @@ mod tests {
                 Opcode::ArrMk as u8, 2,
                 Opcode::IConst2 as u8,
                 Opcode::ArrLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::Nil as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 3,
+                Opcode::Pop as u8,
                 Opcode::Constant as u8, 2,
-                Opcode::Coalesce as u8,
                 Opcode::Return as u8
             ],
             constants: vec![

@@ -431,15 +431,6 @@ impl VM {
                     let val = pop_expect_bool!(self)?;
                     self.push(Value::Bool(!val));
                 }
-                Opcode::Coalesce => { // TODO: Rewrite this using jumps when they're implemented!
-                    let fallback = self.pop_expect()?;
-
-                    let value = self.pop_expect()?;
-                    match value {
-                        Value::Nil => self.push(fallback),
-                        v @ _ => self.push(v)
-                    }
-                }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
                 Opcode::LTE => self.comp_values(Opcode::LTE)?,
                 Opcode::GT => self.comp_values(Opcode::GT)?,
@@ -645,6 +636,10 @@ impl VM {
                 Opcode::PopN => {
                     let num_to_pop = self.read_byte_expect()?;
                     self.pop_expect_n(num_to_pop)?;
+                }
+                Opcode::Dup => {
+                    let value = self.stack.last().unwrap().clone();
+                    self.stack.push(value);
                 }
                 Opcode::Return => {
                     let is_main_frame = self.call_stack.len() == 1;
