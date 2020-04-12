@@ -69,12 +69,15 @@ impl<'a> Lexer<'a> {
         self.input.peek()
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) -> bool {
+        let mut saw_newline = false;
         loop {
             match self.peek() {
                 Some(&ch) => {
                     if ch.is_whitespace() {
                         if ch == '\n' {
+                            saw_newline = true;
+
                             self.line += 1;
                             self.col = 0;
                             self.advance();
@@ -92,10 +95,12 @@ impl<'a> Lexer<'a> {
                 _ => break
             }
         }
+
+        saw_newline
     }
 
     fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
-        self.skip_whitespace();
+        let skipped_newline = self.skip_whitespace();
 
         let ch = match self.advance() {
             None => return Ok(None),
@@ -126,12 +131,12 @@ impl<'a> Lexer<'a> {
             };
 
             let s: String = chars.into_iter().collect();
-            if is_float {
+            return if is_float {
                 let f: f64 = s.parse().expect("Parsing string of digits (with '.') into float");
-                return Ok(Some(Token::Float(pos, f)));
+                Ok(Some(Token::Float(pos, f)))
             } else {
                 let i: i64 = s.parse().expect("Parsing string of digits into int");
-                return Ok(Some(Token::Int(pos, i)));
+                Ok(Some(Token::Int(pos, i)))
             }
         }
 
@@ -289,7 +294,7 @@ impl<'a> Lexer<'a> {
             }
             '(' => Ok(Some(Token::LParen(pos))),
             ')' => Ok(Some(Token::RParen(pos))),
-            '[' => Ok(Some(Token::LBrack(pos))),
+            '[' => Ok(Some(Token::LBrack(pos, skipped_newline))),
             ']' => Ok(Some(Token::RBrack(pos))),
             '{' => Ok(Some(Token::LBrace(pos))),
             '}' => Ok(Some(Token::RBrace(pos))),
@@ -377,7 +382,7 @@ mod tests {
         let expected = vec![
             Token::LParen(Position::new(1, 1)),
             Token::RParen(Position::new(1, 3)),
-            Token::LBrack(Position::new(1, 5)),
+            Token::LBrack(Position::new(1, 5), false),
             Token::RBrack(Position::new(1, 7)),
             Token::LBrace(Position::new(1, 9)),
             Token::RBrace(Position::new(1, 11)),
