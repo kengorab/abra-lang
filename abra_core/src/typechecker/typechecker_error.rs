@@ -719,7 +719,7 @@ Required parameters must all be listed before any optional parameters"
         // Testing non-homogeneous maps
         let src = "val m = { a: \"hello\", b: 3 }\nm[\"a\"]".to_string();
         let err = TypecheckerError::InvalidIndexingTarget {
-            token: Token::LBrack(Position::new(2, 2)),
+            token: Token::LBrack(Position::new(2, 2), false),
             target_type: Type::Map(
                 vec![("a".to_string(), Type::String), ("b".to_string(), Type::Int)],
                 None,
@@ -737,7 +737,7 @@ Cannot index into maps whose values are not all the same type"
         // Testing other types
         let src = "123[1]".to_string();
         let err = TypecheckerError::InvalidIndexingTarget {
-            token: Token::LBrack(Position::new(1, 4)),
+            token: Token::LBrack(Position::new(1, 4), false),
             target_type: Type::Int,
         };
 
@@ -754,7 +754,7 @@ Type Int is not indexable"
     fn test_invalid_indexing_selector() {
         let src = "\"abc\"[\"d\"]".to_string();
         let err = TypecheckerError::InvalidIndexingSelector {
-            token: Token::LBrack(Position::new(1, 6)),
+            token: Token::LBrack(Position::new(1, 6), false),
             target_type: Type::String,
             selector_type: Type::String,
         };

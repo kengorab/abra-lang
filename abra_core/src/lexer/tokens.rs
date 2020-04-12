@@ -65,7 +65,7 @@ pub enum Token {
 
     #[strum(to_string = "(", serialize = "LParen")] LParen(Position),
     #[strum(to_string = ")", serialize = "RParen")] RParen(Position),
-    #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position),
+    #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position, /* is_preceded_by_newline: */ bool),
     #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),
     #[strum(to_string = "{", serialize = "LBrace")] LBrace(Position),
     #[strum(to_string = "}", serialize = "RBrace")] RBrace(Position),
@@ -94,7 +94,7 @@ impl Token {
             Token::In(pos) |
             Token::Type(pos) |
 
-            Token::Ident(pos, _) => pos,
+            Token::Ident(pos, _) |
 
             Token::Assign(pos) |
             Token::Plus(pos) |
@@ -115,7 +115,7 @@ impl Token {
 
             Token::LParen(pos) |
             Token::RParen(pos) |
-            Token::LBrack(pos) |
+            Token::LBrack(pos, _) |
             Token::RBrack(pos) |
             Token::LBrace(pos) |
             Token::RBrace(pos) |

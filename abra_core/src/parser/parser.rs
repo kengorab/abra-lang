@@ -126,7 +126,7 @@ impl Parser {
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
-            Token::LBrack(_) => Some(Box::new(Parser::parse_array)),
+            Token::LBrack(_, _) => Some(Box::new(Parser::parse_array)),
             Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
             Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
             Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
@@ -146,7 +146,7 @@ impl Parser {
             Token::RBrack(_) |
             Token::Comma(_) |
             Token::Ident(_, _) => None,
-            Token::LBrack(_) => Some(Box::new(Parser::parse_index)),
+            Token::LBrack(_, _) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             Token::LParen(_) => Some(Box::new(Parser::parse_invocation)),
             Token::Dot(_) => Some(Box::new(Parser::parse_accessor)),
@@ -164,7 +164,10 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::Dot(_) | Token::LBrack(_) | Token::LParen(_) => Precedence::Call,
+            Token::Dot(_) | Token::LParen(_) => Precedence::Call,
+            Token::LBrack(_, is_preceded_by_newline) => {
+                if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
+            }
             _ => Precedence::None,
         }
     }
@@ -194,7 +197,7 @@ impl Parser {
         let mut next_token = self.peek();
         loop {
             match next_token {
-                Some(Token::LBrack(_)) => {
+                Some(Token::LBrack(_, _)) => {
                     self.expect_next()?; // Consume '['
                     match self.expect_peek()? {
                         Token::RBrack(_) => self.expect_next(), // Consume ']'
@@ -1124,7 +1127,7 @@ mod tests {
                                 op: BinaryOp::Coalesce,
                                 right: Box::new(
                                     Indexing(
-                                        Token::LBrack(Position::new(1, 11)),
+                                        Token::LBrack(Position::new(1, 11), false),
                                         IndexingNode {
                                             target: Box::new(identifier!((1, 8), "def")),
                                             index: IndexingMode::Index(Box::new(int_literal!((1, 12), 0))),
@@ -1192,7 +1195,7 @@ mod tests {
     #[test]
     fn parse_array_empty() -> TestResult {
         let ast = parse("[]")?;
-        let expected = AstNode::Array(Token::LBrack(Position::new(1, 1)), ArrayNode {
+        let expected = AstNode::Array(Token::LBrack(Position::new(1, 1), false), ArrayNode {
             items: vec![]
         });
         Ok(assert_eq!(expected, ast[0]))
@@ -1202,7 +1205,7 @@ mod tests {
     fn parse_array_with_items() -> TestResult {
         let ast = parse("[1, true, \"a\", 3.14]")?;
         let expected = AstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             ArrayNode {
                 items: vec![
                     Box::new(int_literal!((1, 2), 1)),
@@ -1219,11 +1222,11 @@ mod tests {
     fn parse_array_nested() -> TestResult {
         let ast = parse("[[1, 2], [3, 4]]")?;
         let expected = AstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             ArrayNode {
                 items: vec![
                     Box::new(AstNode::Array(
-                        Token::LBrack(Position::new(1, 2)),
+                        Token::LBrack(Position::new(1, 2), false),
                         ArrayNode {
                             items: vec![
                                 Box::new(int_literal!((1, 3), 1)),
@@ -1232,7 +1235,7 @@ mod tests {
                         },
                     )),
                     Box::new(AstNode::Array(
-                        Token::LBrack(Position::new(1, 10)),
+                        Token::LBrack(Position::new(1, 10), false),
                         ArrayNode {
                             items: vec![
                                 Box::new(int_literal!((1, 11), 3)),
@@ -1756,7 +1759,7 @@ mod tests {
     fn parse_indexing() -> TestResult {
         let ast = parse("abcd[1]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 5)),
+            Token::LBrack(Position::new(1, 5), false),
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Index(Box::new(int_literal!((1, 6), 1))),
@@ -1766,7 +1769,7 @@ mod tests {
 
         let ast = parse("abcd[1:3]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 5)),
+            Token::LBrack(Position::new(1, 5), false),
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
@@ -1779,7 +1782,7 @@ mod tests {
 
         let ast = parse("abcd[a:]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 5)),
+            Token::LBrack(Position::new(1, 5), false),
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
@@ -1796,7 +1799,7 @@ mod tests {
 
         let ast = parse("abcd[:b]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 5)),
+            Token::LBrack(Position::new(1, 5), false),
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
@@ -1816,12 +1819,12 @@ mod tests {
     fn parse_indexing_nested() -> TestResult {
         let ast = parse("a[b[2]]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 2)),
+            Token::LBrack(Position::new(1, 2), false),
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "a")),
                 index: IndexingMode::Index(Box::new(
                     AstNode::Indexing(
-                        Token::LBrack(Position::new(1, 4)),
+                        Token::LBrack(Position::new(1, 4), false),
                         IndexingNode {
                             target: Box::new(identifier!((1, 3), "b")),
                             index: IndexingMode::Index(Box::new(
@@ -1836,14 +1839,14 @@ mod tests {
 
         let ast = parse("[a, b][1][2]")?;
         let expected = AstNode::Indexing(
-            Token::LBrack(Position::new(1, 10)),
+            Token::LBrack(Position::new(1, 10), false),
             IndexingNode {
                 target: Box::new(AstNode::Indexing(
-                    Token::LBrack(Position::new(1, 7)),
+                    Token::LBrack(Position::new(1, 7), false),
                     IndexingNode {
                         target: Box::new(
                             AstNode::Array(
-                                Token::LBrack(Position::new(1, 1)),
+                                Token::LBrack(Position::new(1, 1), false),
                                 ArrayNode {
                                     items: vec![
                                         Box::new(identifier!((1, 2), "a")),
@@ -1863,6 +1866,46 @@ mod tests {
             },
         );
         Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_indexing_nested_separate_expressions() -> TestResult {
+        let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
+        let expected = vec![
+            AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
+                ident: Token::Ident(Position::new(1, 5), "a".to_string()),
+                type_ann: None,
+                expr: Some(Box::new(AstNode::Binary(Token::Plus(Position::new(2, 1)), BinaryNode {
+                    left: Box::new(int_literal!((1, 9), 1)),
+                    op: BinaryOp::Add,
+                    right: Box::new(identifier!((3, 1), "a")),
+                }))),
+                is_mutable: false,
+            }),
+            AstNode::Array(
+                Token::LBrack(Position::new(4, 1), true),
+                ArrayNode {
+                    items: vec![
+                        Box::new(identifier!((4, 2), "a")),
+                    ]
+                },
+            ),
+            AstNode::Invocation(Token::LParen(Position { line: 5, col: 8 }), InvocationNode {
+                target: Box::new(identifier!((5, 1), "println")),
+                args: vec![
+                    (None, identifier!((5, 9), "a"))
+                ]
+            }),
+            AstNode::Array(
+                Token::LBrack(Position::new(6, 1), true),
+                ArrayNode {
+                    items: vec![
+                        Box::new(identifier!((6, 2), "a")),
+                    ]
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
@@ -2402,7 +2445,7 @@ mod tests {
                 iteratee: ident_token!((1, 5), "a"),
                 index_ident: None,
                 iterator: Box::new(AstNode::Array(
-                    Token::LBrack(Position::new(1, 10)),
+                    Token::LBrack(Position::new(1, 10), false),
                     ArrayNode {
                         items: vec![
                             Box::new(int_literal!((1, 11), 0)),
@@ -2422,7 +2465,7 @@ mod tests {
                 iteratee: ident_token!((1, 5), "a"),
                 index_ident: Some(ident_token!((1, 8), "i")),
                 iterator: Box::new(AstNode::Array(
-                    Token::LBrack(Position::new(1, 13)),
+                    Token::LBrack(Position::new(1, 13), false),
                     ArrayNode {
                         items: vec![
                             Box::new(int_literal!((1, 14), 0)),
@@ -2445,7 +2488,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = parse("for a [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::In, Token::LBrack(Position::new(1, 7)));
+        let expected = ParseError::ExpectedToken(TokenType::In, Token::LBrack(Position::new(1, 7), false));
         assert_eq!(expected, error);
 
         let error = parse("for a in { a }").unwrap_err();

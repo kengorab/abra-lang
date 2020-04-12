@@ -214,10 +214,11 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
-            Token::LBrack(pos) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
+            Token::LBrack(pos, is_preceded_by_newline) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "lBrack")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.serialize_entry("isPrecededByNewline", is_preceded_by_newline)?;
                 obj.end()
             }
             Token::RBrack(pos) => {

@@ -1660,7 +1660,7 @@ mod tests {
     fn typecheck_array_empty() -> TestResult {
         let typed_ast = typecheck("[]")?;
         let expected = TypedAstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode { typ: Type::Array(Box::new(Type::Any)), items: vec![] },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -1672,7 +1672,7 @@ mod tests {
     fn typecheck_array_homogeneous() -> TestResult {
         let typed_ast = typecheck("[1, 2, 3]")?;
         let expected = TypedAstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::Int)),
                 items: vec![
@@ -1686,7 +1686,7 @@ mod tests {
 
         let typed_ast = typecheck("[\"a\", \"b\"]")?;
         let expected = TypedAstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::String)),
                 items: vec![
@@ -1699,7 +1699,7 @@ mod tests {
 
         let typed_ast = typecheck("[true, false]")?;
         let expected = TypedAstNode::Array(
-            Token::LBrack(Position::new(1, 1)),
+            Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::Bool)),
                 items: vec![
@@ -1962,7 +1962,7 @@ mod tests {
                             is_mutable: false,
                             expr: Some(Box::new(
                                 TypedAstNode::Array(
-                                    Token::LBrack(Position::new(1, 22)),
+                                    Token::LBrack(Position::new(1, 22), false),
                                     TypedArrayNode {
                                         typ: Type::Array(Box::new(Type::Int)),
                                         items: vec![
@@ -2044,7 +2044,7 @@ mod tests {
             (ident_token!((1, 10), "a"), Type::Int, Some(int_literal!((1, 19), 1))),
             (ident_token!((1, 22), "b"), Type::Array(Box::new(Type::Int)), Some(
                 TypedAstNode::Array(
-                    Token::LBrack(Position::new(1, 26)),
+                    Token::LBrack(Position::new(1, 26), false),
                     TypedArrayNode {
                         typ: Type::Array(Box::new(Type::Int)),
                         items: vec![
@@ -2322,7 +2322,7 @@ mod tests {
     fn typecheck_indexing() -> TestResult {
         let typed_ast = typecheck("val abc = [1, 2, 3]\nabc[1]")?;
         let expected = TypedAstNode::Indexing(
-            Token::LBrack(Position::new(2, 4)),
+            Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
                 typ: Type::Option(Box::new(Type::Int)),
                 target: Box::new(
@@ -2343,7 +2343,7 @@ mod tests {
 
         let typed_ast = typecheck("val idx = 1\nval abc = [1, 2, 3]\nabc[idx:]")?;
         let expected = TypedAstNode::Indexing(
-            Token::LBrack(Position::new(3, 4)),
+            Token::LBrack(Position::new(3, 4), false),
             TypedIndexingNode {
                 typ: Type::Array(Box::new(Type::Int)),
                 target: Box::new(
@@ -2377,7 +2377,7 @@ mod tests {
 
         let typed_ast = typecheck("val idx = 1\n\"abc\"[:idx * 2]")?;
         let expected = TypedAstNode::Indexing(
-            Token::LBrack(Position::new(2, 6)),
+            Token::LBrack(Position::new(2, 6), false),
             TypedIndexingNode {
                 typ: Type::String,
                 target: Box::new(string_literal!((2, 1), "abc")),
@@ -2411,7 +2411,7 @@ mod tests {
 
         let typed_ast = typecheck("val map = { a: 1, b: 2 }\nmap[\"a\"]")?;
         let expected = TypedAstNode::Indexing(
-            Token::LBrack(Position::new(2, 4)),
+            Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
                 typ: Type::Option(Box::new(Type::Int)),
                 target: Box::new(TypedAstNode::Identifier(
@@ -2446,7 +2446,7 @@ mod tests {
 
         let err = typecheck("\"abcd\"[[1, 2]]").unwrap_err();
         let expected = TypecheckerError::InvalidIndexingSelector {
-            token: Token::LBrack(Position::new(1, 8)),
+            token: Token::LBrack(Position::new(1, 8), false),
             target_type: Type::String,
             selector_type: Type::Array(Box::new(Type::Int)),
         };
@@ -2470,14 +2470,14 @@ mod tests {
 
         let err = typecheck("123[0]").unwrap_err();
         let expected = TypecheckerError::InvalidIndexingTarget {
-            token: Token::LBrack(Position::new(1, 4)),
+            token: Token::LBrack(Position::new(1, 4), false),
             target_type: Type::Int,
         };
         assert_eq!(expected, err);
 
         let err = typecheck("val a: Int = [1, 2, 3][0]").unwrap_err();
         let expected = TypecheckerError::Mismatch {
-            token: Token::LBrack(Position::new(1, 23)),
+            token: Token::LBrack(Position::new(1, 23), false),
             expected: Type::Int,
             actual: Type::Option(Box::new(Type::Int)),
         };
@@ -2496,7 +2496,7 @@ mod tests {
 
         let err = typecheck("{ a: true, b: 2 }[\"a\"]").unwrap_err();
         let expected = TypecheckerError::InvalidIndexingTarget {
-            token: Token::LBrack(Position::new(1, 18)),
+            token: Token::LBrack(Position::new(1, 18), false),
             target_type: Type::Map(
                 vec![("a".to_string(), Type::Bool), ("b".to_string(), Type::Int)],
                 None,
@@ -3288,7 +3288,7 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::Int,
                 target: Box::new(TypedAstNode::Array(
-                    Token::LBrack(Position::new(1, 1)),
+                    Token::LBrack(Position::new(1, 1), false),
                     TypedArrayNode {
                         typ: Type::Array(Box::new(Type::Int)),
                         items: vec![
