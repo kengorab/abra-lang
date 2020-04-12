@@ -55,7 +55,12 @@ impl Parser {
     }
 
     fn advance(&mut self) -> Option<Token> {
-        self.tokens.next()
+        match self.tokens.next() {
+            Some(Token::Newline(_)) => {
+                self.tokens.next()
+            }
+            t @ _ => t
+        }
     }
 
     fn expect_next(&mut self) -> Result<Token, ParseError> {
@@ -74,6 +79,13 @@ impl Parser {
     }
 
     fn peek(&mut self) -> Option<&Token> {
+        if let Some(Token::Newline(_)) = self.tokens.peek() {
+            self.tokens.next();
+        }
+        self.tokens.peek()
+    }
+
+    fn peek_allow_newline(&mut self) -> Option<&Token> {
         self.tokens.peek()
     }
 
@@ -96,10 +108,23 @@ impl Parser {
 
                 let prec: u8 = prec.into();
                 loop {
-                    if let Some(infix_token) = self.peek() {
-                        let next_prec = Parser::get_precedence_for_token(&infix_token);
-                        let next_prec: u8 = next_prec.into();
-                        if prec < next_prec {
+                    if let Some(mut infix_token) = self.peek_allow_newline() {
+                        let saw_newline = if let Token::Newline(_) = infix_token {
+                            match self.peek() {
+                                None => break,
+                                Some(tok) => infix_token = tok
+                            };
+                            true
+                        } else { false };
+
+                        let next_prec = Parser::get_precedence_for_token(infix_token);
+                        if let Precedence::Call = &next_prec {
+                            // Forbid newlines in the middle of expressions with Precedence::Call, like
+                            // `println\n("hello")`, or `[1, 2, 3]\n[2]`.
+                            if saw_newline { break; }
+                        }
+
+                        if prec < next_prec.into() {
                             let infix_token = self.expect_next()?;
 
                             if let Some(infix_fn) = self.get_infix_rule(&infix_token) {
@@ -1863,6 +1888,40 @@ mod tests {
             },
         );
         Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_indexing_nested_separate_expressions() -> TestResult {
+        let ast = parse("val a = 1\n+\n1\nprintln(a)\n[a]")?;
+        let expected = vec![
+            AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
+                ident: Token::Ident(Position::new(1, 5), "a".to_string()),
+                type_ann: None,
+                expr: Some(Box::new(AstNode::Binary(Token::Plus(Position::new(2, 1)), BinaryNode {
+                    left: Box::new(int_literal!((1, 9), 1)),
+                    op: BinaryOp::Add,
+                    right: Box::new(int_literal!((3, 1), 1)),
+                }))),
+                is_mutable: false,
+            }),
+            Invocation(Token::LParen(Position { line: 4, col: 8 }), InvocationNode {
+                target: Box::new(
+                    AstNode::Identifier(Token::Ident(Position { line: 4, col: 1 }, "println".to_string()))
+                ),
+                args: vec![
+                    (None, AstNode::Identifier(Token::Ident(Position { line: 4, col: 9 }, "a".to_string())))
+                ]
+            }),
+            AstNode::Array(
+                Token::LBrack(Position::new(5, 1)),
+                ArrayNode {
+                    items: vec![
+                        Box::new(identifier!((5, 2), "a")),
+                    ]
+                },
+            )
+        ];
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]

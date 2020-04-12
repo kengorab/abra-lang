@@ -28,6 +28,8 @@ pub enum Keyword {
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
 #[strum_discriminants(name(TokenType), derive(Display))]
 pub enum Token {
+    #[strum(to_string = "newline", serialize = "Newline")] Newline(Position),
+
     #[strum(to_string = "int", serialize = "Int")] Int(Position, i64),
     #[strum(to_string = "float", serialize = "Float")] Float(Position, f64),
     #[strum(to_string = "string", serialize = "String")] String(Position, String),
@@ -78,6 +80,7 @@ pub enum Token {
 impl Token {
     pub fn get_position(&self) -> Position {
         let pos = match self {
+            Token::Newline(pos) |
             Token::Int(pos, _) |
             Token::Float(pos, _) |
             Token::String(pos, _) |
@@ -94,7 +97,7 @@ impl Token {
             Token::In(pos) |
             Token::Type(pos) |
 
-            Token::Ident(pos, _) => pos,
+            Token::Ident(pos, _) |
 
             Token::Assign(pos) |
             Token::Plus(pos) |

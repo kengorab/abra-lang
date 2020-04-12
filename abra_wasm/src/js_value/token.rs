@@ -11,6 +11,12 @@ impl<'a> Serialize for JsToken<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
+            Token::Newline(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "newline")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Int(pos, val) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "int")?;

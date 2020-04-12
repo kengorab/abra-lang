@@ -11,7 +11,13 @@ pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
 
     loop {
         match lexer.next_token()? {
-            Some(tok) => tokens.push(tok),
+            Some(tok) => {
+                match (tokens.last(), &tok) {
+                    // Don't add consecutive Newline tokens
+                    (Some(Token::Newline(_)), Token::Newline(_)) => continue,
+                    _ => tokens.push(tok)
+                }
+            }
             None => break
         }
     };
@@ -69,12 +75,17 @@ impl<'a> Lexer<'a> {
         self.input.peek()
     }
 
-    fn skip_whitespace(&mut self) {
+    fn skip_whitespace(&mut self) -> Option<Token> {
+        let mut newline_tok = None;
+
         loop {
             match self.peek() {
                 Some(&ch) => {
                     if ch.is_whitespace() {
                         if ch == '\n' {
+                            let pos = Position::new(self.line, self.col + 1);
+                            newline_tok = Some(Token::Newline(pos));
+
                             self.line += 1;
                             self.col = 0;
                             self.advance();
@@ -92,10 +103,14 @@ impl<'a> Lexer<'a> {
                 _ => break
             }
         }
+
+        newline_tok
     }
 
     fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
-        self.skip_whitespace();
+        if let Some(newline_tok) = self.skip_whitespace() {
+            return Ok(Some(newline_tok));
+        }
 
         let ch = match self.advance() {
             None => return Ok(None),
@@ -311,6 +326,7 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
+            Token::Newline(Position::new(1, 4)),
             Token::Int(Position::new(2, 2), 456),
         ];
         assert_eq!(expected, tokens);
@@ -322,6 +338,7 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Float(Position::new(1, 1), 1.23),
+            Token::Newline(Position::new(1, 5)),
             Token::Float(Position::new(2, 2), 0.456),
         ];
         assert_eq!(expected, tokens);
@@ -493,6 +510,7 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
+            Token::Newline(Position::new(1, 4)),
             Token::Int(Position::new(3, 1), 456),
         ];
         assert_eq!(expected, tokens);
@@ -504,6 +522,7 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
+            Token::Newline(Position::new(1, 4)),
             Token::Int(Position::new(5, 4), 456),
         ];
         assert_eq!(expected, tokens);
