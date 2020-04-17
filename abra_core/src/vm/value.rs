@@ -60,9 +60,11 @@ pub enum Obj {
     StringObj { value: Box<String> },
     ArrayObj { value: Vec<Box<Value>> },
     MapObj { value: HashMap<String, Value> },
+    InstanceObj { typ: Box<Value>, fields: Vec<Value> },
 }
 
 impl Obj {
+    // TODO: Proper toString impl
     pub fn to_string(&self) -> String {
         match self {
             Obj::StringObj { value } => *value.clone(),
@@ -79,6 +81,12 @@ impl Obj {
                     .collect::<Vec<String>>()
                     .join(", ");
                 format!("{{ {} }}", items)
+            }
+            Obj::InstanceObj { typ, .. } => {
+                match &**typ {
+                    Value::Type(name) => format!("<instance {}>", name),
+                    _ => unreachable!("Shouldn't have instances of non-struct types")
+                }
             }
         }
     }

@@ -1001,7 +1001,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }).collect();
 
-                    Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), fields }))
+                    Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), target: Box::new(target), fields }))
                 }
                 t @ Type::Int | t @ Type::Float | t @ Type::String | t @ Type::Bool => {
                     if args.len() != 1 {
@@ -1117,30 +1117,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let AccessorNode { target, field } = node;
         let target = self.visit(*target)?;
 
-        let field_name = Token::get_ident_name(&field);
+        let field_name = Token::get_ident_name(&field).clone();
 
         let target_type = target.get_type();
-        let typ = match &target_type {
+        let field_data = match &target_type {
             Type::Struct { fields, .. } => {
-                match fields.iter().find(|(name, _, _)| field_name == name) {
-                    Some((_, typ, _)) => Ok(typ.clone()),
-                    None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() })
-                }
+                fields.iter().enumerate()
+                    .find(|(idx, (name, _, _))| &field_name == name)
+                    .map(|(idx, (_, typ, _))| (idx, typ.clone()))
             }
             typ @ _ => {
-                let field_type = fields_for_type(typ)
-                    .and_then(|fields| {
-                        fields.get(field_name.as_str())
-                            .map(|t| t.clone())
-                    });
-                match field_type {
-                    Some(typ) => Ok(typ.clone()),
-                    None => Err(TypecheckerError::UnknownMember { token: field.clone(), target_type: typ.clone() })
-                }
+                fields_for_type(typ).and_then(|fields| {
+                    fields.iter().enumerate()
+                        .find(|(_, (name,typ))| name == &&&field_name)
+                        .map(|(idx, (_, typ))| (idx, typ.clone()))
+                })
             }
-        }?;
+        };
+        let (field_idx, typ) = field_data.ok_or(
+            TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() }
+        )?;
 
-        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field }))
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx }))
     }
 }
 
@@ -2849,13 +2847,25 @@ mod tests {
           type Person { name: String }\n\
           Person(name: \"Ken\")\
         ")?;
+        let typ = Type::Struct {
+            name: "Person".to_string(),
+            fields: vec![("name".to_string(), Type::String, false)],
+        };
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7)),
             TypedInstantiationNode {
-                typ: Type::Struct {
-                    name: "Person".to_string(),
-                    fields: vec![("name".to_string(), Type::String, false)],
-                },
+                typ: typ.clone(),
+                target: Box::new(
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 1), "Person"),
+                        TypedIdentifierNode {
+                            typ: Type::Type("Person".to_string(), Box::new(typ)),
+                            name: "Person".to_string(),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
+                    )
+                ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken"))
                 ],
@@ -2868,16 +2878,28 @@ mod tests {
           type Person { name: String, age: Int = 0 }\n\
           Person(name: \"Ken\")\
         ")?;
+        let typ = Type::Struct {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String, false),
+                ("age".to_string(), Type::Int, true),
+            ],
+        };
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7)),
             TypedInstantiationNode {
-                typ: Type::Struct {
-                    name: "Person".to_string(),
-                    fields: vec![
-                        ("name".to_string(), Type::String, false),
-                        ("age".to_string(), Type::Int, true),
-                    ],
-                },
+                typ: typ.clone(),
+                target: Box::new(
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 1), "Person"),
+                        TypedIdentifierNode {
+                            typ: Type::Type("Person".to_string(), Box::new(typ)),
+                            name: "Person".to_string(),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
+                    )
+                ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken")),
                     ("age".to_string(), int_literal!((1, 40), 0)),
@@ -3246,7 +3268,8 @@ mod tests {
                         is_mutable: false,
                     },
                 )),
-                field: ident_token!((3, 3), "name"),
+                field_name: "name".to_string(),
+                field_idx: 0,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -3276,7 +3299,8 @@ mod tests {
                         is_mutable: false,
                     },
                 )),
-                field: ident_token!((3, 3), "age"),
+                field_name: "age".to_string(),
+                field_idx: 1,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -3298,7 +3322,8 @@ mod tests {
                         ],
                     },
                 )),
-                field: ident_token!((1, 11), "length"),
+                field_name: "length".to_string(),
+                field_idx: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -3310,7 +3335,8 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::Int,
                 target: Box::new(string_literal!((1, 1), "hello")),
-                field: ident_token!((1, 9), "length"),
+                field_name: "length".to_string(),
+                field_idx: 0,
             },
         );
         assert_eq!(expected, typed_ast[0]);

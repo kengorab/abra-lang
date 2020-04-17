@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub trait NativeType {
     fn fields(typ: &Type) -> HashMap<&str, Type>;
-    fn get_field_value(value: &Value, field: String) -> Value;
+    fn get_field_value(value: &Value, field_idx: usize) -> Value;
 }
 
 pub fn fields_for_type(typ: &Type) -> Option<HashMap<&str, Type>> {
@@ -28,10 +28,10 @@ impl NativeType for NativeArray {
         }
     }
 
-    fn get_field_value(value: &Value, field: String) -> Value {
+    fn get_field_value(value: &Value, field_idx: usize) -> Value {
         if let Value::Obj(Obj::ArrayObj { value }) = value {
-            match field.as_str() {
-                "length" => Value::Int(value.len() as i64),
+            match field_idx {
+                0 => Value::Int(value.len() as i64),
                 _ => unreachable!()
             }
         } else {
@@ -49,10 +49,10 @@ impl NativeType for NativeString {
         fields
     }
 
-    fn get_field_value(value: &Value, field: String) -> Value {
+    fn get_field_value(value: &Value, field_idx: usize) -> Value {
         if let Value::Obj(Obj::StringObj { value }) = value {
-            match field.as_str() {
-                "length" => Value::Int(value.len() as i64),
+            match field_idx {
+                0 => Value::Int(value.len() as i64),
                 _ => unreachable!()
             }
         } else {

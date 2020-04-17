@@ -7,6 +7,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 use crate::vm::prelude::Prelude;
+use crate::builtins::native_types;
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
@@ -49,12 +50,13 @@ pub struct Compiler {
     prelude: Prelude,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Metadata {
     pub loads: Vec<String>,
     pub stores: Vec<String>,
     pub uv_loads: Vec<String>,
     pub uv_stores: Vec<String>,
+    pub field_gets: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +66,7 @@ pub struct Module {
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
-    let metadata = Metadata { loads: Vec::new(), stores: Vec::new(), uv_loads: Vec::new(), uv_stores: Vec::new() };
+    let metadata = Metadata::default();
     let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
     let mut compiler = Compiler {
@@ -453,7 +455,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 .expect("jump offset slot should be <= end of if-block");
             *code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
 
-            return Ok(())
+            return Ok(());
         }
 
         let node_type = &node.typ;
@@ -979,30 +981,34 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_instantiation(&mut self, token: Token, node: TypedInstantiationNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedInstantiationNode { fields, .. } = node;
+        let TypedInstantiationNode { target, fields, .. } = node;
+
+        self.visit(*target)?;
 
         let num_fields = fields.len();
-        for (field_name, field_value) in fields {
-            self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(field_name) }), line);
+        for (_, field_value) in fields.into_iter().rev() {
             self.visit(field_value)?;
         }
 
-        self.write_opcode(Opcode::MapMk, line);
+        self.write_opcode(Opcode::New, line);
         self.write_byte(num_fields as u8, line);
+
+        // TODO: Emit Init opcode, for initializing methods
 
         Ok(())
     }
 
     fn visit_accessor(&mut self, token: Token, node: TypedAccessorNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedAccessorNode { target, field, .. } = node;
+        let TypedAccessorNode { target, field_name, field_idx, .. } = node;
 
         self.visit(*target)?;
 
-        let field_name = Token::get_ident_name(&field).clone();
-        self.write_constant(Value::Obj(Obj::StringObj { value: Box::new(field_name) }), line);
+        self.metadata.field_gets.push(field_name);
 
-        self.write_opcode(Opcode::MapLoad, line);
+        self.write_opcode(Opcode::GetField, line);
+        self.write_byte(field_idx as u8, line);
+
         Ok(())
     }
 
@@ -1540,17 +1546,17 @@ mod tests {
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
                 Opcode::Constant as u8, 2,
+                Opcode::New as u8, 1,
                 Opcode::Constant as u8, 3,
-                Opcode::MapMk as u8, 1,
-                Opcode::Constant as u8, 4,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
             ],
             constants: vec![
                 Value::Type("Person".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Meg".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("meg".to_string()) }),
             ],
@@ -1568,31 +1574,29 @@ mod tests {
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
-                Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
-                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
                 Opcode::IConst0 as u8,
-                Opcode::MapMk as u8, 2,
-                Opcode::Constant as u8, 5,
-                Opcode::GStore as u8,
                 Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 6,
+                Opcode::New as u8, 2,
+                Opcode::Constant as u8, 3,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
                 Opcode::Constant as u8, 4,
-                Opcode::Constant as u8, 7,
-                Opcode::MapMk as u8, 2,
-                Opcode::Constant as u8, 8,
+                Opcode::Constant as u8, 5,
+                Opcode::New as u8, 2,
+                Opcode::Constant as u8, 6,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
             ],
             constants: vec![
                 Value::Type("Person".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Unnamed".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("age".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("someBaby".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("Some Name".to_string()) }),
                 Value::Int(29),
+                Value::Obj(Obj::StringObj { value: Box::new("Some Name".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("anAdult".to_string()) }),
             ],
         };
@@ -2547,7 +2551,7 @@ mod tests {
         // Accessing fields of structs
         let chunk = compile("\
           type Person { name: String }\n\
-          val ken: Person = { name: \"Ken\" }\n\
+          val ken = Person(name: \"Ken\")\n\
           ken.name\n\
         ");
         let expected = Module {
@@ -2555,21 +2559,20 @@ mod tests {
                 Opcode::Constant as u8, 0,
                 Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
-                Opcode::Constant as u8, 2,
-                Opcode::Constant as u8, 3,
-                Opcode::MapMk as u8, 1,
-                Opcode::Constant as u8, 4,
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 1,
                 Opcode::GLoad as u8,
                 Opcode::Constant as u8, 2,
-                Opcode::MapLoad as u8,
+                Opcode::New as u8, 1,
+                Opcode::Constant as u8, 3,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 3,
+                Opcode::GLoad as u8,
+                Opcode::GetField as u8, 0,
                 Opcode::Return as u8
             ],
             constants: vec![
                 Value::Type("Person".to_string()),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("name".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("ken".to_string()) }),
             ],
@@ -2581,13 +2584,11 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::MapLoad as u8,
+                Opcode::GetField as u8, 0,
                 Opcode::Return as u8
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("length".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
