@@ -437,6 +437,36 @@ impl VM {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
+                Opcode::New => {
+                    let size = self.read_byte_expect()?;
+                    let mut fields = Vec::with_capacity(size);
+                    for _ in 0..size {
+                        let field_value = self.pop_expect()?;
+                        fields.push(field_value);
+                    }
+
+                    let type_value = self.pop_expect()?;
+
+                    let inst = Value::Obj(Obj::InstanceObj { typ: Box::new(type_value), fields });
+                    self.push(inst);
+                }
+                Opcode::GetField => {
+                    let inst = self.pop_expect()?;
+                    let field_idx = self.read_byte_expect()?;
+
+                    let value = match inst {
+                        Value::Obj(Obj::InstanceObj { fields, .. }) => {
+                            match fields.get(field_idx) {
+                                Some(field_val) => field_val.clone(),
+                                None => unreachable!()
+                            }
+                        }
+                        value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, field_idx),
+                        value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, field_idx),
+                        _ => unreachable!()
+                    };
+                    self.push(value);
+                }
                 Opcode::MapMk => {
                     let size = self.read_byte_expect()?;
                     let mut items = HashMap::with_capacity(size);
@@ -456,8 +486,6 @@ impl VM {
                                 None => Value::Nil
                             }
                         }
-                        value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, key),
-                        value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, key),
                         _ => unreachable!()
                     };
                     self.push(val)

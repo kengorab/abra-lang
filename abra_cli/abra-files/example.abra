@@ -1,16 +1,7 @@
-func getOne() {
-  println("called!")
-
-  1
+type Person {
+  firstName: String
+  lastName: String
 }
 
-func outer() {
-  func abc(def = getOne(), ghi = def, jkl = def + ghi) {
-    def + ghi + jkl
-  }
-
-  abc
-}
-
-val fn = outer()
-fn()
+val ken = Person(firstName: "Ken", lastName: "Gorab")
+ken.firstName + ken.lastName

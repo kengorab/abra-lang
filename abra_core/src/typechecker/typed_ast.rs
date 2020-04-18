@@ -196,6 +196,7 @@ pub struct TypedInvocationNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedInstantiationNode {
     pub typ: Type,
+    pub target: Box<TypedAstNode>,
     pub fields: Vec<(String, TypedAstNode)>,
 }
 
@@ -217,6 +218,7 @@ pub struct TypedForLoopNode {
 pub struct TypedAccessorNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub field: Token,
+    pub field_name: String,
+    pub field_idx: usize,
 }
 
