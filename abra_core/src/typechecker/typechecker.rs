@@ -356,7 +356,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let mut field_names = HashMap::<String, Token>::new();
         for (field_name_tok, field_value) in items {
             let field_name = Token::get_ident_name(&field_name_tok);
-            if let Some(orig_ident) = field_names.get(field_name) {
+            if let Some(orig_ident) = field_names.get(&field_name) {
                 return Err(TypecheckerError::DuplicateBinding { orig_ident: orig_ident.clone(), ident: field_name_tok });
             } else {
                 field_names.insert(field_name.clone(), field_name_tok.clone());
@@ -390,7 +390,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let name = Token::get_ident_name(&ident);
 
-        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(name) {
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&name) {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident, orig_ident });
         }
@@ -427,7 +427,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             })
         }?;
 
-        self.add_binding(name, &ident, &typ, is_mutable);
+        self.add_binding(&name, &ident, &typ, is_mutable);
         let scope_depth = self.scopes.len() - 1;
 
         let node = TypedBindingDeclNode {
@@ -443,7 +443,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let FunctionDeclNode { name, args, ret_type, body } = node;
 
         let func_name = Token::get_ident_name(&name);
-        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(func_name) {
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
@@ -471,7 +471,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                     let default_value = self.visit(default_value)?;
                                     if default_value.get_type().is_equivalent_to(&arg_type) {
                                         let arg_name = Token::get_ident_name(&token);
-                                        self.add_binding(arg_name, &token, &arg_type, false);
+                                        self.add_binding(&arg_name, &token, &arg_type, false);
                                         typed_args.push((token, arg_type, Some(default_value)));
                                     } else {
                                         return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
@@ -482,7 +482,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                         return Err(TypecheckerError::InvalidRequiredArgPosition(token));
                                     }
                                     let arg_name = Token::get_ident_name(&token);
-                                    self.add_binding(arg_name, &token, &arg_type, false);
+                                    self.add_binding(&arg_name, &token, &arg_type, false);
                                     typed_args.push((token, arg_type, None));
                                 }
                             }
@@ -497,7 +497,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             let default_value = self.visit(default_value)?;
                             let arg_type = default_value.get_type();
                             let arg_name = Token::get_ident_name(&token);
-                            self.add_binding(arg_name, &token, &arg_type, false);
+                            self.add_binding(&arg_name, &token, &arg_type, false);
                             typed_args.push((token, arg_type, Some(default_value)));
                         }
                     }
@@ -532,7 +532,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         };
 
         let func_type = Type::Fn(arg_types, Box::new(initial_ret_type.clone()));
-        self.add_binding(func_name, &name, &func_type, false);
+        self.add_binding(&func_name, &name, &func_type, false);
         self.scopes.push(scope);
 
         // Typecheck function body
@@ -614,7 +614,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         };
         // Rewrite the return type of the previously-inserted func_type stub
-        let ScopeBinding(_, func_type, _) = self.get_binding_mut(func_name).unwrap();
+        let ScopeBinding(_, func_type, _) = self.get_binding_mut(&func_name).unwrap();
         if let Type::Fn(_, return_type) = func_type {
             *return_type = Box::new(ret_type.clone());
         }
@@ -639,7 +639,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 let field_type = Type::from_type_ident(&field_type, &all_types)
                     .ok_or(TypecheckerError::UnknownType { type_ident: field_type.get_ident() })?;
                 let field_name_str = Token::get_ident_name(&field_name);
-                if let Some(orig_ident) = field_names.get(field_name_str) {
+                if let Some(orig_ident) = field_names.get(&field_name_str) {
                     return Err(TypecheckerError::DuplicateBinding { orig_ident: orig_ident.clone(), ident: field_name });
                 } else {
                     field_names.insert(field_name_str.clone(), field_name.clone());
@@ -677,7 +677,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
         let name = Token::get_ident_name(&token);
 
-        match self.get_binding(name) {
+        match self.get_binding(&name) {
             None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
             Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
                 let binding_typ = typ.clone();
@@ -689,7 +689,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                     for scope in self.scopes.iter_mut().rev() {
                         if let ScopeKind::Function(func_token, func_name, _) = &scope.kind {
-                            if name == func_name {
+                            if &name == func_name {
                                 if !has_explicit_ret_type {
                                     // A function can't be referenced recursively unless it has a declared return type
                                     return Err(TypecheckerError::RecursiveRefWithoutReturnType {
@@ -721,7 +721,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             };
             if !is_mutable {
                 let name = Token::get_ident_name(&ident_tok);
-                let orig_ident = match self.get_binding(name) {
+                let orig_ident = match self.get_binding(&name) {
                     Some((ScopeBinding(orig_ident, _, _), _)) => orig_ident.clone(),
                     None => unreachable!()
                 };
@@ -866,7 +866,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     None => continue,
                     Some(arg_name_tok) => {
                         let arg_name = Token::get_ident_name(arg_name_tok);
-                        if seen.contains(arg_name) {
+                        if seen.contains(&arg_name) {
                             return Err(TypecheckerError::DuplicateParamName { token: arg_name_tok.clone() });
                         }
                         seen.insert(arg_name);

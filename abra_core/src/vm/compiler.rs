@@ -584,7 +584,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::GStore, line);
         } else if is_recursive {
             self.write_int_constant(0, line);
-            self.push_local(func_name);
+            self.push_local(&func_name);
         }
 
         let prev_code = self.code.clone();
@@ -602,7 +602,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Argument values will already be on the stack.
         for (arg_token, _, default_value) in args.iter() {
             let ident = Token::get_ident_name(arg_token);
-            self.push_local(ident);
+            self.push_local(&ident);
 
             // This basically adds, for each default-valued parameter `p`:
             // if (p == nil) { p = defaultValueForP }
@@ -703,7 +703,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::GStore, line);
         } else if is_recursive {
             let scope_depth = self.get_fn_depth();
-            let (local, fn_local_idx) = self.resolve_local(func_name, scope_depth)
+            let (local, fn_local_idx) = self.resolve_local(&func_name, scope_depth)
                 .expect("There should have been a function pre-defined with this name");
             local.is_closed = true;
             self.write_store_local_instr(fn_local_idx, line);

@@ -130,9 +130,9 @@ impl Token {
         pos.clone()
     }
 
-    pub fn get_ident_name(token: &Token) -> &String {
+    pub fn get_ident_name(token: &Token) -> String {
         match token {
-            Token::Ident(_, ident) => ident,
+            Token::Ident(_, ident) => ident.clone(),
             _ => unreachable!()
         }
     }
