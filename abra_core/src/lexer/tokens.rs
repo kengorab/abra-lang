@@ -14,6 +14,7 @@ pub enum Keyword {
     True,
     False,
     Func,
+    Self_,
     Val,
     Var,
     If,
@@ -45,6 +46,7 @@ pub enum Token {
     #[strum(to_string = "type", serialize = "Type")] Type(Position),
 
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
+    #[strum(to_string = "self", serialize = "Self")] Self_(Position),
 
     #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
     #[strum(to_string = "+", serialize = "Plus")] Plus(Position),
@@ -95,6 +97,7 @@ impl Token {
             Token::Type(pos) |
 
             Token::Ident(pos, _) |
+            Token::Self_(pos) |
 
             Token::Assign(pos) |
             Token::Plus(pos) |

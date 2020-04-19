@@ -1,7 +1,11 @@
 type Person {
   firstName: String
   lastName: String
+
+  func fullName(self) {
+    self.firstName + " " + self.lastName
+  }
 }
 
 val ken = Person(firstName: "Ken", lastName: "Gorab")
-ken.firstName + ken.lastName
+println(ken.fullName())

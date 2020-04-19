@@ -624,7 +624,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let TypeDeclNode { name, fields } = node;
+        let TypeDeclNode { name, fields, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
         let all_types = self.get_types_in_scope();
 
@@ -1123,13 +1123,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let field_data = match &target_type {
             Type::Struct { fields, .. } => {
                 fields.iter().enumerate()
-                    .find(|(idx, (name, _, _))| &field_name == name)
+                    .find(|(_, (name, _, _))| &field_name == name)
                     .map(|(idx, (_, typ, _))| (idx, typ.clone()))
             }
             typ @ _ => {
                 fields_for_type(typ).and_then(|fields| {
                     fields.iter().enumerate()
-                        .find(|(_, (name,typ))| name == &&&field_name)
+                        .find(|(_, (name, _))| name == &&&field_name)
                         .map(|(idx, (_, typ))| (idx, typ.clone()))
                 })
             }

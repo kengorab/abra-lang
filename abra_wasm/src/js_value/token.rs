@@ -106,6 +106,12 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("val", &val)?;
                 obj.end()
             }
+            Token::Self_(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "self")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Assign(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "assign")?;

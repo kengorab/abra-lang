@@ -7,7 +7,6 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
 use crate::vm::prelude::Prelude;
-use crate::builtins::native_types;
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
