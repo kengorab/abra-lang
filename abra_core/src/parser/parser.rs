@@ -128,7 +128,8 @@ impl Parser {
             Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_array)),
             Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
-            Token::Ident(_, _) => Some(Box::new(Parser::parse_ident)),
+            Token::Ident(_, _) |
+            Token::Self_(_) => Some(Box::new(Parser::parse_ident)),
             Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
             _ => None,
         }
@@ -234,6 +235,11 @@ impl Parser {
                 Token::RParen(_) => {
                     self.expect_next()?; // Consume ')' before ending loop
                     break;
+                }
+                Token::Self_(_) => {
+                    let self_tok = self.expect_next()?;
+
+                    args.push((self_tok, None, None));
                 }
                 Token::Ident(_, _) => {
                     let arg_ident = self.expect_next()?;
@@ -342,6 +348,7 @@ impl Parser {
         self.expect_next_token(TokenType::LBrace)?;
 
         let mut fields = Vec::new();
+        let mut methods = Vec::new();
         loop {
             let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
             match token {
@@ -360,13 +367,17 @@ impl Parser {
 
                     fields.push((field_name, field_type, default_value));
                 }
+                Token::Func(_) => {
+                    let method = self.parse_func_decl()?;
+                    methods.push(method);
+                }
                 _ => return Err(ParseError::UnexpectedToken(token.clone()))
             }
         }
 
         self.expect_next_token(TokenType::RBrace)?;
 
-        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields }))
+        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods }))
     }
 
     #[inline]
@@ -726,7 +737,7 @@ impl Parser {
 
     fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
         match &token {
-            Token::Ident(_, _) => Ok(AstNode::Identifier(token)),
+            Token::Ident(_, _) | Token::Self_(_) => Ok(AstNode::Identifier(token)),
             _ => Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
         }
     }
@@ -1630,6 +1641,7 @@ mod tests {
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![],
+                methods: vec![],
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1640,6 +1652,7 @@ mod tests {
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None)],
+                methods: vec![],
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1655,6 +1668,7 @@ mod tests {
                     (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
                     (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }, None),
                 ],
+                methods: vec![],
             },
         );
         assert_eq!(expected, ast[0]);
@@ -1669,11 +1683,45 @@ mod tests {
                     (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
                     (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool") }, Some(bool_literal!((1, 45), true)))
                 ],
+                methods: vec![],
             },
         );
         assert_eq!(expected, ast[0]);
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_methods() -> TestResult {
+        let input = "\
+          type Person {\n\
+            func hello(self) = \"hello\"\n\
+          }\
+        ";
+        let ast = parse(input)?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![],
+                methods: vec![
+                    AstNode::FunctionDecl(
+                        Token::Func(Position::new(2, 1)),
+                        FunctionDeclNode {
+                            name: Token::Ident(Position::new(2, 6), "hello".to_string()),
+                            args: vec![
+                                (Token::Self_(Position::new(2, 12)), None, None),
+                            ],
+                            ret_type: None,
+                            body: vec![
+                                string_literal!((2, 20), "hello"),
+                            ],
+                        },
+                    ),
+                ],
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
     }
 
     #[test]
@@ -1711,6 +1759,10 @@ mod tests {
     fn parse_ident() -> TestResult {
         let ast = parse("abcd")?;
         let expected = identifier!((1, 1), "abcd");
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("self")?;
+        let expected = AstNode::Identifier(Token::Self_(Position::new(1, 1)));
         Ok(assert_eq!(expected, ast[0]))
     }
 
@@ -1894,7 +1946,7 @@ mod tests {
                 target: Box::new(identifier!((5, 1), "println")),
                 args: vec![
                     (None, identifier!((5, 9), "a"))
-                ]
+                ],
             }),
             AstNode::Array(
                 Token::LBrack(Position::new(6, 1), true),
