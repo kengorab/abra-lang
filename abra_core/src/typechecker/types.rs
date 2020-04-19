@@ -107,7 +107,7 @@ impl Type {
         match type_ident {
             TypeIdentifier::Normal { ident } => {
                 let type_name = Token::get_ident_name(ident);
-                types.get(type_name).map(|t| t.clone())
+                types.get(&type_name).map(|t| t.clone())
             }
             TypeIdentifier::Array { inner } => {
                 let typ = Type::from_type_ident(inner, types)?;
