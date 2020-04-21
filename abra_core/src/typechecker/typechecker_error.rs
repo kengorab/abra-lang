@@ -1,6 +1,6 @@
 use crate::common::display_error::{DisplayError, IND_AMT};
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::Type;
+use crate::typechecker::types::{Type, StructType};
 use crate::parser::ast::BinaryOp;
 
 #[derive(Debug, PartialEq)]
@@ -9,6 +9,7 @@ pub enum TypecheckerError {
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
+    DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     UnknownIdentifier { ident: Token },
     InvalidAssignmentTarget { token: Token },
@@ -30,6 +31,8 @@ pub enum TypecheckerError {
     MissingRequiredParams { token: Token, missing_params: Vec<String> },
     InvalidMixedParamType { token: Token },
     InvalidTypeFuncInvocation { token: Token },
+    InvalidSelfParamPosition { token: Token },
+    InvalidSelfParam { token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -65,7 +68,7 @@ fn type_repr(t: &Type) -> String {
         }
         Type::Type(name, _) => name.to_string(),
         Type::Unknown => "Unknown".to_string(),
-        Type::Struct { name, .. } => name.to_string(),
+        Type::Struct(StructType { name, .. }) => name.to_string(),
     }
 }
 
@@ -97,6 +100,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
             TypecheckerError::DuplicateType { ident, .. } => ident.get_position(),
+            TypecheckerError::DuplicateField { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
             TypecheckerError::InvalidAssignmentTarget { token } => token.get_position(),
             TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
@@ -106,7 +110,6 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
             TypecheckerError::InvalidInvocationTarget { token, .. } => token.get_position(),
             TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
-            // TypecheckerError::ParamNameMismatch { token, .. } => token.get_position(),
             TypecheckerError::UnexpectedParamName { token } => token.get_position(),
             TypecheckerError::DuplicateParamName { token } => token.get_position(),
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
@@ -115,11 +118,11 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidIndexingTarget { token, .. } => token.get_position(),
             TypecheckerError::InvalidIndexingSelector { token, .. } => token.get_position(),
             TypecheckerError::UnknownMember { token, .. } => token.get_position(),
-            // TypecheckerError::MissingRequiredField { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredParams { token, .. } => token.get_position(),
-            // TypecheckerError::InvalidInstantiationParam { token } => token.get_position(),
             TypecheckerError::InvalidMixedParamType { token } => token.get_position(),
             TypecheckerError::InvalidTypeFuncInvocation { token } => token.get_position(),
+            TypecheckerError::InvalidSelfParamPosition { token } => token.get_position(),
+            TypecheckerError::InvalidSelfParam { token } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -160,6 +163,21 @@ impl DisplayError for TypecheckerError {
                 let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
 
                 let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field } => {
+                let ident = Token::get_ident_name(&ident);
+                let first_msg = format!("Duplicate field '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let pos = orig_ident.get_position();
+                let line = lines.get(pos.line - 1).expect("There should be a line");
+
+                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+                let noun = if *orig_is_field { "Field" } else { "Method" };
+                let second_msg = format!("{} with that name is already declared in scope at ({}:{})\n{}", noun, pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}", first_msg, second_msg)
             }
@@ -354,6 +372,12 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
+            TypecheckerError::InvalidSelfParamPosition { .. } => {
+                unimplemented!()
+            }
+            TypecheckerError::InvalidSelfParam { .. } => {
+                unimplemented!()
+            }
         }
     }
 }
@@ -362,7 +386,7 @@ impl DisplayError for TypecheckerError {
 mod tests {
     use super::TypecheckerError;
     use crate::lexer::tokens::{Token, Position};
-    use crate::typechecker::types::Type;
+    use crate::typechecker::types::{Type, StructType};
     use crate::common::display_error::DisplayError;
     use crate::parser::ast::BinaryOp;
 
@@ -787,10 +811,11 @@ Type Int[] does not have a member with name 'size'"
         let src = "type P { name: String}\nval p = Person({ nAme: \"hello\" })".to_string();
         let err = TypecheckerError::UnknownMember {
             token: Token::Ident(Position::new(2, 18), "nAme".to_string()),
-            target_type: Type::Struct {
+            target_type: Type::Struct(StructType {
                 name: "Person".to_string(),
                 fields: vec![("name".to_string(), Type::String, false)],
-            },
+                methods: vec![],
+            }),
         };
 
         let expected = format!("\

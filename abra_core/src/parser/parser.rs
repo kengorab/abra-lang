@@ -238,8 +238,13 @@ impl Parser {
                 }
                 Token::Self_(_) => {
                     let self_tok = self.expect_next()?;
-
                     args.push((self_tok, None, None));
+
+                    match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                        Token::Comma(_) => self.expect_next(),
+                        Token::RParen(_) => continue,
+                        tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
+                    }?;
                 }
                 Token::Ident(_, _) => {
                     let arg_ident = self.expect_next()?;

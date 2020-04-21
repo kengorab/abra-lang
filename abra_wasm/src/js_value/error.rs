@@ -108,6 +108,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
                     obj.end()
                 }
+                TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateField")?;
+                    obj.serialize_entry("ident", &JsToken(ident))?;
+                    obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
+                    obj.serialize_entry("origType", if *orig_is_field { "field" } else { "method" })?;
+                    obj.end()
+                }
                 TypecheckerError::DuplicateType { ident, orig_ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
@@ -270,6 +279,20 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     let mut obj = serializer.serialize_map(Some(3))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidTypeFuncInvocation")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidSelfParamPosition { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidSelfParamPosition")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidSelfParam { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidSelfParam")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
