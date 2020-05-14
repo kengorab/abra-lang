@@ -954,7 +954,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let typ = target.get_type();
         let (arity, has_return) = match typ {
-            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
+            Type::Fn(_self_type, args, ret) => (args.len(), *ret != Type::Unit),
             _ => unreachable!() // This should have been caught during typechecking
         };
 

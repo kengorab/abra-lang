@@ -31,7 +31,7 @@ impl Prelude {
             let opt_args = native_fn.opt_args.iter().enumerate()
                 .map(|(idx, arg)| (format!("_{}", idx + native_fn.args.len()), arg.clone(), true));
             let args = req_args.chain(opt_args).collect();
-            let typ = Type::Fn(args, Box::new(native_fn.return_type));
+            let typ = Type::Fn(None, args, Box::new(native_fn.return_type));
 
             bindings.insert(name, PreludeBinding { typ, value });
         }
