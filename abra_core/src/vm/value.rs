@@ -8,15 +8,34 @@ use std::sync::Arc;
 use crate::builtins::native_fns::NativeFn;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct FnValue {
+    pub name: String,
+    pub code: Vec<u8>,
+    pub upvalues: Vec<Upvalue>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct ClosureValue {
+    pub name: String,
+    pub code: Vec<u8>,
+    pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct TypeValue {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
     Obj(Obj),
-    Fn { name: String, code: Vec<u8>, upvalues: Vec<Upvalue> },
-    Closure { name: String, code: Vec<u8>, captures: Vec<Arc<RefCell<vm::Upvalue>>> },
+    Fn(FnValue),
+    Closure(ClosureValue),
     NativeFn(NativeFn),
-    Type(String),
+    Type(TypeValue),
     Nil,
 }
 
@@ -27,10 +46,10 @@ impl Value {
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
             Value::Obj(o) => o.to_string(),
-            Value::Fn { name, .. } |
-            Value::Closure { name, .. } |
+            Value::Fn(FnValue { name, .. }) |
+            Value::Closure(ClosureValue { name, .. }) |
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
-            Value::Type(name) => format!("<type {}>", name),
+            Value::Type(TypeValue { name }) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
         }
     }
@@ -46,10 +65,10 @@ impl Display for Value {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
-            Value::Fn { name, .. } |
-            Value::Closure { name, .. } |
+            Value::Fn(FnValue { name, .. }) |
+            Value::Closure(ClosureValue { name, .. }) |
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
-            Value::Type(name) => write!(f, "<type {}>", name),
+            Value::Type(TypeValue { name }) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),
         }
     }
@@ -84,7 +103,7 @@ impl Obj {
             }
             Obj::InstanceObj { typ, .. } => {
                 match &**typ {
-                    Value::Type(name) => format!("<instance {}>", name),
+                    Value::Type(TypeValue { name }) => format!("<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
                 }
             }

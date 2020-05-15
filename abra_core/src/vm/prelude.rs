@@ -1,4 +1,4 @@
-use crate::vm::value::Value;
+use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
 use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
 use std::collections::HashMap;
@@ -45,7 +45,7 @@ impl Prelude {
         for (type_name, typ) in prelude_types {
             let binding = PreludeBinding {
                 typ: Type::Type(type_name.to_string(), Box::new(typ.clone())),
-                value: Value::Type(type_name.to_string()),
+                value: Value::Type(TypeValue { name: type_name.to_string() }),
             };
             bindings.insert(type_name.to_string(), binding);
 
