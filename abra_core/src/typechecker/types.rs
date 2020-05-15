@@ -15,10 +15,17 @@ pub enum Type {
     Array(Box<Type>),
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
-    Fn(Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
+    Fn(/* self_type: */ Option<Box<Type>>, Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
-    Struct { name: String, fields: Vec<(String, Type, bool)> },
+    Struct(StructType),
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct StructType {
+    pub name: String,
+    pub fields: Vec<(String, Type, bool)>,
+    pub methods: Vec<(String, Type)>,
 }
 
 impl Type {
@@ -44,7 +51,7 @@ impl Type {
                 true
             }
             // For Fn types compare arities, param types, and return type
-            (Fn(args1, ret1), Fn(args2, ret2)) => {
+            (Fn(_self_type1, args1, ret1), Fn(_self_type2, args2, ret2)) => {
                 if args1.len() != args2.len() {
                     return false;
                 }
@@ -66,7 +73,7 @@ impl Type {
                 false
             }
             // TODO (improve this (obviously))
-            (Struct { name: name1, fields: _fields1 }, Struct { name: name2, fields: _fields2 }) => {
+            (Struct(StructType { name: name1, .. }), Struct(StructType { name: name2, .. })) => {
                 name1 == name2
             }
             // TODO (This should be unreachable right now anwyay...)
@@ -74,16 +81,16 @@ impl Type {
                 false
             }
             // TODO
-            (Struct { name: _name, fields: _fields1 }, Map(_fields2, _)) => {
+            (Struct(StructType { name: _name, .. }), Map(_fields2, _)) => {
                 false
             }
             // TODO
-            (Map(provided_fields, _), Struct { fields: required_fields, .. }) => {
+            (Map(provided_fields, _), Struct(StructType { fields: required_fields, .. })) => {
                 let provided_fields = provided_fields.iter()
                     .map(|(name, typ)| (name.clone(), typ.clone()))
                     .collect::<HashMap<_, _>>();
                 for (req_name, req_type, has_default_value) in required_fields {
-                    if *has_default_value { continue }
+                    if *has_default_value { continue; }
 
                     match provided_fields.get(req_name) {
                         None => return false,

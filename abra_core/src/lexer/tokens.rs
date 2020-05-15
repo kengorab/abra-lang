@@ -133,6 +133,7 @@ impl Token {
     pub fn get_ident_name(token: &Token) -> String {
         match token {
             Token::Ident(_, ident) => ident.clone(),
+            Token::Self_(_) => "self".to_string(),
             _ => unreachable!()
         }
     }
