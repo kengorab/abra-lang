@@ -43,7 +43,7 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.serialize_entry("name", &fn_name)?;
                 obj.end()
             }
-            Value::Type(TypeValue { name }) => {
+            Value::Type(TypeValue { name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "type")?;
                 obj.serialize_entry("name", &name)?;

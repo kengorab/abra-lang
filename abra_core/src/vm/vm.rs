@@ -334,8 +334,8 @@ impl VM {
     #[inline]
     fn make_closure(&mut self) -> Result<(), InterpretError> {
         let function = self.pop_expect()?;
-        let (name, code, upvalues) = match function {
-            Value::Fn(FnValue { name, code, upvalues }) => Ok((name, code, upvalues)),
+        let (name, code, upvalues, receiver) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
             v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
         }?;
 
@@ -366,7 +366,7 @@ impl VM {
         // in order for the upvalue_idx's to line up properly.
         let captures = captures.rev().collect::<Vec<_>>();
 
-        self.push(Value::Closure(ClosureValue { name, code, captures }));
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
         Ok(())
     }
 
@@ -642,7 +642,7 @@ impl VM {
                             let res = self.invoke(arity, name, code, vec![]);
                             if res.is_err() { break Err(res.unwrap_err()); } else { continue; }
                         }
-                        Value::Closure(ClosureValue { name, code, captures }) => {
+                        Value::Closure(ClosureValue { name, code, captures, .. }) => {
                             if has_return { arity += 1 }
                             let res = self.invoke(arity, name, code, captures);
                             if res.is_err() { break Err(res.unwrap_err()); } else { continue; }

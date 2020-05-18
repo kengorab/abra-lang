@@ -12,6 +12,7 @@ pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
     pub upvalues: Vec<Upvalue>,
+    pub receiver: Option<Arc<RefCell<Value>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -19,11 +20,13 @@ pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
+    pub receiver: Option<Arc<RefCell<Value>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct TypeValue {
     pub name: String,
+    pub methods: Vec<(String, FnValue)>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -49,7 +52,7 @@ impl Value {
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) |
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
-            Value::Type(TypeValue { name }) => format!("<type {}>", name),
+            Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
         }
     }
@@ -68,7 +71,7 @@ impl Display for Value {
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) |
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
-            Value::Type(TypeValue { name }) => write!(f, "<type {}>", name),
+            Value::Type(TypeValue { name, .. }) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),
         }
     }
@@ -103,7 +106,7 @@ impl Obj {
             }
             Obj::InstanceObj { typ, .. } => {
                 match &**typ {
-                    Value::Type(TypeValue { name }) => format!("<instance {}>", name),
+                    Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
                 }
             }

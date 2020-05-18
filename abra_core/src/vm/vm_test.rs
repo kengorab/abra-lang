@@ -577,6 +577,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             upvalues: vec![],
+            receiver: None,
         });
         assert_eq!(expected, result);
     }

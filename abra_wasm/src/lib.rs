@@ -62,7 +62,7 @@ impl Serialize for RunResult {
             RunResult(Value::Fn(FnValue { name, .. })) => serializer.serialize_str(name),
             RunResult(Value::Closure(ClosureValue { name, .. })) => serializer.serialize_str(name),
             RunResult(Value::NativeFn(NativeFn { name, .. })) => serializer.serialize_str(name),
-            RunResult(Value::Type(TypeValue { name })) => serializer.serialize_str(name)
+            RunResult(Value::Type(TypeValue { name, .. })) => serializer.serialize_str(name)
         }
     }
 }
