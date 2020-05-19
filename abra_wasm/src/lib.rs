@@ -51,7 +51,8 @@ impl Serialize for RunResult {
                     });
                     obj.end()
                 }
-                Obj::InstanceObj { typ: _typ, fields } => {
+                Obj::InstanceObj(inst) => {
+                    let fields = &inst.borrow().fields;
                     let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                     fields.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResult((*val).clone())).unwrap();

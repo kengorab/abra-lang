@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -447,15 +447,36 @@ impl VM {
 
                     let type_value = self.pop_expect()?;
 
-                    let inst = Value::Obj(Obj::InstanceObj { typ: Box::new(type_value), fields });
+                    let inst = InstanceObj { typ: Box::new(type_value), fields };
+                    let inst = Arc::new(RefCell::new(inst));
+                    let inst = Value::Obj(Obj::InstanceObj(inst));
                     self.push(inst);
+                }
+                Opcode::Init => {
+                    let instance_value = match self.pop_expect()? {
+                        Value::Obj(Obj::InstanceObj(inst)) => inst,
+                        _ => unreachable!()
+                    };
+                    let type_value = match self.pop_expect()? {
+                        Value::Type(type_value) => type_value,
+                        _ => unreachable!()
+                    };
+
+                    for (_, mut method_value) in type_value.methods {
+                        method_value.receiver = Some(instance_value.clone());
+                        instance_value.borrow_mut().fields.push(Value::Fn(method_value));
+                    }
+
+                    let initialized_inst = Value::Obj(Obj::InstanceObj(instance_value));
+                    self.push(initialized_inst);
                 }
                 Opcode::GetField => {
                     let inst = self.pop_expect()?;
                     let field_idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Obj(Obj::InstanceObj { fields, .. }) => {
+                        Value::Obj(Obj::InstanceObj(inst)) => {
+                            let fields = &inst.borrow().fields;
                             match fields.get(field_idx) {
                                 Some(field_val) => field_val.clone(),
                                 None => unreachable!()
@@ -637,12 +658,30 @@ impl VM {
                             }
                             continue;
                         }
-                        Value::Fn(FnValue { name, code, .. }) => {
+                        Value::Fn(FnValue { name, code, receiver, .. }) => {
+                            match receiver {
+                                Some(receiver) => {
+                                    let mut args = self.stack.split_off(self.stack.len() - arity);
+                                    self.stack.push(Value::Obj(Obj::InstanceObj(receiver)));
+                                    self.stack.append(&mut args);
+                                    arity += 1;
+                                }
+                                None => {}
+                            }
                             if has_return { arity += 1 }
                             let res = self.invoke(arity, name, code, vec![]);
                             if res.is_err() { break Err(res.unwrap_err()); } else { continue; }
                         }
-                        Value::Closure(ClosureValue { name, code, captures, .. }) => {
+                        Value::Closure(ClosureValue { name, code, captures, receiver, .. }) => {
+                            match receiver {
+                                Some(receiver) => {
+                                    let mut args = self.stack.split_off(self.stack.len() - arity);
+                                    self.stack.push(Value::Obj(Obj::InstanceObj(receiver)));
+                                    self.stack.append(&mut args);
+                                    arity += 1;
+                                }
+                                None => {}
+                            }
                             if has_return { arity += 1 }
                             let res = self.invoke(arity, name, code, captures);
                             if res.is_err() { break Err(res.unwrap_err()); } else { continue; }

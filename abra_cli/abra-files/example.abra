@@ -8,4 +8,4 @@ type Person {
 }
 
 val ken = Person(firstName: "Ken", lastName: "Gorab")
-println(ken.fullName())
+ken.fullName()

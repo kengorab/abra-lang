@@ -12,7 +12,7 @@ pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
     pub upvalues: Vec<Upvalue>,
-    pub receiver: Option<Arc<RefCell<Value>>>,
+    pub receiver: Option<Arc<RefCell<InstanceObj>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -20,7 +20,7 @@ pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
-    pub receiver: Option<Arc<RefCell<Value>>>,
+    pub receiver: Option<Arc<RefCell<InstanceObj>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -77,12 +77,18 @@ impl Display for Value {
     }
 }
 
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub struct InstanceObj {
+    pub typ: Box<Value>,
+    pub fields: Vec<Value>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Obj {
     StringObj { value: Box<String> },
     ArrayObj { value: Vec<Box<Value>> },
     MapObj { value: HashMap<String, Value> },
-    InstanceObj { typ: Box<Value>, fields: Vec<Value> },
+    InstanceObj(Arc<RefCell<InstanceObj>>),
 }
 
 impl Obj {
@@ -104,7 +110,8 @@ impl Obj {
                     .join(", ");
                 format!("{{ {} }}", items)
             }
-            Obj::InstanceObj { typ, .. } => {
+            Obj::InstanceObj(inst) => {
+                let typ = &inst.borrow().typ;
                 match &**typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
