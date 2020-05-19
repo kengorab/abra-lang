@@ -1,4 +1,4 @@
-use crate::builtins::native_types::fields_for_type;
+use crate::builtins::native_types::field_for_type;
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
@@ -1208,11 +1208,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     })
             }
             typ @ _ => {
-                fields_for_type(typ).and_then(|fields| {
-                    fields.iter().enumerate()
-                        .find(|(_, (name, _))| name == &&&field_name)
-                        .map(|(idx, (_, typ))| (idx, typ.clone()))
-                })
+                field_for_type(typ, &field_name).map(|(idx, (_, typ))| (idx, typ.clone()))
             }
         };
         let (field_idx, typ) = field_data.ok_or(

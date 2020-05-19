@@ -1,32 +1,38 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use std::collections::HashMap;
 
 pub trait NativeType {
-    fn fields(typ: &Type) -> HashMap<&str, Type>;
+    const FIELDS: &'static [(&'static str, Type)];
+
     fn get_field_value(value: &Value, field_idx: usize) -> Value;
+
+    fn get_field_idx(field_name: &str) -> usize {
+        match Self::get_field(field_name) {
+            Some((idx, _)) => idx,
+            None => unreachable!()
+        }
+    }
+
+    fn get_field(field_name: &str) -> Option<(usize, &'static (&'static str, Type))> {
+        Self::FIELDS.iter().enumerate().find(|(_, (name, _))| name == &field_name)
+    }
 }
 
-pub fn fields_for_type(typ: &Type) -> Option<HashMap<&str, Type>> {
+pub fn field_for_type(typ: &Type, field_name: &str) -> Option<(usize, &'static (&'static str, Type))> {
     match &typ {
-        Type::Array(_) => Some(NativeArray::fields(typ)),
-        Type::String => Some(NativeString::fields(typ)),
+        Type::Array(_) => NativeArray::get_field(field_name),
+        Type::String => NativeString::get_field(field_name),
         _ => None
     }
 }
 
+// TODO: This could stand to be cleaned up a bit, esp to handle generic field types
 pub struct NativeArray {}
 
 impl NativeType for NativeArray {
-    fn fields(typ: &Type) -> HashMap<&str, Type> {
-        if let Type::Array(_inner_type) = typ { // <- The inner type is to support any generics
-            let mut fields = HashMap::new();
-            fields.insert("length", Type::Int);
-            fields
-        } else {
-            unreachable!()
-        }
-    }
+    const FIELDS: &'static [(&'static str, Type)] = &[
+        ("length", Type::Int)
+    ];
 
     fn get_field_value(value: &Value, field_idx: usize) -> Value {
         if let Value::Obj(Obj::ArrayObj { value }) = value {
@@ -43,11 +49,9 @@ impl NativeType for NativeArray {
 pub struct NativeString {}
 
 impl NativeType for NativeString {
-    fn fields(_typ: &Type) -> HashMap<&str, Type> {
-        let mut fields = HashMap::new();
-        fields.insert("length", Type::Int);
-        fields
-    }
+    const FIELDS: &'static [(&'static str, Type)] = &[
+        ("length", Type::Int)
+    ];
 
     fn get_field_value(value: &Value, field_idx: usize) -> Value {
         if let Value::Obj(Obj::StringObj { value }) = value {

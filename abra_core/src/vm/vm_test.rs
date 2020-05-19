@@ -1058,4 +1058,20 @@ mod tests {
             assert_eq!(expected, result);
         }
     }
+
+    #[test]
+    fn interpret_method_invocation_struct() {
+        let input = "\
+          type Person {\n\
+            name: String\n\
+            func introduce(self) = \"I am \" + self.name\n\
+          }\n\
+          val ken = Person(name: \"Ken\")\n\
+          val brian = Person(name: \"Brian\")\n\
+          ken.introduce() + \", and \" + brian.introduce()\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken, and I am Brian".to_string()) });
+        assert_eq!(expected, result);
+    }
 }
