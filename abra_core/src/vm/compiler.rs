@@ -1,4 +1,3 @@
-use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
@@ -7,6 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
+use crate::builtins::native_types::{NativeArray, NativeType};
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
@@ -143,11 +143,6 @@ impl Compiler {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
         const_idx
-    }
-
-    #[inline] // This is could eventually stand to be deprecated
-    fn get_native_fn(name: &str) -> NativeFn {
-        NATIVE_FNS_MAP.get(name).unwrap().clone().clone()
     }
 
     fn write_pops(&mut self, num_pops: usize, line: usize) {
@@ -1062,15 +1057,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
             compiler.metadata.stores.push(name.to_string());
         }
 
-        // Essentially: if $idx >= arrayLen($iter) { break }
+        // Essentially: if $idx >= $iter.length { break }
         let cond_slot_idx = self.code.len();
         load_intrinsic(self, "$idx", line);
-        self.write_opcode(Opcode::Nil, line); // <-- Load <ret> slot for ~arrayLen builtin // TODO: Fix this shameful garbage
         load_intrinsic(self, "$iter", line);
-        self.write_constant(Value::NativeFn(Self::get_native_fn("arrayLen")), line);
-        self.write_opcode(Opcode::Invoke, line);
-        self.write_byte(1, line);
-        self.write_byte(1, line); // <-- 1 = has_return is true; See comment above about garbage
+        self.write_opcode(Opcode::GetField, line);
+        self.write_byte(NativeArray::get_field_idx("length") as u8, line);
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
@@ -1150,9 +1142,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
+
+    fn get_native_fn(name: &str) -> NativeFn {
+        NATIVE_FNS_MAP.get(name).unwrap().clone().clone()
+    }
 
     fn compile(input: &str) -> Module {
         let tokens = tokenize(&input.to_string()).unwrap();
@@ -2204,7 +2201,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
-                Value::NativeFn(Compiler::get_native_fn("println")),
+                Value::NativeFn(get_native_fn("println")),
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
@@ -2602,10 +2599,8 @@ mod tests {
                 Opcode::Constant as u8, 2,
                 Opcode::GLoad as u8,
                 Opcode::LLoad0 as u8,
-                Opcode::Nil as u8,
                 Opcode::LLoad1 as u8,
-                Opcode::Constant as u8, 3,
-                Opcode::Invoke as u8, 1, 1,
+                Opcode::GetField as u8, 0,
                 Opcode::LT as u8,
                 Opcode::JumpIfF as u8, 20,
 
@@ -2626,10 +2621,10 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::LLoad2 as u8,
                 Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 3,
                 Opcode::Invoke as u8, 1, 0,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 31,
+                Opcode::JumpB as u8, 27,
 
                 // Cleanup/end
                 Opcode::Pop as u8,
@@ -2640,8 +2635,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("Row: ".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("msg".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("arr".to_string()) }),
-                Value::NativeFn(Compiler::get_native_fn("arrayLen")),
-                Value::NativeFn(Compiler::get_native_fn("println")),
+                Value::NativeFn(get_native_fn("println")),
             ],
         };
         assert_eq!(expected, chunk);
