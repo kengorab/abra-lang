@@ -1074,4 +1074,20 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken, and I am Brian".to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_method_invocation_preserve_receiver() {
+        let input = "\
+          type Person {\n\
+            name: String\n\
+            func introduce(self) = \"I am \" + self.name\n\
+          }\n\
+          val ken = Person(name: \"Ken\")\n\
+          val introduceFn = ken.introduce\n\
+          introduceFn()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        assert_eq!(expected, result);
+    }
 }
