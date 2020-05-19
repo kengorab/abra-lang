@@ -5,7 +5,7 @@ use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
 use crate::typechecker::types::Type;
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::{Value, Obj, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 
 #[derive(Debug, PartialEq)]
@@ -390,6 +390,114 @@ impl Compiler {
         }
         Ok(last_line)
     }
+
+    fn compile_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<FnValue, ()> {
+        let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth, .. } = node;
+        let func_name = Token::get_ident_name(&name);
+
+        let line = token.get_position().line;
+
+        let prev_code = self.code.clone();
+        self.code = Vec::new();
+        // TODO: std::mem::swap?
+
+        self.push_scope(ScopeKind::Func);
+
+        // Push return slot as local idx 0, if return value exists
+        if ret_type != Type::Unit {
+            self.push_local("<ret>");
+        }
+
+        // Track function arguments in local bindings, also track # optional args.
+        // Argument values will already be on the stack.
+        for (arg_token, _, default_value) in args.iter() {
+            let ident = Token::get_ident_name(arg_token);
+            self.push_local(&ident);
+
+            // This basically adds, for each default-valued parameter `p`:
+            // if (p == nil) { p = defaultValueForP }
+            match default_value {
+                None => continue,
+                Some(default_value_node) => {
+                    let pos = default_value_node.get_token().get_position();
+                    let typ = default_value_node.get_type();
+
+                    let ident_node = TypedAstNode::Identifier(
+                        arg_token.clone(),
+                        TypedIdentifierNode { typ: typ.clone(), name: ident.clone(), is_mutable: true, scope_depth },
+                    );
+                    let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
+                    let default_param_value_node = TypedAstNode::IfStatement(
+                        Token::If(pos.clone()),
+                        TypedIfNode {
+                            typ: Type::Unit,
+                            condition: Box::new(
+                                TypedAstNode::Binary(
+                                    Token::Eq(pos.clone()),
+                                    TypedBinaryNode {
+                                        typ: Type::Bool,
+                                        right: Box::new(ident_node.clone()),
+                                        op: BinaryOp::Eq,
+                                        left: Box::new(nil_expr),
+                                    },
+                                )
+                            ),
+                            if_block: vec![
+                                TypedAstNode::Assignment(
+                                    Token::Assign(pos.clone()),
+                                    TypedAssignmentNode {
+                                        typ: typ.clone(),
+                                        target: Box::new(ident_node),
+                                        expr: Box::new(default_value_node.clone()),
+                                    },
+                                )
+                            ],
+                            else_block: None,
+                        },
+                    );
+                    self.visit(default_param_value_node)?;
+                }
+            }
+        }
+
+        let body_len = body.len();
+        let mut last_line = 0;
+        for (idx, node) in body.into_iter().enumerate() {
+            last_line = node.get_token().get_position().line;
+            let is_last_line = idx == body_len - 1;
+            let should_pop = should_pop_after_node(&node);
+            self.visit(node)?;
+
+            // Handle bare expressions
+            if !is_last_line && should_pop {
+                self.write_opcode(Opcode::Pop, line);
+            }
+            if is_last_line {
+                let popped_locals = self.pop_scope_locals();
+
+                let should_handle_return = ret_type != Type::Unit;
+                if should_handle_return {
+                    self.write_store_local_instr(0, line);
+                    self.metadata.stores.push("<ret>".to_string());
+                }
+                self.write_pops_for_closure(popped_locals, line);
+            }
+        }
+        self.write_opcode(Opcode::Return, last_line);
+        self.pop_scope();
+
+        let code = self.code.clone();
+        self.code = prev_code;
+        // TODO: std::mem::swap?
+
+        let fn_upvalues = self.upvalues.iter().rev()
+            .take_while(|uv| uv.depth == self.get_fn_depth())
+            .map(|uv| uv.clone())
+            .collect::<Vec<Upvalue>>();
+        self.upvalues.truncate(self.upvalues.len() - fn_upvalues.len());
+
+        Ok(FnValue { name: func_name.clone(), code, upvalues: fn_upvalues.clone(), receiver: None })
+    }
 }
 
 impl TypedAstVisitor<(), ()> for Compiler {
@@ -573,8 +681,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let TypedFunctionDeclNode { name, args, body, ret_type, scope_depth, is_recursive } = node;
-        let func_name = Token::get_ident_name(&name);
+        let func_name = Token::get_ident_name(&node.name);
+        let is_recursive = node.is_recursive;
 
         let line = token.get_position().line;
 
@@ -587,114 +695,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.push_local(&func_name);
         }
 
-        let prev_code = self.code.clone();
-        self.code = Vec::new();
-        // TODO: std::mem::swap?
+        let fn_value = self.compile_function_decl(token, node)?;
 
-        self.push_scope(ScopeKind::Func);
-
-        // Push return slot as local idx 0, if return value exists
-        if ret_type != Type::Unit {
-            self.push_local("<ret>");
-        }
-
-        // Track function arguments in local bindings, also track # optional args.
-        // Argument values will already be on the stack.
-        for (arg_token, _, default_value) in args.iter() {
-            let ident = Token::get_ident_name(arg_token);
-            self.push_local(&ident);
-
-            // This basically adds, for each default-valued parameter `p`:
-            // if (p == nil) { p = defaultValueForP }
-            match default_value {
-                None => continue,
-                Some(default_value_node) => {
-                    let pos = default_value_node.get_token().get_position();
-                    let typ = default_value_node.get_type();
-
-                    let ident_node = TypedAstNode::Identifier(
-                        arg_token.clone(),
-                        TypedIdentifierNode { typ: typ.clone(), name: ident.clone(), is_mutable: true, scope_depth },
-                    );
-                    let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
-                    let default_param_value_node = TypedAstNode::IfStatement(
-                        Token::If(pos.clone()),
-                        TypedIfNode {
-                            typ: Type::Unit,
-                            condition: Box::new(
-                                TypedAstNode::Binary(
-                                    Token::Eq(pos.clone()),
-                                    TypedBinaryNode {
-                                        typ: Type::Bool,
-                                        right: Box::new(ident_node.clone()),
-                                        op: BinaryOp::Eq,
-                                        left: Box::new(nil_expr),
-                                    },
-                                )
-                            ),
-                            if_block: vec![
-                                TypedAstNode::Assignment(
-                                    Token::Assign(pos.clone()),
-                                    TypedAssignmentNode {
-                                        typ: typ.clone(),
-                                        target: Box::new(ident_node),
-                                        expr: Box::new(default_value_node.clone()),
-                                    },
-                                )
-                            ],
-                            else_block: None,
-                        },
-                    );
-                    self.visit(default_param_value_node)?;
-                }
-            }
-        }
-
-        let body_len = body.len();
-        let mut last_line = 0;
-        for (idx, node) in body.into_iter().enumerate() {
-            last_line = node.get_token().get_position().line;
-            let is_last_line = idx == body_len - 1;
-            let should_pop = should_pop_after_node(&node);
-            self.visit(node)?;
-
-            // Handle bare expressions
-            if !is_last_line && should_pop {
-                self.write_opcode(Opcode::Pop, line);
-            }
-            if is_last_line {
-                let popped_locals = self.pop_scope_locals();
-
-                let should_handle_return = ret_type != Type::Unit;
-                if should_handle_return {
-                    self.write_store_local_instr(0, line);
-                    self.metadata.stores.push("<ret>".to_string());
-                }
-                self.write_pops_for_closure(popped_locals, line);
-            }
-        }
-        self.write_opcode(Opcode::Return, last_line);
-        self.pop_scope();
-
-        let code = self.code.clone();
-        self.code = prev_code;
-        // TODO: std::mem::swap?
-
-        let fn_upvalues = self.upvalues.iter().rev()
-            .take_while(|uv| uv.depth == self.get_fn_depth())
-            .map(|uv| uv.clone())
-            .collect::<Vec<Upvalue>>();
-        self.upvalues.truncate(self.upvalues.len() - fn_upvalues.len());
-
-        let const_idx = self.add_constant(Value::Fn {
-            name: func_name.clone(),
-            code,
-            upvalues: fn_upvalues.clone(),
-        });
+        let has_upvalues = !&fn_value.upvalues.is_empty();
+        let const_idx = self.add_constant(Value::Fn(fn_value));
 
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
-        if !fn_upvalues.is_empty() {
+        if has_upvalues {
             self.write_opcode(Opcode::ClosureMk, line);
         }
 
@@ -718,10 +726,26 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_type_decl(&mut self, token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedTypeDeclNode { name, .. } = node;
+        let TypedTypeDeclNode { name, methods, .. } = node;
 
         let type_name = Token::get_ident_name(&name);
-        let const_idx = self.add_constant(Value::Type(type_name.clone()));
+
+        let mut compiled_methods = Vec::with_capacity(methods.len());
+        for (method_name, method_node) in methods {
+            let (method_tok, method_node) = match method_node {
+                TypedAstNode::FunctionDecl(tok, node) => (tok, node),
+                _ => unreachable!()
+            };
+
+            let method = self.compile_function_decl(method_tok, method_node)?;
+            compiled_methods.push((method_name, method));
+        }
+
+        let type_value = Value::Type(TypeValue {
+            name: type_name.clone(),
+            methods: compiled_methods,
+        });
+        let const_idx = self.add_constant(type_value);
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
@@ -1554,7 +1578,10 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type("Person".to_string()),
+                Value::Type(TypeValue {
+                    name: "Person".to_string(),
+                    methods: vec![],
+                }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Meg".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("meg".to_string()) }),
@@ -1590,7 +1617,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type("Person".to_string()),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![] }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Unnamed".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("someBaby".to_string()) }),
@@ -1634,7 +1661,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "c".to_string(),
                     code: vec![
                         Opcode::ULoad0 as u8,
@@ -1649,8 +1676,9 @@ mod tests {
                             depth: 1,
                         }
                     ],
-                },
-                Value::Fn {
+                    receiver: None,
+                }),
+                Value::Fn(FnValue {
                     name: "a".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
@@ -1662,7 +1690,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1683,7 +1712,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "d".to_string(),
                     code: vec![
                         Opcode::ULoad0 as u8,
@@ -1698,8 +1727,9 @@ mod tests {
                             depth: 2,
                         }
                     ],
-                },
-                Value::Fn {
+                    receiver: None,
+                }),
+                Value::Fn(FnValue {
                     name: "c".to_string(),
                     code: vec![
                         Opcode::Constant as u8, 1,
@@ -1713,8 +1743,9 @@ mod tests {
                             depth: 1,
                         }
                     ],
-                },
-                Value::Fn {
+                    receiver: None,
+                }),
+                Value::Fn(FnValue {
                     name: "a".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
@@ -1726,7 +1757,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1818,7 +1850,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
@@ -1830,7 +1862,8 @@ mod tests {
                         Opcode::Return as u8
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1851,7 +1884,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("outer".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "inner".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
@@ -1866,8 +1899,9 @@ mod tests {
                             depth: 1,
                         }
                     ],
-                },
-                Value::Fn {
+                    receiver: None,
+                }),
+                Value::Fn(FnValue {
                     name: "outer".to_string(),
                     code: vec![
                         Opcode::IConst1 as u8,
@@ -1878,7 +1912,8 @@ mod tests {
                         Opcode::Return as u8
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2118,7 +2153,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::Constant as u8, 0,
@@ -2134,7 +2169,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                }
+                    receiver: None,
+                })
             ],
         };
         assert_eq!(expected, chunk);
@@ -2162,7 +2198,7 @@ mod tests {
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
                 Value::NativeFn(Compiler::get_native_fn("println")),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::IConst1 as u8,
@@ -2173,7 +2209,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2207,7 +2244,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("add".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "add".to_string(),
                     code: vec![
                         Opcode::Nil as u8,
@@ -2227,7 +2264,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2254,7 +2292,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "def".to_string(),
                     code: vec![
                         Opcode::LLoad1 as u8,
@@ -2265,8 +2303,9 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
-                Value::Fn {
+                    receiver: None,
+                }),
+                Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::Constant as u8, 1,
@@ -2284,7 +2323,62 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                }
+                    receiver: None,
+                })
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_type_decl_struct_type_methods() {
+        let chunk = compile("\
+          type Person {\n\
+            name: String\n\
+            func getName(self) = self.name\n\
+            func getName2(self) = self.getName()\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                Value::Type(TypeValue {
+                    name: "Person".to_string(),
+                    methods: vec![
+                        ("getName".to_string(), FnValue {
+                            name: "getName".to_string(),
+                            code: vec![
+                                Opcode::LLoad1 as u8,
+                                Opcode::GetField as u8, 0,
+                                Opcode::LStore0 as u8,
+                                Opcode::Pop as u8,
+                                Opcode::Return as u8
+                            ],
+                            upvalues: vec![],
+                            receiver: None,
+                        }),
+                        ("getName2".to_string(), FnValue {
+                            name: "getName2".to_string(),
+                            code: vec![
+                                Opcode::Nil as u8,
+                                Opcode::LLoad1 as u8,
+                                Opcode::GetField as u8, 1,
+                                Opcode::Invoke as u8, 0, 1,
+                                Opcode::LStore0 as u8,
+                                Opcode::Pop as u8,
+                                Opcode::Return as u8
+                            ],
+                            upvalues: vec![],
+                            receiver: None,
+                        }),
+                    ],
+                }),
+                Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2323,7 +2417,7 @@ mod tests {
             constants: vec![
                 Value::Obj(Obj::StringObj { value: Box::new("one".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("inc".to_string()) }),
-                Value::Fn {
+                Value::Fn(FnValue {
                     name: "inc".to_string(),
                     code: vec![
                         Opcode::LLoad1 as u8,
@@ -2334,7 +2428,8 @@ mod tests {
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
-                },
+                    receiver: None,
+                }),
                 Value::Obj(Obj::StringObj { value: Box::new("two".to_string()) }),
             ],
         };
@@ -2570,7 +2665,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type("Person".to_string()),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![] }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("ken".to_string()) }),

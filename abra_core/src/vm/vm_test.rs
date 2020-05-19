@@ -7,7 +7,7 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
-    use crate::vm::value::{Value, Obj};
+    use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
     use std::collections::HashMap;
     use crate::vm::opcode::Opcode;
@@ -568,7 +568,7 @@ mod tests {
           def
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Fn {
+        let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
                 Opcode::Constant as u8, 3,
@@ -577,7 +577,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             upvalues: vec![],
-        };
+            receiver: None,
+        });
         assert_eq!(expected, result);
     }
 

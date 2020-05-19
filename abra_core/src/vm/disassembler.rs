@@ -1,6 +1,6 @@
 use crate::vm::compiler::{Metadata, Module};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::Value;
+use crate::vm::value::{Value, FnValue};
 use std::collections::HashMap;
 
 pub fn disassemble(module: Module, metadata: Metadata) -> String {
@@ -141,7 +141,7 @@ impl Disassembler {
         let constants = self.module.constants.clone();
         let iter = constants.iter().filter_map(|val| {
             match val {
-                Value::Fn { name, code, .. } => Some((format!("fn {}", name.clone()), code.clone())),
+                Value::Fn(FnValue { name, code, .. }) => Some((format!("fn {}", name.clone()), code.clone())),
                 _ => None,
             }
         });

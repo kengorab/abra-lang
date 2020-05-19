@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -35,18 +35,18 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.serialize_entry("value", &JsWrappedObjValue(o))?;
                 obj.end()
             }
-            Value::Fn { name: fn_name, .. } |
-            Value::Closure { name: fn_name, .. } |
+            Value::Fn(FnValue { name: fn_name, .. }) |
+            Value::Closure(ClosureValue { name: fn_name, .. }) |
             Value::NativeFn(NativeFn { name: fn_name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "fn")?;
                 obj.serialize_entry("name", &fn_name)?;
                 obj.end()
             }
-            Value::Type(type_name) => {
+            Value::Type(TypeValue { name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "type")?;
-                obj.serialize_entry("name", &type_name)?;
+                obj.serialize_entry("name", &name)?;
                 obj.end()
             }
             Value::Nil => {

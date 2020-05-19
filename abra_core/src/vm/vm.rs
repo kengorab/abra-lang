@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -305,7 +305,7 @@ impl VM {
 
     fn close_upvalues_from_idx(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
         let max_slot_idx = self.open_upvalues.keys().max();
-        if max_slot_idx.is_none() { return Ok(()) }
+        if max_slot_idx.is_none() { return Ok(()); }
 
         for idx in stack_slot..=*max_slot_idx.unwrap() {
             match self.open_upvalues.remove(&idx) {
@@ -334,8 +334,8 @@ impl VM {
     #[inline]
     fn make_closure(&mut self) -> Result<(), InterpretError> {
         let function = self.pop_expect()?;
-        let (name, code, upvalues) = match function {
-            Value::Fn { name, code, upvalues } => Ok((name, code, upvalues)),
+        let (name, code, upvalues, receiver) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
             v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
         }?;
 
@@ -366,7 +366,7 @@ impl VM {
         // in order for the upvalue_idx's to line up properly.
         let captures = captures.rev().collect::<Vec<_>>();
 
-        self.push(Value::Closure { name, code, captures });
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
         Ok(())
     }
 
@@ -637,15 +637,15 @@ impl VM {
                             }
                             continue;
                         }
-                        Value::Fn { name, code, .. } => {
+                        Value::Fn(FnValue { name, code, .. }) => {
                             if has_return { arity += 1 }
                             let res = self.invoke(arity, name, code, vec![]);
-                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
+                            if res.is_err() { break Err(res.unwrap_err()); } else { continue; }
                         }
-                        Value::Closure { name, code, captures } => {
+                        Value::Closure(ClosureValue { name, code, captures, .. }) => {
                             if has_return { arity += 1 }
                             let res = self.invoke(arity, name, code, captures);
-                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
+                            if res.is_err() { break Err(res.unwrap_err()); } else { continue; }
                         }
                         v @ _ => {
                             return Err(InterpretError::TypeError("Function".to_string(), v.to_string()));
