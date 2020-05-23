@@ -48,6 +48,7 @@ impl Prelude {
                 value: Value::Type(TypeValue {
                     name: type_name.to_string(),
                     methods: vec![],
+                    static_fields: vec![],
                 }),
             };
             bindings.insert(type_name.to_string(), binding);

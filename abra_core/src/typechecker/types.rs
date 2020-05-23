@@ -24,7 +24,8 @@ pub enum Type {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct StructType {
     pub name: String,
-    pub fields: Vec<(String, Type, bool)>,
+    pub fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
+    pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
 }
 

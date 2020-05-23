@@ -90,7 +90,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Unknown")?;
                 obj.end()
             }
-            Type::Struct(StructType { name, fields, methods }) => {
+            Type::Struct(StructType { name, fields, methods, static_fields }) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Struct")?;
                 obj.serialize_entry("name", name)?;
@@ -98,6 +98,10 @@ impl<'a> Serialize for JsType<'a> {
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("fields", &fields)?;
+                let static_fields: Vec<(String, JsType)> = static_fields.iter()
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("staticFields", &static_fields)?;
                 let methods: Vec<(String, JsType)> = methods.iter()
                     .map(|(name, typ)| (name.clone(), JsType(typ)))
                     .collect();

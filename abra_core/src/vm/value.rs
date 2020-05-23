@@ -27,6 +27,7 @@ pub struct ClosureValue {
 pub struct TypeValue {
     pub name: String,
     pub methods: Vec<(String, FnValue)>,
+    pub static_fields: Vec<(String, FnValue)>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

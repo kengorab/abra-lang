@@ -1090,4 +1090,19 @@ mod tests {
         let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_static_method_invocation() {
+        let input = "\
+          type Person {\n\
+            name: String\n\
+            func introduce(name: String) = \"I am \" + name\n\
+          }\n\
+          val ken = Person(name: \"Ken\")\n\
+          Person.introduce(ken.name)\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        assert_eq!(expected, result);
+    }
 }

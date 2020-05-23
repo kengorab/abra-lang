@@ -5,7 +5,9 @@ type Person {
   func fullName(self) {
     self.firstName + " " + self.lastName
   }
+
+  func ken() = "Ken"
 }
 
-val ken = Person(firstName: "Ken", lastName: "Gorab")
-ken.fullName()
+val ken = Person.ken
+ken()

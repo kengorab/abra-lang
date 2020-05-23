@@ -721,7 +721,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_type_decl(&mut self, token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedTypeDeclNode { name, methods, .. } = node;
+        let TypedTypeDeclNode { name, methods, static_fields, .. } = node;
 
         let type_name = Token::get_ident_name(&name);
 
@@ -736,9 +736,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
             compiled_methods.push((method_name, method));
         }
 
+        let mut compiled_static_fields = Vec::new();
+        for (_, _, value) in static_fields {
+            if let Some(TypedAstNode::FunctionDecl(method_tok, method_node)) = value {
+                let method_name = Token::get_ident_name(&method_node.name).clone();
+                let method = self.compile_function_decl(method_tok, method_node)?;
+                compiled_static_fields.push((method_name, method));
+            }
+        }
+
         let type_value = Value::Type(TypeValue {
             name: type_name.clone(),
             methods: compiled_methods,
+            static_fields: compiled_static_fields,
         });
         let const_idx = self.add_constant(type_value);
         self.write_opcode(Opcode::Constant, line);
@@ -1581,6 +1591,7 @@ mod tests {
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
                     methods: vec![],
+                    static_fields: vec![],
                 }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Meg".to_string()) }),
@@ -1621,7 +1632,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![] }),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Unnamed".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("someBaby".to_string()) }),
@@ -2381,6 +2392,7 @@ mod tests {
                             receiver: None,
                         }),
                     ],
+                    static_fields: vec![],
                 }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
             ],
@@ -2668,7 +2680,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![] }),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Obj(Obj::StringObj { value: Box::new("Person".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) }),
                 Value::Obj(Obj::StringObj { value: Box::new("ken".to_string()) }),

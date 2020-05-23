@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj, TypeValue};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -461,10 +461,11 @@ impl VM {
                     let value = match inst {
                         Value::Obj(Obj::InstanceObj(inst)) => {
                             let fields = &inst.borrow().fields;
-                            match fields.get(field_idx) {
-                                Some(field_val) => field_val.clone(),
-                                None => unreachable!()
-                            }
+                            fields[field_idx].clone()
+                        }
+                        Value::Type(TypeValue { static_fields, .. }) => {
+                            let (_, field_value) = static_fields[field_idx].clone();
+                            Value::Fn(field_value)
                         }
                         value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, field_idx),
                         value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, field_idx),
