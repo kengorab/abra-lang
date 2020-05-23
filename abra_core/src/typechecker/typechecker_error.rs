@@ -814,6 +814,7 @@ Type Int[] does not have a member with name 'size'"
             target_type: Type::Struct(StructType {
                 name: "Person".to_string(),
                 fields: vec![("name".to_string(), Type::String, false)],
+                static_fields: vec![],
                 methods: vec![],
             }),
         };

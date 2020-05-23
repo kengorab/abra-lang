@@ -18,6 +18,7 @@ pub(crate) enum ScopeKind {
     Root,
     Block,
     Function(/*token: */ Token, /*name: */ String, /*is_recursive: */ bool),
+    TypeDef,
     Loop,
 }
 
@@ -660,6 +661,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
         }
 
+        self.scopes.push(Scope::new(ScopeKind::TypeDef));
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
             .map(|(field_name, field_type, default_value)| {
@@ -692,12 +694,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     (Token::get_ident_name(name).clone(), typ.clone(), default_value.is_some())
                 })
                 .collect(),
+            static_fields: vec![],
             methods: vec![],
         };
         self.cur_typedef = Some(RefCell::new(typedef));
 
         let mut method_names = HashMap::<String, Token>::new();
         let mut typed_methods = Vec::new();
+        let mut static_fields = Vec::new();
         for func_decl_node in methods {
             let name_tok = match &func_decl_node {
                 AstNode::FunctionDecl(_, FunctionDeclNode { name, .. }) => name.clone(),
@@ -714,26 +718,42 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             method_names.insert(name.clone(), name_tok.clone());
 
             let typed_func_decl = self.visit(func_decl_node)?;
-            let fn_type = match &typed_func_decl {
+            let (is_static, fn_type) = match &typed_func_decl {
                 TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, ret_type, .. }) => {
+                    let mut is_static = true;
                     let arg_types = args.iter()
                         .filter_map(|(ident, typ, default_value)| {
                             match ident {
-                                Token::Self_(_) => None,
+                                Token::Self_(_) => {
+                                    is_static = false;
+                                    None
+                                }
                                 ident @ _ => {
                                     Some((Token::get_ident_name(ident).clone(), typ.clone(), default_value.is_some()))
                                 }
                             }
                         })
                         .collect::<Vec<_>>();
-                    let self_type = self.cur_typedef.as_ref().unwrap().borrow().clone();
-                    Type::Fn(Some(Box::new(Type::Struct(self_type))), arg_types, Box::new(ret_type.clone()))
+                    if is_static {
+                        (true, Type::Fn(None, arg_types, Box::new(ret_type.clone())))
+                    } else {
+                        let self_type = self.cur_typedef.as_ref().unwrap().borrow().clone();
+                        (false, Type::Fn(Some(Box::new(Type::Struct(self_type))), arg_types, Box::new(ret_type.clone())))
+                    }
                 }
                 _ => unreachable!()
             };
-            self.cur_typedef.as_ref().unwrap().borrow_mut().methods.push((name.clone(), fn_type));
-            typed_methods.push((name, typed_func_decl));
+            if is_static {
+                self.cur_typedef.as_ref().unwrap().borrow_mut().static_fields.push((name, fn_type.clone(), true));
+                let tok = typed_func_decl.get_token().clone();
+                static_fields.push((tok, fn_type, Some(typed_func_decl)));
+            } else {
+                self.cur_typedef.as_ref().unwrap().borrow_mut().methods.push((name.clone(), fn_type));
+                typed_methods.push((name, typed_func_decl));
+            }
         }
+
+        self.scopes.pop();
 
         let mut typedef = None;
         std::mem::swap(&mut typedef, &mut self.cur_typedef);
@@ -744,7 +764,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let binding_type = Type::Type(new_type_name.clone(), Box::new(new_type.clone()));
         self.add_binding(&new_type_name, &name, &binding_type, false);
 
-        let type_decl = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields, methods: typed_methods });
+        let type_decl = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields, static_fields, methods: typed_methods });
         self.add_type(new_type_name, type_decl.clone(), new_type);
         Ok(type_decl)
     }
@@ -1206,6 +1226,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             .find(|(_, (name, _))| &field_name == name)
                             .map(|(idx, (_, typ))| (num_fields + idx, typ.clone()))
                     })
+            }
+            Type::Type(_, typ) => match &**typ {
+                Type::Struct(StructType { static_fields, .. }) => {
+                    static_fields.iter().enumerate()
+                        .find(|(_, (name, _, _))| &field_name == name)
+                        .map(|(idx, (_, typ, _))| (idx, typ.clone()))
+                }
+                _ => unimplemented!()
             }
             typ @ _ => {
                 field_for_type(typ, &field_name).map(|(idx, (_, typ))| (idx, typ.clone()))
@@ -2248,6 +2276,7 @@ mod tests {
                 fields: vec![
                     (ident_token!((1, 15), "name"), Type::String, None)
                 ],
+                static_fields: vec![],
                 methods: vec![],
             },
         );
@@ -2256,6 +2285,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             fields: vec![("name".to_string(), Type::String, false)],
+            static_fields: vec![],
             methods: vec![],
         });
         assert_eq!(expected_type, typ);
@@ -2269,6 +2299,7 @@ mod tests {
                     (ident_token!((1, 15), "name"), Type::String, None),
                     (ident_token!((1, 29), "age"), Type::Int, Some(int_literal!((1, 40), 0)))
                 ],
+                static_fields: vec![],
                 methods: vec![],
             },
         );
@@ -2280,6 +2311,7 @@ mod tests {
                 ("name".to_string(), Type::String, false),
                 ("age".to_string(), Type::Int, true),
             ],
+            static_fields: vec![],
             methods: vec![],
         });
         assert_eq!(expected_type, typ);
@@ -2312,8 +2344,8 @@ mod tests {
           }
         ";
         let (typechecker, typed_ast) = typecheck_get_typechecker(input);
-        let person_type_stub = Type::Struct(StructType { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)], methods: vec![] });
-        let person_type_stub2 = Type::Struct(StructType { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)], methods: vec![("getName".to_string(), Type::Fn(Some(Box::new(person_type_stub.clone())), vec![], Box::new(Type::String)))] });
+        let person_type_stub = Type::Struct(StructType { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)], static_fields: vec![], methods: vec![] });
+        let person_type_stub2 = Type::Struct(StructType { name: "Person".to_string(), fields: vec![("name".to_string(), Type::String, false)], static_fields: vec![], methods: vec![("getName".to_string(), Type::Fn(Some(Box::new(person_type_stub.clone())), vec![], Box::new(Type::String)))] });
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -2321,6 +2353,7 @@ mod tests {
                 fields: vec![
                     (ident_token!((2, 1), "name"), Type::String, None),
                 ],
+                static_fields: vec![],
                 methods: vec![
                     (
                         "getName".to_string(),
@@ -2342,7 +2375,7 @@ mod tests {
                                                 TypedIdentifierNode {
                                                     typ: person_type_stub.clone(),
                                                     name: "self".to_string(),
-                                                    scope_depth: 1,
+                                                    scope_depth: 2,
                                                     is_mutable: false,
                                                 },
                                             )),
@@ -2351,7 +2384,7 @@ mod tests {
                                         },
                                     )
                                 ],
-                                scope_depth: 0,
+                                scope_depth: 1,
                                 is_recursive: false,
                             },
                         ),
@@ -2382,7 +2415,7 @@ mod tests {
                                                             TypedIdentifierNode {
                                                                 typ: person_type_stub2.clone(),
                                                                 name: "self".to_string(),
-                                                                scope_depth: 1,
+                                                                scope_depth: 2,
                                                                 is_mutable: false,
                                                             },
                                                         )),
@@ -2394,7 +2427,7 @@ mod tests {
                                         },
                                     )
                                 ],
-                                scope_depth: 0,
+                                scope_depth: 1,
                                 is_recursive: false,
                             },
                         ),
@@ -2409,10 +2442,64 @@ mod tests {
             fields: vec![
                 ("name".to_string(), Type::String, false)
             ],
+            static_fields: vec![],
             methods: vec![
                 ("getName".to_string(), Type::Fn(Some(Box::new(person_type_stub)), vec![], Box::new(Type::String))),
                 ("getName2".to_string(), Type::Fn(Some(Box::new(person_type_stub2)), vec![], Box::new(Type::String)))
             ],
+        });
+        Ok(assert_eq!(expected_type, typ))
+    }
+
+    #[test]
+    fn typecheck_type_decl_static_methods() -> TestResult {
+        let input = "\
+          type Person {\n\
+            name: String\n\
+            func getName() = \"hello\"\n\
+          }
+        ";
+        let (typechecker, typed_ast) = typecheck_get_typechecker(input);
+        let expected = TypedAstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypedTypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                fields: vec![
+                    (ident_token!((2, 1), "name"), Type::String, None),
+                ],
+                static_fields: vec![
+                    (
+                        Token::Func(Position::new(3, 1)),
+                        Type::Fn(None, vec![], Box::new(Type::String)),
+                        Some(TypedAstNode::FunctionDecl(
+                            Token::Func(Position::new(3, 1)),
+                            TypedFunctionDeclNode {
+                                name: Token::Ident(Position::new(3, 6), "getName".to_string()),
+                                args: vec![],
+                                ret_type: Type::String,
+                                body: vec![
+                                    string_literal!((3, 18), "hello")
+                                ],
+                                scope_depth: 1,
+                                is_recursive: false,
+                            },
+                        )),
+                    ),
+                ],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
+        let expected_type = Type::Struct(StructType {
+            name: "Person".to_string(),
+            fields: vec![
+                ("name".to_string(), Type::String, false)
+            ],
+            static_fields: vec![
+                ("getName".to_string(), Type::Fn(None, vec![], Box::new(Type::String)), true),
+            ],
+            methods: vec![],
         });
         Ok(assert_eq!(expected_type, typ))
     }
@@ -3077,6 +3164,7 @@ mod tests {
         let typ = Type::Struct(StructType {
             name: "Person".to_string(),
             fields: vec![("name".to_string(), Type::String, false)],
+            static_fields: vec![],
             methods: vec![],
         });
         let expected = TypedAstNode::Instantiation(
@@ -3112,6 +3200,7 @@ mod tests {
                 ("name".to_string(), Type::String, false),
                 ("age".to_string(), Type::Int, true),
             ],
+            static_fields: vec![],
             methods: vec![],
         });
         let expected = TypedAstNode::Instantiation(
@@ -3477,7 +3566,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_accessor() -> TestResult {
+    fn typecheck_accessor_instance() -> TestResult {
         // Getting fields off structs
         let typed_ast = typecheck("\
           type Person { name: String }\n\
@@ -3494,6 +3583,7 @@ mod tests {
                         typ: Type::Struct(StructType {
                             name: "Person".to_string(),
                             fields: vec![("name".to_string(), Type::String, false)],
+                            static_fields: vec![],
                             methods: vec![],
                         }),
                         name: "p".to_string(),
@@ -3526,6 +3616,7 @@ mod tests {
                                 ("name".to_string(), Type::String, false),
                                 ("age".to_string(), Type::Int, true),
                             ],
+                            static_fields: vec![],
                             methods: vec![],
                         }),
                         name: "p".to_string(),
@@ -3579,6 +3670,40 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_accessor_static() -> TestResult {
+        // Getting static fields off structs
+        let typed_ast = typecheck("\
+          type Person { func getName() = \"Sam\" }\n\
+          Person.getName\n\
+        ")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(2, 7)),
+            TypedAccessorNode {
+                typ: Type::Fn(None, vec![], Box::new(Type::String)),
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((2, 1), "Person"),
+                    TypedIdentifierNode {
+                        typ: Type::Type("Person".to_string(), Box::new(Type::Struct(StructType {
+                            name: "Person".to_string(),
+                            fields: vec![],
+                            static_fields: vec![("getName".to_string(), Type::Fn(None, vec![], Box::new(Type::String)), true)],
+                            methods: vec![],
+                        }))),
+                        name: "Person".to_string(),
+                        scope_depth: 0,
+                        is_mutable: false,
+                    },
+                )),
+                field_name: "getName".to_string(),
+                field_idx: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
     fn typecheck_accessor_error() {
         let error = typecheck("\
           type Person { name: String }\n\
@@ -3590,6 +3715,7 @@ mod tests {
             target_type: Type::Struct(StructType {
                 name: "Person".to_string(),
                 fields: vec![("name".to_string(), Type::String, false)],
+                static_fields: vec![],
                 methods: vec![],
             }),
         };
