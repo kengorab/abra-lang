@@ -12,6 +12,10 @@ mod tests {
     use std::collections::HashMap;
     use crate::vm::opcode::Opcode;
 
+    fn new_string_obj(string: &str) -> Obj {
+        Obj::new_string_obj(string.to_string())
+    }
+
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
@@ -73,7 +77,7 @@ mod tests {
         assert_eq!(expected, result);
 
         let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
+        let expected = Value::Obj(new_string_obj("hello 24 world"));
         assert_eq!(expected, result);
     }
 
@@ -108,7 +112,7 @@ mod tests {
                             preface
         );
         let result = interpret(&input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("true false".to_string()) });
+        let expected = Value::Obj(new_string_obj("true false"));
         assert_eq!(expected, result);
 
         let input = format!("{}\n\
@@ -117,7 +121,7 @@ mod tests {
                             preface
         );
         let result = interpret(&input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("false false".to_string()) });
+        let expected = Value::Obj(new_string_obj("false false"));
         assert_eq!(expected, result);
     }
 
@@ -195,7 +199,7 @@ mod tests {
                 Box::new(Value::Int(-1)),
                 Box::new(Value::Bool(true)),
                 Box::new(Value::Float(3.4)),
-                Box::new(Value::Obj(Obj::StringObj { value: Box::new("5".to_string()) })),
+                Box::new(Value::Obj(new_string_obj("5"))),
             ]
         });
         assert_eq!(expected, result);
@@ -210,7 +214,7 @@ mod tests {
                     value: vec![Box::new(Value::Bool(true)), Box::new(Value::Bool(false))]
                 })),
                 Box::new(Value::Obj(Obj::ArrayObj {
-                    value: vec![Box::new(Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }))]
+                    value: vec![Box::new(Value::Obj(new_string_obj("a")))]
                 })),
             ]
         });
@@ -257,7 +261,7 @@ mod tests {
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
             ("a".to_string(), Value::Int(1)),
-            ("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })),
+            ("b".to_string(), Value::Obj(new_string_obj("hello"))),
             ("c".to_string(), Value::Bool(true)),
         ];
         assert_eq!(expected_pairs, result_pairs);
@@ -268,7 +272,7 @@ mod tests {
             ("a".to_string(), Value::Obj(Obj::MapObj {
                 value: {
                     let mut items = HashMap::new();
-                    items.insert("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }));
+                    items.insert("b".to_string(), Value::Obj(new_string_obj("hello")));
                     items
                 }
             })),
@@ -390,12 +394,12 @@ mod tests {
           char
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("w".to_string()) });
+        let expected = Value::Obj(new_string_obj("w"));
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[-3]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("r".to_string()) });
+        let expected = Value::Obj(new_string_obj("r"));
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[100]";
@@ -408,27 +412,27 @@ mod tests {
     fn interpret_indexing_ranges_strings() {
         let input = "\"some string\"[1:2]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("o".to_string()) });
+        let expected = Value::Obj(new_string_obj("o"));
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-2:-1]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("n".to_string()) });
+        let expected = Value::Obj(new_string_obj("n"));
         assert_eq!(expected, result);
 
         let input = "\"some string\"[:4]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("some".to_string()) });
+        let expected = Value::Obj(new_string_obj("some"));
         assert_eq!(expected, result);
 
         let input = "\"some string\"[5:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        let expected = Value::Obj(new_string_obj("string"));
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-6:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        let expected = Value::Obj(new_string_obj("string"));
         assert_eq!(expected, result);
     }
 
@@ -706,7 +710,7 @@ mod tests {
           greet(languageName) + \" \" + greet(languageName)\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Hello, Abra! Hello, Abra!".to_string()) });
+        let expected = Value::Obj(new_string_obj("Hello, Abra! Hello, Abra!"));
         assert_eq!(expected, result);
     }
 
@@ -729,7 +733,7 @@ mod tests {
           save(\"Cheerleader\") + \", \" + save(\"World\")\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Save the Cheerleader, Save the World!".to_string()) });
+        let expected = Value::Obj(new_string_obj("Save the Cheerleader, Save the World!"));
         assert_eq!(expected, result);
     }
 
@@ -903,9 +907,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,".to_string())
-        });
+        let expected = Value::Obj(new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,"));
         assert_eq!(expected, result);
     }
 
@@ -968,9 +970,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,".to_string())
-        });
+        let expected = Value::Obj(new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,"));
         assert_eq!(expected, result);
     }
 
@@ -990,9 +990,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1456, 2456, 3456".to_string())
-        });
+        let expected = Value::Obj(new_string_obj("1456, 2456, 3456"));
         assert_eq!(expected, result);
     }
 
@@ -1017,7 +1015,7 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = "Outer 0 [Inner 0 Inner 1 ], Outer 1 [Inner 0 Inner 1 ], ";
-        let expected = Value::Obj(Obj::StringObj { value: Box::new(expected.to_string()) });
+        let expected = Value::Obj(new_string_obj(expected));
         assert_eq!(expected, result);
     }
 
@@ -1029,7 +1027,7 @@ mod tests {
           ken.name\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) });
+        let expected = Value::Obj(new_string_obj("Ken"));
         assert_eq!(expected, result);
 
         // Test with default value
@@ -1071,7 +1069,7 @@ mod tests {
           ken.introduce() + \", and \" + brian.introduce()\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken, and I am Brian".to_string()) });
+        let expected = Value::Obj(new_string_obj("I am Ken, and I am Brian"));
         assert_eq!(expected, result);
     }
 
@@ -1087,7 +1085,7 @@ mod tests {
           introduceFn()\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        let expected = Value::Obj(new_string_obj("I am Ken"));
         assert_eq!(expected, result);
     }
 
@@ -1102,7 +1100,7 @@ mod tests {
           Person.introduce(ken.name)\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        let expected = Value::Obj(new_string_obj("I am Ken"));
         assert_eq!(expected, result);
     }
 }

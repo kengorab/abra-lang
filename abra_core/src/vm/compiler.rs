@@ -508,13 +508,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
             return Ok(());
         }
 
-        let const_idx = match node {
-            TypedLiteralNode::FloatLiteral(val) =>
-                self.add_constant(Value::Float(val)),
-            TypedLiteralNode::StringLiteral(val) =>
-                self.add_constant(Value::Obj(Obj::StringObj { value: Box::new(val) })),
+        let value = match node {
+            TypedLiteralNode::FloatLiteral(val) => Value::Float(val),
+            TypedLiteralNode::StringLiteral(val) => Value::Obj(Obj::new_string_obj(val)),
             TypedLiteralNode::IntLiteral(_) | TypedLiteralNode::BoolLiteral(_) => unreachable!() // Handled in if-let above
         };
+        let const_idx = self.add_constant(value);
 
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
@@ -1161,6 +1160,10 @@ mod tests {
         NATIVE_FNS_MAP.get(name).unwrap().clone().clone()
     }
 
+    fn new_string_obj(string: &str) -> Obj {
+        Obj::new_string_obj(string.to_string())
+    }
+
     fn compile(input: &str) -> Module {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
@@ -1204,7 +1207,7 @@ mod tests {
             constants: vec![
                 Value::Float(2.3),
                 Value::Float(5.6),
-                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })
+                Value::Obj(new_string_obj("hello"))
             ],
         };
         assert_eq!(expected, chunk);
@@ -1326,8 +1329,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("abc".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("def".to_string()) }),
+                Value::Obj(new_string_obj("abc")),
+                Value::Obj(new_string_obj("def")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1343,7 +1346,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(new_string_obj("a")),
                 Value::Float(3.4)
             ],
         };
@@ -1400,8 +1403,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) })
+                Value::Obj(new_string_obj("a")),
+                Value::Obj(new_string_obj("b"))
             ],
         };
         assert_eq!(expected, chunk);
@@ -1426,9 +1429,9 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Obj(new_string_obj("a")),
+                Value::Obj(new_string_obj("b")),
+                Value::Obj(new_string_obj("c")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1458,9 +1461,9 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Obj(new_string_obj("a")),
+                Value::Obj(new_string_obj("b")),
+                Value::Obj(new_string_obj("c")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1503,7 +1506,7 @@ mod tests {
             constants: vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("c".to_string()) }),
+                Value::Obj(new_string_obj("c")),
                 Value::Str("d".to_string()),
             ],
         };
@@ -1556,8 +1559,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
-                Value::Obj(Obj::StringObj { value: Box::new("b".to_string()) }),
+                Value::Obj(new_string_obj("a")),
+                Value::Obj(new_string_obj("b")),
                 Value::Str("abc".to_string()),
                 Value::Int(5),
                 Value::Str("def".to_string()),
@@ -1594,7 +1597,7 @@ mod tests {
                     static_fields: vec![],
                 }),
                 Value::Str("Person".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("Meg".to_string()) }),
+                Value::Obj(new_string_obj("Meg")),
                 Value::Str("meg".to_string()),
             ],
         };
@@ -1634,10 +1637,10 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Str("Person".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("Unnamed".to_string()) }),
+                Value::Obj(new_string_obj("Unnamed")),
                 Value::Str("someBaby".to_string()),
                 Value::Int(29),
-                Value::Obj(Obj::StringObj { value: Box::new("Some Name".to_string()) }),
+                Value::Obj(new_string_obj("Some Name")),
                 Value::Str("anAdult".to_string()),
             ],
         };
@@ -1967,7 +1970,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+                Value::Obj(new_string_obj("some string")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -1983,7 +1986,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+                Value::Obj(new_string_obj("some string")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2000,7 +2003,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("some string".to_string()) }),
+                Value::Obj(new_string_obj("some string")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2020,7 +2023,7 @@ mod tests {
             constants: vec![
                 Value::Str("a".to_string()),
                 Value::Str("b".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }),
+                Value::Obj(new_string_obj("a")),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2212,7 +2215,7 @@ mod tests {
             ],
             constants: vec![
                 Value::Str("abc".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(new_string_obj("hello")),
                 Value::NativeFn(get_native_fn("println")),
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
@@ -2645,7 +2648,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("Row: ".to_string()) }),
+                Value::Obj(new_string_obj("Row: ")),
                 Value::Str("msg".to_string()),
                 Value::Str("arr".to_string()),
                 Value::NativeFn(get_native_fn("println")),
@@ -2683,7 +2686,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Str("Person".to_string()),
-                Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) }),
+                Value::Obj(new_string_obj("Ken")),
                 Value::Str("ken".to_string()),
             ],
         };
@@ -2698,7 +2701,7 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }),
+                Value::Obj(new_string_obj("hello")),
             ],
         };
         assert_eq!(expected, chunk);

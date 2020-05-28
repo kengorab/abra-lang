@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj, TypeValue};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj, TypeValue, StringObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -407,7 +407,7 @@ impl VM {
                     let a = a.to_string();
                     let b = b.to_string();
                     let concat = a + &b;
-                    self.push(Value::Obj(Obj::StringObj { value: Box::new(concat) }))
+                    self.push(Value::Obj(Obj::new_string_obj(concat)))
                 }
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
@@ -507,12 +507,12 @@ impl VM {
                 Opcode::ArrLoad => {
                     let idx = pop_expect_int!(self)?;
                     let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj { value }) => {
+                        Value::Obj(Obj::StringObj(StringObj { value, .. })) => {
                             let len = value.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
                             match (*value).chars().nth(idx as usize) {
-                                Some(ch) => Value::Obj(Obj::StringObj { value: Box::new(ch.to_string()) }),
+                                Some(ch) => Value::Obj(Obj::new_string_obj(ch.to_string())),
                                 None => Value::Nil
                             }
                         }
@@ -547,10 +547,10 @@ impl VM {
                     let start = pop_expect_int!(self)?;
 
                     let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj { value }) => {
+                        Value::Obj(Obj::StringObj(StringObj { value, .. })) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let value = (*value).chars().skip(start).take(len).collect::<String>();
-                            Value::Obj(Obj::StringObj { value: Box::new(value) })
+                            Value::Obj(Obj::new_string_obj(value))
                         }
                         Value::Obj(Obj::ArrayObj { value }) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);

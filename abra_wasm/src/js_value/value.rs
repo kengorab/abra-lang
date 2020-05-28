@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, StringObj};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -73,7 +73,7 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
-            Obj::StringObj { value } => {
+            Obj::StringObj(StringObj { value, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "stringObj")?;
                 obj.serialize_entry("value", value)?;

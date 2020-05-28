@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::{Value, Obj, StringObj};
 
 pub trait NativeType {
     const FIELDS: &'static [(&'static str, Type)];
@@ -54,7 +54,7 @@ impl NativeType for NativeString {
     ];
 
     fn get_field_value(value: &Value, field_idx: usize) -> Value {
-        if let Value::Obj(Obj::StringObj { value }) = value {
+        if let Value::Obj(Obj::StringObj(StringObj { value, .. })) = value {
             match field_idx {
                 0 => Value::Int(value.len() as i64),
                 _ => unreachable!()

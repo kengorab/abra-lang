@@ -72,7 +72,7 @@ impl Display for Value {
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
             Value::Obj(o) => match o {
-                Obj::StringObj { value } => write!(f, "\"{}\"", *value),
+                Obj::StringObj(StringObj { value, .. }) => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
             Value::Fn(FnValue { name, .. }) |
@@ -85,6 +85,12 @@ impl Display for Value {
 }
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
+pub struct StringObj {
+    pub value: String,
+    pub fields: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
@@ -92,17 +98,24 @@ pub struct InstanceObj {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Obj {
-    StringObj { value: Box<String> },
+    StringObj(StringObj),
     ArrayObj { value: Vec<Box<Value>> },
     MapObj { value: HashMap<String, Value> },
     InstanceObj(Arc<RefCell<InstanceObj>>),
 }
 
 impl Obj {
+    pub fn new_string_obj(value: String) -> Obj {
+        let fields = vec![];
+        Obj::StringObj(StringObj { value, fields })
+    }
+}
+
+impl Obj {
     // TODO: Proper toString impl
     pub fn to_string(&self) -> String {
         match self {
-            Obj::StringObj { value } => *value.clone(),
+            Obj::StringObj(StringObj { value, .. }) => value.clone(),
             Obj::ArrayObj { value } => {
                 let items = value.iter()
                     .map(|v| v.to_string())
@@ -131,7 +144,7 @@ impl Obj {
 impl PartialOrd for Obj {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (Obj::StringObj { value: v1 }, Obj::StringObj { value: v2 }) => {
+            (Obj::StringObj(StringObj { value: v1, .. }), Obj::StringObj(StringObj { value: v2, .. })) => {
                 Some(v1.cmp(v2))
             }
             (Obj::ArrayObj { value: v1 }, Obj::ArrayObj { value: v2 }) => {
