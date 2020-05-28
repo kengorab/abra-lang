@@ -12,7 +12,7 @@ use std::sync::Arc;
 macro_rules! pop_expect_string {
     ($self: expr) => (
         match $self.pop_expect()? {
-            Value::Obj(Obj::StringObj { value }) => Ok(*value),
+            Value::Str(value) => Ok(value),
             v @ _ => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
         }
     );

@@ -35,6 +35,10 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
+    /// Represents a compile-time string constant (ie. the name of a function, or the key of a map).
+    /// These are only transient values and should not remain on the stack. Compare to an actual,
+    /// heap-allocated, run-time Value::Obj(Obj::StringObj) value.
+    Str(String),
     Obj(Obj),
     Fn(FnValue),
     Closure(ClosureValue),
@@ -49,6 +53,7 @@ impl Value {
             Value::Int(val) => format!("{}", val),
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
+            Value::Str(val) => val.clone(),
             Value::Obj(o) => o.to_string(),
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) |
@@ -65,6 +70,7 @@ impl Display for Value {
             Value::Int(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
+            Value::Str(val) => write!(f, "{}", val),
             Value::Obj(o) => match o {
                 Obj::StringObj { value } => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),

@@ -35,6 +35,7 @@ impl Serialize for RunResult {
             RunResult(Value::Int(val)) => serializer.serialize_i64(*val),
             RunResult(Value::Float(val)) => serializer.serialize_f64(*val),
             RunResult(Value::Bool(val)) => serializer.serialize_bool(*val),
+            RunResult(Value::Str(val)) => serializer.serialize_str(val),
             RunResult(Value::Obj(obj)) => match obj {
                 Obj::StringObj { value } => serializer.serialize_str(&*value),
                 Obj::ArrayObj { value } => {
