@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, InstanceObj, TypeValue, StringObj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, StringObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -41,6 +41,15 @@ macro_rules! pop_expect_bool {
         match $self.pop_expect()? {
             Value::Bool(value) => Ok(value),
             v @ _ => Err(InterpretError::TypeError("Bool".to_string(), v.to_string()))
+        }
+    );
+}
+
+macro_rules! pop_expect_obj {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Obj(value) => Ok(value),
+            v @ _ => Err(InterpretError::TypeError("Obj".to_string(), v.to_string()))
         }
     );
 }
@@ -407,7 +416,7 @@ impl VM {
                     let a = a.to_string();
                     let b = b.to_string();
                     let concat = a + &b;
-                    self.push(Value::Obj(Obj::new_string_obj(concat)))
+                    self.push(Value::new_string_obj(concat))
                 }
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
@@ -431,16 +440,11 @@ impl VM {
 
                     let type_value = self.pop_expect()?;
 
-                    let inst = InstanceObj { typ: Box::new(type_value), fields };
-                    let inst = Arc::new(RefCell::new(inst));
-                    let inst = Value::Obj(Obj::InstanceObj(inst));
+                    let inst = Value::new_instance_obj(type_value, fields);
                     self.push(inst);
                 }
                 Opcode::Init => {
-                    let instance_value = match self.pop_expect()? {
-                        Value::Obj(Obj::InstanceObj(inst)) => inst,
-                        _ => unreachable!()
-                    };
+                    let instance_value = pop_expect_obj!(self)?;
                     let type_value = match self.pop_expect()? {
                         Value::Type(type_value) => type_value,
                         _ => unreachable!()
@@ -448,10 +452,13 @@ impl VM {
 
                     for (_, mut method_value) in type_value.methods {
                         method_value.receiver = Some(instance_value.clone());
-                        instance_value.borrow_mut().fields.push(Value::Fn(method_value));
+                        match *instance_value.borrow_mut() {
+                            Obj::InstanceObj(ref mut obj) => obj.fields.push(Value::Fn(method_value)),
+                            _ => unreachable!()
+                        }
                     }
 
-                    let initialized_inst = Value::Obj(Obj::InstanceObj(instance_value));
+                    let initialized_inst = Value::Obj(instance_value);
                     self.push(initialized_inst);
                 }
                 Opcode::GetField => {
@@ -459,16 +466,16 @@ impl VM {
                     let field_idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Obj(Obj::InstanceObj(inst)) => {
-                            let fields = &inst.borrow().fields;
-                            fields[field_idx].clone()
+                        Value::Obj(obj) => match &*obj.borrow() {
+                            Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
+                            Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
+                            Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
+                            _ => unreachable!()
                         }
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[field_idx].clone();
                             Value::Fn(field_value)
                         }
-                        value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, field_idx),
-                        value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, field_idx),
                         _ => unreachable!()
                     };
                     self.push(value);
@@ -481,16 +488,15 @@ impl VM {
                         let key = pop_expect_string!(self)?;
                         items.insert(key, value);
                     }
-                    self.push(Value::Obj(Obj::MapObj { value: items }));
+                    self.push(Value::new_map_obj(items));
                 }
                 Opcode::MapLoad => {
                     let key = pop_expect_string!(self)?;
-                    let val = match self.pop_expect()? {
-                        Value::Obj(Obj::MapObj { value }) => {
-                            match value.get(&key) {
-                                Some(val) => val.clone(),
-                                None => Value::Nil
-                            }
+                    let obj = pop_expect_obj!(self)?;
+                    let val = match &*obj.borrow() {
+                        Obj::MapObj { value } => match value.get(&key) {
+                            Some(val) => val.clone(),
+                            None => Value::Nil
                         }
                         _ => unreachable!()
                     };
@@ -498,31 +504,32 @@ impl VM {
                 }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;
-                    let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
+                    let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
                     for _ in 0..size {
-                        arr_items.push_front(Box::new(self.pop_expect()?));
+                        arr_items.push_front(self.pop_expect()?);
                     }
-                    self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
+                    self.push(Value::new_array_obj(arr_items.into()));
                 }
                 Opcode::ArrLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj(StringObj { value, .. })) => {
+                    let obj = pop_expect_obj!(self)?;
+                    let value = match &*obj.borrow() {
+                        Obj::StringObj(StringObj { value, .. }) => {
                             let len = value.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
                             match (*value).chars().nth(idx as usize) {
-                                Some(ch) => Value::Obj(Obj::new_string_obj(ch.to_string())),
+                                Some(ch) => Value::new_string_obj(ch.to_string()),
                                 None => Value::Nil
                             }
                         }
-                        Value::Obj(Obj::ArrayObj { value }) => {
+                        Obj::ArrayObj { value } => {
                             let len = value.len() as i64;
                             if idx < -len || idx >= len {
-                                Value::Nil//None
+                                Value::Nil
                             } else {
                                 let idx = if idx < 0 { idx + len } else { idx };
-                                *value[idx as usize].clone()
+                                value[idx as usize].clone()
                             }
                         }
                         _ => unreachable!()
@@ -546,16 +553,17 @@ impl VM {
                     let end = self.pop_expect()?;
                     let start = pop_expect_int!(self)?;
 
-                    let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj(StringObj { value, .. })) => {
+                    let obj = pop_expect_obj!(self)?;
+                    let value = match &*obj.borrow() {
+                        Obj::StringObj(StringObj { value, .. }) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let value = (*value).chars().skip(start).take(len).collect::<String>();
-                            Value::Obj(Obj::new_string_obj(value))
+                            Value::new_string_obj(value)
                         }
-                        Value::Obj(Obj::ArrayObj { value }) => {
+                        Obj::ArrayObj { value } => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
-                            let value = value.into_iter().skip(start).take(len).collect::<Vec<_>>();
-                            Value::Obj(Obj::ArrayObj { value })
+                            let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
+                            Value::new_array_obj(values)
                         }
                         _ => unreachable!()
                     };
@@ -653,7 +661,7 @@ impl VM {
                     match receiver {
                         Some(receiver) => {
                             let mut args = self.stack.split_off(self.stack.len() - arity);
-                            self.stack.push(Value::Obj(Obj::InstanceObj(receiver)));
+                            self.stack.push(Value::Obj(receiver));
                             self.stack.append(&mut args);
                             arity += 1;
                         }

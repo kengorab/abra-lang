@@ -36,12 +36,12 @@ impl Serialize for RunResult {
             RunResult(Value::Float(val)) => serializer.serialize_f64(*val),
             RunResult(Value::Bool(val)) => serializer.serialize_bool(*val),
             RunResult(Value::Str(val)) => serializer.serialize_str(val),
-            RunResult(Value::Obj(obj)) => match obj {
+            RunResult(Value::Obj(obj)) => match &*obj.borrow() {
                 Obj::StringObj(StringObj { value, .. }) => serializer.serialize_str(&*value),
                 Obj::ArrayObj { value } => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResult((**val).clone())).unwrap();
+                        arr.serialize_element(&RunResult((*val).clone())).unwrap();
                     });
                     arr.end()
                 }
@@ -53,7 +53,7 @@ impl Serialize for RunResult {
                     obj.end()
                 }
                 Obj::InstanceObj(inst) => {
-                    let fields = &inst.borrow().fields;
+                    let fields = &inst.fields;
                     let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                     fields.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResult((*val).clone())).unwrap();

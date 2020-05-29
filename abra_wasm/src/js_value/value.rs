@@ -38,7 +38,7 @@ impl<'a> Serialize for JsWrappedValue<'a> {
             Value::Obj(o) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "obj")?;
-                obj.serialize_entry("value", &JsWrappedObjValue(o))?;
+                obj.serialize_entry("value", &JsWrappedObjValue(&*o.borrow()))?;
                 obj.end()
             }
             Value::Fn(FnValue { name: fn_name, .. }) |
@@ -96,13 +96,10 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.end()
             }
             Obj::InstanceObj(inst) => {
-                let typ = &inst.borrow().typ;
-                let fields = &inst.borrow().fields;
-
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "instanceObj")?;
-                obj.serialize_entry("type", &JsWrappedValue(typ))?;
-                let value: Vec<JsWrappedValue> = fields.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("type", &JsWrappedValue(&inst.typ))?;
+                let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
