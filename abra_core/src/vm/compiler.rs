@@ -1151,13 +1151,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builtins::native_fns::{NATIVE_FNS_MAP, NativeFn};
+    use crate::builtins::native_fns::{native_fns, NativeFn};
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
 
     fn get_native_fn(name: &str) -> NativeFn {
-        NATIVE_FNS_MAP.get(name).unwrap().clone().clone()
+        native_fns().into_iter().find(|f| &f.name == name).unwrap()
     }
 
     fn new_string_obj(string: &str) -> Obj {

@@ -1,8 +1,7 @@
 use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
-use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
+use crate::builtins::native_fns::native_fns;
 use std::collections::HashMap;
-use std::slice::Iter;
 
 #[derive(Clone)]
 struct PreludeBinding {
@@ -20,8 +19,7 @@ impl Prelude {
         let mut bindings = HashMap::new();
         let mut typedefs = HashMap::new();
 
-        let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
-        for native_fn in native_fns {
+        for native_fn in native_fns() {
             let native_fn = native_fn.clone();
             let name = native_fn.name.clone();
             let value = Value::NativeFn(native_fn.clone());
