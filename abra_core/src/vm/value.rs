@@ -130,19 +130,9 @@ impl Obj {
         match self {
             Obj::StringObj(StringObj { value, .. }) => value.clone(),
             Obj::ArrayObj { value } => {
-                let items = value.iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("[{}]", items)
+                value.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(",")
             }
-            Obj::MapObj { value } => {
-                let items = value.iter()
-                    .map(|(key, value)| format!("{}: {}", key.to_string(), value.to_string()))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("{{ {} }}", items)
-            }
+            Obj::MapObj { .. } => "<map>".to_string(),
             Obj::InstanceObj(inst) => {
                 match &*inst.typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
