@@ -1071,7 +1071,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$idx", line);
         load_intrinsic(self, "$iter", line);
         self.write_opcode(Opcode::GetField, line);
-        self.write_byte(NativeArray::get_field_idx("length") as u8, line);
+        self.write_byte(NativeArray::get_field_idx(&Type::Array(Box::new(Type::Any)), "length") as u8, line);
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
@@ -1157,7 +1157,7 @@ mod tests {
     use crate::typechecker::typechecker::typecheck;
 
     fn get_native_fn(name: &str) -> NativeFn {
-        native_fns().into_iter().find(|f| &f.name == name).unwrap()
+        native_fns().into_iter().find(|(f, _)| &f.name == &name).unwrap().1
     }
 
     fn new_string_obj(string: &str) -> Value {

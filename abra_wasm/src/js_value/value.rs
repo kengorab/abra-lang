@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, StringObj};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -42,7 +42,12 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.end()
             }
             Value::Fn(FnValue { name: fn_name, .. }) |
-            Value::Closure(ClosureValue { name: fn_name, .. }) |
+            Value::Closure(ClosureValue { name: fn_name, .. }) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "fn")?;
+                obj.serialize_entry("name", &fn_name)?;
+                obj.end()
+            }
             Value::NativeFn(NativeFn { name: fn_name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "fn")?;
@@ -73,20 +78,20 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
-            Obj::StringObj(StringObj { value, .. }) => {
+            Obj::StringObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "stringObj")?;
                 obj.serialize_entry("value", value)?;
                 obj.end()
             }
-            Obj::ArrayObj { value } => {
+            Obj::ArrayObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "arrayObj")?;
                 let value: Vec<JsWrappedValue> = value.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
-            Obj::MapObj { value } => {
+            Obj::MapObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "mapObj")?;
                 let value: Vec<(&String, JsWrappedValue)> = value.iter()

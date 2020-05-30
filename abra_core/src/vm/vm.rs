@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, StringObj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -494,7 +494,7 @@ impl VM {
                     let key = pop_expect_string!(self)?;
                     let obj = pop_expect_obj!(self)?;
                     let val = match &*obj.borrow() {
-                        Obj::MapObj { value } => match value.get(&key) {
+                        Obj::MapObj(value) => match value.get(&key) {
                             Some(val) => val.clone(),
                             None => Value::Nil
                         }
@@ -514,7 +514,7 @@ impl VM {
                     let idx = pop_expect_int!(self)?;
                     let obj = pop_expect_obj!(self)?;
                     let value = match &*obj.borrow() {
-                        Obj::StringObj(StringObj { value, .. }) => {
+                        Obj::StringObj(value) => {
                             let len = value.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
@@ -523,7 +523,7 @@ impl VM {
                                 None => Value::Nil
                             }
                         }
-                        Obj::ArrayObj { value } => {
+                        Obj::ArrayObj(value) => {
                             let len = value.len() as i64;
                             if idx < -len || idx >= len {
                                 Value::Nil
@@ -555,12 +555,12 @@ impl VM {
 
                     let obj = pop_expect_obj!(self)?;
                     let value = match &*obj.borrow() {
-                        Obj::StringObj(StringObj { value, .. }) => {
+                        Obj::StringObj(value) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let value = (*value).chars().skip(start).take(len).collect::<String>();
                             Value::new_string_obj(value)
                         }
-                        Obj::ArrayObj { value } => {
+                        Obj::ArrayObj(value) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
                             Value::new_array_obj(values)
