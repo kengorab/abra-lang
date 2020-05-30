@@ -64,17 +64,17 @@ impl Value {
     }
 
     pub fn new_string_obj(value: String) -> Value {
-        let str = Obj::StringObj(StringObj { value, fields: vec![] });
+        let str = Obj::StringObj(value);
         Value::Obj(Arc::new(RefCell::new(str)))
     }
 
     pub fn new_array_obj(values: Vec<Value>) -> Value {
-        let arr = Obj::ArrayObj { value: values };
+        let arr = Obj::ArrayObj(values);
         Value::Obj(Arc::new(RefCell::new(arr)))
     }
 
     pub fn new_map_obj(items: HashMap<String, Value>) -> Value {
-        let map = Obj::MapObj { value: items };
+        let map = Obj::MapObj(items);
         Value::Obj(Arc::new(RefCell::new(map)))
     }
 
@@ -92,7 +92,7 @@ impl Display for Value {
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
             Value::Obj(o) => match &*o.borrow() {
-                Obj::StringObj(StringObj { value, .. }) => write!(f, "\"{}\"", *value),
+                Obj::StringObj(value) => write!(f, "\"{}\"", value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
             Value::Fn(FnValue { name, .. }) |
@@ -105,12 +105,6 @@ impl Display for Value {
 }
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
-pub struct StringObj {
-    pub value: String,
-    pub fields: Vec<Value>,
-}
-
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
@@ -118,9 +112,9 @@ pub struct InstanceObj {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Obj {
-    StringObj(StringObj),
-    ArrayObj { value: Vec<Value> },
-    MapObj { value: HashMap<String, Value> },
+    StringObj(String),
+    ArrayObj(Vec<Value>),
+    MapObj(HashMap<String, Value>),
     InstanceObj(InstanceObj),
 }
 
@@ -128,11 +122,11 @@ impl Obj {
     // TODO: Proper toString impl
     pub fn to_string(&self) -> String {
         match self {
-            Obj::StringObj(StringObj { value, .. }) => value.clone(),
-            Obj::ArrayObj { value } => {
+            Obj::StringObj(value) => value.clone(),
+            Obj::ArrayObj(value) => {
                 value.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(",")
             }
-            Obj::MapObj { .. } => "<map>".to_string(),
+            Obj::MapObj(_) => "<map>".to_string(),
             Obj::InstanceObj(inst) => {
                 match &*inst.typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
@@ -146,10 +140,8 @@ impl Obj {
 impl PartialOrd for Obj {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (Obj::StringObj(StringObj { value: v1, .. }), Obj::StringObj(StringObj { value: v2, .. })) => {
-                Some(v1.cmp(v2))
-            }
-            (Obj::ArrayObj { value: v1 }, Obj::ArrayObj { value: v2 }) => {
+            (Obj::StringObj(v1), Obj::StringObj(v2)) => Some(v1.cmp(v2)),
+            (Obj::ArrayObj(v1), Obj::ArrayObj(v2)) => {
                 if v1.len() < v2.len() {
                     Some(Ordering::Less)
                 } else if v1.len() > v2.len() {

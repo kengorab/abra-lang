@@ -236,7 +236,7 @@ mod tests {
     fn sorted_map_obj_values(value: Value) -> Vec<(String, Value)> {
         if let Value::Obj(obj) = value {
             match &*obj.borrow() {
-                Obj::MapObj { value } => {
+                Obj::MapObj(value) => {
                     let mut pairs = value.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(String, Value)>>();
                     pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
                     pairs

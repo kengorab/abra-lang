@@ -18,7 +18,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
 use abra_core::{Error, compile, compile_and_run, compile_and_disassemble};
-use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, StringObj};
+use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
 
@@ -37,15 +37,15 @@ impl Serialize for RunResult {
             RunResult(Value::Bool(val)) => serializer.serialize_bool(*val),
             RunResult(Value::Str(val)) => serializer.serialize_str(val),
             RunResult(Value::Obj(obj)) => match &*obj.borrow() {
-                Obj::StringObj(StringObj { value, .. }) => serializer.serialize_str(&*value),
-                Obj::ArrayObj { value } => {
+                Obj::StringObj(value) => serializer.serialize_str(value),
+                Obj::ArrayObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResult((*val).clone())).unwrap();
                     });
                     arr.end()
                 }
-                Obj::MapObj { value } => {
+                Obj::MapObj(value) => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {
                         obj.serialize_entry(key, &RunResult(val.clone())).unwrap();
