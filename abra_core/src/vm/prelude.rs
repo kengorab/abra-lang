@@ -19,17 +19,11 @@ impl Prelude {
         let mut bindings = HashMap::new();
         let mut typedefs = HashMap::new();
 
-        for native_fn in native_fns() {
-            let native_fn = native_fn.clone();
-            let name = native_fn.name.clone();
-            let value = Value::NativeFn(native_fn.clone());
+        for (native_fn_desc, native_fn) in native_fns() {
+            let value = Value::NativeFn(native_fn);
 
-            let req_args = native_fn.args.iter().enumerate()
-                .map(|(idx, arg)| (format!("_{}", idx), arg.clone(), false));
-            let opt_args = native_fn.opt_args.iter().enumerate()
-                .map(|(idx, arg)| (format!("_{}", idx + native_fn.args.len()), arg.clone(), true));
-            let args = req_args.chain(opt_args).collect();
-            let typ = Type::Fn(None, args, Box::new(native_fn.return_type));
+            let name = native_fn_desc.name.to_string();
+            let typ = native_fn_desc.get_fn_type();
 
             bindings.insert(name, PreludeBinding { typ, value });
         }

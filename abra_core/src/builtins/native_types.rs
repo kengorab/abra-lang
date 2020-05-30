@@ -1,13 +1,24 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::native_fns::NativeFn;
+use crate::builtins::native_fns::{NativeFn, NativeFnDesc};
 use crate::vm::vm::VMContext;
 use std::sync::Arc;
 use std::cell::RefCell;
 
 pub trait NativeType {
     fn fields(typ: &Type) -> Vec<(&'static str, Type)>;
+    fn methods(typ: &Type) -> Vec<NativeFnDesc<'_>>;
     fn get_field_value(obj: &Arc<RefCell<Obj>>, field_idx: usize) -> Value;
+
+    fn fields_and_methods(typ: &Type) -> Vec<(&'static str, Type)> {
+        let mut fields = Self::fields(typ);
+
+        let mut methods = Self::methods(typ).into_iter()
+            .map(|m| (m.name, m.get_fn_type()))
+            .collect::<Vec<(&str, Type)>>();
+        fields.append(&mut methods);
+        fields
+    }
 
     fn get_field_idx(typ: &Type, field_name: &str) -> usize {
         match Self::get_field(typ, field_name) {
@@ -17,7 +28,7 @@ pub trait NativeType {
     }
 
     fn get_field(typ: &Type, field_name: &str) -> Option<(usize, (&'static str, Type))> {
-        Self::fields(typ).into_iter().enumerate().find(|(_, (name, _))| name == &field_name)
+        Self::fields_and_methods(typ).into_iter().enumerate().find(|(_, (name, _))| name == &field_name)
     }
 }
 
@@ -70,16 +81,31 @@ impl NativeArray {
 }
 
 impl NativeType for NativeArray {
-    fn fields(typ: &Type) -> Vec<(&'static str, Type)> {
+    fn fields(_: &Type) -> Vec<(&'static str, Type)> {
+        vec![
+            ("length", Type::Int)
+        ]
+    }
+
+    fn methods(typ: &Type) -> Vec<NativeFnDesc<'_>> {
         let inner_type = match typ {
-            Type::Array(inner_type) => *inner_type.clone(),
+            Type::Array(inner_type) => &**inner_type,
             _ => unreachable!()
         };
 
         vec![
-            ("length", Type::Int),
-            ("push", Type::Fn(Some(Box::new(typ.clone())), vec![("item".to_string(), inner_type.clone(), false)], Box::new(Type::Unit))),
-            ("concat", Type::Fn(Some(Box::new(typ.clone())), vec![("items".to_string(), Type::Array(Box::new(inner_type.clone())), false)], Box::new(typ.clone()))),
+            NativeFnDesc {
+                name: "push",
+                args: vec![("item", inner_type)],
+                opt_args: vec![],
+                return_type: Type::Unit,
+            },
+            NativeFnDesc {
+                name: "concat",
+                args: vec![("items", inner_type)],
+                opt_args: vec![],
+                return_type: typ.clone(),
+            }
         ]
     }
 
@@ -89,18 +115,12 @@ impl NativeType for NativeArray {
                 match field_idx {
                     0 => Value::Int(value.len() as i64),
                     1 => Value::NativeFn(NativeFn {
-                        name: "push".to_string(),
-                        args: vec![Type::Any],
-                        opt_args: vec![],
-                        return_type: Type::Unit,
+                        name: "push",
                         receiver: Some(obj.clone()),
                         native_fn: NativeArray::push,
                     }),
                     2 => Value::NativeFn(NativeFn {
-                        name: "concat".to_string(),
-                        args: vec![Type::Any],
-                        opt_args: vec![],
-                        return_type: Type::Any,
+                        name: "concat",
                         receiver: Some(obj.clone()),
                         native_fn: NativeArray::concat,
                     }),
@@ -138,8 +158,23 @@ impl NativeType for NativeString {
     fn fields(_: &Type) -> Vec<(&'static str, Type)> {
         vec![
             ("length", Type::Int),
-            ("toLower", Type::Fn(Some(Box::new(Type::String)), vec![], Box::new(Type::String))),
-            ("toUpper", Type::Fn(Some(Box::new(Type::String)), vec![], Box::new(Type::String))),
+        ]
+    }
+
+    fn methods(_: &Type) -> Vec<NativeFnDesc<'_>> {
+        vec![
+            NativeFnDesc {
+                name: "toLower",
+                args: vec![],
+                opt_args: vec![],
+                return_type: Type::String,
+            },
+            NativeFnDesc {
+                name: "toUpper",
+                args: vec![],
+                opt_args: vec![],
+                return_type: Type::String,
+            }
         ]
     }
 
@@ -149,18 +184,12 @@ impl NativeType for NativeString {
                 match field_idx {
                     0 => Value::Int(value.len() as i64),
                     1 => Value::NativeFn(NativeFn {
-                        name: "toLower".to_string(),
-                        args: vec![],
-                        opt_args: vec![],
-                        return_type: Type::String,
+                        name: "toLower",
                         receiver: Some(obj.clone()),
                         native_fn: NativeString::to_lower,
                     }),
                     2 => Value::NativeFn(NativeFn {
-                        name: "toUpper".to_string(),
-                        args: vec![],
-                        opt_args: vec![],
-                        return_type: Type::String,
+                        name: "toUpper",
                         receiver: Some(obj.clone()),
                         native_fn: NativeString::to_upper,
                     }),

@@ -1157,7 +1157,7 @@ mod tests {
     use crate::typechecker::typechecker::typecheck;
 
     fn get_native_fn(name: &str) -> NativeFn {
-        native_fns().into_iter().find(|f| &f.name == name).unwrap()
+        native_fns().into_iter().find(|(f, _)| &f.name == &name).unwrap().1
     }
 
     fn new_string_obj(string: &str) -> Value {

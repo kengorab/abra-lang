@@ -42,7 +42,12 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.end()
             }
             Value::Fn(FnValue { name: fn_name, .. }) |
-            Value::Closure(ClosureValue { name: fn_name, .. }) |
+            Value::Closure(ClosureValue { name: fn_name, .. }) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "fn")?;
+                obj.serialize_entry("name", &fn_name)?;
+                obj.end()
+            }
             Value::NativeFn(NativeFn { name: fn_name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "fn")?;

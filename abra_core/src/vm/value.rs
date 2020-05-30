@@ -56,7 +56,7 @@ impl Value {
             Value::Str(val) => val.clone(),
             Value::Obj(obj) => format!("{}", &obj.borrow().to_string()),
             Value::Fn(FnValue { name, .. }) |
-            Value::Closure(ClosureValue { name, .. }) |
+            Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
             Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
@@ -96,7 +96,7 @@ impl Display for Value {
                 o @ _ => write!(f, "{}", o.to_string()),
             }
             Value::Fn(FnValue { name, .. }) |
-            Value::Closure(ClosureValue { name, .. }) |
+            Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
             Value::Type(TypeValue { name, .. }) => write!(f, "<type {}>", name),
             Value::Nil => write!(f, "nil"),

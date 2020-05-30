@@ -8,14 +8,11 @@ use std::cell::RefCell;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return None//Value::Nil.
-type NativeAbraFn = fn(&VMContext, &Option<Arc<RefCell<Obj>>>, Vec<Value>) -> Option<Value>;
+pub type NativeAbraFn = fn(&VMContext, &Option<Arc<RefCell<Obj>>>, Vec<Value>) -> Option<Value>;
 
 #[derive(Clone)]
 pub struct NativeFn {
-    pub name: String,
-    pub args: Vec<Type>,
-    pub opt_args: Vec<Type>,
-    pub return_type: Type,
+    pub name: &'static str,
     pub receiver: Option<Arc<RefCell<Obj>>>,
     pub native_fn: NativeAbraFn,
 }
@@ -28,7 +25,7 @@ impl Debug for NativeFn {
 
 impl PartialEq for NativeFn {
     fn eq(&self, other: &Self) -> bool {
-        self.name.eq(&other.name)
+        self.name.eq(other.name)
     }
 }
 
@@ -46,26 +43,53 @@ impl NativeFn {
     }
 }
 
-pub fn native_fns() -> Vec<NativeFn> {
+pub struct NativeFnDesc<'a> {
+    pub name: &'static str,
+    pub args: Vec<(&'static str, &'a Type)>,
+    pub opt_args: Vec<(&'static str, &'a Type)>,
+    pub return_type: Type,
+}
+
+impl NativeFnDesc<'_> {
+    pub fn get_fn_type(&self) -> Type {
+        let req_args = self.args.iter()
+            .map(|(name, typ)| (name.to_string(), typ.clone().clone(), false));
+        let opt_args = self.opt_args.iter()
+            .map(|(name, typ)| (name.to_string(), typ.clone().clone(), true));
+        let args = req_args.chain(opt_args).collect();
+
+        Type::Fn(None, args, Box::new(self.return_type.clone()))
+    }
+}
+
+pub fn native_fns() -> Vec<(NativeFnDesc<'static>, NativeFn)> {
     let mut native_fns = Vec::new();
 
-    native_fns.push(NativeFn {
-        name: "println".to_string(),
-        args: vec![Type::Any],
-        opt_args: vec![],
-        return_type: Type::Unit,
-        receiver: None,
-        native_fn: println,
-    });
+    native_fns.push((
+        NativeFnDesc {
+            name: "println",
+            args: vec![("_", &Type::Any)],
+            opt_args: vec![],
+            return_type: Type::Unit,
+        },
+        NativeFn {
+            name: "println",
+            receiver: None,
+            native_fn: println,
+        }));
 
-    native_fns.push(NativeFn {
-        name: "range".to_string(),
-        args: vec![Type::Int, Type::Int],
-        opt_args: vec![Type::Int],
-        return_type: Type::Array(Box::new(Type::Int)),
-        receiver: None,
-        native_fn: range,
-    });
+    native_fns.push((
+        NativeFnDesc {
+            name: "range",
+            args: vec![("from", &Type::Int), ("to", &Type::Int)],
+            opt_args: vec![("increment", &Type::Int)],
+            return_type: Type::Array(Box::new(Type::Int)),
+        },
+        NativeFn {
+            name: "range",
+            receiver: None,
+            native_fn: range,
+        }));
 
     native_fns
 }
