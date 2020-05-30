@@ -208,10 +208,11 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
-            Token::LParen(pos) => {
+            Token::LParen(pos, is_preceded_by_newline) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "lParen")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.serialize_entry("isPrecededByNewline", is_preceded_by_newline)?;
                 obj.end()
             }
             Token::RParen(pos) => {

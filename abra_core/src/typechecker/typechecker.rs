@@ -1740,7 +1740,7 @@ mod tests {
     fn typecheck_grouped() -> TestResult {
         let typed_ast = typecheck("(1 + 2)")?;
         let expected = TypedAstNode::Grouped(
-            Token::LParen(Position::new(1, 1)),
+            Token::LParen(Position::new(1, 1), false),
             TypedGroupedNode {
                 typ: Type::Int,
                 expr: Box::new(
@@ -2401,7 +2401,7 @@ mod tests {
                                 ret_type: Type::String,
                                 body: vec![
                                     TypedAstNode::Invocation(
-                                        Token::LParen(Position::new(4, 35)),
+                                        Token::LParen(Position::new(4, 35), false),
                                         TypedInvocationNode {
                                             typ: Type::String,
                                             args: vec![],
@@ -3098,7 +3098,7 @@ mod tests {
         let node = ast.get(1).unwrap();
 
         let expected = TypedAstNode::Invocation(
-            Token::LParen(Position::new(2, 4)),
+            Token::LParen(Position::new(2, 4), false),
             TypedInvocationNode {
                 typ: Type::Unit,
                 target: Box::new(TypedAstNode::Identifier(
@@ -3122,7 +3122,7 @@ mod tests {
         let node = ast.get(1).unwrap();
 
         let expected = TypedAstNode::Invocation(
-            Token::LParen(Position::new(2, 4)),
+            Token::LParen(Position::new(2, 4), false),
             TypedInvocationNode {
                 typ: Type::String,
                 target: Box::new(TypedAstNode::Identifier(
@@ -3168,7 +3168,7 @@ mod tests {
             methods: vec![],
         });
         let expected = TypedAstNode::Instantiation(
-            Token::LParen(Position::new(2, 7)),
+            Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
                 typ: typ.clone(),
                 target: Box::new(
@@ -3204,7 +3204,7 @@ mod tests {
             methods: vec![],
         });
         let expected = TypedAstNode::Instantiation(
-            Token::LParen(Position::new(2, 7)),
+            Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
                 typ: typ.clone(),
                 target: Box::new(

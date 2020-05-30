@@ -65,7 +65,7 @@ pub enum Token {
     #[strum(to_string = "!=", serialize = "Neq")] Neq(Position),
     #[strum(to_string = "!", serialize = "Bang")] Bang(Position),
 
-    #[strum(to_string = "(", serialize = "LParen")] LParen(Position),
+    #[strum(to_string = "(", serialize = "LParen")] LParen(Position, /* is_preceded_by_newline: */ bool),
     #[strum(to_string = ")", serialize = "RParen")] RParen(Position),
     #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position, /* is_preceded_by_newline: */ bool),
     #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),
@@ -116,7 +116,7 @@ impl Token {
             Token::Neq(pos) |
             Token::Bang(pos) |
 
-            Token::LParen(pos) |
+            Token::LParen(pos, _) |
             Token::RParen(pos) |
             Token::LBrack(pos, _) |
             Token::RBrack(pos) |

@@ -294,7 +294,7 @@ impl<'a> Lexer<'a> {
                     Ok(Some(Token::Assign(pos)))
                 }
             }
-            '(' => Ok(Some(Token::LParen(pos))),
+            '(' => Ok(Some(Token::LParen(pos, skipped_newline))),
             ')' => Ok(Some(Token::RParen(pos))),
             '[' => Ok(Some(Token::LBrack(pos, skipped_newline))),
             ']' => Ok(Some(Token::RBrack(pos))),
@@ -382,7 +382,7 @@ mod tests {
         let input = "( ) [ ] { } , : ?";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
-            Token::LParen(Position::new(1, 1)),
+            Token::LParen(Position::new(1, 1), false),
             Token::RParen(Position::new(1, 3)),
             Token::LBrack(Position::new(1, 5), false),
             Token::RBrack(Position::new(1, 7)),

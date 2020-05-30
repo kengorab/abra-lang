@@ -9,5 +9,9 @@ type Person {
   func ken() = "Ken"
 }
 
-val ken = Person.ken
-ken().toUpper()
+val people = [
+  Person(firstName: "Ken", lastName: "Gorab"),
+  Person(firstName: "Meg", lastName: "Muccilli"),
+]
+
+(people[0] ?: Person(firstName: "unknown", lastName: "person")).fullName()

@@ -125,7 +125,7 @@ impl Parser {
             Token::String(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
-            Token::LParen(_) => Some(Box::new(Parser::parse_grouped)),
+            Token::LParen(_, _) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_array)),
             Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
             Token::Ident(_, _) |
@@ -149,7 +149,7 @@ impl Parser {
             Token::Ident(_, _) => None,
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
-            Token::LParen(_) => Some(Box::new(Parser::parse_invocation)),
+            Token::LParen(_, _) => Some(Box::new(Parser::parse_invocation)),
             Token::Dot(_) => Some(Box::new(Parser::parse_accessor)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
@@ -165,7 +165,10 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::Dot(_) | Token::LParen(_) => Precedence::Call,
+            Token::Dot(_) => Precedence::Call,
+            Token::LParen(_, is_preceded_by_newline) => {
+                if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
+            }
             Token::LBrack(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
             }
@@ -939,7 +942,7 @@ mod tests {
                 BinaryNode {
                     left: Box::new(
                         Grouped(
-                            Token::LParen(Position::new(1, 1)),
+                            Token::LParen(Position::new(1, 1), false),
                             GroupedNode {
                                 expr: Box::new(
                                     Binary(
@@ -1614,7 +1617,7 @@ mod tests {
     #[test]
     fn parse_func_decl_error() {
         let error = parse("func (a: Int) = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6)));
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6), false));
         assert_eq!(expected, error);
 
         let error = parse("func abc) = 123").unwrap_err();
@@ -1926,7 +1929,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_indexing_nested_separate_expressions() -> TestResult {
+    fn parse_indexing_separate_expressions() -> TestResult {
         let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
         let expected = vec![
             AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
@@ -1947,7 +1950,7 @@ mod tests {
                     ]
                 },
             ),
-            AstNode::Invocation(Token::LParen(Position { line: 5, col: 8 }), InvocationNode {
+            AstNode::Invocation(Token::LParen(Position { line: 5, col: 8 }, false), InvocationNode {
                 target: Box::new(identifier!((5, 1), "println")),
                 args: vec![
                     (None, identifier!((5, 9), "a"))
@@ -2269,7 +2272,7 @@ mod tests {
     fn parse_invocation() -> TestResult {
         let ast = parse("abc()")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![],
@@ -2279,7 +2282,7 @@ mod tests {
 
         let ast = parse("abc(4)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
@@ -2292,7 +2295,7 @@ mod tests {
         // Testing trailing commas
         let ast = parse("abc(4,)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
@@ -2304,13 +2307,13 @@ mod tests {
 
         let ast = parse("abc(4, def(5, 6), 7)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
                     (None, int_literal!((1, 5), 4)),
                     (None, AstNode::Invocation(
-                        Token::LParen(Position::new(1, 11)),
+                        Token::LParen(Position::new(1, 11), false),
                         InvocationNode {
                             target: Box::new(identifier!((1, 8), "def")),
                             args: vec![
@@ -2327,7 +2330,7 @@ mod tests {
 
         let ast = parse("abc.def(4)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 8)),
+            Token::LParen(Position::new(1, 8), false),
             InvocationNode {
                 target: Box::new(AstNode::Accessor(
                     Token::Dot(Position::new(1, 4)),
@@ -2350,7 +2353,7 @@ mod tests {
     fn parse_invocation_named_parameters() -> TestResult {
         let ast = parse("abc(a: 4)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
@@ -2363,7 +2366,7 @@ mod tests {
         // Testing trailing commas
         let ast = parse("abc(a: 4,)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
@@ -2375,13 +2378,13 @@ mod tests {
 
         let ast = parse("abc(a: 4, def(5, d: 6), c: 7)")?;
         let expected = AstNode::Invocation(
-            Token::LParen(Position::new(1, 4)),
+            Token::LParen(Position::new(1, 4), false),
             InvocationNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 args: vec![
                     (Some(ident_token!((1, 5), "a")), int_literal!((1, 8), 4)),
                     (None, AstNode::Invocation(
-                        Token::LParen(Position::new(1, 14)),
+                        Token::LParen(Position::new(1, 14), false),
                         InvocationNode {
                             target: Box::new(identifier!((1, 11), "def")),
                             args: vec![
@@ -2397,6 +2400,30 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_array_invocation_separate_expressions() -> TestResult {
+        let ast = parse("[a, b]\n(a + b)")?;
+        let expected = vec![
+            AstNode::Array(
+                Token::LBrack(Position::new(1, 1), false),
+                ArrayNode {
+                    items: vec![
+                        Box::new(identifier!((1, 2), "a")),
+                        Box::new(identifier!((1, 5), "b")),
+                    ]
+                },
+            ),
+            AstNode::Grouped(Token::LParen(Position::new(2, 1), true), GroupedNode {
+                expr: Box::new(AstNode::Binary(Token::Plus(Position::new(2, 4)), BinaryNode {
+                    left: Box::new(identifier!((2, 2), "a")),
+                    op: BinaryOp::Add,
+                    right: Box::new(identifier!((2, 6), "b")),
+                }))
+            }),
+        ];
+        Ok(assert_eq!(expected, ast))
     }
 
     #[test]
