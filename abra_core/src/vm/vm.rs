@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 macro_rules! pop_expect_string {
     ($self: expr) => (
         match $self.pop_expect()? {
-            Value::Obj(Obj::StringObj { value }) => Ok(*value),
+            Value::Str(value) => Ok(value),
             v @ _ => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
         }
     );
@@ -41,6 +41,15 @@ macro_rules! pop_expect_bool {
         match $self.pop_expect()? {
             Value::Bool(value) => Ok(value),
             v @ _ => Err(InterpretError::TypeError("Bool".to_string(), v.to_string()))
+        }
+    );
+}
+
+macro_rules! pop_expect_obj {
+    ($self: expr) => (
+        match $self.pop_expect()? {
+            Value::Obj(value) => Ok(value),
+            v @ _ => Err(InterpretError::TypeError("Obj".to_string(), v.to_string()))
         }
     );
 }
@@ -287,25 +296,9 @@ impl VM {
         Ok(())
     }
 
-    #[inline]
-    fn invoke(&mut self, arity: usize, name: String, code: Vec<u8>, upvalues: Vec<Arc<RefCell<Upvalue>>>) -> Result<(), InterpretError> {
-        let frame = CallFrame {
-            ip: 0,
-            code,
-            stack_offset: self.stack.len() - arity,
-            name,
-            upvalues,
-        };
-        if self.call_stack.len() + 1 >= STACK_LIMIT {
-            Err(InterpretError::StackOverflow)
-        } else {
-            Ok(self.call_stack.push(frame))
-        }
-    }
-
     fn close_upvalues_from_idx(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
         let max_slot_idx = self.open_upvalues.keys().max();
-        if max_slot_idx.is_none() { return Ok(()) }
+        if max_slot_idx.is_none() { return Ok(()); }
 
         for idx in stack_slot..=*max_slot_idx.unwrap() {
             match self.open_upvalues.remove(&idx) {
@@ -334,8 +327,8 @@ impl VM {
     #[inline]
     fn make_closure(&mut self) -> Result<(), InterpretError> {
         let function = self.pop_expect()?;
-        let (name, code, upvalues) = match function {
-            Value::Fn { name, code, upvalues } => Ok((name, code, upvalues)),
+        let (name, code, upvalues, receiver) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
             v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
         }?;
 
@@ -366,7 +359,7 @@ impl VM {
         // in order for the upvalue_idx's to line up properly.
         let captures = captures.rev().collect::<Vec<_>>();
 
-        self.push(Value::Closure { name, code, captures });
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
         Ok(())
     }
 
@@ -423,7 +416,7 @@ impl VM {
                     let a = a.to_string();
                     let b = b.to_string();
                     let concat = a + &b;
-                    self.push(Value::Obj(Obj::StringObj { value: Box::new(concat) }))
+                    self.push(Value::new_string_obj(concat))
                 }
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
@@ -447,22 +440,42 @@ impl VM {
 
                     let type_value = self.pop_expect()?;
 
-                    let inst = Value::Obj(Obj::InstanceObj { typ: Box::new(type_value), fields });
+                    let inst = Value::new_instance_obj(type_value, fields);
                     self.push(inst);
+                }
+                Opcode::Init => {
+                    let instance_value = pop_expect_obj!(self)?;
+                    let type_value = match self.pop_expect()? {
+                        Value::Type(type_value) => type_value,
+                        _ => unreachable!()
+                    };
+
+                    for (_, mut method_value) in type_value.methods {
+                        method_value.receiver = Some(instance_value.clone());
+                        match *instance_value.borrow_mut() {
+                            Obj::InstanceObj(ref mut obj) => obj.fields.push(Value::Fn(method_value)),
+                            _ => unreachable!()
+                        }
+                    }
+
+                    let initialized_inst = Value::Obj(instance_value);
+                    self.push(initialized_inst);
                 }
                 Opcode::GetField => {
                     let inst = self.pop_expect()?;
                     let field_idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Obj(Obj::InstanceObj { fields, .. }) => {
-                            match fields.get(field_idx) {
-                                Some(field_val) => field_val.clone(),
-                                None => unreachable!()
-                            }
+                        Value::Obj(obj) => match &*obj.borrow() {
+                            Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
+                            Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
+                            Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
+                            _ => unreachable!()
                         }
-                        value @ Value::Obj(Obj::StringObj { .. }) => NativeString::get_field_value(&value, field_idx),
-                        value @ Value::Obj(Obj::ArrayObj { .. }) => NativeArray::get_field_value(&value, field_idx),
+                        Value::Type(TypeValue { static_fields, .. }) => {
+                            let (_, field_value) = static_fields[field_idx].clone();
+                            Value::Fn(field_value)
+                        }
                         _ => unreachable!()
                     };
                     self.push(value);
@@ -475,16 +488,15 @@ impl VM {
                         let key = pop_expect_string!(self)?;
                         items.insert(key, value);
                     }
-                    self.push(Value::Obj(Obj::MapObj { value: items }));
+                    self.push(Value::new_map_obj(items));
                 }
                 Opcode::MapLoad => {
                     let key = pop_expect_string!(self)?;
-                    let val = match self.pop_expect()? {
-                        Value::Obj(Obj::MapObj { value }) => {
-                            match value.get(&key) {
-                                Some(val) => val.clone(),
-                                None => Value::Nil
-                            }
+                    let obj = pop_expect_obj!(self)?;
+                    let val = match &*obj.borrow() {
+                        Obj::MapObj(value) => match value.get(&key) {
+                            Some(val) => val.clone(),
+                            None => Value::Nil
                         }
                         _ => unreachable!()
                     };
@@ -492,31 +504,32 @@ impl VM {
                 }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;
-                    let mut arr_items = VecDeque::<Box<Value>>::with_capacity(size as usize);
+                    let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
                     for _ in 0..size {
-                        arr_items.push_front(Box::new(self.pop_expect()?));
+                        arr_items.push_front(self.pop_expect()?);
                     }
-                    self.push(Value::Obj(Obj::ArrayObj { value: arr_items.into() }));
+                    self.push(Value::new_array_obj(arr_items.into()));
                 }
                 Opcode::ArrLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj { value }) => {
+                    let obj = pop_expect_obj!(self)?;
+                    let value = match &*obj.borrow() {
+                        Obj::StringObj(value) => {
                             let len = value.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
                             match (*value).chars().nth(idx as usize) {
-                                Some(ch) => Value::Obj(Obj::StringObj { value: Box::new(ch.to_string()) }),
+                                Some(ch) => Value::new_string_obj(ch.to_string()),
                                 None => Value::Nil
                             }
                         }
-                        Value::Obj(Obj::ArrayObj { value }) => {
+                        Obj::ArrayObj(value) => {
                             let len = value.len() as i64;
                             if idx < -len || idx >= len {
-                                Value::Nil//None
+                                Value::Nil
                             } else {
                                 let idx = if idx < 0 { idx + len } else { idx };
-                                *value[idx as usize].clone()
+                                value[idx as usize].clone()
                             }
                         }
                         _ => unreachable!()
@@ -540,16 +553,17 @@ impl VM {
                     let end = self.pop_expect()?;
                     let start = pop_expect_int!(self)?;
 
-                    let value = match self.pop_expect()? {
-                        Value::Obj(Obj::StringObj { value }) => {
+                    let obj = pop_expect_obj!(self)?;
+                    let value = match &*obj.borrow() {
+                        Obj::StringObj(value) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let value = (*value).chars().skip(start).take(len).collect::<String>();
-                            Value::Obj(Obj::StringObj { value: Box::new(value) })
+                            Value::new_string_obj(value)
                         }
-                        Value::Obj(Obj::ArrayObj { value }) => {
+                        Obj::ArrayObj(value) => {
                             let (start, len) = get_range_endpoints(value.len(), start, end);
-                            let value = value.into_iter().skip(start).take(len).collect::<Vec<_>>();
-                            Value::Obj(Obj::ArrayObj { value })
+                            let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
+                            Value::new_array_obj(values)
                         }
                         _ => unreachable!()
                     };
@@ -627,7 +641,7 @@ impl VM {
                     let mut arity = self.read_byte_expect()?;
                     let has_return = self.read_byte_expect()? == 1;
 
-                    match target {
+                    let (name, code, upvalues, receiver) = match target {
                         Value::NativeFn(native_fn) => {
                             let num_args = self.stack.len() - arity;
                             let args = self.stack.split_off(num_args);
@@ -637,20 +651,30 @@ impl VM {
                             }
                             continue;
                         }
-                        Value::Fn { name, code, .. } => {
-                            if has_return { arity += 1 }
-                            let res = self.invoke(arity, name, code, vec![]);
-                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
-                        }
-                        Value::Closure { name, code, captures } => {
-                            if has_return { arity += 1 }
-                            let res = self.invoke(arity, name, code, captures);
-                            if res.is_err() { break Err(res.unwrap_err()) } else { continue }
-                        }
+                        Value::Fn(FnValue { name, code, receiver, .. }) => (name, code, vec![], receiver),
+                        Value::Closure(ClosureValue { name, code, captures, receiver, .. }) => (name, code, captures, receiver),
                         v @ _ => {
                             return Err(InterpretError::TypeError("Function".to_string(), v.to_string()));
                         }
+                    };
+
+                    match receiver {
+                        Some(receiver) => {
+                            let mut args = self.stack.split_off(self.stack.len() - arity);
+                            self.stack.push(Value::Obj(receiver));
+                            self.stack.append(&mut args);
+                            arity += 1;
+                        }
+                        None => {}
                     }
+                    if has_return { arity += 1 }
+                    let stack_offset = self.stack.len() - arity;
+
+                    let frame = CallFrame { ip: 0, code, stack_offset, name, upvalues };
+                    if self.call_stack.len() + 1 >= STACK_LIMIT {
+                        break Err(InterpretError::StackOverflow);
+                    }
+                    self.call_stack.push(frame);
                 }
                 Opcode::ClosureMk => self.make_closure()?,
                 Opcode::CloseUpvalue => self.close_upvalue()?,

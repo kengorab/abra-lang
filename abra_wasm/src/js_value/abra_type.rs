@@ -1,4 +1,4 @@
-use abra_core::typechecker::types::Type;
+use abra_core::typechecker::types::{Type, StructType};
 use serde::{Serialize, Serializer};
 
 pub struct JsType<'a>(pub &'a Type);
@@ -69,7 +69,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
-            Type::Fn(args, return_type) => {
+            Type::Fn(_self_type, args, return_type) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
                 let args: Vec<(String, JsType)> = args.iter()
@@ -90,7 +90,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Unknown")?;
                 obj.end()
             }
-            Type::Struct { name, fields } => {
+            Type::Struct(StructType { name, fields, methods, static_fields }) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Struct")?;
                 obj.serialize_entry("name", name)?;
@@ -98,6 +98,14 @@ impl<'a> Serialize for JsType<'a> {
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("fields", &fields)?;
+                let static_fields: Vec<(String, JsType)> = static_fields.iter()
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("staticFields", &static_fields)?;
+                let methods: Vec<(String, JsType)> = methods.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("methods", &methods)?;
                 obj.end()
             }
         }

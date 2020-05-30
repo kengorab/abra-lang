@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -29,24 +29,35 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.serialize_entry("value", &val)?;
                 obj.end()
             }
+            Value::Str(val) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "str")?;
+                obj.serialize_entry("value", &val)?;
+                obj.end()
+            }
             Value::Obj(o) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "obj")?;
-                obj.serialize_entry("value", &JsWrappedObjValue(o))?;
+                obj.serialize_entry("value", &JsWrappedObjValue(&*o.borrow()))?;
                 obj.end()
             }
-            Value::Fn { name: fn_name, .. } |
-            Value::Closure { name: fn_name, .. } |
+            Value::Fn(FnValue { name: fn_name, .. }) |
+            Value::Closure(ClosureValue { name: fn_name, .. }) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "fn")?;
+                obj.serialize_entry("name", &fn_name)?;
+                obj.end()
+            }
             Value::NativeFn(NativeFn { name: fn_name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "fn")?;
                 obj.serialize_entry("name", &fn_name)?;
                 obj.end()
             }
-            Value::Type(type_name) => {
+            Value::Type(TypeValue { name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "type")?;
-                obj.serialize_entry("name", &type_name)?;
+                obj.serialize_entry("name", &name)?;
                 obj.end()
             }
             Value::Nil => {
@@ -67,20 +78,20 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
-            Obj::StringObj { value } => {
+            Obj::StringObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "stringObj")?;
                 obj.serialize_entry("value", value)?;
                 obj.end()
             }
-            Obj::ArrayObj { value } => {
+            Obj::ArrayObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "arrayObj")?;
                 let value: Vec<JsWrappedValue> = value.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
-            Obj::MapObj { value } => {
+            Obj::MapObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "mapObj")?;
                 let value: Vec<(&String, JsWrappedValue)> = value.iter()
@@ -89,11 +100,11 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
-            Obj::InstanceObj { typ, fields } => {
+            Obj::InstanceObj(inst) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "instanceObj")?;
-                obj.serialize_entry("type", &JsWrappedValue(typ))?;
-                let value: Vec<JsWrappedValue> = fields.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("type", &JsWrappedValue(&inst.typ))?;
+                let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }

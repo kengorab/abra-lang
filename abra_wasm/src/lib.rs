@@ -18,7 +18,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
 use abra_core::{Error, compile, compile_and_run, compile_and_disassemble};
-use abra_core::vm::value::{Obj, Value};
+use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
 
@@ -35,23 +35,25 @@ impl Serialize for RunResult {
             RunResult(Value::Int(val)) => serializer.serialize_i64(*val),
             RunResult(Value::Float(val)) => serializer.serialize_f64(*val),
             RunResult(Value::Bool(val)) => serializer.serialize_bool(*val),
-            RunResult(Value::Obj(obj)) => match obj {
-                Obj::StringObj { value } => serializer.serialize_str(&*value),
-                Obj::ArrayObj { value } => {
+            RunResult(Value::Str(val)) => serializer.serialize_str(val),
+            RunResult(Value::Obj(obj)) => match &*obj.borrow() {
+                Obj::StringObj(value) => serializer.serialize_str(value),
+                Obj::ArrayObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResult((**val).clone())).unwrap();
+                        arr.serialize_element(&RunResult((*val).clone())).unwrap();
                     });
                     arr.end()
                 }
-                Obj::MapObj { value } => {
+                Obj::MapObj(value) => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {
                         obj.serialize_entry(key, &RunResult(val.clone())).unwrap();
                     });
                     obj.end()
                 }
-                Obj::InstanceObj { typ: _typ, fields } => {
+                Obj::InstanceObj(inst) => {
+                    let fields = &inst.fields;
                     let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                     fields.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResult((*val).clone())).unwrap();
@@ -59,10 +61,10 @@ impl Serialize for RunResult {
                     arr.end()
                 }
             }
-            RunResult(Value::Fn { name, .. }) => serializer.serialize_str(name),
-            RunResult(Value::Closure { name, .. }) => serializer.serialize_str(name),
+            RunResult(Value::Fn(FnValue { name, .. })) => serializer.serialize_str(name),
+            RunResult(Value::Closure(ClosureValue { name, .. })) => serializer.serialize_str(name),
             RunResult(Value::NativeFn(NativeFn { name, .. })) => serializer.serialize_str(name),
-            RunResult(Value::Type(type_name)) => serializer.serialize_str(type_name)
+            RunResult(Value::Type(TypeValue { name, .. })) => serializer.serialize_str(name)
         }
     }
 }
