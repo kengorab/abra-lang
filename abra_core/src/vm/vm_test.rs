@@ -9,8 +9,12 @@ mod tests {
     use crate::vm::compiler::compile;
     use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
-    use std::collections::HashMap;
     use crate::vm::opcode::Opcode;
+    use std::collections::HashMap;
+
+    fn new_string_obj(string: &str) -> Value {
+        Value::new_string_obj(string.to_string())
+    }
 
     fn interpret(input: &str) -> Option<Value> {
         let tokens = tokenize(&input.to_string()).unwrap();
@@ -73,7 +77,7 @@ mod tests {
         assert_eq!(expected, result);
 
         let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("hello 24 world".to_string()) });
+        let expected = new_string_obj("hello 24 world");
         assert_eq!(expected, result);
     }
 
@@ -108,7 +112,7 @@ mod tests {
                             preface
         );
         let result = interpret(&input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("true false".to_string()) });
+        let expected = new_string_obj("true false");
         assert_eq!(expected, result);
 
         let input = format!("{}\n\
@@ -117,7 +121,7 @@ mod tests {
                             preface
         );
         let result = interpret(&input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("false false".to_string()) });
+        let expected = new_string_obj("false false");
         assert_eq!(expected, result);
     }
 
@@ -179,41 +183,29 @@ mod tests {
     #[test]
     fn interpret_array() {
         let result = interpret("[1, 2, 3]").unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+        ]);
         assert_eq!(expected, result);
 
         let result = interpret("[0, -1, true, 3.4, \"5\"]").unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(0)),
-                Box::new(Value::Int(-1)),
-                Box::new(Value::Bool(true)),
-                Box::new(Value::Float(3.4)),
-                Box::new(Value::Obj(Obj::StringObj { value: Box::new("5".to_string()) })),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Int(-1),
+            Value::Bool(true),
+            Value::Float(3.4),
+            new_string_obj("5"),
+        ]);
         assert_eq!(expected, result);
 
         let result = interpret("[[0, -1], [true, false], [\"a\"]]").unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Obj(Obj::ArrayObj {
-                    value: vec![Box::new(Value::Int(0)), Box::new(Value::Int(-1))]
-                })),
-                Box::new(Value::Obj(Obj::ArrayObj {
-                    value: vec![Box::new(Value::Bool(true)), Box::new(Value::Bool(false))]
-                })),
-                Box::new(Value::Obj(Obj::ArrayObj {
-                    value: vec![Box::new(Value::Obj(Obj::StringObj { value: Box::new("a".to_string()) }))]
-                })),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::new_array_obj(vec![Value::Int(0), Value::Int(-1)]),
+            Value::new_array_obj(vec![Value::Bool(true), Value::Bool(false)]),
+            Value::new_array_obj(vec![new_string_obj("a")]),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -242,10 +234,15 @@ mod tests {
 
     #[inline]
     fn sorted_map_obj_values(value: Value) -> Vec<(String, Value)> {
-        if let Value::Obj(Obj::MapObj { value }) = value {
-            let mut pairs = value.into_iter().collect::<Vec<(String, Value)>>();
-            pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
-            pairs
+        if let Value::Obj(obj) = value {
+            match &*obj.borrow() {
+                Obj::MapObj(value) => {
+                    let mut pairs = value.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(String, Value)>>();
+                    pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
+                    pairs
+                }
+                _ => unreachable!()
+            }
         } else {
             panic!("Result should be a MapObj")
         }
@@ -257,7 +254,7 @@ mod tests {
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
             ("a".to_string(), Value::Int(1)),
-            ("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) })),
+            ("b".to_string(), new_string_obj("hello")),
             ("c".to_string(), Value::Bool(true)),
         ];
         assert_eq!(expected_pairs, result_pairs);
@@ -265,16 +262,12 @@ mod tests {
         let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
-            ("a".to_string(), Value::Obj(Obj::MapObj {
-                value: {
-                    let mut items = HashMap::new();
-                    items.insert("b".to_string(), Value::Obj(Obj::StringObj { value: Box::new("hello".to_string()) }));
-                    items
-                }
+            ("a".to_string(), Value::new_map_obj({
+                let mut items = HashMap::new();
+                items.insert("b".to_string(), new_string_obj("hello"));
+                items
             })),
-            ("c".to_string(), Value::Obj(Obj::ArrayObj {
-                value: vec![Box::new(Value::Int(1)), Box::new(Value::Int(2))]
-            })),
+            ("c".to_string(), Value::new_array_obj(vec![Value::Int(1), Value::Int(2)])),
         ];
         assert_eq!(expected_pairs, result_pairs);
     }
@@ -299,13 +292,11 @@ mod tests {
           a
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(4)),
-                Box::new(Value::Int(9)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(4),
+            Value::Int(9),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -348,37 +339,31 @@ mod tests {
     fn interpret_indexing_ranges_arrays() {
         let input = "[1, 2, 3][1:2]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![Box::new(Value::Int(2))]
-        });
+        let expected = Value::new_array_obj(vec![Value::Int(2)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-2:-1]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![Box::new(Value::Int(2))]
-        });
+        let expected = Value::new_array_obj(vec![Value::Int(2)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][:1]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![Box::new(Value::Int(1))]
-        });
+        let expected = Value::new_array_obj(vec![Value::Int(1)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][1:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![Box::new(Value::Int(2)), Box::new(Value::Int(3))]
-        });
+        let expected = Value::new_array_obj(vec![Value::Int(2), Value::Int(3)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-3:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![Box::new(Value::Int(1)), Box::new(Value::Int(2)), Box::new(Value::Int(3))]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3)
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -390,12 +375,12 @@ mod tests {
           char
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("w".to_string()) });
+        let expected = new_string_obj("w");
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[-3]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("r".to_string()) });
+        let expected = new_string_obj("r");
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[100]";
@@ -408,27 +393,27 @@ mod tests {
     fn interpret_indexing_ranges_strings() {
         let input = "\"some string\"[1:2]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("o".to_string()) });
+        let expected = new_string_obj("o");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-2:-1]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("n".to_string()) });
+        let expected = new_string_obj("n");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[:4]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("some".to_string()) });
+        let expected = new_string_obj("some");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[5:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        let expected = new_string_obj("string");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-6:]";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("string".to_string()) });
+        let expected = new_string_obj("string");
         assert_eq!(expected, result);
     }
 
@@ -649,15 +634,13 @@ mod tests {
           results\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-                Box::new(Value::Int(4)),
-                Box::new(Value::Int(5)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Int(5),
+        ]);
         assert_eq!(expected, result);
 
         // Test deeply nested upvalue access
@@ -679,15 +662,13 @@ mod tests {
           results\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-                Box::new(Value::Int(4)),
-                Box::new(Value::Int(5)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Int(5),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -706,7 +687,7 @@ mod tests {
           greet(languageName) + \" \" + greet(languageName)\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Hello, Abra! Hello, Abra!".to_string()) });
+        let expected = new_string_obj("Hello, Abra! Hello, Abra!");
         assert_eq!(expected, result);
     }
 
@@ -729,7 +710,7 @@ mod tests {
           save(\"Cheerleader\") + \", \" + save(\"World\")\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Save the Cheerleader, Save the World!".to_string()) });
+        let expected = new_string_obj("Save the Cheerleader, Save the World!");
         assert_eq!(expected, result);
     }
 
@@ -749,19 +730,17 @@ mod tests {
           [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(0)),
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-                Box::new(Value::Int(5)),
-                Box::new(Value::Int(8)),
-                Box::new(Value::Int(13)),
-                Box::new(Value::Int(21)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Int(1),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(5),
+            Value::Int(8),
+            Value::Int(13),
+            Value::Int(21),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -784,19 +763,17 @@ mod tests {
           [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(0)),
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-                Box::new(Value::Int(5)),
-                Box::new(Value::Int(8)),
-                Box::new(Value::Int(13)),
-                Box::new(Value::Int(21)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Int(1),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(5),
+            Value::Int(8),
+            Value::Int(13),
+            Value::Int(21),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -807,14 +784,12 @@ mod tests {
           [abc(), abc(7), abc(7, 11), abc(7, 11, 13)]\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(30)),
-                Box::new(Value::Int(105)),
-                Box::new(Value::Int(385)),
-                Box::new(Value::Int(1001)),
-            ]
-        });
+        let expected = Value::new_array_obj(vec![
+            Value::Int(30),
+            Value::Int(105),
+            Value::Int(385),
+            Value::Int(1001),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -903,9 +878,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,".to_string())
-        });
+        let expected = new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,");
         assert_eq!(expected, result);
     }
 
@@ -968,9 +941,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,".to_string())
-        });
+        let expected = new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,");
         assert_eq!(expected, result);
     }
 
@@ -990,9 +961,7 @@ mod tests {
           output\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj {
-            value: Box::new("1456, 2456, 3456".to_string())
-        });
+        let expected = new_string_obj("1456, 2456, 3456");
         assert_eq!(expected, result);
     }
 
@@ -1017,7 +986,7 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = "Outer 0 [Inner 0 Inner 1 ], Outer 1 [Inner 0 Inner 1 ], ";
-        let expected = Value::Obj(Obj::StringObj { value: Box::new(expected.to_string()) });
+        let expected = new_string_obj(expected);
         assert_eq!(expected, result);
     }
 
@@ -1029,7 +998,7 @@ mod tests {
           ken.name\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("Ken".to_string()) });
+        let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
 
         // Test with default value
@@ -1071,7 +1040,7 @@ mod tests {
           ken.introduce() + \", and \" + brian.introduce()\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken, and I am Brian".to_string()) });
+        let expected = new_string_obj("I am Ken, and I am Brian");
         assert_eq!(expected, result);
     }
 
@@ -1087,7 +1056,7 @@ mod tests {
           introduceFn()\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        let expected = new_string_obj("I am Ken");
         assert_eq!(expected, result);
     }
 
@@ -1102,7 +1071,7 @@ mod tests {
           Person.introduce(ken.name)\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Obj(Obj::StringObj { value: Box::new("I am Ken".to_string()) });
+        let expected = new_string_obj("I am Ken");
         assert_eq!(expected, result);
     }
 }

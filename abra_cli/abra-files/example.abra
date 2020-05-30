@@ -10,4 +10,4 @@ type Person {
 }
 
 val ken = Person.ken
-ken()
+ken().toUpper()

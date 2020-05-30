@@ -1,8 +1,7 @@
 use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
-use crate::builtins::native_fns::{NATIVE_FNS, NativeFn};
+use crate::builtins::native_fns::native_fns;
 use std::collections::HashMap;
-use std::slice::Iter;
 
 #[derive(Clone)]
 struct PreludeBinding {
@@ -20,18 +19,11 @@ impl Prelude {
         let mut bindings = HashMap::new();
         let mut typedefs = HashMap::new();
 
-        let native_fns: Iter<NativeFn> = NATIVE_FNS.iter();
-        for native_fn in native_fns {
-            let native_fn = native_fn.clone();
-            let name = native_fn.name.clone();
-            let value = Value::NativeFn(native_fn.clone());
+        for (native_fn_desc, native_fn) in native_fns() {
+            let value = Value::NativeFn(native_fn);
 
-            let req_args = native_fn.args.iter().enumerate()
-                .map(|(idx, arg)| (format!("_{}", idx), arg.clone(), false));
-            let opt_args = native_fn.opt_args.iter().enumerate()
-                .map(|(idx, arg)| (format!("_{}", idx + native_fn.args.len()), arg.clone(), true));
-            let args = req_args.chain(opt_args).collect();
-            let typ = Type::Fn(None, args, Box::new(native_fn.return_type));
+            let name = native_fn_desc.name.to_string();
+            let typ = native_fn_desc.get_fn_type();
 
             bindings.insert(name, PreludeBinding { typ, value });
         }
