@@ -8,7 +8,7 @@ use std::cell::RefCell;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return None//Value::Nil.
-type NativeAbraFn = fn(&VMContext, &Option<Arc<RefCell<Value>>>, Vec<Value>) -> Option<Value>;
+type NativeAbraFn = fn(&VMContext, &Option<Arc<RefCell<Obj>>>, Vec<Value>) -> Option<Value>;
 
 #[derive(Clone)]
 pub struct NativeFn {
@@ -16,7 +16,7 @@ pub struct NativeFn {
     pub args: Vec<Type>,
     pub opt_args: Vec<Type>,
     pub return_type: Type,
-    pub receiver: Option<Arc<RefCell<Value>>>,
+    pub receiver: Option<Arc<RefCell<Obj>>>,
     pub native_fn: NativeAbraFn,
 }
 
@@ -67,26 +67,17 @@ pub fn native_fns() -> Vec<NativeFn> {
         native_fn: range,
     });
 
-    native_fns.push(NativeFn {
-        name: "arrayLen".to_string(),
-        args: vec![Type::Array(Box::new(Type::Any))],
-        opt_args: vec![],
-        return_type: Type::Int,
-        receiver: None,
-        native_fn: arr_len,
-    });
-
     native_fns
 }
 
-fn println(ctx: &VMContext, _receiver: &Option<Arc<RefCell<Value>>>, args: Vec<Value>) -> Option<Value> {
+fn println(ctx: &VMContext, _receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>) -> Option<Value> {
     let val = args.first().unwrap();
     let print_fn = ctx.print;
     print_fn(&format!("{}", val.to_string()));
     None
 }
 
-fn range(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Value>>>, args: Vec<Value>) -> Option<Value> {
+fn range(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>) -> Option<Value> {
     let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
         panic!("range requires an Int as first argument")
     };
@@ -103,21 +94,11 @@ fn range(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Value>>>, args: Vec<Va
     let mut values = Vec::with_capacity(size as usize);
 
     while start < end {
-        values.push(Box::new(Value::Int(start)));
+        values.push(Value::Int(start));
         start += incr;
     }
 
-    Some(Value::Obj(Obj::ArrayObj { value: values }))
-}
-
-// TODO: Replace this with a method invocation when Array::length is a thing
-fn arr_len(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Value>>>, args: Vec<Value>) -> Option<Value> {
-    let val = if let Some(Value::Obj(Obj::ArrayObj { value })) = args.first() {
-        value.len()
-    } else {
-        panic!("arr_len requires an Array as first argument, got {:?}", args.first())
-    };
-    Some(Value::Int(val as i64))
+    Some(Value::new_array_obj(values))
 }
 
 #[cfg(test)]
@@ -130,26 +111,22 @@ mod test {
 
         // Test w/ increment of 1
         let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(5), Value::Int(1)]);
-        let expected = Some(Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(0)),
-                Box::new(Value::Int(1)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(3)),
-                Box::new(Value::Int(4)),
-            ]
-        }));
+        let expected = Some(Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+        ]));
         assert_eq!(expected, arr);
 
         // Test w/ increment of 2
         let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(5), Value::Int(2)]);
-        let expected = Some(Value::Obj(Obj::ArrayObj {
-            value: vec![
-                Box::new(Value::Int(0)),
-                Box::new(Value::Int(2)),
-                Box::new(Value::Int(4)),
-            ]
-        }));
+        let expected = Some(Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Int(2),
+            Value::Int(4),
+        ]));
         assert_eq!(expected, arr);
     }
 
@@ -159,17 +136,17 @@ mod test {
 
         // Test w/ increment larger than range
         let arr = range(&ctx, &&None, vec![Value::Int(0), Value::Int(5), Value::Int(5)]);
-        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] }));
+        let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 1)
         let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(1), Value::Int(1)]);
-        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![Box::new(Value::Int(0))] }));
+        let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 0) -> Empty array
         let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(0), Value::Int(1)]);
-        let expected = Some(Value::Obj(Obj::ArrayObj { value: vec![] }));
+        let expected = Some(Value::new_array_obj(vec![]));
         assert_eq!(expected, arr);
     }
 }

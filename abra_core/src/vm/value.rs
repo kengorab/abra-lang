@@ -12,7 +12,7 @@ pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
     pub upvalues: Vec<Upvalue>,
-    pub receiver: Option<Arc<RefCell<InstanceObj>>>,
+    pub receiver: Option<Arc<RefCell<Obj>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -20,7 +20,7 @@ pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
-    pub receiver: Option<Arc<RefCell<InstanceObj>>>,
+    pub receiver: Option<Arc<RefCell<Obj>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -39,7 +39,7 @@ pub enum Value {
     /// These are only transient values and should not remain on the stack. Compare to an actual,
     /// heap-allocated, run-time Value::Obj(Obj::StringObj) value.
     Str(String),
-    Obj(Obj),
+    Obj(Arc<RefCell<Obj>>),
     Fn(FnValue),
     Closure(ClosureValue),
     NativeFn(NativeFn),
@@ -54,13 +54,33 @@ impl Value {
             Value::Float(val) => format!("{}", val),
             Value::Bool(val) => format!("{}", val),
             Value::Str(val) => val.clone(),
-            Value::Obj(o) => o.to_string(),
+            Value::Obj(obj) => format!("{}", &obj.borrow().to_string()),
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) |
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
             Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
             Value::Nil => format!("nil"),
         }
+    }
+
+    pub fn new_string_obj(value: String) -> Value {
+        let str = Obj::StringObj(StringObj { value, fields: vec![] });
+        Value::Obj(Arc::new(RefCell::new(str)))
+    }
+
+    pub fn new_array_obj(values: Vec<Value>) -> Value {
+        let arr = Obj::ArrayObj { value: values };
+        Value::Obj(Arc::new(RefCell::new(arr)))
+    }
+
+    pub fn new_map_obj(items: HashMap<String, Value>) -> Value {
+        let map = Obj::MapObj { value: items };
+        Value::Obj(Arc::new(RefCell::new(map)))
+    }
+
+    pub fn new_instance_obj(typ: Value, fields: Vec<Value>) -> Value {
+        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields });
+        Value::Obj(Arc::new(RefCell::new(inst)))
     }
 }
 
@@ -71,7 +91,7 @@ impl Display for Value {
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
-            Value::Obj(o) => match o {
+            Value::Obj(o) => match &*o.borrow() {
                 Obj::StringObj(StringObj { value, .. }) => write!(f, "\"{}\"", *value),
                 o @ _ => write!(f, "{}", o.to_string()),
             }
@@ -99,16 +119,9 @@ pub struct InstanceObj {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Obj {
     StringObj(StringObj),
-    ArrayObj { value: Vec<Box<Value>> },
+    ArrayObj { value: Vec<Value> },
     MapObj { value: HashMap<String, Value> },
-    InstanceObj(Arc<RefCell<InstanceObj>>),
-}
-
-impl Obj {
-    pub fn new_string_obj(value: String) -> Obj {
-        let fields = vec![];
-        Obj::StringObj(StringObj { value, fields })
-    }
+    InstanceObj(InstanceObj),
 }
 
 impl Obj {
@@ -117,22 +130,11 @@ impl Obj {
         match self {
             Obj::StringObj(StringObj { value, .. }) => value.clone(),
             Obj::ArrayObj { value } => {
-                let items = value.iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("[{}]", items)
+                value.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(",")
             }
-            Obj::MapObj { value } => {
-                let items = value.iter()
-                    .map(|(key, value)| format!("{}: {}", key.to_string(), value.to_string()))
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("{{ {} }}", items)
-            }
+            Obj::MapObj { .. } => "<map>".to_string(),
             Obj::InstanceObj(inst) => {
-                let typ = &inst.borrow().typ;
-                match &**typ {
+                match &*inst.typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
                 }
