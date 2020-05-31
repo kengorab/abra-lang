@@ -9,23 +9,6 @@ impl Default for Position {
     fn default() -> Self { Position { line: 0, col: 0 } }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Keyword {
-    True,
-    False,
-    Func,
-    Self_,
-    Val,
-    Var,
-    If,
-    Else,
-    While,
-    Break,
-    For,
-    In,
-    Type,
-}
-
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
 #[strum_discriminants(name(TokenType), derive(Display))]
 pub enum Token {
