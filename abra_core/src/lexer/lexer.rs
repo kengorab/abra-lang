@@ -1,7 +1,6 @@
 use std::str::Chars;
 use std::iter::Peekable;
-use std::collections::HashMap;
-use crate::lexer::tokens::{Token, Position, Keyword};
+use crate::lexer::tokens::{Token, Position};
 use crate::lexer::lexer_error::LexerError;
 
 pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
@@ -17,26 +16,6 @@ pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
     };
 
     Ok(tokens)
-}
-
-lazy_static! {
-    static ref KEYWORDS: HashMap<&'static str, Keyword> = {
-        let mut keywords = HashMap::new();
-        keywords.insert("true", Keyword::True);
-        keywords.insert("false", Keyword::False);
-        keywords.insert("if", Keyword::If);
-        keywords.insert("else", Keyword::Else);
-        keywords.insert("val", Keyword::Val);
-        keywords.insert("var", Keyword::Var);
-        keywords.insert("func", Keyword::Func);
-        keywords.insert("self", Keyword::Self_);
-        keywords.insert("while", Keyword::While);
-        keywords.insert("break", Keyword::Break);
-        keywords.insert("for", Keyword::For);
-        keywords.insert("in", Keyword::In);
-        keywords.insert("type", Keyword::Type);
-        keywords
-    };
 }
 
 struct Lexer<'a> {
@@ -138,7 +117,7 @@ impl<'a> Lexer<'a> {
             } else {
                 let i: i64 = s.parse().expect("Parsing string of digits into int");
                 Ok(Some(Token::Int(pos, i)))
-            }
+            };
         }
 
         if ch == '"' {
@@ -179,25 +158,24 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            let s: String = chars.into_iter().collect();
-            return match KEYWORDS.get(&*s) {
-                Some(keyword) => match keyword {
-                    Keyword::True => Ok(Some(Token::Bool(pos, true))),
-                    Keyword::False => Ok(Some(Token::Bool(pos, false))),
-                    Keyword::If => Ok(Some(Token::If(pos))),
-                    Keyword::Else => Ok(Some(Token::Else(pos))),
-                    Keyword::Val => Ok(Some(Token::Val(pos))),
-                    Keyword::Var => Ok(Some(Token::Var(pos))),
-                    Keyword::Func => Ok(Some(Token::Func(pos))),
-                    Keyword::Self_ => Ok(Some(Token::Self_(pos))),
-                    Keyword::While => Ok(Some(Token::While(pos))),
-                    Keyword::Break => Ok(Some(Token::Break(pos))),
-                    Keyword::For => Ok(Some(Token::For(pos))),
-                    Keyword::In => Ok(Some(Token::In(pos))),
-                    Keyword::Type => Ok(Some(Token::Type(pos))),
-                }
-                None => Ok(Some(Token::Ident(pos, s)))
+            let s = chars.into_iter().collect::<String>();
+            let token = match s.as_ref() {
+                "true" => Token::Bool(pos, true),
+                "false" => Token::Bool(pos, false),
+                "if" => Token::If(pos),
+                "else" => Token::Else(pos),
+                "val" => Token::Val(pos),
+                "var" => Token::Var(pos),
+                "func" => Token::Func(pos),
+                "self" => Token::Self_(pos),
+                "while" => Token::While(pos),
+                "break" => Token::Break(pos),
+                "for" => Token::For(pos),
+                "in" => Token::In(pos),
+                "type" => Token::Type(pos),
+                s @ _ => Token::Ident(pos, s.to_string())
             };
+            return Ok(Some(token));
         }
 
         let pos = Position::new(self.line, self.col);
