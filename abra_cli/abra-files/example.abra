@@ -1,17 +1,25 @@
-type Person {
-  firstName: String
-  lastName: String
+func outer() {
+  val nums = [0, 1, 2]
 
-  func fullName(self) {
-    self.firstName + " " + self.lastName
+  val map = {
+    a: 1,
+    b: 2
   }
 
-  func ken() = "Ken"
+  func inner() {
+    nums[8] = 3
+    map["a"] = 3
+  }
+
+  func printAll() {
+    inner()
+
+    println(nums)
+    println(map["a"])
+    println(map["b"])
+  }
+
+  printAll
 }
 
-val people = [
-  Person(firstName: "Ken", lastName: "Gorab"),
-  Person(firstName: "Meg", lastName: "Muccilli"),
-]
-
-(people[0] ?: Person(firstName: "unknown", lastName: "person")).fullName()
+outer()()
