@@ -491,7 +491,11 @@ impl VM {
                     self.push(Value::new_map_obj(items));
                 }
                 Opcode::MapLoad => {
-                    let key = pop_expect_string!(self)?;
+                    let key = pop_expect_obj!(self)?;
+                    let key = match &*key.borrow() {
+                        Obj::StringObj(key) => key.clone(),
+                        _ => unreachable!()
+                    };
                     let obj = pop_expect_obj!(self)?;
                     let val = match &*obj.borrow() {
                         Obj::MapObj(value) => match value.get(&key) {
@@ -501,6 +505,21 @@ impl VM {
                         _ => unreachable!()
                     };
                     self.push(val)
+                }
+                Opcode::MapStore => {
+                    let value = self.pop_expect()?;
+                    let idx = pop_expect_obj!(self)?;
+                    let idx = match &*idx.borrow() {
+                        Obj::StringObj(idx) => idx.clone(),
+                        _ => unreachable!()
+                    };
+
+                    let obj = pop_expect_obj!(self)?;
+                    match *obj.borrow_mut() {
+                        Obj::MapObj(ref mut values) => values.insert(idx, value),
+                        _ => unreachable!()
+                    };
+                    self.push(Value::Obj(obj));
                 }
                 Opcode::ArrMk => {
                     let size = self.read_byte_expect()?;
@@ -535,6 +554,28 @@ impl VM {
                         _ => unreachable!()
                     };
                     self.push(value);
+                }
+                Opcode::ArrStore => {
+                    let value = self.pop_expect()?;
+                    let idx = pop_expect_int!(self)? as usize;
+                    let obj = pop_expect_obj!(self)?;
+                    match *obj.borrow_mut() {
+                        Obj::ArrayObj(ref mut values) => {
+                            if values.len() < idx {
+                                let mut padding = std::iter::repeat(Value::Nil)
+                                    .take(idx - values.len())
+                                    .collect::<Vec<Value>>();
+                                values.append(&mut padding);
+                                values.push(value);
+                            } else if values.len() == idx {
+                                values.push(value);
+                            } else {
+                                values[idx] = value;
+                            }
+                        }
+                        _ => unreachable!()
+                    }
+                    self.push(Value::Obj(obj));
                 }
                 Opcode::ArrSlc => {
                     #[inline]
