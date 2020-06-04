@@ -4,8 +4,8 @@ use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::vm::prelude::Prelude;
 use crate::typechecker::types::{Type, StructType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode};
-use crate::typechecker::typechecker_error::TypecheckerError;
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind};
+use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::cell::RefCell;
@@ -808,39 +808,86 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
     fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<TypedAstNode, TypecheckerError> {
         let AssignmentNode { target, expr } = node;
-        if let AstNode::Identifier(ident_tok) = *target {
-            let ident = self.visit_ident(ident_tok.clone())?;
-            let (typ, is_mutable) = match &ident {
-                TypedAstNode::Identifier(_, TypedIdentifierNode { typ, is_mutable, .. }) => (typ, is_mutable),
-                _ => unreachable!()
-            };
-            if !is_mutable {
-                let name = Token::get_ident_name(&ident_tok);
-                let orig_ident = match self.get_binding(&name) {
-                    Some((ScopeBinding(orig_ident, _, _), _)) => orig_ident.clone(),
-                    None => unreachable!()
+        match *target {
+            AstNode::Identifier(ident_tok) => {
+                let ident = self.visit_ident(ident_tok.clone())?;
+                let (typ, is_mutable) = match &ident {
+                    TypedAstNode::Identifier(_, TypedIdentifierNode { typ, is_mutable, .. }) => (typ, is_mutable),
+                    _ => unreachable!()
                 };
-                return Err(TypecheckerError::AssignmentToImmutable { token, orig_ident });
-            }
+                if !is_mutable {
+                    let name = Token::get_ident_name(&ident_tok);
+                    let orig_ident = match self.get_binding(&name) {
+                        Some((ScopeBinding(orig_ident, _, _), _)) => orig_ident.clone(),
+                        None => unreachable!()
+                    };
+                    return Err(TypecheckerError::AssignmentToImmutable { token, orig_ident });
+                }
 
-            let expr = self.visit(*expr)?;
-            let expr_type = expr.get_type();
-            if !expr_type.is_equivalent_to(typ) {
-                Err(TypecheckerError::Mismatch {
-                    token: expr.get_token().clone(),
-                    expected: typ.clone(),
-                    actual: expr_type,
-                })
-            } else {
-                let node = TypedAssignmentNode {
-                    typ: expr_type,
-                    target: Box::new(ident),
-                    expr: Box::new(expr),
-                };
-                Ok(TypedAstNode::Assignment(token, node))
+                let typed_expr = self.visit(*expr)?;
+                let expr_type = typed_expr.get_type();
+                if !expr_type.is_equivalent_to(typ) {
+                    Err(TypecheckerError::Mismatch {
+                        token: typed_expr.get_token().clone(),
+                        expected: typ.clone(),
+                        actual: expr_type,
+                    })
+                } else {
+                    let node = TypedAssignmentNode {
+                        kind: AssignmentTargetKind::Identifier,
+                        typ: expr_type,
+                        target: Box::new(ident),
+                        expr: Box::new(typed_expr),
+                    };
+                    Ok(TypedAstNode::Assignment(token, node))
+                }
             }
-        } else {
-            Err(TypecheckerError::InvalidAssignmentTarget { token })
+            AstNode::Indexing(tok, node) => {
+                if let IndexingMode::Range(_, _) = &node.index {
+                    return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::IndexingMode) });
+                }
+
+                let typed_expr = self.visit(*expr)?;
+                let expr_type = typed_expr.get_type();
+
+                let typed_target = self.visit_indexing(tok.clone(), node)?;
+                let (index_target_type, kind) = match &typed_target {
+                    TypedAstNode::Indexing(_, TypedIndexingNode { target, .. }) => {
+                        match target.get_type() {
+                            Type::Array(inner_type) => (*inner_type, AssignmentTargetKind::ArrayIndex),
+                            Type::Map(_, homogeneous_type) => {
+                                let map_value_type = match homogeneous_type {
+                                    Some(map_val_type) => *map_val_type,
+                                    None => expr_type.clone(),
+                                };
+                                (map_value_type, AssignmentTargetKind::MapIndex)
+                            }
+                            Type::String => {
+                                return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
+                            }
+                            _ => unreachable!()
+                        }
+                    }
+                    _ => unreachable!()
+                };
+
+                if !expr_type.is_equivalent_to(&index_target_type) {
+                    Err(TypecheckerError::Mismatch {
+                        token: typed_expr.get_token().clone(),
+                        expected: index_target_type,
+                        actual: expr_type,
+                    })
+                } else {
+                    let node = TypedAssignmentNode {
+                        kind,
+                        typ: expr_type,
+                        target: Box::new(typed_target),
+                        expr: Box::new(typed_expr),
+                    };
+                    Ok(TypedAstNode::Assignment(token, node))
+                }
+            }
+            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, reason: None })
         }
     }
 
@@ -2574,7 +2621,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_assignment() -> TestResult {
+    fn typecheck_assignment_identifier() -> TestResult {
         let typed_ast = typecheck("var abc = 123\nabc = 456")?;
         let expected = vec![
             TypedAstNode::BindingDecl(
@@ -2589,6 +2636,7 @@ mod tests {
             TypedAstNode::Assignment(
                 Token::Assign(Position::new(2, 5)),
                 TypedAssignmentNode {
+                    kind: AssignmentTargetKind::Identifier,
                     typ: Type::Int,
                     target: Box::new(TypedAstNode::Identifier(
                         ident_token!((2, 1), "abc"),
@@ -2608,9 +2656,68 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_assignment_errors() {
+    fn typecheck_assignment_indexing() -> TestResult {
+        let typed_ast = typecheck("var abc = [1, 2]\nabc[0] = 2")?;
+        let expected = TypedAstNode::Assignment(
+            Token::Assign(Position::new(2, 8)),
+            TypedAssignmentNode {
+                kind: AssignmentTargetKind::ArrayIndex,
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Indexing(
+                    Token::LBrack(Position::new(2, 4), false),
+                    TypedIndexingNode {
+                        typ: Type::Option(Box::new(Type::Int)),
+                        target: Box::new(TypedAstNode::Identifier(
+                            ident_token!((2, 1), "abc"),
+                            TypedIdentifierNode {
+                                typ: Type::Array(Box::new(Type::Int)),
+                                name: "abc".to_string(),
+                                is_mutable: true,
+                                scope_depth: 0,
+                            },
+                        )),
+                        index: IndexingMode::Index(Box::new(int_literal!((2, 5), 0))),
+                    },
+                )),
+                expr: Box::new(int_literal!((2, 10), 2)),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        let typed_ast = typecheck("var abc = {a: 2}\nabc[\"a\"] = 3")?;
+        let expected = TypedAstNode::Assignment(
+            Token::Assign(Position::new(2, 10)),
+            TypedAssignmentNode {
+                kind: AssignmentTargetKind::MapIndex,
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Indexing(
+                    Token::LBrack(Position::new(2, 4), false),
+                    TypedIndexingNode {
+                        typ: Type::Option(Box::new(Type::Int)),
+                        target: Box::new(TypedAstNode::Identifier(
+                            ident_token!((2, 1), "abc"),
+                            TypedIdentifierNode {
+                                typ: Type::Map(vec![("a".to_string(), Type::Int)], Some(Box::new(Type::Int))),
+                                name: "abc".to_string(),
+                                is_mutable: true,
+                                scope_depth: 0,
+                            },
+                        )),
+                        index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
+                    },
+                )),
+                expr: Box::new(int_literal!((2, 12), 3)),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_assignment_errors_with_target() {
         let err = typecheck("true = 345").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)) };
+        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), reason: None };
         assert_eq!(expected, err);
 
         let err = typecheck("val abc = 345\nabc = 67").unwrap_err();
@@ -2623,6 +2730,39 @@ mod tests {
         let err = typecheck("var abc = 345\nabc = \"str\"").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::String(Position::new(2, 7), "str".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("val a = [1, 2]\na[0:1] = \"str\"").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentTarget {
+            token: Token::Assign(Position::new(2, 8)),
+            reason: Some(InvalidAssignmentTargetReason::IndexingMode),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("val a = \"abc\"\na[0] = \"qwer\"").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentTarget {
+            token: Token::Assign(Position::new(2, 6)),
+            reason: Some(InvalidAssignmentTargetReason::StringTarget),
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_assignment_errors_with_type() {
+        let err = typecheck("val abc = [1, 2]\nabc[2] = \"7\"").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(2, 10), "7".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("val abc = {a: 2, b: 3}\nabc[\"b\"] = \"7\"").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(2, 12), "7".to_string()),
             expected: Type::Int,
             actual: Type::String,
         };

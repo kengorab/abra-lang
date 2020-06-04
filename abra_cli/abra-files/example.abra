@@ -1,17 +1,10 @@
-type Person {
-  firstName: String
-  lastName: String
+val nums = [0, 1, 2]
+nums[0] = 2
+nums
 
-  func fullName(self) {
-    self.firstName + " " + self.lastName
-  }
-
-  func ken() = "Ken"
+val map = {
+  a: 1,
+  b: 2
 }
-
-val people = [
-  Person(firstName: "Ken", lastName: "Gorab"),
-  Person(firstName: "Meg", lastName: "Muccilli"),
-]
-
-(people[0] ?: Person(firstName: "unknown", lastName: "person")).fullName()
+map["a"] = "3"
+map
