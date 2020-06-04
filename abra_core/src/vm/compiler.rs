@@ -807,44 +807,67 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         let TypedAssignmentNode { target, expr, .. } = node;
-        let ident = match *target {
-            TypedAstNode::Identifier(ident, _) => Token::get_ident_name(&ident).clone(),
-            _ => unreachable!() // We can assume it's an Identifier; typechecking would have failed otherwise
-        };
+        match *target {
+            TypedAstNode::Indexing(_, TypedIndexingNode { target, index, .. }) => {
+                let typ = target.get_type();
 
-        self.visit(*expr)?;
+                self.visit(*target)?;
+                match index {
+                    IndexingMode::Index(idx) => self.visit(*idx)?,
+                    _ => unreachable!()
+                };
+                self.visit(*expr)?;
 
-        let scope_depth = self.get_fn_depth();
-        match self.resolve_local(&ident, scope_depth) {
-            Some((_, local_idx)) => { // Store to local at index
-                self.write_store_local_instr(local_idx, line);
-                self.metadata.stores.push(ident.clone());
-                self.write_load_local_instr(local_idx, line);
-                self.metadata.loads.push(ident.clone());
+                let opcode = match typ {
+                    Type::Array(_) => Opcode::ArrStore,
+                    Type::Map(_, _) => Opcode::MapStore,
+                    _ => unreachable!()
+                };
+                self.write_opcode(opcode, line);
             }
-            None => {
-                let upper_scope_depth = self.get_fn_depth() as i64 - 1;
-                match self.resolve_upvalue(&ident, upper_scope_depth) {
-                    Some(upvalue_idx) => { // Store to upvalue at index
-                        self.write_store_upvalue_instr(upvalue_idx, line);
-                        self.metadata.uv_stores.push(ident.clone());
-                        self.write_load_upvalue_instr(upvalue_idx, line);
-                        self.metadata.uv_loads.push(ident.clone());
-                    }
-                    None => { // Store to global by name
-                        let const_idx = self.get_constant_index(&Value::Str(ident.clone()));
-                        let const_idx = const_idx.unwrap();
+            TypedAstNode::Identifier(ident, _) => {
+                let ident = Token::get_ident_name(&ident).clone();
 
-                        self.write_opcode(Opcode::Constant, line);
-                        self.write_byte(const_idx, line);
-                        self.write_opcode(Opcode::GStore, line);
-                        self.write_opcode(Opcode::Constant, line);
-                        self.write_byte(const_idx, line);
-                        self.write_opcode(Opcode::GLoad, line);
+                self.visit(*expr)?;
+
+                let scope_depth = self.get_fn_depth();
+                match self.resolve_local(&ident, scope_depth) {
+                    Some((_, local_idx)) => { // Store to local at index
+                        self.write_store_local_instr(local_idx, line);
+                        self.metadata.stores.push(ident.clone());
+                        self.write_load_local_instr(local_idx, line);
+                        self.metadata.loads.push(ident.clone());
+                    }
+                    None => {
+                        let upper_scope_depth = self.get_fn_depth() as i64 - 1;
+                        match self.resolve_upvalue(&ident, upper_scope_depth) {
+                            Some(upvalue_idx) => { // Store to upvalue at index
+                                self.write_store_upvalue_instr(upvalue_idx, line);
+                                self.metadata.uv_stores.push(ident.clone());
+                                self.write_load_upvalue_instr(upvalue_idx, line);
+                                self.metadata.uv_loads.push(ident.clone());
+                            }
+                            None => { // Store to global by name
+                                let const_idx = self.get_constant_index(&Value::Str(ident.clone()));
+                                let const_idx = const_idx.unwrap();
+
+                                self.write_opcode(Opcode::Constant, line);
+                                self.write_byte(const_idx, line);
+                                self.write_opcode(Opcode::GStore, line);
+                                self.write_opcode(Opcode::Constant, line);
+                                self.write_byte(const_idx, line);
+                                self.write_opcode(Opcode::GLoad, line);
+                            }
+                        }
                     }
                 }
+            },
+            t @ _ => {
+                dbg!(&t);
+                todo!()
             }
-        }
+        };
+
         Ok(())
     }
 
@@ -1933,6 +1956,52 @@ mod tests {
                     upvalues: vec![],
                     receiver: None,
                 }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_assignment_indexing() {
+        let chunk = compile("val a = [1]\na[0] = 0");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::ArrMk as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::IConst0 as u8,
+                Opcode::ArrStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Str("a".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("val a = {b:1}\na[\"b\"] = 0");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::IConst1 as u8,
+                Opcode::MapMk as u8, 1,
+                Opcode::Constant as u8, 1,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::IConst0 as u8,
+                Opcode::MapStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Str("b".to_string()),
+                Value::Str("a".to_string()),
+                new_string_obj("b")
             ],
         };
         assert_eq!(expected, chunk);

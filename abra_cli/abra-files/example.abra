@@ -1,10 +1,25 @@
-val nums = [0, 1, 2]
-nums[0] = 2
-nums
+func outer() {
+  val nums = [0, 1, 2]
 
-val map = {
-  a: 1,
-  b: 2
+  val map = {
+    a: 1,
+    b: 2
+  }
+
+  func inner() {
+    nums[8] = 3
+    map["a"] = 3
+  }
+
+  func printAll() {
+    inner()
+
+    println(nums)
+    println(map["a"])
+    println(map["b"])
+  }
+
+  printAll
 }
-map["a"] = "3"
-map
+
+outer()()
