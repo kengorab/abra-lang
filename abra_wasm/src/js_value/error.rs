@@ -134,7 +134,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("ident", &JsToken(ident))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidAssignmentTarget { token } => {
+                TypecheckerError::InvalidAssignmentTarget { token, .. } => {
                     let mut obj = serializer.serialize_map(Some(3))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidAssignmentTarget")?;

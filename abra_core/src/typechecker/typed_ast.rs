@@ -167,7 +167,15 @@ pub struct TypedIdentifierNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum AssignmentTargetKind {
+    Identifier,
+    ArrayIndex,
+    MapIndex,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedAssignmentNode {
+    pub kind: AssignmentTargetKind,
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub expr: Box<TypedAstNode>,

@@ -4,6 +4,12 @@ use crate::typechecker::types::{Type, StructType};
 use crate::parser::ast::BinaryOp;
 
 #[derive(Debug, PartialEq)]
+pub enum InvalidAssignmentTargetReason {
+    IndexingMode,
+    StringTarget
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypecheckerError {
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
@@ -12,7 +18,7 @@ pub enum TypecheckerError {
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     UnknownIdentifier { ident: Token },
-    InvalidAssignmentTarget { token: Token },
+    InvalidAssignmentTarget { token: Token, reason: Option<InvalidAssignmentTargetReason> },
     AssignmentToImmutable { orig_ident: Token, token: Token },
     UnannotatedUninitialized { ident: Token, is_mutable: bool },
     UnknownType { type_ident: Token },
@@ -102,7 +108,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::DuplicateType { ident, .. } => ident.get_position(),
             TypecheckerError::DuplicateField { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
-            TypecheckerError::InvalidAssignmentTarget { token } => token.get_position(),
+            TypecheckerError::InvalidAssignmentTarget { token, .. } => token.get_position(),
             TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
             TypecheckerError::UnannotatedUninitialized { ident, .. } => ident.get_position(),
             TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
@@ -206,7 +212,8 @@ impl DisplayError for TypecheckerError {
                     ident, pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::InvalidAssignmentTarget { token: _ } => {
+            TypecheckerError::InvalidAssignmentTarget { reason: _, .. } => {
+                // TODO: Use reason
                 let msg = "Left-hand side of assignment must be a valid identifier";
                 format!(
                     "Cannot perform assignment ({}:{})\n{}\n{}",
@@ -556,7 +563,8 @@ Since it's a 'val', you must provide an initial value"
     fn test_invalid_assignment_target() {
         let src = "true = \"abc\"".to_string();
         let err = TypecheckerError::InvalidAssignmentTarget {
-            token: Token::Assign(Position::new(1, 6))
+            token: Token::Assign(Position::new(1, 6)),
+            reason: None
         };
 
         let expected = format!("\
