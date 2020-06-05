@@ -825,6 +825,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 };
                 self.write_opcode(opcode, line);
             }
+            TypedAstNode::Accessor(_, TypedAccessorNode { .. }) => todo!(),
             TypedAstNode::Identifier(ident, _) => {
                 let ident = Token::get_ident_name(&ident).clone();
 
@@ -861,7 +862,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                         }
                     }
                 }
-            },
+            }
             t @ _ => {
                 dbg!(&t);
                 todo!()

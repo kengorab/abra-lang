@@ -171,6 +171,7 @@ pub enum AssignmentTargetKind {
     Identifier,
     ArrayIndex,
     MapIndex,
+    Field,
 }
 
 #[derive(Clone, Debug, PartialEq)]

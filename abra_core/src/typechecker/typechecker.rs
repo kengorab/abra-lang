@@ -887,6 +887,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Ok(TypedAstNode::Assignment(token, node))
                 }
             }
+            AstNode::Accessor(tok, node) => {
+                let typed_target = self.visit_accessor(tok.clone(), node)?;
+                let typed_expr = self.visit(*expr)?;
+
+                let expr_type = typed_expr.get_type();
+                let target_type = typed_target.get_type();
+                if !expr_type.is_equivalent_to(&target_type) {
+                    Err(TypecheckerError::Mismatch {
+                        token: typed_expr.get_token().clone(),
+                        expected: target_type,
+                        actual: expr_type,
+                    })
+                } else {
+                    let node = TypedAssignmentNode {
+                        kind: AssignmentTargetKind::Field,
+                        typ: expr_type,
+                        target: Box::new(typed_target),
+                        expr: Box::new(typed_expr),
+                    };
+                    Ok(TypedAstNode::Assignment(token, node))
+                }
+            }
             _ => Err(TypecheckerError::InvalidAssignmentTarget { token, reason: None })
         }
     }
@@ -2715,6 +2737,49 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_assignment_field() -> TestResult {
+        let typed_ast = typecheck("\
+          type Person { name: String }\n\
+          val a = Person(name: \"abc\")\n\
+          a.name = \"qwer\"\n\
+        ")?;
+
+        let expected = TypedAstNode::Assignment(
+            Token::Assign(Position::new(3, 8)),
+            TypedAssignmentNode {
+                kind: AssignmentTargetKind::Field,
+                typ: Type::String,
+                target: Box::new(TypedAstNode::Accessor(
+                    Token::Dot(Position::new(3, 2)),
+                    TypedAccessorNode {
+                        typ: Type::String,
+                        target: Box::new(TypedAstNode::Identifier(
+                            ident_token!((3, 1), "a"),
+                            TypedIdentifierNode {
+                                typ: Type::Struct(StructType {
+                                    name: "Person".to_string(),
+                                    fields: vec![("name".to_string(), Type::String, false)],
+                                    static_fields: vec![],
+                                    methods: vec![],
+                                }),
+                                name: "a".to_string(),
+                                is_mutable: false,
+                                scope_depth: 0,
+                            },
+                        )),
+                        field_idx: 0,
+                        field_name: "name".to_string()
+                    },
+                )),
+                expr: Box::new(string_literal!((3, 10), "qwer")),
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
+        Ok(())
+    }
+
+    #[test]
     fn typecheck_assignment_errors_with_target() {
         let err = typecheck("true = 345").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), reason: None };
@@ -2746,6 +2811,34 @@ mod tests {
         let expected = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 6)),
             reason: Some(InvalidAssignmentTargetReason::StringTarget),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          type Person { name: String }\n\
+          val a = Person(name: \"abc\")\n\
+          a.bogusField = \"qwer\"\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((3, 3), "bogusField"),
+            target_type: Type::Struct(StructType {
+                name: "Person".to_string(),
+                fields: vec![("name".to_string(), Type::String, false)],
+                static_fields: vec![],
+                methods: vec![],
+            }),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          type Person { name: String }\n\
+          val a = Person(name: \"abc\")\n\
+          a.name = 123\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(3, 10), 123),
+            expected: Type::String,
+            actual: Type::Int,
         };
         assert_eq!(expected, err);
     }
