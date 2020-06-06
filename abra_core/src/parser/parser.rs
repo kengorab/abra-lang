@@ -129,7 +129,8 @@ impl Parser {
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_array)),
             Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
             Token::Ident(_, _) |
-            Token::Self_(_) => Some(Box::new(Parser::parse_ident)),
+            Token::Self_(_) |
+            Token::None(_) => Some(Box::new(Parser::parse_ident)),
             Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
             _ => None,
         }
@@ -745,7 +746,7 @@ impl Parser {
 
     fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
         match &token {
-            Token::Ident(_, _) | Token::Self_(_) => Ok(AstNode::Identifier(token)),
+            Token::Ident(_, _) | Token::Self_(_) | Token::None(_) => Ok(AstNode::Identifier(token)),
             _ => Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
         }
     }
@@ -1771,6 +1772,10 @@ mod tests {
 
         let ast = parse("self")?;
         let expected = AstNode::Identifier(Token::Self_(Position::new(1, 1)));
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("None")?;
+        let expected = AstNode::Identifier(Token::None(Position::new(1, 1)));
         Ok(assert_eq!(expected, ast[0]))
     }
 

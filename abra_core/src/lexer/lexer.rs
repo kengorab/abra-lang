@@ -173,6 +173,7 @@ impl<'a> Lexer<'a> {
                 "for" => Token::For(pos),
                 "in" => Token::In(pos),
                 "type" => Token::Type(pos),
+                "None" => Token::None(pos),
                 s @ _ => Token::Ident(pos, s.to_string())
             };
             return Ok(Some(token));

@@ -28,6 +28,9 @@ impl Prelude {
             bindings.insert(name, PreludeBinding { typ, value });
         }
 
+        // Insert None
+        bindings.insert("None".to_string(), PreludeBinding { typ: Type::Option(Box::new(Type::Any)), value: Value::Nil });
+
         let prelude_types = vec![
             ("Int", Type::Int),
             ("Float", Type::Float),
