@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -477,6 +477,19 @@ impl VM {
                             Value::Fn(field_value)
                         }
                         _ => unreachable!()
+                    };
+                    self.push(value);
+                }
+                Opcode::SetField => {
+                    let field_idx = self.read_byte_expect()?;
+                    let inst = pop_expect_obj!(self)?;
+                    let value = self.pop_expect()?;
+
+                    match *inst.borrow_mut() {
+                        Obj::InstanceObj(InstanceObj { ref mut fields, .. }) => {
+                            fields[field_idx] = value.clone();
+                        }
+                        _ => unimplemented!()
                     };
                     self.push(value);
                 }

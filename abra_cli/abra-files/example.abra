@@ -1,9 +1,16 @@
+type A {
+  a: String
+}
+
 type Person {
-  name: String
+  name: A
 
   func getName(self) = self.name
 }
 
-val ken = Person(name: "ken")
-ken.name = "Ken"
-ken
+val ken = Person(name: A(a: "ken"))
+val a = ken.name = A(a: "Ken")
+println(ken.name.a)
+println(a.a)
+a.a = "asdf"
+println(ken.name.a)
