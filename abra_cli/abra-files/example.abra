@@ -1,17 +1,16 @@
-type Person {
-  firstName: String
-  lastName: String
-
-  func fullName(self) {
-    self.firstName + " " + self.lastName
-  }
-
-  func ken() = "Ken"
+type A {
+  a: String
 }
 
-val people = [
-  Person(firstName: "Ken", lastName: "Gorab"),
-  Person(firstName: "Meg", lastName: "Muccilli"),
-]
+type Person {
+  name: A
 
-(people[0] ?: Person(firstName: "unknown", lastName: "person")).fullName()
+  func getName(self) = self.name
+}
+
+val ken = Person(name: A(a: "ken"))
+val a = ken.name = A(a: "Ken")
+println(ken.name.a)
+println(a.a)
+a.a = "asdf"
+println(ken.name.a)

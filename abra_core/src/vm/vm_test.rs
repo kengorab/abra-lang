@@ -314,6 +314,75 @@ mod tests {
     }
 
     #[test]
+    fn interpret_assignments_indexing() {
+        let input = r#"
+          val a = [1]
+          a[0] = 123
+
+          val m = { a: 0 }
+          m["a"] = 456
+          (a[0] ?: 0) + (m["a"] ?: 0)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(579);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val a = [0]
+          a[4] = 123
+          a
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(0),
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Int(123),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_assignments_fields() {
+        let input = r#"
+          type Person { name: String }
+          val p = Person(name: "ken")
+          p.name = "Ken"
+          p.name
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Name { value: String }
+          type Person { name: Name }
+
+          val n = Name(value: "ken")
+          val p = Person(name: n)
+          n.value = "Ken"
+          p.name.value
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Name { value: String }
+          type Person { name: Name }
+
+          val p = Person(name: Name(value: "ken"))
+          val n = p.name = Name(value: "ken")
+          n.value = "Ken"
+          p.name.value
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_indexing_arrays() {
         let input = "\
           val arr = [1, 2, 3]\n
