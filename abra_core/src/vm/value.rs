@@ -59,7 +59,7 @@ impl Value {
             Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
             Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
-            Value::Nil => format!("nil"),
+            Value::Nil => format!("None"),
         }
     }
 
@@ -99,7 +99,7 @@ impl Display for Value {
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
             Value::Type(TypeValue { name, .. }) => write!(f, "<type {}>", name),
-            Value::Nil => write!(f, "nil"),
+            Value::Nil => write!(f, "None"),
         }
     }
 }

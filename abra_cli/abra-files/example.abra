@@ -1,16 +1,3 @@
-type A {
-  a: String
-}
-
-type Person {
-  name: A
-
-  func getName(self) = self.name
-}
-
-val ken = Person(name: A(a: "ken"))
-val a = ken.name = A(a: "Ken")
-println(ken.name.a)
-println(a.a)
-a.a = "asdf"
-println(ken.name.a)
+val arr = [1]
+arr[3] = 3
+(arr[2] ?: 17)

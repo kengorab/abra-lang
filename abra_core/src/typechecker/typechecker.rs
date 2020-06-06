@@ -263,11 +263,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 BinaryOp::Coalesce => {
                     match (&ltype, &rtype) {
                         (Type::Option(ltype), rtype @ _) => {
-                            if !ltype.is_equivalent_to(rtype) {
+                            if !rtype.is_equivalent_to(ltype) {
                                 let token = typed_right.get_token().clone();
                                 Err(TypecheckerError::Mismatch { token, expected: (**ltype).clone(), actual: rtype.clone() })
                             } else {
-                                Ok((**ltype).clone())
+                                Ok(rtype.clone())
                             }
                         }
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
@@ -1770,6 +1770,8 @@ mod tests {
             ("[1][0] ?: 2", Type::Int),
             ("[[0, 1]][0] ?: [1, 2]", Type::Array(Box::new(Type::Int))),
             ("[[0, 1][0]][0] ?: [1, 2][1]", Type::Option(Box::new(Type::Int))),
+            ("[][0] ?: 0", Type::Int),
+            ("None ?: 0", Type::Int),
         ];
 
         for (input, expected_type) in cases {
@@ -2768,7 +2770,7 @@ mod tests {
                             },
                         )),
                         field_idx: 0,
-                        field_name: "name".to_string()
+                        field_name: "name".to_string(),
                     },
                 )),
                 expr: Box::new(string_literal!((3, 10), "qwer")),

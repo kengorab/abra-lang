@@ -30,6 +30,7 @@ pub enum Token {
 
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
     #[strum(to_string = "self", serialize = "Self")] Self_(Position),
+    #[strum(to_string = "none", serialize = "None")] None(Position),
 
     #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
     #[strum(to_string = "+", serialize = "Plus")] Plus(Position),
@@ -81,6 +82,7 @@ impl Token {
 
             Token::Ident(pos, _) |
             Token::Self_(pos) |
+            Token::None(pos) |
 
             Token::Assign(pos) |
             Token::Plus(pos) |
@@ -117,6 +119,7 @@ impl Token {
         match token {
             Token::Ident(_, ident) => ident.clone(),
             Token::Self_(_) => "self".to_string(),
+            Token::None(_) => "None".to_string(),
             _ => unreachable!()
         }
     }
