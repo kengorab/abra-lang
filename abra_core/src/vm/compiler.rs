@@ -825,7 +825,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 };
                 self.write_opcode(opcode, line);
             }
-            TypedAstNode::Accessor(_, TypedAccessorNode { .. }) => todo!(),
+            TypedAstNode::Accessor(_, TypedAccessorNode { target, field_idx, .. }) => {
+                self.visit(*expr)?;
+                self.visit(*target)?;
+
+                self.write_opcode(Opcode::SetField, line);
+                self.write_byte(field_idx as u8, line);
+            }
             TypedAstNode::Identifier(ident, _) => {
                 let ident = Token::get_ident_name(&ident).clone();
 
@@ -2003,6 +2009,43 @@ mod tests {
                 Value::Str("b".to_string()),
                 Value::Str("a".to_string()),
                 new_string_obj("b")
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_assignment_field_accessor() {
+        let chunk = compile("\
+          type Person { name: String }\n\
+          val p = Person(name: \"Ken\")\n\
+          p.name = \"Meg\"\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::New as u8, 1,
+                Opcode::Init as u8,
+                Opcode::Constant as u8, 3,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 4,
+                Opcode::Constant as u8, 3,
+                Opcode::GLoad as u8,
+                Opcode::SetField as u8, 0,
+                Opcode::Return as u8,
+            ],
+            constants: vec![
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
+                Value::Str("Person".to_string()),
+                new_string_obj("Ken"),
+                Value::Str("p".to_string()),
+                new_string_obj("Meg"),
             ],
         };
         assert_eq!(expected, chunk);

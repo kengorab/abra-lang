@@ -344,6 +344,45 @@ mod tests {
     }
 
     #[test]
+    fn interpret_assignments_fields() {
+        let input = r#"
+          type Person { name: String }
+          val p = Person(name: "ken")
+          p.name = "Ken"
+          p.name
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Name { value: String }
+          type Person { name: Name }
+
+          val n = Name(value: "ken")
+          val p = Person(name: n)
+          n.value = "Ken"
+          p.name.value
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Name { value: String }
+          type Person { name: Name }
+
+          val p = Person(name: Name(value: "ken"))
+          val n = p.name = Name(value: "ken")
+          n.value = "Ken"
+          p.name.value
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_indexing_arrays() {
         let input = "\
           val arr = [1, 2, 3]\n
