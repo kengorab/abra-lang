@@ -1,25 +1,9 @@
-func outer() {
-  val nums = [0, 1, 2]
+type Person {
+  name: String
 
-  val map = {
-    a: 1,
-    b: 2
-  }
-
-  func inner() {
-    nums[8] = 3
-    map["a"] = 3
-  }
-
-  func printAll() {
-    inner()
-
-    println(nums)
-    println(map["a"])
-    println(map["b"])
-  }
-
-  printAll
+  func getName(self) = self.name
 }
 
-outer()()
+val ken = Person(name: "ken")
+ken.name = "Ken"
+ken
