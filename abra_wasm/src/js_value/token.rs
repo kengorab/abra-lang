@@ -276,6 +276,12 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::QuestionDot(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "questionDot")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
         }
     }
 }

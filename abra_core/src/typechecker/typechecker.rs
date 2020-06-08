@@ -1278,12 +1278,20 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
-        let AccessorNode { target, field } = node;
+        let AccessorNode { target, field, is_opt_safe } = node;
         let target = self.visit(*target)?;
+
+        let mut target_type = target.get_type();
+        let mut is_opt = false;
+        if is_opt_safe {
+            if let Type::Option(inner_type) = target_type {
+                target_type = *inner_type;
+                is_opt = true;
+            }
+        }
 
         let field_name = Token::get_ident_name(&field).clone();
 
-        let target_type = target.get_type();
         let field_data = match &target_type {
             Type::Struct(StructType { fields, methods, .. }) => {
                 let num_fields = fields.len();
@@ -1308,11 +1316,20 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 field_for_type(typ, &field_name).map(|(idx, (_, typ))| (idx, typ.clone()))
             }
         };
-        let (field_idx, typ) = field_data.ok_or(
+        let (field_idx, mut typ) = field_data.ok_or(
             TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() }
         )?;
+        if is_opt {
+            typ = Type::Option(Box::new(typ))
+        }
 
-        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx }))
+        let (token, is_opt_safe) = if is_opt_safe && !is_opt {
+            if let Token::QuestionDot(pos) = token {
+                (Token::Dot(pos), false)
+            } else { unreachable!() }
+        } else { (token, is_opt_safe) };
+
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx, is_opt_safe }))
     }
 }
 
@@ -2452,6 +2469,7 @@ mod tests {
                                             )),
                                             field_name: "name".to_string(),
                                             field_idx: 0,
+                                            is_opt_safe: false,
                                         },
                                     )
                                 ],
@@ -2492,6 +2510,7 @@ mod tests {
                                                         )),
                                                         field_name: "getName".to_string(),
                                                         field_idx: 1,
+                                                        is_opt_safe: false,
                                                     },
                                                 )
                                             ),
@@ -2771,6 +2790,7 @@ mod tests {
                         )),
                         field_idx: 0,
                         field_name: "name".to_string(),
+                        is_opt_safe: false,
                     },
                 )),
                 expr: Box::new(string_literal!((3, 10), "qwer")),
@@ -3828,6 +3848,7 @@ mod tests {
                 )),
                 field_name: "name".to_string(),
                 field_idx: 0,
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -3861,6 +3882,7 @@ mod tests {
                 )),
                 field_name: "age".to_string(),
                 field_idx: 1,
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -3884,6 +3906,7 @@ mod tests {
                 )),
                 field_name: "length".to_string(),
                 field_idx: 0,
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -3897,6 +3920,7 @@ mod tests {
                 target: Box::new(string_literal!((1, 1), "hello")),
                 field_name: "length".to_string(),
                 field_idx: 0,
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -3931,9 +3955,85 @@ mod tests {
                 )),
                 field_name: "getName".to_string(),
                 field_idx: 0,
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_accessor_optional_safe() -> TestResult {
+        let typed_ast = typecheck("\
+          type Person { name: String? = None }\n\
+          val p = Person()\n\
+          p.name?.length\n\
+        ")?;
+        let expected = TypedAstNode::Accessor(
+            Token::QuestionDot(Position::new(3, 7)),
+            TypedAccessorNode {
+                typ: Type::Option(Box::new(Type::Int)),
+                target: Box::new(TypedAstNode::Accessor(
+                    Token::Dot(Position::new(3, 2)),
+                    TypedAccessorNode {
+                        typ: Type::Option(Box::new(Type::String)),
+                        target: Box::new(TypedAstNode::Identifier(
+                            ident_token!((3, 1), "p"),
+                            TypedIdentifierNode {
+                                typ: Type::Struct(StructType {
+                                    name: "Person".to_string(),
+                                    fields: vec![("name".to_string(), Type::Option(Box::new(Type::String)), true)],
+                                    static_fields: vec![],
+                                    methods: vec![],
+                                }),
+                                name: "p".to_string(),
+                                scope_depth: 0,
+                                is_mutable: false,
+                            },
+                        )),
+                        field_name: "name".to_string(),
+                        field_idx: 0,
+                        is_opt_safe: false,
+                    },
+                )),
+                field_name: "length".to_string(),
+                field_idx: 0,
+                is_opt_safe: true,
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
+        // Verify that it also works for non-optional fields, converting QuestionDot to just Dot
+        let typed_ast = typecheck("\
+          type Person { name: String = \"\" }\n\
+          val p = Person()\n\
+          p?.name\n\
+        ")?;
+        let expected = TypedAstNode::Accessor(
+            Token::Dot(Position::new(3, 2)),
+            TypedAccessorNode {
+                typ: Type::String,
+                target: Box::new(TypedAstNode::Identifier(
+                    ident_token!((3, 1), "p"),
+                    TypedIdentifierNode {
+                        typ: Type::Struct(StructType {
+                            name: "Person".to_string(),
+                            fields: vec![("name".to_string(), Type::String, true)],
+                            static_fields: vec![],
+                            methods: vec![],
+                        }),
+                        name: "p".to_string(),
+                        scope_depth: 0,
+                        is_mutable: false,
+                    },
+                )),
+                field_name: "name".to_string(),
+                field_idx: 0,
+                is_opt_safe: false,
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
 
         Ok(())
     }

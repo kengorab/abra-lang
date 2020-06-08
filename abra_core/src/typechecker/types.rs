@@ -19,6 +19,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Placeholder,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -107,6 +108,7 @@ impl Type {
                 true
             }
             (_, Any) => true,
+            (Placeholder, _) | (_, Placeholder) => true,
             (_, _) => false
         }
     }

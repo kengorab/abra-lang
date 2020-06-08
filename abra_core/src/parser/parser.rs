@@ -151,7 +151,7 @@ impl Parser {
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_index)),
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             Token::LParen(_, _) => Some(Box::new(Parser::parse_invocation)),
-            Token::Dot(_) => Some(Box::new(Parser::parse_accessor)),
+            Token::Dot(_) | Token::QuestionDot(_) => Some(Box::new(Parser::parse_accessor)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
     }
@@ -166,7 +166,7 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::Dot(_) => Precedence::Call,
+            Token::Dot(_) | Token::QuestionDot(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
             }
@@ -681,8 +681,12 @@ impl Parser {
 
     fn parse_accessor(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
         let dot = token;
+        let is_opt_safe = match &dot {
+            Token::QuestionDot(_) => true,
+            _ => false
+        };
         let field = self.expect_next_token(TokenType::Ident)?;
-        Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field }))
+        Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field, is_opt_safe }))
     }
 
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -2342,6 +2346,7 @@ mod tests {
                     AccessorNode {
                         target: Box::new(identifier!((1, 1), "abc")),
                         field: ident_token!((1, 5), "def"),
+                        is_opt_safe: false
                     },
                 )),
                 args: vec![
@@ -2597,6 +2602,7 @@ mod tests {
             AccessorNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 field: ident_token!((1, 5), "def"),
+                is_opt_safe: false
             },
         );
         assert_eq!(expected, ast[0]);
@@ -2613,12 +2619,56 @@ mod tests {
                             AccessorNode {
                                 target: Box::new(identifier!((1, 1), "abc")),
                                 field: ident_token!((1, 5), "def"),
+                                is_opt_safe: false
                             },
                         )),
                         field: ident_token!((1, 9), "ghi"),
+                        is_opt_safe: false
                     },
                 )),
                 field: ident_token!((1, 13), "jkl"),
+                is_opt_safe: false
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_optional_dot_accessor() -> TestResult {
+        let ast = parse("abc?.def")?;
+        let expected = AstNode::Accessor(
+            Token::QuestionDot(Position::new(1, 4)),
+            AccessorNode {
+                target: Box::new(identifier!((1, 1), "abc")),
+                field: ident_token!((1, 6), "def"),
+                is_opt_safe: true
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc.def?.ghi?.jkl")?;
+        let expected = AstNode::Accessor(
+            Token::QuestionDot(Position::new(1, 13)),
+            AccessorNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::QuestionDot(Position::new(1, 8)),
+                    AccessorNode {
+                        target: Box::new(AstNode::Accessor(
+                            Token::Dot(Position::new(1, 4)),
+                            AccessorNode {
+                                target: Box::new(identifier!((1, 1), "abc")),
+                                field: ident_token!((1, 5), "def"),
+                                is_opt_safe: false
+                            },
+                        )),
+                        field: ident_token!((1, 10), "ghi"),
+                        is_opt_safe: true
+                    },
+                )),
+                field: ident_token!((1, 15), "jkl"),
+                is_opt_safe: true
             },
         );
         assert_eq!(expected, ast[0]);
