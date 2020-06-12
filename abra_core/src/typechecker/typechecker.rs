@@ -1284,7 +1284,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let mut target_type = target.get_type();
         let mut is_opt = false;
         if is_opt_safe {
-            if let Type::Option(inner_type) = target_type {
+            // Handle nested Option types (ie. String??? -> String?)
+            while let Type::Option(inner_type) = target_type {
                 target_type = *inner_type;
                 is_opt = true;
             }

@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 strum = "0.15.0"
 strum_macros = "0.15.0"
+rand = "0.7.3"
 
 [lib]
 name = "abra_core"

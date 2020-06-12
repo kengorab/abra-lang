@@ -1,5 +1,5 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind};
@@ -7,6 +7,7 @@ use crate::typechecker::types::Type;
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
+use crate::common::util::random_string;
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
@@ -1059,14 +1060,113 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_accessor(&mut self, token: Token, node: TypedAccessorNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedAccessorNode { target, field_name, field_idx, .. } = node;
 
-        self.visit(*target)?;
+        if node.is_opt_safe {
+            let mut unwound_path = vec![];
 
-        self.metadata.field_gets.push(field_name);
+            let this_node = Box::new(TypedAstNode::Accessor(token.clone(), node));
+            let mut next = &this_node;
+            loop {
+                match &**next {
+                    node @ TypedAstNode::Accessor(_, _) => {
+                        if let TypedAstNode::Accessor(_, TypedAccessorNode { target, is_opt_safe, .. }) = &node {
+                            unwound_path.push(node);
 
-        self.write_opcode(Opcode::GetField, line);
-        self.write_byte(field_idx as u8, line);
+                            if *is_opt_safe {
+                                next = target;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    node @ _ => {
+                        unwound_path.push(node);
+                        break;
+                    }
+                }
+            }
+            let mut unwound_path = unwound_path.into_iter().rev().map(|n| n.clone());
+
+            // This is _nuts_, let's maybe try and refactor this one day?
+            fn compile_if_block<I>(zelf: &mut Compiler, pos: Position, path_segments: &mut I, prev_target: Option<TypedAstNode>) -> Result<Vec<TypedAstNode>, ()>
+                where I: std::iter::Iterator<Item=TypedAstNode>
+            {
+                let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
+                let scope_depth = zelf.get_fn_depth();
+
+                if let Some(path_seg) = path_segments.next() {
+                    let temp_var_name = format!("${}", random_string(2));
+                    let temp_var_token = Token::Ident(pos.clone(), temp_var_name.clone());
+
+                    let temp_var_assignment_expr = match prev_target {
+                        None => path_seg,
+                        Some(prev_target) => {
+                            match path_seg {
+                                TypedAstNode::Accessor(tok, node) => {
+                                    let target = Box::new(prev_target);
+                                    TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_opt_safe: false })
+                                }
+                                _ => unimplemented!()
+                            }
+                        }
+                    };
+
+                    let temp_var_decl_node = TypedAstNode::BindingDecl(Token::Assign(pos.clone()), TypedBindingDeclNode {
+                        ident: temp_var_token.clone(),
+                        expr: Some(Box::new(temp_var_assignment_expr)),
+                        is_mutable: false,
+                        scope_depth,
+                    });
+
+                    let ident_node = TypedAstNode::Identifier(
+                        temp_var_token.clone(),
+                        TypedIdentifierNode { typ: Type::Placeholder, name: temp_var_name, is_mutable: false, scope_depth },
+                    );
+
+                    let if_block_stmts = compile_if_block(zelf, pos.clone(), path_segments, Some(ident_node.clone()))?;
+                    let res_node = if if_block_stmts.is_empty() {
+                        ident_node
+                    } else {
+                        TypedAstNode::IfExpression(
+                            Token::If(pos.clone()),
+                            TypedIfNode {
+                                typ: Type::Placeholder, // The type doesn't matter, it won't be typechecked
+                                condition: Box::new(
+                                    TypedAstNode::Binary(
+                                        Token::Neq(pos.clone()),
+                                        TypedBinaryNode {
+                                            typ: Type::Bool,
+                                            right: Box::new(ident_node.clone()),
+                                            op: BinaryOp::Neq,
+                                            left: Box::new(nil_expr.clone()),
+                                        },
+                                    )
+                                ),
+                                if_block: if_block_stmts,
+                                else_block: Some(vec![nil_expr]),
+                            },
+                        )
+                    };
+
+                    Ok(vec![temp_var_decl_node, res_node])
+                } else {
+                    Ok(vec![])
+                }
+            }
+
+            let pos = token.get_position().clone();
+            let nodes = compile_if_block(self, pos, &mut unwound_path, None)?;
+            for node in nodes {
+                self.visit(node)?;
+            }
+        } else {
+            let TypedAccessorNode { target, field_name, field_idx, .. } = node;
+            self.metadata.field_gets.push(field_name);
+
+            self.visit(*target)?;
+            self.write_opcode(Opcode::GetField, line);
+            self.write_byte(field_idx as u8, line);
+        }
 
         Ok(())
     }
