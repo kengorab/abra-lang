@@ -19,6 +19,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Placeholder,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -41,6 +42,7 @@ impl Type {
             // For Array / Option types, compare inner type
             (Array(t1), Array(t2)) |
             (Option(t1), Option(t2)) => self::Type::is_equivalent_to(t1, t2),
+            (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2),
             (Or(t1s), Or(t2s)) => {
                 let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
                 let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
@@ -107,6 +109,7 @@ impl Type {
                 true
             }
             (_, Any) => true,
+            (Placeholder, _) | (_, Placeholder) => true,
             (_, _) => false
         }
     }

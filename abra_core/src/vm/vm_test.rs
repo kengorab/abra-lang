@@ -1098,6 +1098,44 @@ mod tests {
     }
 
     #[test]
+    fn interpret_accessor_opt_safe() {
+        let input = "\
+          type Name { value: String? = None }\n\
+          type Person { name: Name? = None }\n\
+          val ken = Person()\n\
+          ken.name?.value?.length\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Nil;
+        assert_eq!(expected, result);
+
+        let input = "\
+          type Name { value: String? = None }\n\
+          type Person { name: Name? = None }\n\
+          val ken = Person(name: Name(value: \"Ken\"))\n\
+          ken.name?.value?.length\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = "\
+          type Person { name: String? = None }\n\
+          val people = [Person(name: \"a\")]\n\
+          [\n\
+            people[0]?.name?.length,\n\
+            people[1]?.name?.length,\n\
+          ]\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Nil
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_method_invocation_struct() {
         let input = "\
           type Person {\n\

@@ -147,19 +147,20 @@ pub struct ForLoopNode {
     pub iteratee: Token,
     pub index_ident: Option<Token>,
     pub iterator: Box<AstNode>,
-    pub body: Vec<AstNode>
+    pub body: Vec<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct WhileLoopNode {
     pub condition: Box<AstNode>,
-    pub body: Vec<AstNode>
+    pub body: Vec<AstNode>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct AccessorNode {
     pub target: Box<AstNode>,
-    pub field: Token
+    pub field: Token,
+    pub is_opt_safe: bool,
 }
 
 #[derive(Debug, PartialEq)]
