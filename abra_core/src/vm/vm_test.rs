@@ -742,6 +742,47 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_closures_upvalues_not_yet_closed() {
+        let input = "\
+          func abc() {\n\
+            val a = 20\n\
+            func def() { a }\n\
+            4 + def()\n\
+          }\n\
+          abc()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func abc() {\n\
+            var a = 20\n\
+            func wrapper() {\n\
+              val b = 123\n\
+              func wrapper2() {\n\
+                val c = 456\n\
+                if (true) {\n\
+                  val b = 456\n\
+                  a = 24\n\
+                  a\n\
+                } else {\n\
+                  0\n\
+                }\n\
+              }\n\
+              wrapper2()\n\
+            }\n\
+            wrapper()\n\
+          }\n\
+          abc()\
+        ";
+
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_func_invocation_callstack() {
         let input = "\
           val greeting = \"Hello\"\n\
