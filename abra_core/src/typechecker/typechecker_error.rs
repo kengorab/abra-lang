@@ -39,6 +39,7 @@ pub enum TypecheckerError {
     InvalidTypeFuncInvocation { token: Token },
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
+    MissingRequiredTypeAnnotation { token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -68,7 +69,7 @@ fn type_repr(t: &Type) -> String {
             }
         }
         Type::Option(typ) => format!("{}?", type_repr(typ)),
-        Type::Fn(_self_type, args, ret_type) => {
+        Type::Fn(args, ret_type) => {
             let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
@@ -130,6 +131,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidTypeFuncInvocation { token } => token.get_position(),
             TypecheckerError::InvalidSelfParamPosition { token } => token.get_position(),
             TypecheckerError::InvalidSelfParam { token } => token.get_position(),
+            TypecheckerError::MissingRequiredTypeAnnotation { token } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -384,6 +386,9 @@ impl DisplayError for TypecheckerError {
                 unimplemented!()
             }
             TypecheckerError::InvalidSelfParam { .. } => {
+                unimplemented!()
+            }
+            TypecheckerError::MissingRequiredTypeAnnotation { .. } => {
                 unimplemented!()
             }
         }

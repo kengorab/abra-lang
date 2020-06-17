@@ -1,6 +1,6 @@
 use crate::vm::compiler::{Metadata, Module};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, FnValue};
+use crate::vm::value::{Value, FnValue, TypeValue};
 use std::collections::HashMap;
 
 pub fn disassemble(module: Module, metadata: Metadata) -> String {
@@ -141,10 +141,28 @@ impl Disassembler {
         let constants = self.module.constants.clone();
         let iter = constants.iter().filter_map(|val| {
             match val {
-                Value::Fn(FnValue { name, code, .. }) => Some((format!("fn {}", name.clone()), code.clone())),
+                Value::Fn(FnValue { name, code, .. }) => {
+                    let name = format!("fn {}", name.clone());
+                    let values = (name, code.clone());
+                    Some(vec![values])
+                },
+                Value::Type(TypeValue { name, methods, static_fields }) => {
+                    let mut values = vec![];
+
+                    for (_, fn_value) in methods {
+                        let method_name = format!("fn {}#{}", name, fn_value.name);
+                        values.push((method_name, fn_value.code.clone()))
+                    }
+                    for (_, fn_value) in static_fields {
+                        let static_method_name = format!("fn {}::{}", name, fn_value.name);
+                        values.push((static_method_name, fn_value.code.clone()))
+                    }
+
+                    Some(values)
+                }
                 _ => None,
             }
-        });
+        }).flatten();
         for (name, code) in iter {
             let mut disassembled = self.disassemble_bytecode(name, code);
             output.append(&mut disassembled);

@@ -254,6 +254,7 @@ impl VM {
         let CallFrame { stack_offset, .. } = current_frame!(self);
         let stack_slot = stack_slot + *stack_offset;
         let value = self.pop_expect()?;
+        println!("slot: {}; store: {}", stack_slot, value.to_string());
         self.stack_insert_at(stack_slot, value); // TODO: Raise InterpretError when OOB stack_slot
         Ok(())
     }
@@ -276,6 +277,12 @@ impl VM {
         let CallFrame { stack_offset, .. } = current_frame!(self);
         let stack_slot = stack_slot + *stack_offset;
         let value = self.stack_get(stack_slot);
+        println!("slot: {}; load: {}", stack_slot, value.to_string());
+        if stack_slot == 3 {
+            for v in &self.stack {
+                println!("{}", v.to_string());
+            }
+        }
         Ok(self.push(value))
     }
 
@@ -478,6 +485,7 @@ impl VM {
                         }
                         _ => unreachable!()
                     };
+                    println!("GetField {}: {}", field_idx, &value);
                     self.push(value);
                 }
                 Opcode::SetField => {
@@ -746,6 +754,13 @@ impl VM {
                 Opcode::Dup => {
                     let value = self.stack.last().unwrap().clone();
                     self.stack.push(value);
+                }
+                Opcode::Swap => {
+                    let v1 = self.pop_expect()?;
+                    let v2 = self.pop_expect()?;
+                    println!("top: {}, second-from-top: {}", v1.to_string(), v2.to_string());
+                    self.stack.push(v1);
+                    self.stack.push(v2);
                 }
                 Opcode::Return => {
                     let is_main_frame = self.call_stack.len() == 1;

@@ -1140,7 +1140,7 @@ mod tests {
         let input = "\
           type Person {\n\
             name: String\n\
-            func introduce(self) = \"I am \" + self.name\n\
+            func introduce(self): String = \"I am \" + self.name\n\
           }\n\
           val ken = Person(name: \"Ken\")\n\
           val brian = Person(name: \"Brian\")\n\
@@ -1156,7 +1156,7 @@ mod tests {
         let input = "\
           type Person {\n\
             name: String\n\
-            func introduce(self) = \"I am \" + self.name\n\
+            func introduce(self): String = \"I am \" + self.name\n\
           }\n\
           val ken = Person(name: \"Ken\")\n\
           val introduceFn = ken.introduce\n\
@@ -1172,7 +1172,7 @@ mod tests {
         let input = "\
           type Person {\n\
             name: String\n\
-            func introduce(name: String) = \"I am \" + name\n\
+            func introduce(name: String): String = \"I am \" + name\n\
           }\n\
           val ken = Person(name: \"Ken\")\n\
           Person.introduce(ken.name)\

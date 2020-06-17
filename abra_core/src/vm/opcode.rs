@@ -78,6 +78,7 @@ pub enum Opcode {
     Pop,
     PopN,
     Dup,
+    Swap,
     Return,
 }
 
@@ -161,7 +162,8 @@ impl From<&u8> for Opcode {
             74 => Opcode::Pop,
             75 => Opcode::PopN,
             76 => Opcode::Dup,
-            77 => Opcode::Return,
+            77 => Opcode::Swap,
+            78 => Opcode::Return,
             _ => unreachable!()
         }
     }

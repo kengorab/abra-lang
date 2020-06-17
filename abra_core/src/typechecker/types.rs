@@ -15,7 +15,7 @@ pub enum Type {
     Array(Box<Type>),
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
-    Fn(/* self_type: */ Option<Box<Type>>, Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
+    Fn(/* self_type:  Option<Box<Type>>, */Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
     Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
@@ -43,6 +43,7 @@ impl Type {
             (Array(t1), Array(t2)) |
             (Option(t1), Option(t2)) => self::Type::is_equivalent_to(t1, t2),
             (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2),
+            (Option(t1), t2) => self::Type::is_equivalent_to(t1, t2),
             (Or(t1s), Or(t2s)) => {
                 let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
                 let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
@@ -54,7 +55,7 @@ impl Type {
                 true
             }
             // For Fn types compare arities, param types, and return type
-            (Fn(_self_type1, args1, ret1), Fn(_self_type2, args2, ret2)) => {
+            (Fn(args1, ret1), Fn(args2, ret2)) => {
                 if args1.len() != args2.len() {
                     return false;
                 }
