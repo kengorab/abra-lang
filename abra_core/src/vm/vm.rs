@@ -267,7 +267,8 @@ impl VM {
             let value = self.pop_expect()?;
             uv.val = Some(value);
         } else {
-            self.store_local(uv.slot_idx)?;
+            let value = self.pop_expect()?;
+            self.stack_insert_at(uv.slot_idx, value);
         }
         Ok(())
     }
@@ -291,7 +292,8 @@ impl VM {
                 .clone();
             self.push(val);
         } else {
-            self.load_local(uv.slot_idx)?;
+            let value = self.stack_get(uv.slot_idx);
+            self.push(value);
         }
         Ok(())
     }

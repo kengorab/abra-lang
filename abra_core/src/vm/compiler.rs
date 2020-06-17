@@ -283,10 +283,11 @@ impl Compiler {
         self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
 
-    fn push_local<S: AsRef<str>>(&mut self, name: S) -> usize {
+    fn push_local<S: AsRef<str>>(&mut self, name: S) {
+        let depth = self.get_fn_depth();
         self.locals.push(Local {
             name: name.as_ref().to_string(),
-            depth: self.get_fn_depth(),
+            depth,
             is_captured: false,
             is_closed: false,
         });
@@ -294,10 +295,9 @@ impl Compiler {
         let mut scope = self.scopes.last_mut().unwrap();
         scope.num_locals += 1;
         if scope.first_local_idx == None {
-            scope.first_local_idx = Some(self.locals.len() - 1);
+            let first_local_idx = self.locals.iter().filter(|l| l.depth == depth).count();
+            scope.first_local_idx = Some(first_local_idx - 1);
         }
-
-        self.locals.len() - 1
     }
 
     fn push_scope(&mut self, kind: ScopeKind) {
