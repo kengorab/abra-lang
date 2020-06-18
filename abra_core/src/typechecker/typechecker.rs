@@ -1,5 +1,6 @@
 use crate::builtins::native_types::field_for_type;
 use crate::common::ast_visitor::AstVisitor;
+use crate::common::util::random_string;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::vm::prelude::Prelude;
@@ -669,7 +670,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let scope_depth = self.scopes.len() - 1;
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, is_anon: false }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -1128,9 +1129,29 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             None => Ok(Type::Option(Box::new(if_block_type)))
         }?;
 
-        node.typ = typ;
+        node.typ = typ.clone();
 
-        Ok(TypedAstNode::IfExpression(token, node))
+        let pos = token.get_position().clone();
+        let anon_fn_name = format!("$anon_{}", random_string(4));
+        Ok(TypedAstNode::Invocation(
+            Token::LParen(pos.clone(), false),
+            TypedInvocationNode {
+                typ: typ.clone(),
+                target: Box::new(TypedAstNode::FunctionDecl(
+                    Token::Func(pos.clone()),
+                    TypedFunctionDeclNode {
+                        name: Token::Ident(pos.clone(), anon_fn_name),
+                        args: vec![],
+                        ret_type: typ.clone(),
+                        body: vec![TypedAstNode::IfExpression(token, node)],
+                        scope_depth: self.scopes.len() - 1,
+                        is_recursive: false,
+                        is_anon: true,
+                    },
+                )),
+                args: vec![],
+            },
+        ))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -2226,6 +2247,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2257,6 +2279,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2301,6 +2324,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2532,14 +2556,54 @@ mod tests {
 
     #[test]
     fn typecheck_type_decl_self_referencing() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let typed_ast = typecheck("\
           type Node {\n\
-            next: Node?\n\
             value: Int\n\
+            next: Node? = None\n\
           }\n\
           val node = Node(value: 1, next: Node(value: 2))\n\
           node\n\
-        ");
+        ")?;
+
+        let type_stub = Type::Struct(StructType {
+            name: "Node".to_string(),
+            fields: vec![],
+            static_fields: vec![],
+            methods: vec![],
+        });
+        let typ = Type::Struct(StructType {
+            name: "Node".to_string(),
+            fields: vec![
+                ("value".to_string(), Type::Int, false),
+                (
+                    "next".to_string(),
+                    Type::Option(Box::new(
+                        Type::Struct(StructType {
+                            name: "Node".to_string(),
+                            fields: vec![
+                                ("value".to_string(), Type::Int, false),
+                                ("next".to_string(), Type::Option(Box::new(type_stub)), true),
+                            ],
+                            static_fields: vec![],
+                            methods: vec![],
+                        })
+                    )),
+                    true
+                ),
+            ],
+            static_fields: vec![],
+            methods: vec![],
+        });
+        let expected = TypedAstNode::Identifier(
+            ident_token!((6, 1), "node"),
+            TypedIdentifierNode {
+                typ,
+                name: "node".to_string(),
+                is_mutable: false,
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
         // let expected = TypedAstNode::TypeDecl(
         //     Token::Type(Position::new(1, 1)),
         //     TypedTypeDeclNode {
@@ -2631,6 +2695,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         ),
                     ),
@@ -2675,6 +2740,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         ),
                     ),
@@ -2728,6 +2794,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         )),
                     ),

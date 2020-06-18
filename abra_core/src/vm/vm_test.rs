@@ -611,6 +611,25 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Int(123);
         assert_eq!(expected, result);
+
+        let input = "4 + if (true) { 20 } else { 0 }";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func abc() {\n\
+            val a = 20\n\
+            4 + if (true) {\n\
+              val b = 123\n\
+              a\n\
+            } else { 0 }\n\
+          }\n\
+          abc()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -738,6 +757,47 @@ mod tests {
             Value::Int(4),
             Value::Int(5),
         ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_closures_upvalues_not_yet_closed() {
+        let input = "\
+          func abc() {\n\
+            val a = 20\n\
+            func def() { a }\n\
+            4 + def()\n\
+          }\n\
+          abc()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func abc() {\n\
+            var a = 20\n\
+            func wrapper() {\n\
+              val b = 123\n\
+              func wrapper2() {\n\
+                val c = 456\n\
+                if (true) {\n\
+                  val b = 456\n\
+                  a = 24\n\
+                  a\n\
+                } else {\n\
+                  0\n\
+                }\n\
+              }\n\
+              wrapper2()\n\
+            }\n\
+            wrapper()\n\
+          }\n\
+          abc()\
+        ";
+
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
 
@@ -1109,14 +1169,15 @@ mod tests {
         let expected = Value::Nil;
         assert_eq!(expected, result);
 
+        // Verify that resolution of optional-safe accessors doesn't pollute the stack mid-expr
         let input = "\
           type Name { value: String? = None }\n\
           type Person { name: Name? = None }\n\
           val ken = Person(name: Name(value: \"Ken\"))\n\
-          ken.name?.value?.length\n\
+          1 + (ken.name?.value?.length ?: 0)\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Int(4);
         assert_eq!(expected, result);
 
         let input = "\

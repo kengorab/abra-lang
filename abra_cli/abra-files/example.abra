@@ -1,44 +1,28 @@
-// type Person {
-//   name: String = "Who?"
-//
-//   func getName(self): String = self.name
-//
-//   func ken(): Person = Person(name: "Ken")
-//   func who(): Person = Person()
-// }
-//
-// val ken = Person.ken()
-// ken.name + Person.who().getName()
+type Node {
+  value: String
+  next: Node? = None
 
-val a = 123
-1 + if (true) {
-  val b = 456
-  a
-} else { 3 }
+  func toString(self): String {
+    var str = self.value + ", "
+    var next = self.next
 
+    while (next != None) {
+      str = str + (next?.value ?: "") + ", "
 
-//type Node {
-//  value: String
-//  next: Node? = None
-//
-//  func toString(self): String {
-//    var str = self.value + ", "
-//    //var next = self.next
-//
-//    str = str + self.next?.value
-//
-//    //while (next != None) {
-//    //  //val v = (next?.value ?: "")
-//    //  //str = str + v + ", "
-//
-//    //  str = str + (next?.value ?: "")
-//
-//    //  next = next?.next
-//    //}
-//
-//    str
-//  }
-//}
-//
-//val node = Node(value: "a", next: Node(value: "b"))
-//node.toString()
+      next = next?.next
+    }
+
+    str[:-2]
+  }
+}
+
+val node = Node(
+  value: "a",
+  next: Node(
+    value: "b",
+    next: Node(
+      value: "c",
+    )
+  )
+)
+node.toString()
