@@ -9,6 +9,7 @@ use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentT
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::cell::RefCell;
+use crate::common::util::random_string;
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -648,7 +649,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let scope_depth = self.scopes.len() - 1;
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, is_anon: false }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -1006,9 +1007,29 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             None => Ok(Type::Option(Box::new(if_block_type)))
         }?;
 
-        node.typ = typ;
+        node.typ = typ.clone();
 
-        Ok(TypedAstNode::IfExpression(token, node))
+        let pos = token.get_position().clone();
+        let anon_fn_name = format!("$anon_{}", random_string(4));
+        Ok(TypedAstNode::Invocation(
+            Token::LParen(pos.clone(), false),
+            TypedInvocationNode {
+                typ: typ.clone(),
+                target: Box::new(TypedAstNode::FunctionDecl(
+                    Token::Func(pos.clone()),
+                    TypedFunctionDeclNode {
+                        name: Token::Ident(pos.clone(), anon_fn_name),
+                        args: vec![],
+                        ret_type: typ.clone(),
+                        body: vec![TypedAstNode::IfExpression(token, node)],
+                        scope_depth: self.scopes.len() - 1,
+                        is_recursive: false,
+                        is_anon: true,
+                    },
+                )),
+                args: vec![],
+            },
+        ))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -2104,6 +2125,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2135,6 +2157,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2179,6 +2202,7 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2476,6 +2500,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         ),
                     ),
@@ -2520,6 +2545,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         ),
                     ),
@@ -2573,6 +2599,7 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
+                                is_anon: false,
                             },
                         )),
                     ),

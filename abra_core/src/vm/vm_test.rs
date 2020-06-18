@@ -611,6 +611,25 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Int(123);
         assert_eq!(expected, result);
+
+        let input = "4 + if (true) { 20 } else { 0 }";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func abc() {\n\
+            val a = 20\n\
+            4 + if (true) {\n\
+              val b = 123\n\
+              a\n\
+            } else { 0 }\n\
+          }\n\
+          abc()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -1150,14 +1169,15 @@ mod tests {
         let expected = Value::Nil;
         assert_eq!(expected, result);
 
+        // Verify that resolution of optional-safe accessors doesn't pollute the stack mid-expr
         let input = "\
           type Name { value: String? = None }\n\
           type Person { name: Name? = None }\n\
           val ken = Person(name: Name(value: \"Ken\"))\n\
-          ken.name?.value?.length\n\
+          1 + (ken.name?.value?.length ?: 0)\n\
         ";
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Int(4);
         assert_eq!(expected, result);
 
         let input = "\
