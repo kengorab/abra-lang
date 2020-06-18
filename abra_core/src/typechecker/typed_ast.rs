@@ -67,8 +67,17 @@ impl TypedAstNode {
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::Map(_, node) => node.typ.clone(),
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { is_anon, args, ret_type, .. }) => {
+                if !is_anon { return Type::Unit; }
+
+                let args = args.iter().map(|(ident, typ, default_value)| {
+                    let name = Token::get_ident_name(ident);
+                    (name, typ.clone(), default_value.is_some())
+                }).collect();
+
+                Type::Fn(None, args, Box::new(ret_type.clone()))
+            }
             TypedAstNode::BindingDecl(_, _) |
-            TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
@@ -146,6 +155,7 @@ pub struct TypedFunctionDeclNode {
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
     pub is_recursive: bool,
+    pub is_anon: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

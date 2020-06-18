@@ -679,16 +679,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
         let func_name = Token::get_ident_name(&node.name);
         let is_recursive = node.is_recursive;
-
+        let is_anon = node.is_anon;
         let line = token.get_position().line;
 
-        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            self.write_int_constant(0, line);
-            self.write_constant(Value::Str(func_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
-        } else if is_recursive {
-            self.write_int_constant(0, line);
-            self.push_local(&func_name);
+        if !is_anon {
+            if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+                self.write_int_constant(0, line);
+                self.write_constant(Value::Str(func_name.clone()), line);
+                self.write_opcode(Opcode::GStore, line);
+            } else if is_recursive {
+                self.write_int_constant(0, line);
+                self.push_local(&func_name);
+            }
         }
 
         let fn_value = self.compile_function_decl(token, node)?;
@@ -702,19 +704,21 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::ClosureMk, line);
         }
 
-        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            self.write_constant(Value::Str(func_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
-        } else if is_recursive {
-            let scope_depth = self.get_fn_depth();
-            let (local, fn_local_idx) = self.resolve_local(&func_name, scope_depth)
-                .expect("There should have been a function pre-defined with this name");
-            local.is_closed = true;
-            self.write_store_local_instr(fn_local_idx, line);
-            self.metadata.stores.push(func_name.clone());
-            self.write_opcode(Opcode::CloseUpvalue, line);
-        } else {
-            self.push_local(func_name);
+        if !is_anon {
+            if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+                self.write_constant(Value::Str(func_name.clone()), line);
+                self.write_opcode(Opcode::GStore, line);
+            } else if is_recursive {
+                let scope_depth = self.get_fn_depth();
+                let (local, fn_local_idx) = self.resolve_local(&func_name, scope_depth)
+                    .expect("There should have been a function pre-defined with this name");
+                local.is_closed = true;
+                self.write_store_local_instr(fn_local_idx, line);
+                self.metadata.stores.push(func_name.clone());
+                self.write_opcode(Opcode::CloseUpvalue, line);
+            } else {
+                self.push_local(func_name);
+            }
         }
 
         Ok(())
@@ -1155,10 +1159,30 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
 
             let pos = token.get_position().clone();
-            let nodes = compile_if_block(self, pos, &mut unwound_path, None)?;
-            for node in nodes {
-                self.visit(node)?;
-            }
+            let nodes = compile_if_block(self, pos.clone(), &mut unwound_path, None)?;
+            let scope_depth = self.get_fn_depth();
+            let anon_fn_name = format!("$anon_{}", random_string(4));
+            let wrapper_fn_node = TypedAstNode::Invocation(
+                Token::LParen(pos.clone(), false),
+                TypedInvocationNode {
+                    typ: Type::Placeholder, // The type does not matter
+                    target: Box::new(TypedAstNode::FunctionDecl(
+                        Token::Func(pos.clone()),
+                        TypedFunctionDeclNode {
+                            name: Token::Ident(pos.clone(), anon_fn_name),
+                            args: vec![],
+                            ret_type: Type::Placeholder, // The type does not matter
+                            body: nodes,
+                            scope_depth,
+                            is_recursive: false,
+                            is_anon: true,
+                        },
+                    )),
+                    args: vec![],
+                },
+            );
+
+            self.visit(wrapper_fn_node)?;
         } else {
             let TypedAccessorNode { target, field_name, field_idx, .. } = node;
             self.metadata.field_gets.push(field_name);
