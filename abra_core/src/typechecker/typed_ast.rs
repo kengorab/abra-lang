@@ -75,7 +75,7 @@ impl TypedAstNode {
                     (name, typ.clone(), default_value.is_some())
                 }).collect();
 
-                Type::Fn(None, args, Box::new(ret_type.clone()))
+                Type::Fn(args, Box::new(ret_type.clone()))
             }
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |

@@ -69,7 +69,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
-            Type::Fn(_self_type, args, return_type) => {
+            Type::Fn(args, return_type) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
                 let args: Vec<(String, JsType)> = args.iter()

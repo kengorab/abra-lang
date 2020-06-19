@@ -1,6 +1,6 @@
 use crate::lexer::tokens::Token;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
     Literal(Token, AstLiteralNode),
     Unary(Token, UnaryNode),
@@ -23,7 +23,7 @@ pub enum AstNode {
     Accessor(Token, AccessorNode),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AstLiteralNode {
     IntLiteral(i64),
     FloatLiteral(f64),
@@ -37,7 +37,7 @@ pub enum UnaryOp {
     Negate,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnaryNode {
     pub op: UnaryOp,
     pub expr: Box<AstNode>,
@@ -61,29 +61,29 @@ pub enum BinaryOp {
     Eq,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     pub right: Box<AstNode>,
     pub op: BinaryOp,
     pub left: Box<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GroupedNode {
     pub expr: Box<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArrayNode {
     pub items: Vec<Box<AstNode>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MapNode {
     pub items: Vec<(Token, AstNode)>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
     // Must be a Token::Ident
     pub ident: Token,
@@ -92,7 +92,7 @@ pub struct BindingDeclNode {
     pub is_mutable: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
@@ -102,7 +102,7 @@ pub struct FunctionDeclNode {
     pub body: Vec<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
@@ -111,7 +111,7 @@ pub struct TypeDeclNode {
     pub methods: Vec<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AssignmentNode {
     pub target: Box<AstNode>,
     pub expr: Box<AstNode>,
@@ -123,26 +123,26 @@ pub enum IndexingMode<T> {
     Range(Option<Box<T>>, Option<Box<T>>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IndexingNode {
     pub target: Box<AstNode>,
     pub index: IndexingMode<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct IfNode {
     pub condition: Box<AstNode>,
     pub if_block: Vec<AstNode>,
     pub else_block: Option<Vec<AstNode>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InvocationNode {
     pub target: Box<AstNode>,
     pub args: Vec<(Option<Token>, AstNode)>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ForLoopNode {
     pub iteratee: Token,
     pub index_ident: Option<Token>,
@@ -150,20 +150,20 @@ pub struct ForLoopNode {
     pub body: Vec<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WhileLoopNode {
     pub condition: Box<AstNode>,
     pub body: Vec<AstNode>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AccessorNode {
     pub target: Box<AstNode>,
     pub field: Token,
     pub is_opt_safe: bool,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypeIdentifier {
     Normal { ident: Token },
     Array { inner: Box<TypeIdentifier> },

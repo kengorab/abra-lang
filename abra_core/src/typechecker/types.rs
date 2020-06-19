@@ -15,10 +15,11 @@ pub enum Type {
     Array(Box<Type>),
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
-    Fn(/* self_type: */ Option<Box<Type>>, Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
+    Fn(/* arg_types: */ Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, /* ret_type: */ Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
-    Unknown, // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Unknown,
     Placeholder,
 }
 
@@ -40,8 +41,20 @@ impl Type {
             (Unit, Unit) | (Int, Int) | (Float, Float) |
             (String, String) | (Bool, Bool) | (Any, Any) => true,
             // For Array / Option types, compare inner type
-            (Array(t1), Array(t2)) |
-            (Option(t1), Option(t2)) => self::Type::is_equivalent_to(t1, t2),
+            (Array(t1), Array(t2)) => self::Type::is_equivalent_to(t1, t2),
+            // When comparing Option types, make sure to flatten, and then compare the root inner type
+            // (ie. String??? == String?, but Int?? != String?)
+            (Option(t1), Option(t2)) => {
+                let mut t1 = t1;
+                while let self::Type::Option(ref inner) = **t1 { t1 = inner }
+
+                let mut t2 = t2;
+                while let self::Type::Option(ref inner) = **t2 { t2 = inner }
+
+                self::Type::is_equivalent_to(t1, t2)
+            }
+            // A non-optional instance of a type should be assignable up to an optional version of it
+            // (ie. val i: Int? = 1)
             (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2),
             (Or(t1s), Or(t2s)) => {
                 let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
@@ -54,7 +67,7 @@ impl Type {
                 true
             }
             // For Fn types compare arities, param types, and return type
-            (Fn(_self_type1, args1, ret1), Fn(_self_type2, args2, ret2)) => {
+            (Fn(args1, ret1), Fn(args2, ret2)) => {
                 if args1.len() != args2.len() {
                     return false;
                 }
@@ -108,6 +121,7 @@ impl Type {
                 }
                 true
             }
+            // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"])
             (_, Any) => true,
             (Placeholder, _) | (_, Placeholder) => true,
             (_, _) => false
@@ -192,5 +206,31 @@ mod test {
 
         assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any))));
         assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any))));
+    }
+
+    #[test]
+    fn is_equivalent_to_flattening_optional() {
+        let t1 = Option(Box::new(Int));
+        let t2 = Option(Box::new(Option(Box::new(Int))));
+        assert_eq!(true, t1.is_equivalent_to(&t2));
+
+        let t1 = Option(Box::new(Option(Box::new(Int))));
+        let t2 = Option(Box::new(Option(Box::new(Option(Box::new(Int))))));
+        assert_eq!(true, t1.is_equivalent_to(&t2));
+    }
+
+    #[test]
+    fn is_equivalent_to_assigning_up_to_option() {
+        let t1 = Int;
+        let t2 = Option(Box::new(Int));
+        assert_eq!(true, t1.is_equivalent_to(&t2));
+
+        let t1 = Int;
+        let t2 = Option(Box::new(Option(Box::new(Int))));
+        assert_eq!(true, t1.is_equivalent_to(&t2));
+
+        let t1 = Int;
+        let t2 = Option(Box::new(Int));
+        assert_eq!(false, t2.is_equivalent_to(&t1));
     }
 }

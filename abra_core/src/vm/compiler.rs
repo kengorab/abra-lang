@@ -730,6 +730,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let type_name = Token::get_ident_name(&name);
 
+        // To handle self-referencing types, initially store `0` as a placeholder
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+            self.write_int_constant(0, line);
+            self.write_constant(Value::Str(type_name.clone()), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else { // ...otherwise, it's a local
+            unreachable!("Type declarations are only allowed at the root scope");
+        }
+
         let mut compiled_methods = Vec::with_capacity(methods.len());
         for (method_name, method_node) in methods {
             let (method_tok, method_node) = match method_node {
@@ -759,11 +768,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Constant, line);
         self.write_byte(const_idx, line);
 
+        // Overwrite placeholder created at start
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_constant(Value::Str(type_name.clone()), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
-            self.push_local(type_name);
+            unreachable!("Type declarations are only allowed at the root scope");
         }
 
         Ok(())
@@ -874,10 +884,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     }
                 }
             }
-            t @ _ => {
-                dbg!(&t);
-                todo!()
-            }
+            _ => todo!()
         };
 
         Ok(())
@@ -1018,7 +1025,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let typ = target.get_type();
         let (arity, has_return) = match typ {
-            Type::Fn(_self_type, args, ret) => (args.len(), *ret != Type::Unit),
+            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
             _ => unreachable!() // This should have been caught during typechecking
         };
 
@@ -1732,10 +1739,13 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
+                Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::Constant as u8, 2,
@@ -1746,12 +1756,12 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
+                Value::Str("Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
                     methods: vec![],
                     static_fields: vec![],
                 }),
-                Value::Str("Person".to_string()),
                 new_string_obj("Meg"),
                 Value::Str("meg".to_string()),
             ],
@@ -1766,10 +1776,13 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
+                Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
@@ -1778,7 +1791,7 @@ mod tests {
                 Opcode::Init as u8,
                 Opcode::Constant as u8, 3,
                 Opcode::GStore as u8,
-                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::Constant as u8, 4,
@@ -1790,8 +1803,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Str("Person".to_string()),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 new_string_obj("Unnamed"),
                 Value::Str("someBaby".to_string()),
                 Value::Int(29),
@@ -2147,10 +2160,13 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
+                Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::Constant as u8, 2,
@@ -2165,8 +2181,8 @@ mod tests {
                 Opcode::Return as u8,
             ],
             constants: vec![
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Str("Person".to_string()),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 new_string_obj("Ken"),
                 Value::Str("p".to_string()),
                 new_string_obj("Meg"),
@@ -2592,18 +2608,22 @@ mod tests {
         let chunk = compile("\
           type Person {\n\
             name: String\n\
-            func getName(self) = self.name\n\
-            func getName2(self) = self.getName()\n\
+            func getName(self): String = self.name\n\
+            func getName2(self): String = self.getName()\n\
           }\
         ");
         let expected = Module {
             code: vec![
+                Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
                 Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
             ],
             constants: vec![
+                Value::Str("Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
                     methods: vec![
@@ -2636,7 +2656,6 @@ mod tests {
                     ],
                     static_fields: vec![],
                 }),
-                Value::Str("Person".to_string()),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2905,10 +2924,13 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
+                Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::Constant as u8, 2,
@@ -2922,8 +2944,8 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: vec![
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 Value::Str("Person".to_string()),
+                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
                 new_string_obj("Ken"),
                 Value::Str("ken".to_string()),
             ],

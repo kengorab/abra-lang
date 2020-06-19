@@ -58,7 +58,7 @@ impl NativeFnDesc<'_> {
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), true));
         let args = req_args.chain(opt_args).collect();
 
-        Type::Fn(None, args, Box::new(self.return_type.clone()))
+        Type::Fn(args, Box::new(self.return_type.clone()))
     }
 }
 
