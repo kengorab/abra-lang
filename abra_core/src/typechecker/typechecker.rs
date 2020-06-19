@@ -674,6 +674,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+        if self.scopes.len() != 1 {
+            return Err(TypecheckerError::InvalidTypeDeclDepth { token })
+        }
+
         let TypeDeclNode { name, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
 
@@ -681,6 +685,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let token = typed_decl_node.map(|node| node.get_token().clone());
             return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
         }
+
+        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // --- First gather only the type data for each field, method, and static value. --- \\
+        // --- This first pass guarantees that all type data is available for the second --- \\
+        // --- pass. Without doing this, forward-referencing of fields is not possible.  --- \\
+        // --------------------------------------------------------------------------------- \\
 
         let typedef = StructType { name: new_type_name.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
         let new_type = Type::Struct(typedef.clone());
@@ -704,33 +714,21 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 } else {
                     field_names.insert(field_name_str.clone(), field_name.clone());
                 }
-                let default_value = if let Some(default_value) = default_value { // TODO: THis shoudln't be done yet, eg what about if the default value is Person.ken() ?
-                    let default_value = self.visit(default_value)?;
-                    let default_value_type = default_value.get_type();
-                    if !default_value_type.is_equivalent_to(&field_type) {
-                        return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), actual: default_value_type, expected: field_type });
-                    } else {
-                        Some(default_value)
-                    }
-                } else { None };
                 Ok((field_name, field_type, default_value))
             })
-            .collect::<Result<Vec<(Token, Type, Option<TypedAstNode>)>, _>>();
+            .collect::<Result<Vec<(Token, Type, Option<AstNode>)>, _>>();
         let fields = fields?;
-        self.update_type(&new_type_name, |(typ, node)| {
+        self.update_type(&new_type_name, |(typ, _)| {
             match typ {
                 Type::Struct(t) => {
                     t.fields = fields.iter()
-                        .map(|(name, typ, default_value)| {
-                            (Token::get_ident_name(name).clone(), typ.clone(), default_value.is_some())
+                        .map(|(name, typ, default_value_node)| {
+                            (Token::get_ident_name(name).clone(), typ.clone(), default_value_node.is_some())
                         })
                         .collect();
                 }
                 _ => unreachable!()
             };
-            if let Some(TypedAstNode::TypeDecl(_, ref mut node)) = node {
-                node.fields = fields;
-            } else { unreachable!() }
         });
 
         let types_in_scope = self.get_types_in_scope();
@@ -836,6 +834,26 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             self.cur_typedef = Some(typedef);
         } else { unreachable!() }
 
+        // ------------------------  End First-pass Type Gathering  ------------------------ \\
+        // --- Now that the current type has been made available to the environment, we  --- \\
+        // --- can make references to this type's own fields/methods/static methods it.  --- \\
+        // --------------------------------------------------------------------------------- \\
+        // ------------------------ Begin Field/Method Typechecking ------------------------ \\
+
+        let typed_fields = fields.into_iter().map(|(tok, field_type, default_value_node)| {
+            let default_value = if let Some(default_value) = default_value_node {
+                let default_value = self.visit(default_value)?;
+                let default_value_type = default_value.get_type();
+                if !default_value_type.is_equivalent_to(&field_type) {
+                    return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), actual: default_value_type, expected: field_type });
+                } else {
+                    Some(default_value)
+                }
+            } else { None };
+            Ok((tok, field_type, default_value))
+        }).collect::<Result<Vec<(Token, Type, Option<TypedAstNode>)>, _>>();
+        let typed_fields = typed_fields?;
+
         let mut method_names = HashMap::<String, Token>::new();
         let mut typed_methods = Vec::new();
         let mut static_fields = Vec::new();
@@ -880,10 +898,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let mut typedef = None;
         std::mem::swap(&mut typedef, &mut self.cur_typedef);
 
-        // let type_decl = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields, static_fields, methods: typed_methods });
         self.update_type(&new_type_name, |(_, ref mut node)| {
-            // *node = Some(type_decl.clone());
             if let Some(TypedAstNode::TypeDecl(_, node)) = node {
+                node.fields = typed_fields;
                 node.static_fields = static_fields;
                 node.methods = typed_methods;
             } else { unreachable!() }
@@ -2604,27 +2621,6 @@ mod tests {
             },
         );
         assert_eq!(expected, typed_ast[2]);
-        // let expected = TypedAstNode::TypeDecl(
-        //     Token::Type(Position::new(1, 1)),
-        //     TypedTypeDeclNode {
-        //         name: ident_token!((1, 6), "Person"),
-        //         fields: vec![
-        //             (ident_token!((1, 15), "name"), Type::String, None)
-        //         ],
-        //         static_fields: vec![],
-        //         methods: vec![],
-        //     },
-        // );
-        // assert_eq!(expected, typed_ast[0]);
-        // let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
-        // let expected_type = Type::Struct(StructType {
-        //     name: "Person".to_string(),
-        //     fields: vec![("name".to_string(), Type::String, false)],
-        //     static_fields: vec![],
-        //     methods: vec![],
-        // });
-        // assert_eq!(expected_type, typ);
-
         Ok(())
     }
 
@@ -2640,6 +2636,14 @@ mod tests {
 
         let error = typecheck("type Person { age: String = true }").unwrap_err();
         let expected = TypecheckerError::Mismatch { token: Token::Bool(Position::new(1, 29), true), expected: Type::String, actual: Type::Bool };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          func abc() {\n\
+            type Person { age: String }\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
         assert_eq!(expected, error);
     }
 

@@ -15,11 +15,11 @@ pub enum Type {
     Array(Box<Type>),
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
-    Fn(/* self_type:  Option<Box<Type>>, */Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, Box<Type>),
+    Fn(/* arg_types: */ Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, /* ret_type: */ Box<Type>),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
-    Unknown,
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
+    Unknown,
     Placeholder,
 }
 

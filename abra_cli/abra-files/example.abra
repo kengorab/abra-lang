@@ -1,6 +1,8 @@
 type Node {
   value: String
-  next: Node? = None
+  next: Node? = Node.empty()
+
+  func empty(): Node? = None
 
   func toString(self): String {
     var str = self.value + ", "

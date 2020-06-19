@@ -736,8 +736,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_constant(Value::Str(type_name.clone()), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
-            self.write_int_constant(0, line);
-            self.push_local(type_name.clone());
+            unreachable!("Type declarations are only allowed at the root scope");
         }
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
@@ -774,14 +773,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_constant(Value::Str(type_name.clone()), line);
             self.write_opcode(Opcode::GStore, line);
         } else { // ...otherwise, it's a local
-            // self.push_local(type_name);
-            let scope_depth = self.get_fn_depth();
-            let (local, type_local_idx) = self.resolve_local(&type_name, scope_depth)
-                .expect("There should have been a type pre-defined with this name");
-            local.is_closed = true;
-            self.write_store_local_instr(type_local_idx, line);
-            self.metadata.stores.push(type_name);
-            self.write_opcode(Opcode::CloseUpvalue, line);
+            unreachable!("Type declarations are only allowed at the root scope");
         }
 
         Ok(())

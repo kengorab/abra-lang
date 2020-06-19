@@ -1242,4 +1242,36 @@ mod tests {
         let expected = new_string_obj("I am Ken");
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_linked_list_kinda() {
+        // Verify self-referential types, as well as the usage of static methods in default field values
+        let input = "\
+          type Node {\n\
+            value: String\n\
+            next: Node? = Node.empty()\n\
+
+            func empty(): Node? = None\n\
+
+            func toString(self): String {\n\
+              var str = self.value + \", \"\n\
+              var next = self.next\n\
+
+              while (next != None) {\n\
+                str = str + (next?.value ?: \"\") + \", \"\n\
+
+                next = next?.next\n\
+              }\n\
+
+              str[:-2]\n\
+            }\n\
+          }\n\
+
+          val node = Node(value: \"a\", next: Node(value: \"b\", next: Node(value: \"c\")))\n\
+          node.toString()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("a, b, c");
+        assert_eq!(expected, result);
+    }
 }

@@ -40,6 +40,7 @@ pub enum TypecheckerError {
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
     MissingRequiredTypeAnnotation { token: Token },
+    InvalidTypeDeclDepth { token: Token },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -132,6 +133,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidSelfParamPosition { token } => token.get_position(),
             TypecheckerError::InvalidSelfParam { token } => token.get_position(),
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token.get_position(),
+            TypecheckerError::InvalidTypeDeclDepth { token } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -389,6 +391,9 @@ impl DisplayError for TypecheckerError {
                 unimplemented!()
             }
             TypecheckerError::MissingRequiredTypeAnnotation { .. } => {
+                unimplemented!()
+            }
+            TypecheckerError::InvalidTypeDeclDepth { .. } => {
                 unimplemented!()
             }
         }
