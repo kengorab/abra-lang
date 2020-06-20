@@ -149,7 +149,8 @@ impl DisplayError for TypecheckerError {
 
                 format!("Type mismatch ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
             }
-            TypecheckerError::InvalidIfConditionType { .. } => {
+            TypecheckerError::InvalidIfConditionType { actual, .. } => {
+                dbg!(actual);
                 unreachable!()
             }
             TypecheckerError::InvalidOperator { op, ltype, rtype, .. } => {

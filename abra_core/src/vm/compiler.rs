@@ -986,10 +986,24 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
 
-        let TypedIfNode { condition, if_block, else_block, .. } = node;
+        let TypedIfNode { condition, condition_binding, if_block, else_block, .. } = node;
 
         let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
+        if let Some(ident) = &condition_binding {
+            // If there is a condition binding, create a new local with initial value of Nil
+            self.write_opcode(Opcode::Nil, line);
+            self.push_local(Token::get_ident_name(ident));
+        }
         self.visit(*condition)?;
+        if let Some(ident) = &condition_binding {
+            // If there is a condition binding, duplicate the condition value and store into the reserved local.
+            self.write_opcode(Opcode::Dup, line);
+
+            let ident = Token::get_ident_name(ident);
+            let (_, slot) = self.resolve_local(&ident, self.get_fn_depth()).unwrap();
+            self.write_store_local_instr(slot, line); // Store into condition binding
+            self.metadata.stores.push(ident);
+        }
         if is_opt {
             self.write_opcode(Opcode::Nil, line);
             self.write_opcode(Opcode::Neq, line);
@@ -1279,11 +1293,27 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedWhileLoopNode { condition, body, .. } = node;
+        let TypedWhileLoopNode { condition, condition_binding, body } = node;
         let cond_slot_idx = self.code.len();
 
+        self.push_scope(ScopeKind::Loop);
         let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
+        if let Some(ident) = &condition_binding {
+            // If there is a condition binding, create a new local with initial value of Nil
+            self.write_opcode(Opcode::Nil, line);
+            self.push_local(Token::get_ident_name(ident));
+        }
+
         self.visit(*condition)?;
+        if let Some(ident) = &condition_binding {
+            // If there is a condition binding, duplicate the condition value and store into the reserved local.
+            self.write_opcode(Opcode::Dup, line);
+
+            let ident = Token::get_ident_name(ident);
+            let (_, slot) = self.resolve_local(&ident, self.get_fn_depth()).unwrap();
+            self.write_store_local_instr(slot, line); // Store into condition binding
+            self.metadata.stores.push(ident);
+        }
         if is_opt {
             self.write_opcode(Opcode::Nil, line);
             self.write_opcode(Opcode::Neq, line);
@@ -1293,8 +1323,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_byte(0, line); // <- Replaced after compiling loop body
         let cond_jump_offset_slot_idx = self.code.len();
 
-        self.push_scope(ScopeKind::Loop);
         self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
+
+        if let Some(_) = condition_binding {
+            // If there was a condition binding, we need to pop it off the stack
+            self.write_opcode(Opcode::Pop, line);
+        }
+
         self.pop_scope();
 
         Ok(())
@@ -2430,6 +2465,34 @@ mod tests {
     }
 
     #[test]
+    fn compile_if_else_statements_with_condition_binding() {
+        let chunk = compile("if [1, 2][0] |item| item else 456");
+        let expected = Module {
+            code: vec![
+                Opcode::Nil as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::LStore0 as u8,
+                Opcode::Nil as u8,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 4,
+                Opcode::LLoad0 as u8,
+                Opcode::Pop as u8,
+                Opcode::Jump as u8, 3,
+                Opcode::Constant as u8, 0,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![Value::Int(456)],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
     fn compile_function_declaration() {
         let chunk = compile("\
           val a = 1\n\
@@ -2807,6 +2870,34 @@ mod tests {
             constants: vec![
                 Value::Int(123),
             ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_while_loop_with_condition_binding() {
+        let chunk = compile("while ([1, 2][0]) |item| { item }");
+        let expected = Module {
+            code: vec![
+                Opcode::Nil as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::LStore0 as u8,
+                Opcode::Nil as u8,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 5,
+                Opcode::LLoad0 as u8,
+                Opcode::Pop as u8,
+                Opcode::Pop as u8,
+                Opcode::JumpB as u8, 18,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![],
         };
         assert_eq!(expected, chunk);
     }
