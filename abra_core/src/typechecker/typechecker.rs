@@ -141,9 +141,13 @@ impl Typechecker {
         let IfNode { condition, if_block, else_block } = node;
 
         let condition = self.visit(*condition)?;
-        if !condition.get_type().is_equivalent_to(&Type::Bool) {
+        let is_valid_cond_type = match condition.get_type() {
+            Type::Option(_) | Type::Bool => true,
+            _ => false
+        };
+        if !is_valid_cond_type {
             let token = condition.get_token().clone();
-            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
+            return Err(TypecheckerError::InvalidIfConditionType { token, actual: condition.get_type() });
         }
         let condition = Box::new(condition);
 
@@ -675,7 +679,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
         if self.scopes.len() != 1 {
-            return Err(TypecheckerError::InvalidTypeDeclDepth { token })
+            return Err(TypecheckerError::InvalidTypeDeclDepth { token });
         }
 
         let TypeDeclNode { name, fields, methods, .. } = node;
@@ -1398,9 +1402,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let WhileLoopNode { condition, body } = node;
 
         let condition = self.visit(*condition)?;
-        if !condition.get_type().is_equivalent_to(&Type::Bool) {
+        let is_valid_cond_type = match condition.get_type() {
+            Type::Option(_) | Type::Bool => true,
+            _ => false
+        };
+        if !is_valid_cond_type {
             let token = condition.get_token().clone();
-            return Err(TypecheckerError::Mismatch { token, expected: Type::Bool, actual: condition.get_type() });
+            return Err(TypecheckerError::InvalidIfConditionType { token, actual: condition.get_type() });
         }
         let condition = Box::new(condition);
 
@@ -3363,16 +3371,40 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
 
+        let typed_ast = typecheck("\
+          val i: Int? = 0\n\
+          if i 1 else 2\
+        ")?;
+        let expected = TypedAstNode::IfStatement(
+            Token::If(Position::new(2, 1)),
+            TypedIfNode {
+                typ: Type::Unit,
+                condition: Box::new(
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 4), "i"),
+                        TypedIdentifierNode {
+                            typ: Type::Option(Box::new(Type::Int)),
+                            name: "i".to_string(),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
+                    )
+                ),
+                if_block: vec![int_literal!((2, 6), 1)],
+                else_block: Some(vec![int_literal!((2, 13), 2)]),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
         Ok(())
     }
 
     #[test]
     fn typecheck_if_statement_errors() {
         let error = typecheck("if 4 { val a = \"hello\" a }").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidIfConditionType {
             token: Token::Int(Position::new(1, 4), 4),
             actual: Type::Int,
-            expected: Type::Bool,
         };
         assert_eq!(expected, error);
     }
@@ -3932,15 +3964,46 @@ mod tests {
                 ],
             },
         );
+        assert_eq!(expected, ast[0]);
+
+        let ast = typecheck("while [1, 2][0] { break }")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(
+                    TypedAstNode::Indexing(
+                        Token::LBrack(Position::new(1, 13), false),
+                        TypedIndexingNode {
+                            typ: Type::Option(Box::new(Type::Int)),
+                            index: IndexingMode::Index(Box::new(int_literal!((1, 14), 0))),
+                            target: Box::new(
+                                TypedAstNode::Array(
+                                    Token::LBrack(Position::new(1, 7), false),
+                                    TypedArrayNode {
+                                        typ: Type::Array(Box::new(Type::Int)),
+                                        items: vec![
+                                            Box::new(int_literal!((1, 8), 1)),
+                                            Box::new(int_literal!((1, 11), 2)),
+                                        ]
+                                    }
+                                )
+                            )
+                        }
+                    )
+                ),
+                body: vec![
+                    TypedAstNode::Break(Token::Break(Position::new(1, 19)))
+                ],
+            },
+        );
         Ok(assert_eq!(expected, ast[0]))
     }
 
     #[test]
     fn typecheck_while_loop_error() {
         let error = typecheck("while 1 + 1 { println(123) }").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidIfConditionType {
             token: Token::Plus(Position::new(1, 9)),
-            expected: Type::Bool,
             actual: Type::Int,
         };
         assert_eq!(expected, error)

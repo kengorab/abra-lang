@@ -1257,7 +1257,7 @@ mod tests {
               var str = self.value + \", \"\n\
               var next = self.next\n\
 
-              while (next != None) {\n\
+              while next {\n\
                 str = str + (next?.value ?: \"\") + \", \"\n\
 
                 next = next?.next\n\
