@@ -438,6 +438,7 @@ impl Compiler {
                                     },
                                 )
                             ),
+                            condition_binding: None,
                             if_block: vec![
                                 TypedAstNode::Assignment(
                                     Token::Assign(pos.clone()),
@@ -1159,6 +1160,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                                         },
                                     )
                                 ),
+                                condition_binding: None,
                                 if_block: if_block_stmts,
                                 else_block: Some(vec![nil_expr]),
                             },
@@ -1277,7 +1279,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedWhileLoopNode { condition, body } = node;
+        let TypedWhileLoopNode { condition, body, .. } = node;
         let cond_slot_idx = self.code.len();
 
         let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
