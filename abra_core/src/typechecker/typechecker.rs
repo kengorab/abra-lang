@@ -138,7 +138,7 @@ impl Typechecker {
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
     fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
-        let IfNode { condition, if_block, else_block } = node;
+        let IfNode { condition, if_block, else_block, .. } = node;
 
         let condition = self.visit(*condition)?;
         let is_valid_cond_type = match condition.get_type() {
@@ -1399,7 +1399,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
-        let WhileLoopNode { condition, body } = node;
+        let WhileLoopNode { condition, body, .. } = node;
 
         let condition = self.visit(*condition)?;
         let is_valid_cond_type = match condition.get_type() {
@@ -3984,11 +3984,11 @@ mod tests {
                                         items: vec![
                                             Box::new(int_literal!((1, 8), 1)),
                                             Box::new(int_literal!((1, 11), 2)),
-                                        ]
-                                    }
+                                        ],
+                                    },
                                 )
-                            )
-                        }
+                            ),
+                        },
                     )
                 ),
                 body: vec![

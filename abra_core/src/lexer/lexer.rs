@@ -225,11 +225,11 @@ impl<'a> Lexer<'a> {
                 }
             }
             '|' => {
-                let ch = self.expect_next()?;
-                if ch != '|' {
-                    Ok(Some(Token::Pipe(pos)))
-                } else {
+                if let Some('|') = self.peek() {
+                    self.expect_next()?; // Consume '|' token
                     Ok(Some(Token::Or(pos)))
+                } else {
+                    Ok(Some(Token::Pipe(pos)))
                 }
             }
             '?' => {
