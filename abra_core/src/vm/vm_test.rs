@@ -1029,6 +1029,23 @@ mod tests {
     }
 
     #[test]
+    fn interpret_while_loop_with_condition_binding() {
+        let input = "\
+          var str = \"\"\n\
+          var idx = 0\n\
+          val arr = [1, 2, 3]\n\
+          while arr[idx] |item| {\n\
+            str = str + item\n\
+            idx = idx + 1\n\
+          }\n\
+          str\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("123");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_nested_loops_with_break() {
         let input = "\
           var a = 0\n\
@@ -1272,6 +1289,61 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = new_string_obj("a, b, c");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_linked_list_even_closer() {
+        // Verify self-referential types, as well as the usage of condition bindings for while-loops
+        // and if-stmts/exprs.
+        let input = "\
+          type Node {\n\
+            value: String\n\
+            next: Node? = None\n\
+          }\n\
+
+          type LinkedList {\n\
+            count: Int = 0\n\
+            head: Node? = None\n\
+
+            func push(self, item: String): Int {\n\
+              if self.head |head| {\n\
+                var node = head\n\
+                while node.next |n| { node = n }\n\
+                node.next = Node(value: item)\n\
+              } else {\n\
+                self.head = Node(value: item)\n\
+              }\n\
+
+              self.count = self.count + 1\n\
+            }\n\
+
+            func toString(self): String {\n\
+              if self.head |head| {\n\
+                var str = \"\"\n\
+                var node = head\n\
+
+                while node.next |n| {\n\
+                  str = str + node.value + \", \"\n\
+                  node = n\n\
+                }\n\
+
+                str + node.value\n\
+              } else {\n\
+                \"[]\"\n\
+              }\n\
+            }\n\
+          }\n\
+
+          val list = LinkedList()\n\
+          list.push(\"a\")\n\
+          list.push(\"b\")\n\
+          list.push(\"c\")\n\
+          list.push(\"d\")\n\
+          list.toString()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("a, b, c, d");
         assert_eq!(expected, result);
     }
 }
