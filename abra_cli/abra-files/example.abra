@@ -1,30 +1,44 @@
 type Node {
   value: String
-  next: Node? = Node.empty()
+  next: Node? = None
+}
 
-  func empty(): Node? = None
+type LinkedList {
+  count: Int = 0
+  head: Node? = None
 
-  func toString(self): String {
-    var str = self.value + ", "
-    var next = self.next
-
-    while (next) {
-      str = str + (next?.value ?: "") + ", "
-
-      next = next?.next
+  func push(self, item: String): Int {
+    if self.head |head| {
+      var node = head
+      while node.next |n| node = n
+      node.next = Node(value: item)
+    } else {
+      self.head = Node(value: item)
     }
 
-    str[:-2]
+    self.count = self.count + 1
+  }
+
+  func toString(self): String {
+    if self.head |head| {
+      var str = ""
+      var node = head
+
+      while node.next |n| {
+        str = str + node.value + ", "
+        node = n
+      }
+
+      str + node.value
+    } else {
+      "[]"
+    }
   }
 }
 
-val node = Node(
-  value: "a",
-  next: Node(
-    value: "b",
-    next: Node(
-      value: "c",
-    )
-  )
-)
-node.toString()
+val list = LinkedList()
+list.push("a")
+list.push("b")
+list.push("c")
+list.push("d")
+list.toString()

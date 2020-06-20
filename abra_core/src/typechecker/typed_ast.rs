@@ -203,6 +203,7 @@ pub struct TypedIndexingNode {
 pub struct TypedIfNode {
     pub typ: Type,
     pub condition: Box<TypedAstNode>,
+    pub condition_binding: Option<Token>,
     pub if_block: Vec<TypedAstNode>,
     pub else_block: Option<Vec<TypedAstNode>>,
 }
@@ -224,6 +225,7 @@ pub struct TypedInstantiationNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedWhileLoopNode {
     pub condition: Box<TypedAstNode>,
+    pub condition_binding: Option<Token>,
     pub body: Vec<TypedAstNode>,
 }
 
