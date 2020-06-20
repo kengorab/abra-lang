@@ -12,11 +12,13 @@ impl Default for Position {
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
 #[strum_discriminants(name(TokenType), derive(Display))]
 pub enum Token {
+    // Builtin types
     #[strum(to_string = "int", serialize = "Int")] Int(Position, i64),
     #[strum(to_string = "float", serialize = "Float")] Float(Position, f64),
     #[strum(to_string = "string", serialize = "String")] String(Position, String),
     #[strum(to_string = "boolean", serialize = "Bool")] Bool(Position, bool),
 
+    // Keywords
     #[strum(to_string = "func", serialize = "Func")] Func(Position),
     #[strum(to_string = "val", serialize = "Val")] Val(Position),
     #[strum(to_string = "var", serialize = "Var")] Var(Position),
@@ -28,10 +30,12 @@ pub enum Token {
     #[strum(to_string = "in", serialize = "In")] In(Position),
     #[strum(to_string = "type", serialize = "Type")] Type(Position),
 
+    // Identifiers
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
     #[strum(to_string = "self", serialize = "Self")] Self_(Position),
     #[strum(to_string = "none", serialize = "None")] None(Position),
 
+    // Operators
     #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
     #[strum(to_string = "+", serialize = "Plus")] Plus(Position),
     #[strum(to_string = "-", serialize = "Minus")] Minus(Position),
@@ -49,12 +53,14 @@ pub enum Token {
     #[strum(to_string = "!=", serialize = "Neq")] Neq(Position),
     #[strum(to_string = "!", serialize = "Bang")] Bang(Position),
 
+    // Delimiters
     #[strum(to_string = "(", serialize = "LParen")] LParen(Position, /* is_preceded_by_newline: */ bool),
     #[strum(to_string = ")", serialize = "RParen")] RParen(Position),
     #[strum(to_string = "[", serialize = "LBrack")] LBrack(Position, /* is_preceded_by_newline: */ bool),
     #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),
     #[strum(to_string = "{", serialize = "LBrace")] LBrace(Position),
     #[strum(to_string = "}", serialize = "RBrace")] RBrace(Position),
+    #[strum(to_string = "|", serialize = "Pipe")] Pipe(Position),
     #[strum(to_string = ":", serialize = "Colon")] Colon(Position),
     #[strum(to_string = ",", serialize = "Comma")] Comma(Position),
     #[strum(to_string = "?", serialize = "Question")] Question(Position),
@@ -108,6 +114,7 @@ impl Token {
             Token::RBrack(pos) |
             Token::LBrace(pos) |
             Token::RBrace(pos) |
+            Token::Pipe(pos) |
             Token::Colon(pos) |
             Token::Comma(pos) |
             Token::Question(pos) |

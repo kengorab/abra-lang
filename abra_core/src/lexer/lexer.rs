@@ -227,8 +227,7 @@ impl<'a> Lexer<'a> {
             '|' => {
                 let ch = self.expect_next()?;
                 if ch != '|' {
-                    let pos = Position::new(self.line, self.col);
-                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                    Ok(Some(Token::Pipe(pos)))
                 } else {
                     Ok(Some(Token::Or(pos)))
                 }
@@ -362,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_single_char_separators() {
-        let input = "( ) [ ] { } , : ?";
+        let input = "( ) [ ] { } | , : ?";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::LParen(Position::new(1, 1), false),
@@ -371,9 +370,10 @@ mod tests {
             Token::RBrack(Position::new(1, 7)),
             Token::LBrace(Position::new(1, 9)),
             Token::RBrace(Position::new(1, 11)),
-            Token::Comma(Position::new(1, 13)),
-            Token::Colon(Position::new(1, 15)),
-            Token::Question(Position::new(1, 17)),
+            Token::Pipe(Position::new(1, 13)),
+            Token::Comma(Position::new(1, 15)),
+            Token::Colon(Position::new(1, 17)),
+            Token::Question(Position::new(1, 19)),
         ];
         assert_eq!(expected, tokens);
     }
@@ -391,21 +391,6 @@ mod tests {
         assert_eq!(expected, error);
 
         let input = "& &";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
-        assert_eq!(expected, error);
-
-        let input = "|";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
-        assert_eq!(expected, error);
-
-        let input = "|-";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "-".to_string());
-        assert_eq!(expected, error);
-
-        let input = "| |";
         let error = tokenize(&input.to_string()).unwrap_err();
         let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
         assert_eq!(expected, error);
