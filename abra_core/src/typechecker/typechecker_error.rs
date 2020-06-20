@@ -12,6 +12,7 @@ pub enum InvalidAssignmentTargetReason {
 #[derive(Debug, PartialEq)]
 pub enum TypecheckerError {
     Mismatch { token: Token, expected: Type, actual: Type },
+    InvalidIfConditionType { token: Token, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
@@ -105,6 +106,7 @@ impl DisplayError for TypecheckerError {
     fn message_for_error(&self, lines: &Vec<&str>) -> String {
         let pos = match self {
             TypecheckerError::Mismatch { token, .. } => token.get_position(),
+            TypecheckerError::InvalidIfConditionType { token, .. } => token.get_position(),
             TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
             TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
             TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
@@ -146,6 +148,9 @@ impl DisplayError for TypecheckerError {
                 let message = format!("{}Expected {}, got {}", indent, type_repr(expected), type_repr(actual));
 
                 format!("Type mismatch ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
+            }
+            TypecheckerError::InvalidIfConditionType { .. } => {
+                unreachable!()
             }
             TypecheckerError::InvalidOperator { op, ltype, rtype, .. } => {
                 let message = format!(

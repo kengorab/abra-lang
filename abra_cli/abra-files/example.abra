@@ -8,7 +8,7 @@ type Node {
     var str = self.value + ", "
     var next = self.next
 
-    while (next != None) {
+    while (next) {
       str = str + (next?.value ?: "") + ", "
 
       next = next?.next

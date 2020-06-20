@@ -987,7 +987,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let TypedIfNode { condition, if_block, else_block, .. } = node;
 
+        let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
         self.visit(*condition)?;
+        if is_opt {
+            self.write_opcode(Opcode::Nil, line);
+            self.write_opcode(Opcode::Neq, line);
+        }
+
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling if-block
         let jump_offset_slot_idx = self.code.len();
@@ -1273,7 +1279,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let TypedWhileLoopNode { condition, body } = node;
         let cond_slot_idx = self.code.len();
+
+        let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
         self.visit(*condition)?;
+        if is_opt {
+            self.write_opcode(Opcode::Nil, line);
+            self.write_opcode(Opcode::Neq, line);
+        }
 
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body
@@ -2391,6 +2403,31 @@ mod tests {
     }
 
     #[test]
+    fn compile_if_else_statements_option_condition() {
+        let chunk = compile("if ([1, 2][0]) 123 else 456");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Nil as u8,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 5,
+                Opcode::Constant as u8, 0,
+                Opcode::Pop as u8,
+                Opcode::Jump as u8, 3,
+                Opcode::Constant as u8, 1,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![Value::Int(123), Value::Int(456)],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
     fn compile_function_declaration() {
         let chunk = compile("\
           val a = 1\n\
@@ -2745,6 +2782,28 @@ mod tests {
             ],
             constants: vec![
                 Value::Str("i".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("while ([1, 2][0]) { 123 }");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Nil as u8,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 5,
+                Opcode::Constant as u8, 0,
+                Opcode::Pop as u8,
+                Opcode::JumpB as u8, 15,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                Value::Int(123),
             ],
         };
         assert_eq!(expected, chunk);

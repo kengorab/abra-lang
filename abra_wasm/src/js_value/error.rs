@@ -83,6 +83,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("actual", &JsType(actual))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidIfConditionType { token, actual } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "mismatch")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("actual", &JsType(actual))?;
+                    obj.end()
+                }
                 TypecheckerError::InvalidOperator { token, op, ltype, rtype } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
