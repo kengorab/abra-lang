@@ -138,7 +138,7 @@ impl Typechecker {
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
     fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
-        let IfNode { condition, if_block, else_block, .. } = node;
+        let IfNode { condition, condition_binding, if_block, else_block } = node;
 
         let condition = self.visit(*condition)?;
         let is_valid_cond_type = match condition.get_type() {
@@ -151,7 +151,21 @@ impl Typechecker {
         }
         let condition = Box::new(condition);
 
-        self.scopes.push(Scope::new(ScopeKind::Block));
+        let mut scope = Scope::new(ScopeKind::Block);
+        if let Some(ident) = &condition_binding {
+            let ident_name = Token::get_ident_name(ident).clone();
+            let binding_type = match condition.get_type() {
+                Type::Bool => Type::Bool,
+                Type::Option(inner) => {
+                    let mut typ = *inner;
+                    while let Type::Option(inner) = typ { typ = *inner };
+                    typ
+                }
+                _ => unreachable!("No other types should be allowable as conditionals")
+            };
+            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
+        }
+        self.scopes.push(scope);
         let if_block_len = if_block.len();
         let if_block: Result<Vec<_>, _> = if_block.into_iter().enumerate()
             .map(|(idx, mut node)| {
@@ -192,7 +206,7 @@ impl Typechecker {
         };
         self.scopes.pop();
 
-        Ok(TypedIfNode { typ: Type::Unit, condition, if_block, else_block })
+        Ok(TypedIfNode { typ: Type::Unit, condition, condition_binding, if_block, else_block })
     }
 }
 
@@ -329,6 +343,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 TypedAstNode::IfExpression(Token::If(pos.clone()), TypedIfNode {
                     typ,
                     condition: Box::new(typed_left),
+                    condition_binding: None,
                     if_block: vec![if_block],
                     else_block: Some(vec![else_block]),
                 })
@@ -1399,7 +1414,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
-        let WhileLoopNode { condition, body, .. } = node;
+        let WhileLoopNode { condition, condition_binding, body } = node;
 
         let condition = self.visit(*condition)?;
         let is_valid_cond_type = match condition.get_type() {
@@ -1412,14 +1427,37 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let condition = Box::new(condition);
 
-        self.scopes.push(Scope::new(ScopeKind::Loop));
+        let has_condition_binding = condition_binding.is_some();
+        if has_condition_binding {
+            self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where condition_binding variable will be stored
+        }
+
+        let mut scope = Scope::new(ScopeKind::Loop);
+        if let Some(ident) = &condition_binding {
+            let ident_name = Token::get_ident_name(ident).clone();
+            let binding_type = match condition.get_type() {
+                Type::Bool => Type::Bool,
+                Type::Option(inner) => {
+                    let mut typ = *inner;
+                    while let Type::Option(inner) = typ { typ = *inner };
+                    typ
+                }
+                _ => unreachable!("No other types should be allowable as conditionals")
+            };
+            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
+        }
+        self.scopes.push(scope);
+
         let body: Result<Vec<_>, _> = body.into_iter()
             .map(|node| self.visit(node))
             .collect();
         let body = body?;
         self.scopes.pop();
 
-        Ok(TypedAstNode::WhileLoop(token, TypedWhileLoopNode { condition, body }))
+        // Pop outer block, if created
+        if has_condition_binding { self.scopes.pop(); }
+
+        Ok(TypedAstNode::WhileLoop(token, TypedWhileLoopNode { condition, condition_binding, body }))
     }
 
     fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -1811,6 +1849,7 @@ mod tests {
                 TypedAstNode::IfExpression(Token::If(Position::new(1, 6)), TypedIfNode {
                     typ: Type::Bool,
                     condition: Box::new(bool_literal!((1, 1), true)),
+                    condition_binding: None,
                     if_block: vec![
                         bool_literal!((1, 9), true),
                     ],
@@ -1819,6 +1858,7 @@ mod tests {
                     ]),
                 }),
             ),
+            condition_binding: None,
             if_block: vec![
                 bool_literal!((1, 14), true), // <- pos is derived from || position
             ],
@@ -3333,6 +3373,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![int_literal!((1, 10), 1234)],
                 else_block: None,
             },
@@ -3355,6 +3396,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![int_literal!((1, 10), 1234)],
                 else_block: Some(vec![
                     TypedAstNode::Binary(
@@ -3390,11 +3432,76 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![int_literal!((2, 6), 1)],
                 else_block: Some(vec![int_literal!((2, 13), 2)]),
             },
         );
         assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_if_statement_condition_binding() -> TestResult {
+        let typed_ast = typecheck("\
+          val i: Int? = 0\n\
+          if i |i| i else 2\
+        ")?;
+        let expected = TypedAstNode::IfStatement(
+            Token::If(Position::new(2, 1)),
+            TypedIfNode {
+                typ: Type::Unit,
+                condition: Box::new(
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 4), "i"),
+                        TypedIdentifierNode {
+                            typ: Type::Option(Box::new(Type::Int)),
+                            name: "i".to_string(),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
+                    )
+                ),
+                condition_binding: Some(ident_token!((2, 7), "i")),
+                if_block: vec![
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 10), "i"),
+                        TypedIdentifierNode {
+                            typ: Type::Int,
+                            name: "i".to_string(),
+                            is_mutable: false,
+                            scope_depth: 1,
+                        }
+                    )
+                ],
+                else_block: Some(vec![int_literal!((2, 17), 2)]),
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        let typed_ast = typecheck("if true |v| v else false")?;
+        let expected = TypedAstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            TypedIfNode {
+                typ: Type::Unit,
+                condition: Box::new(bool_literal!((1, 4), true)),
+                condition_binding: Some(ident_token!((1, 10), "v")),
+                if_block: vec![
+                    TypedAstNode::Identifier(
+                        ident_token!((1, 13), "v"),
+                        TypedIdentifierNode {
+                            typ: Type::Bool,
+                            name: "v".to_string(),
+                            is_mutable: false,
+                            scope_depth: 1,
+                        }
+                    )
+                ],
+                else_block: Some(vec![bool_literal!((1, 20), false)]),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
 
         Ok(())
     }
@@ -3427,6 +3534,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     TypedAstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
@@ -3470,6 +3578,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     TypedAstNode::BindingDecl(
                         Token::Val(Position::new(2, 12)),
@@ -3902,6 +4011,7 @@ mod tests {
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
                 body: vec![
                     TypedAstNode::Binary(
                         Token::Plus(Position::new(1, 14)),
@@ -3922,6 +4032,7 @@ mod tests {
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
                 body: vec![
                     TypedAstNode::Break(Token::Break(Position::new(1, 14)))
                 ],
@@ -3934,6 +4045,7 @@ mod tests {
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
                 body: vec![
                     TypedAstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
@@ -3991,6 +4103,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 body: vec![
                     TypedAstNode::Break(Token::Break(Position::new(1, 19)))
                 ],
@@ -4000,11 +4113,78 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_while_loop_condition_binding() -> TestResult {
+        let ast = typecheck("while true |v| { v }")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: Some(ident_token!((1, 13), "v")),
+                body: vec![
+                    TypedAstNode::Identifier(
+                        ident_token!((1, 18), "v"),
+                        TypedIdentifierNode {
+                            typ: Type::Bool,
+                            name: "v".to_string(),
+                            is_mutable: false,
+                            scope_depth: 2,
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = typecheck("\
+          val item = [1, 2, 3][0]\n\
+          while item |item| { item }\
+        ")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(2, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 7), "item"),
+                        TypedIdentifierNode {
+                            typ: Type::Option(Box::new(Type::Int)),
+                            name: "item".to_string(),
+                            is_mutable: false,
+                            scope_depth: 0,
+                        },
+                    )
+                ),
+                condition_binding: Some(ident_token!((2, 13), "item")),
+                body: vec![
+                    TypedAstNode::Identifier(
+                        ident_token!((2, 21), "item"),
+                        TypedIdentifierNode {
+                            typ: Type::Int,
+                            name: "item".to_string(),
+                            is_mutable: false,
+                            scope_depth: 2,
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
     fn typecheck_while_loop_error() {
         let error = typecheck("while 1 + 1 { println(123) }").unwrap_err();
         let expected = TypecheckerError::InvalidIfConditionType {
             token: Token::Plus(Position::new(1, 9)),
             actual: Type::Int,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("while \"asdf\" |str| { println(123) }").unwrap_err();
+        let expected = TypecheckerError::InvalidIfConditionType {
+            token: Token::String(Position::new(1, 7), "asdf".to_string()),
+            actual: Type::String,
         };
         assert_eq!(expected, error)
     }

@@ -467,7 +467,6 @@ impl Parser {
         let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
             self.expect_next()?; // Consume '|'
             let ident = self.expect_next_token(TokenType::Ident)?; // Expect binding ident
-            dbg!(&ident);
             self.expect_next_token(TokenType::Pipe)?; // Expect closing '|'
 
             Some(ident)
