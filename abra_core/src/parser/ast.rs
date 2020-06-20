@@ -132,6 +132,7 @@ pub struct IndexingNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfNode {
     pub condition: Box<AstNode>,
+    pub condition_binding: Option<Token>,
     pub if_block: Vec<AstNode>,
     pub else_block: Option<Vec<AstNode>>,
 }
@@ -153,6 +154,7 @@ pub struct ForLoopNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WhileLoopNode {
     pub condition: Box<AstNode>,
+    pub condition_binding: Option<Token>,
     pub body: Vec<AstNode>,
 }
 

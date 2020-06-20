@@ -442,10 +442,18 @@ impl Parser {
 
     fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
+
         let condition = Box::new(self.parse_expr()?);
+        let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
+            self.expect_next()?; // Consume '|'
+            let ident = self.expect_next_token(TokenType::Ident)?; // Expect binding ident
+            self.expect_next_token(TokenType::Pipe)?; // Expect closing '|'
+
+            Some(ident)
+        } else { None };
 
         let body = self.parse_expr_or_block()?;
-        Ok(AstNode::WhileLoop(token, WhileLoopNode { condition, body }))
+        Ok(AstNode::WhileLoop(token, WhileLoopNode { condition, condition_binding, body }))
     }
 
     fn parse_break_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -455,6 +463,15 @@ impl Parser {
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
         let condition = Box::new(self.parse_expr()?);
+
+        let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
+            self.expect_next()?; // Consume '|'
+            let ident = self.expect_next_token(TokenType::Ident)?; // Expect binding ident
+            dbg!(&ident);
+            self.expect_next_token(TokenType::Pipe)?; // Expect closing '|'
+
+            Some(ident)
+        } else { None };
 
         let if_block = self.parse_expr_or_block()?;
 
@@ -468,7 +485,7 @@ impl Parser {
         } else {
             None
         };
-        Ok(IfNode { condition, if_block, else_block })
+        Ok(IfNode { condition, condition_binding, if_block, else_block })
     }
 
     fn parse_if_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -506,21 +523,21 @@ impl Parser {
             // Since the else_block is an Option type, it required the code be so much more verbose.
             // There's probably a more idiomatic way to do this, but I've sunk too much time into it
             // already.
-            let IfNode { condition, if_block, else_block } = if_node;
+            let IfNode { condition, condition_binding, if_block, else_block } = if_node;
             match else_block {
                 Some(mut else_block) => match else_block.last_mut() {
                     Some(AstNode::IfStatement(_, _)) => {
                         match else_block.pop() {
                             Some(AstNode::IfStatement(token, node)) => {
                                 else_block.push(AstNode::IfExpression(token, node));
-                                IfNode { condition, if_block, else_block: Some(else_block) }
+                                IfNode { condition, condition_binding, if_block, else_block: Some(else_block) }
                             }
-                            _ => IfNode { condition, if_block, else_block: Some(else_block) }
+                            _ => IfNode { condition, condition_binding, if_block, else_block: Some(else_block) }
                         }
                     }
-                    _ => IfNode { condition, if_block, else_block: Some(else_block) }
+                    _ => IfNode { condition, condition_binding, if_block, else_block: Some(else_block) }
                 }
-                _ => IfNode { condition, if_block, else_block }
+                _ => IfNode { condition, condition_binding, if_block, else_block }
             }
         };
 
@@ -2014,6 +2031,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     string_literal!((1, 12), "hello")
                 ],
@@ -2038,6 +2056,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     string_literal!((1, 12), "hello")
                 ],
@@ -2068,6 +2087,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     string_literal!((1, 12), "hello")
                 ],
@@ -2076,6 +2096,7 @@ mod tests {
                         Token::If(Position::new(1, 27)),
                         IfNode {
                             condition: Box::new(bool_literal!((1, 30), true)),
+                            condition_binding: None,
                             if_block: vec![
                                 string_literal!((1, 37), "world")
                             ],
@@ -2117,6 +2138,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 if_block: vec![
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
@@ -2160,6 +2182,7 @@ mod tests {
                                     },
                                 )
                             ),
+                            condition_binding: None,
                             if_block: vec![
                                 string_literal!((1, 20), "hello")
                             ],
@@ -2191,6 +2214,7 @@ mod tests {
                                     },
                                 )
                             ),
+                            condition_binding: None,
                             if_block: vec![
                                 string_literal!((1, 20), "world")
                             ],
@@ -2278,6 +2302,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_if_statement_with_condition_binding() -> TestResult {
+        let ast = parse("if a |item| \"hello\"")?;
+        let expected = AstNode::IfStatement(
+            Token::If(Position::new(1, 1)),
+            IfNode {
+                condition: Box::new(
+                    AstNode::Identifier(ident_token!((1, 4), "a"))
+                ),
+                condition_binding: Some(ident_token!((1, 7), "item")),
+                if_block: vec![
+                    string_literal!((1, 13), "hello")
+                ],
+                else_block: None,
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
     fn parse_invocation() -> TestResult {
         let ast = parse("abc()")?;
         let expected = AstNode::Invocation(
@@ -2346,7 +2389,7 @@ mod tests {
                     AccessorNode {
                         target: Box::new(identifier!((1, 1), "abc")),
                         field: ident_token!((1, 5), "def"),
-                        is_opt_safe: false
+                        is_opt_safe: false,
                     },
                 )),
                 args: vec![
@@ -2466,6 +2509,7 @@ mod tests {
             Token::While(Position::new(1, 1)),
             WhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
                 body: vec![
                     AstNode::Binary(
                         Token::Plus(Position::new(1, 14)),
@@ -2485,6 +2529,7 @@ mod tests {
             Token::While(Position::new(1, 1)),
             WhileLoopNode {
                 condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
                 body: vec![
                     AstNode::Break(Token::Break(Position::new(1, 14)))
                 ],
@@ -2506,6 +2551,7 @@ mod tests {
                         },
                     )
                 ),
+                condition_binding: None,
                 body: vec![
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
@@ -2524,6 +2570,24 @@ mod tests {
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
                     )
+                ],
+            },
+        );
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_while_loop_with_condition_binding() -> TestResult {
+        let ast = parse("while a |item| { \"hello\" }")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(
+                    AstNode::Identifier(ident_token!((1, 7), "a"))
+                ),
+                condition_binding: Some(ident_token!((1, 10), "item")),
+                body: vec![
+                    string_literal!((1, 18), "hello")
                 ],
             },
         );
@@ -2602,7 +2666,7 @@ mod tests {
             AccessorNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 field: ident_token!((1, 5), "def"),
-                is_opt_safe: false
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, ast[0]);
@@ -2619,15 +2683,15 @@ mod tests {
                             AccessorNode {
                                 target: Box::new(identifier!((1, 1), "abc")),
                                 field: ident_token!((1, 5), "def"),
-                                is_opt_safe: false
+                                is_opt_safe: false,
                             },
                         )),
                         field: ident_token!((1, 9), "ghi"),
-                        is_opt_safe: false
+                        is_opt_safe: false,
                     },
                 )),
                 field: ident_token!((1, 13), "jkl"),
-                is_opt_safe: false
+                is_opt_safe: false,
             },
         );
         assert_eq!(expected, ast[0]);
@@ -2643,7 +2707,7 @@ mod tests {
             AccessorNode {
                 target: Box::new(identifier!((1, 1), "abc")),
                 field: ident_token!((1, 6), "def"),
-                is_opt_safe: true
+                is_opt_safe: true,
             },
         );
         assert_eq!(expected, ast[0]);
@@ -2660,15 +2724,15 @@ mod tests {
                             AccessorNode {
                                 target: Box::new(identifier!((1, 1), "abc")),
                                 field: ident_token!((1, 5), "def"),
-                                is_opt_safe: false
+                                is_opt_safe: false,
                             },
                         )),
                         field: ident_token!((1, 10), "ghi"),
-                        is_opt_safe: true
+                        is_opt_safe: true,
                     },
                 )),
                 field: ident_token!((1, 15), "jkl"),
-                is_opt_safe: true
+                is_opt_safe: true,
             },
         );
         assert_eq!(expected, ast[0]);
