@@ -538,27 +538,33 @@ impl TypedAstVisitor<(), ()> for Compiler {
         if node.op == BinaryOp::Coalesce {
             let left = *node.left;
             let right = *node.right;
-            let line = left.get_token().get_position().line;
 
-            // Duplicate coalesce's lval on stack, and compare against Nil. If it's Nil, pop off the
-            // duplicated value and eval the rval. If it's not, skip over that logic and do nothing.
-            // Top-of-stack will be the lval.
-            self.visit(left)?;
-            self.write_opcode(Opcode::Dup, line);
-            self.write_opcode(Opcode::Nil, line);
-            self.write_opcode(Opcode::Eq, line);
-            self.write_opcode(Opcode::JumpIfF, line);
-            self.write_byte(0, line); // <- Replaced after compiling if-block
-            let jump_offset_slot_idx = self.code.len();
-
-            self.write_opcode(Opcode::Pop, line);
-            self.visit(right)?;
-
-            let code = &mut self.code;
-            let if_block_len = code.len().checked_sub(jump_offset_slot_idx)
-                .expect("jump offset slot should be <= end of if-block");
-            *code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
-
+            // When compiling a coalesce, expand it out to an if-expr with condition binding:
+            //   a ?: b  =>  if a |$left_rand| $left_rand else b
+            // This means that the compilation of coalescence and if-exprs generates similar bytecode
+            // TODO: Pull this up a layer and have the typechecker emit this instead?
+            let name = format!("$left_{}", random_string(3));
+            let if_expr = TypedAstNode::IfExpression(
+                Token::If(token.get_position()),
+                TypedIfNode {
+                    typ: Type::Placeholder, // Type doesn't matter
+                    condition: Box::new(left),
+                    condition_binding: Some(Token::Ident(token.get_position(), name.clone())),
+                    if_block: vec![
+                        TypedAstNode::Identifier(
+                            Token::Ident(token.get_position(), name.clone()),
+                            TypedIdentifierNode {
+                                typ: Type::Placeholder, // Type doesn't matter
+                                name,
+                                is_mutable: false,
+                                scope_depth: 0 // Doesn't matter
+                            }
+                        )
+                    ],
+                    else_block: Some(vec![right])
+                }
+            );
+            self.visit(if_expr)?;
             return Ok(());
         }
 
@@ -931,8 +937,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<(), ()> {
         #[inline]
         fn compile_block(compiler: &mut Compiler, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
-            compiler.push_scope(ScopeKind::If);
-
             let block_len = block.len();
             for (idx, node) in block.into_iter().enumerate() {
                 let line = node.get_token().get_position().line;
@@ -979,8 +983,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     compiler.write_pops(num_pops, line);
                 }
             }
-
-            compiler.pop_scope();
             Ok(())
         }
 
@@ -989,20 +991,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let TypedIfNode { condition, condition_binding, if_block, else_block, .. } = node;
 
         let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
-        if let Some(ident) = &condition_binding {
-            // If there is a condition binding, create a new local with initial value of Nil
-            self.write_opcode(Opcode::Nil, line);
-            self.push_local(Token::get_ident_name(ident));
-        }
         self.visit(*condition)?;
-        if let Some(ident) = &condition_binding {
-            // If there is a condition binding, duplicate the condition value and store into the reserved local.
+        if let Some(_) = &condition_binding {
+            // If there is a condition binding, duplicate the condition value. After the condition
+            // is evaluated in the JumpIfF (passing through the != nil check if it's an option type)
+            // it will remain on the stack. Once the If scope is the current scope...
             self.write_opcode(Opcode::Dup, line);
-
-            let ident = Token::get_ident_name(ident);
-            let (_, slot) = self.resolve_local(&ident, self.get_fn_depth()).unwrap();
-            self.write_store_local_instr(slot, line); // Store into condition binding
-            self.metadata.stores.push(ident);
         }
         if is_opt {
             self.write_opcode(Opcode::Nil, line);
@@ -1013,7 +1007,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_byte(0, line); // <- Replaced after compiling if-block
         let jump_offset_slot_idx = self.code.len();
 
+        self.push_scope(ScopeKind::If);
+        if let Some(ident) = &condition_binding {
+            // ...this value becomes the condition binding local. Since it's pushed within the If
+            // scope, it'll be properly popped when the scope ends. Note that there is that value
+            // floating on the stack, which is fine here since it's a local, but when we instead go
+            // to the else branch...
+            self.push_local(Token::get_ident_name(ident));
+        }
         compile_block(self, if_block, is_stmt)?;
+        self.pop_scope();
         if else_block.is_some() {
             self.write_opcode(Opcode::Jump, line);
             self.write_byte(0, line); // <- Replaced after compiling else-block
@@ -1027,7 +1030,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let jump_offset_slot_idx = code.len();
 
         if let Some(else_block) = else_block {
+            if condition_binding.is_some() {
+                // ...we need to pop that floating value off of the stack. Each block correctly cleans
+                // up its locals (via the pop_scope() call), but since this value is placed on the stack
+                // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
+                // make sure we "manually" clean it up here.
+                self.write_opcode(Opcode::Pop, line);
+            }
+            self.push_scope(ScopeKind::If);
             compile_block(self, else_block, is_stmt)?;
+            self.pop_scope();
             let code = &mut self.code;
             let else_block_len = code.len().checked_sub(jump_offset_slot_idx)
                 .expect("jump offset slot should be <= end of else-block");
@@ -1633,8 +1645,11 @@ mod tests {
                 Opcode::ArrLoad as u8,
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 3,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 4,
+                Opcode::LLoad0 as u8,
+                Opcode::LStore0 as u8,
+                Opcode::Jump as u8, 3,
                 Opcode::Pop as u8,
                 Opcode::Constant as u8, 2,
                 Opcode::Return as u8
@@ -2469,20 +2484,20 @@ mod tests {
         let chunk = compile("if [1, 2][0] |item| item else 456");
         let expected = Module {
             code: vec![
-                Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::ArrMk as u8, 2,
                 Opcode::IConst0 as u8,
                 Opcode::ArrLoad as u8,
                 Opcode::Dup as u8,
-                Opcode::LStore0 as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 4,
+                Opcode::JumpIfF as u8, 5,
                 Opcode::LLoad0 as u8,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 3,
+                Opcode::Pop as u8,
+                Opcode::Jump as u8, 4,
+                Opcode::Pop as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::Pop as u8,
                 Opcode::Return as u8
