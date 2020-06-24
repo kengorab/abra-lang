@@ -1,44 +1,11 @@
-type Node {
-  value: String
-  next: Node? = None
+//type Name { value: String? = None }
+//type Person { name: Name? = None }
+//val ken = Person(name: Name(value: "Ken"))
+////val ken = Person()
+//println(ken.name?.value?.length)
+
+func abc() {
+  val arr = ["a", "bc"]
+  7 + (arr[3]?.length ?: 14)
 }
-
-type LinkedList {
-  count: Int = 0
-  head: Node? = None
-
-  func push(self, item: String): Int {
-    if self.head |head| {
-      var node = head
-      while node.next |n| node = n
-      node.next = Node(value: item)
-    } else {
-      self.head = Node(value: item)
-    }
-
-    self.count = self.count + 1
-  }
-
-  func toString(self): String {
-    if self.head |head| {
-      var str = ""
-      var node = head
-
-      while node.next |n| {
-        str = str + node.value + ", "
-        node = n
-      }
-
-      str + node.value
-    } else {
-      "[]"
-    }
-  }
-}
-
-val list = LinkedList()
-list.push("a")
-list.push("b")
-list.push("c")
-list.push("d")
-list.toString()
+abc()

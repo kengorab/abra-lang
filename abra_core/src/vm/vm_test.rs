@@ -1198,6 +1198,15 @@ mod tests {
         assert_eq!(expected, result);
 
         let input = "\
+          type Name { value: String? = None }\n\
+          type Person { name: Name? = None }\n\
+          \"1\" + Person().name?.value?.length\n\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("1None");
+        assert_eq!(expected, result);
+
+        let input = "\
           type Person { name: String? = None }\n\
           val people = [Person(name: \"a\")]\n\
           [\n\

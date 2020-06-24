@@ -1,6 +1,6 @@
 use crate::builtins::native_types::field_for_type;
 use crate::common::ast_visitor::AstVisitor;
-use crate::common::util::random_string;
+use crate::common::typed_ast_util::wrap_in_proper_iife;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
 use crate::vm::prelude::Prelude;
@@ -1167,27 +1167,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         node.typ = typ.clone();
 
-        let pos = token.get_position().clone();
-        let anon_fn_name = format!("$anon_{}", random_string(4));
-        Ok(TypedAstNode::Invocation(
-            Token::LParen(pos.clone(), false),
-            TypedInvocationNode {
-                typ: typ.clone(),
-                target: Box::new(TypedAstNode::FunctionDecl(
-                    Token::Func(pos.clone()),
-                    TypedFunctionDeclNode {
-                        name: Token::Ident(pos.clone(), anon_fn_name),
-                        args: vec![],
-                        ret_type: typ.clone(),
-                        body: vec![TypedAstNode::IfExpression(token, node)],
-                        scope_depth: self.scopes.len() - 1,
-                        is_recursive: false,
-                        is_anon: true,
-                    },
-                )),
-                args: vec![],
-            },
-        ))
+        // If-expressions will be compiled to IIFEs, in order to ensure proper local
+        // management and to ensure the stack doesn't get polluted mid-expression.
+        let if_expr_node = TypedAstNode::IfExpression(token.clone(), node);
+        let scope_depth = self.scopes.len() - 1;
+        Ok(wrap_in_proper_iife(&token, if_expr_node, &typ, scope_depth))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
