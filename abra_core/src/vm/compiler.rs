@@ -1,5 +1,5 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
-use crate::lexer::tokens::{Token, Position};
+use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind};
@@ -8,6 +8,7 @@ use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
 use crate::common::util::random_string;
+use crate::common::typed_ast_util::wrap_in_iife;
 
 #[derive(Debug, PartialEq)]
 pub struct Local {
@@ -542,7 +543,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // When compiling a coalesce, expand it out to an if-expr with condition binding:
             //   a ?: b  =>  if a |$left_rand| $left_rand else b
             // This means that the compilation of coalescence and if-exprs generates similar bytecode
-            // TODO: Pull this up a layer and have the typechecker emit this instead?
             let name = format!("$left_{}", random_string(3));
             let if_expr = TypedAstNode::IfExpression(
                 Token::If(token.get_position()),
@@ -557,14 +557,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
                                 typ: Type::Placeholder, // Type doesn't matter
                                 name,
                                 is_mutable: false,
-                                scope_depth: 0 // Doesn't matter
-                            }
+                                scope_depth: 0, // Doesn't matter
+                            },
                         )
                     ],
-                    else_block: Some(vec![right])
-                }
+                    else_block: Some(vec![right]),
+                },
             );
-            self.visit(if_expr)?;
+
+            // Like other if-expressions, this is wrapped in an IIFE to protect against stack
+            // pollution mid-expression.
+            let iife = wrap_in_iife(&token, if_expr);
+            self.visit(iife)?;
             return Ok(());
         }
 
@@ -1029,14 +1033,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let jump_offset_slot_idx = code.len();
 
+        if condition_binding.is_some() {
+            // ...we need to pop that floating value off of the stack. Each block correctly cleans
+            // up its locals (via the pop_scope() call), but since this value is placed on the stack
+            // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
+            // make sure we "manually" clean it up here. We also need to make sure this happens
+            // regardless of whether there's an else-block to compile.
+            self.write_opcode(Opcode::Pop, line);
+        }
         if let Some(else_block) = else_block {
-            if condition_binding.is_some() {
-                // ...we need to pop that floating value off of the stack. Each block correctly cleans
-                // up its locals (via the pop_scope() call), but since this value is placed on the stack
-                // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
-                // make sure we "manually" clean it up here.
-                self.write_opcode(Opcode::Pop, line);
-            }
             self.push_scope(ScopeKind::If);
             compile_block(self, else_block, is_stmt)?;
             self.pop_scope();
@@ -1106,6 +1111,17 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         if node.is_opt_safe {
+            // If we're in an opt-safe accessor (usage of the `?.` operator), we emit bytecode
+            // for a transformed AST. We transform an expression like `a.b?.c?.d` to
+            //   if a.b |$0| {
+            //     if $0.c |$1| {
+            //       if $1.d |$2| {
+            //         $2
+            //       }
+            //     }
+            //   }
+            // to take advantage of the if-stmt/expr's condition binding. To achieve this, we first
+            // must "unwind" the expression until we reach a non-opt-safe accessor, and then...
             let mut unwound_path = vec![];
 
             let this_node = Box::new(TypedAstNode::Accessor(token.clone(), node));
@@ -1115,115 +1131,62 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     node @ TypedAstNode::Accessor(_, _) => {
                         if let TypedAstNode::Accessor(_, TypedAccessorNode { target, is_opt_safe, .. }) = &node {
                             unwound_path.push(node);
-
-                            if *is_opt_safe {
-                                next = target;
-                            } else {
-                                break;
-                            }
+                            if *is_opt_safe { next = target } else { break; }
                         }
                     }
-                    node @ _ => {
-                        unwound_path.push(node);
-                        break;
-                    }
+                    node @ _ => break unwound_path.push(node)
                 }
             }
-            let mut unwound_path = unwound_path.into_iter().rev().map(|n| n.clone());
 
-            // This is _nuts_, let's maybe try and refactor this one day?
-            fn compile_if_block<I>(zelf: &mut Compiler, pos: Position, path_segments: &mut I, prev_target: Option<TypedAstNode>) -> Result<Vec<TypedAstNode>, ()>
-                where I: std::iter::Iterator<Item=TypedAstNode>
-            {
-                let nil_expr = TypedAstNode::_Nil(Token::Ident(pos.clone(), "nil".to_string()));
-                let scope_depth = zelf.get_fn_depth();
+            fn make_dummy_ident_node(tok: &Token, name: String) -> TypedAstNode {
+                let ident = Token::Ident(tok.get_position(), name.clone());
+                // The `typ` and `scope_depth` fields don't matter here
+                TypedAstNode::Identifier(ident, TypedIdentifierNode { typ: Type::Placeholder, name, is_mutable: false, scope_depth: 0 })
+            }
 
-                if let Some(path_seg) = path_segments.next() {
-                    let temp_var_name = format!("${}", random_string(2));
-                    let temp_var_token = Token::Ident(pos.clone(), temp_var_name.clone());
-
-                    let temp_var_assignment_expr = match prev_target {
-                        None => path_seg,
-                        Some(prev_target) => {
-                            match path_seg {
-                                TypedAstNode::Accessor(tok, node) => {
-                                    let target = Box::new(prev_target);
-                                    TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_opt_safe: false })
-                                }
-                                _ => unimplemented!()
-                            }
-                        }
-                    };
-
-                    let temp_var_decl_node = TypedAstNode::BindingDecl(Token::Assign(pos.clone()), TypedBindingDeclNode {
-                        ident: temp_var_token.clone(),
-                        expr: Some(Box::new(temp_var_assignment_expr)),
-                        is_mutable: false,
-                        scope_depth,
-                    });
-
-                    let ident_node = TypedAstNode::Identifier(
-                        temp_var_token.clone(),
-                        TypedIdentifierNode { typ: Type::Placeholder, name: temp_var_name, is_mutable: false, scope_depth },
-                    );
-
-                    let if_block_stmts = compile_if_block(zelf, pos.clone(), path_segments, Some(ident_node.clone()))?;
-                    let res_node = if if_block_stmts.is_empty() {
-                        ident_node
-                    } else {
-                        TypedAstNode::IfExpression(
-                            Token::If(pos.clone()),
-                            TypedIfNode {
-                                typ: Type::Placeholder, // The type doesn't matter, it won't be typechecked
-                                condition: Box::new(
-                                    TypedAstNode::Binary(
-                                        Token::Neq(pos.clone()),
-                                        TypedBinaryNode {
-                                            typ: Type::Bool,
-                                            right: Box::new(ident_node.clone()),
-                                            op: BinaryOp::Neq,
-                                            left: Box::new(nil_expr.clone()),
-                                        },
-                                    )
-                                ),
-                                condition_binding: None,
-                                if_block: if_block_stmts,
-                                else_block: Some(vec![nil_expr]),
-                            },
-                        )
-                    };
-
-                    Ok(vec![temp_var_decl_node, res_node])
+            // ...we iterate through that path, starting with the innermost if-expr, building outward
+            // until we reach the first non-opt accessor expr.
+            let path_len = unwound_path.len();
+            let mut layer_number = path_len;
+            let mut if_node = None;
+            for (idx, segment) in unwound_path.into_iter().map(|n| n.clone()).enumerate() {
+                let is_last = idx == path_len - 1;
+                let condition = if is_last {
+                    segment
                 } else {
-                    Ok(vec![])
-                }
+                    match segment {
+                        TypedAstNode::Accessor(tok, node) => {
+                            let prev_cond_binding_name = format!("${}", layer_number - 1);
+                            let target = Box::new(make_dummy_ident_node(&token, prev_cond_binding_name));
+                            TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_opt_safe: false })
+                        }
+                        _ => unimplemented!()
+                    }
+                };
+
+                let cond_binding_name = format!("${}", layer_number);
+                if_node = Some(TypedAstNode::IfExpression(
+                    Token::If(token.get_position()),
+                    TypedIfNode {
+                        typ: Type::Placeholder, // Type doesn't matter
+                        condition: Box::new(condition),
+                        condition_binding: Some(Token::Ident(token.get_position(), cond_binding_name.clone())),
+                        if_block: vec![
+                            match if_node {
+                                None => make_dummy_ident_node(&token, cond_binding_name),
+                                Some(if_node) => if_node
+                            }
+                        ],
+                        else_block: Some(vec![make_dummy_ident_node(&token, "None".to_string())]),
+                    },
+                ));
+                layer_number -= 1;
             }
 
-            let pos = token.get_position().clone();
-            let nodes = compile_if_block(self, pos.clone(), &mut unwound_path, None)?;
-            let scope_depth = self.get_fn_depth();
-            let anon_fn_name = format!("$anon_{}", random_string(4));
-            let wrapper_fn_node = TypedAstNode::Invocation(
-                Token::LParen(pos.clone(), false),
-                TypedInvocationNode {
-                    typ: Type::Placeholder, // The type does not matter
-                    target: Box::new(TypedAstNode::FunctionDecl(
-                        Token::Func(pos.clone()),
-                        TypedFunctionDeclNode {
-                            name: Token::Ident(pos.clone(), anon_fn_name),
-                            args: vec![],
-                            ret_type: Type::Placeholder, // The type does not matter
-                            body: nodes,
-                            scope_depth,
-                            is_recursive: false,
-                            is_anon: true,
-                        },
-                    )),
-                    args: vec![],
-                },
-            );
-
-            self.visit(wrapper_fn_node)?;
+            // Like other if-expressions, this is wrapped in an IIFE to protect against stack
+            // pollution mid-expression.
+            let iife = wrap_in_iife(&token, if_node.unwrap());
+            self.visit(iife)?;
         } else {
             let TypedAccessorNode { target, field_name, field_idx, .. } = node;
             self.metadata.field_gets.push(field_name);
@@ -1378,6 +1341,7 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
+    use crate::common::typed_ast_util::ANON_IDX;
 
     fn get_native_fn(name: &str) -> NativeFn {
         native_fns().into_iter().find(|(f, _)| &f.name == &name).unwrap().1
@@ -1388,6 +1352,9 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
+        // Yuck: need to reset this global so tests will be repeatable. Gross
+        ANON_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
+
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
@@ -1638,26 +1605,38 @@ mod tests {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0,
-                Opcode::Constant as u8, 1,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst2 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 4,
-                Opcode::LLoad0 as u8,
-                Opcode::LStore0 as u8,
-                Opcode::Jump as u8, 3,
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 2,
+                Opcode::Constant as u8, 3,
+                Opcode::Invoke as u8, 0, 1,
                 Opcode::Return as u8
             ],
             constants: vec![
                 new_string_obj("a"),
                 new_string_obj("b"),
                 new_string_obj("c"),
+                Value::Fn(FnValue {
+                    name: "$anon_0".to_string(),
+                    code: vec![
+                        Opcode::Constant as u8, 0,
+                        Opcode::Constant as u8, 1,
+                        Opcode::ArrMk as u8, 2,
+                        Opcode::IConst2 as u8,
+                        Opcode::ArrLoad as u8,
+                        Opcode::Dup as u8,
+                        Opcode::Nil as u8,
+                        Opcode::Neq as u8,
+                        Opcode::JumpIfF as u8, 4,
+                        Opcode::LLoad1 as u8,
+                        Opcode::LStore1 as u8,
+                        Opcode::Jump as u8, 3,
+                        Opcode::Pop as u8,
+                        Opcode::Constant as u8, 2,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                }),
             ],
         };
         assert_eq!(expected, chunk);
