@@ -1,11 +1,10 @@
-//type Name { value: String? = None }
-//type Person { name: Name? = None }
-//val ken = Person(name: Name(value: "Ken"))
-////val ken = Person()
-//println(ken.name?.value?.length)
+type Counter {
+  value: Int = 0
 
-func abc() {
-  val arr = ["a", "bc"]
-  7 + (arr[3]?.length ?: 14)
+  func tickUp(self): Counter {
+    self.value = self.value + 1
+    self
+  }
 }
-abc()
+
+Counter().tickUp().tickUp().value

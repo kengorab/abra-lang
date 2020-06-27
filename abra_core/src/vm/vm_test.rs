@@ -1305,52 +1305,52 @@ mod tests {
     fn interpret_linked_list_even_closer() {
         // Verify self-referential types, as well as the usage of condition bindings for while-loops
         // and if-stmts/exprs.
-        let input = "\
-          type Node {\n\
-            value: String\n\
-            next: Node? = None\n\
-          }\n\
+        let input = r#"
+          type Node {
+            value: String
+            next: Node? = None
+          }
 
-          type LinkedList {\n\
-            count: Int = 0\n\
-            head: Node? = None\n\
+          type LinkedList {
+            count: Int = 0
+            head: Node? = None
 
-            func push(self, item: String): Int {\n\
-              if self.head |head| {\n\
-                var node = head\n\
-                while node.next |n| { node = n }\n\
-                node.next = Node(value: item)\n\
-              } else {\n\
-                self.head = Node(value: item)\n\
-              }\n\
+            func push(self, item: String): LinkedList { // <- Verify that methods can return instances of Self
+              if self.head |head| {
+                var node = head
+                while node.next |n| { node = n }
+                node.next = Node(value: item)
+              } else {
+                self.head = Node(value: item)
+              }
 
-              self.count = self.count + 1\n\
-            }\n\
+              self
+            }
 
-            func toString(self): String {\n\
-              if self.head |head| {\n\
-                var str = \"\"\n\
-                var node = head\n\
+            func toString(self): String {
+              if self.head |head| {
+                var str = ""
+                var node = head
 
-                while node.next |n| {\n\
-                  str = str + node.value + \", \"\n\
-                  node = n\n\
-                }\n\
+                while node.next |n| {
+                  str = str + node.value + ", "
+                  node = n
+                }
 
-                str + node.value\n\
-              } else {\n\
-                \"[]\"\n\
-              }\n\
-            }\n\
-          }\n\
+                str + node.value
+              } else {
+                "[]"
+              }
+            }
+          }
 
-          val list = LinkedList()\n\
-          list.push(\"a\")\n\
-          list.push(\"b\")\n\
-          list.push(\"c\")\n\
-          list.push(\"d\")\n\
-          list.toString()\
-        ";
+          val list = LinkedList()
+          list.push("a")
+            .push("b")
+            .push("c")
+            .push("d")
+            .toString()
+        "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("a, b, c, d");
         assert_eq!(expected, result);
