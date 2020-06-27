@@ -21,6 +21,7 @@ pub enum Type {
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
+    Reference(/* name: */ String),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -32,7 +33,7 @@ pub struct StructType {
 }
 
 impl Type {
-    pub fn is_equivalent_to(&self, target_type: &Type) -> bool {
+    pub fn is_equivalent_to(&self, target_type: &Type, referencable_types: &HashMap<String, Type>) -> bool {
         use self::Type::*;
 
         // TODO: Test this, esp the complex cases
@@ -41,7 +42,7 @@ impl Type {
             (Unit, Unit) | (Int, Int) | (Float, Float) |
             (String, String) | (Bool, Bool) | (Any, Any) => true,
             // For Array / Option types, compare inner type
-            (Array(t1), Array(t2)) => self::Type::is_equivalent_to(t1, t2),
+            (Array(t1), Array(t2)) => self::Type::is_equivalent_to(t1, t2, referencable_types),
             // When comparing Option types, make sure to flatten, and then compare the root inner type
             // (ie. String??? == String?, but Int?? != String?)
             (Option(t1), Option(t2)) => {
@@ -51,16 +52,16 @@ impl Type {
                 let mut t2 = t2;
                 while let self::Type::Option(ref inner) = **t2 { t2 = inner }
 
-                self::Type::is_equivalent_to(t1, t2)
+                self::Type::is_equivalent_to(t1, t2, referencable_types)
             }
             // A non-optional instance of a type should be assignable up to an optional version of it
             // (ie. val i: Int? = 1)
-            (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2),
+            (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2, referencable_types),
             (Or(t1s), Or(t2s)) => {
                 let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
                 let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
                 for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                    if !self::Type::is_equivalent_to(t1, t2) {
+                    if !self::Type::is_equivalent_to(t1, t2, referencable_types) {
                         return false;
                     }
                 }
@@ -75,11 +76,11 @@ impl Type {
                 // TODO: Factor in optional params here
                 // func abc(a: Int, b = 3) = a + b should satisfy a type of (Int, Int) => Int and also (Int) => Int
                 for ((_, t1, _), (_, t2, _)) in args1.iter().zip(args2.iter()) {
-                    if !self::Type::is_equivalent_to(t1, t2) {
+                    if !self::Type::is_equivalent_to(t1, t2, referencable_types) {
                         return false;
                     }
                 }
-                if !self::Type::is_equivalent_to(ret1, ret2) {
+                if !self::Type::is_equivalent_to(ret1, ret2, referencable_types) {
                     return false;
                 }
                 true
@@ -111,7 +112,7 @@ impl Type {
                     match provided_fields.get(req_name) {
                         None => return false,
                         Some(provided_type) => {
-                            if !provided_type.is_equivalent_to(req_type) {
+                            if !provided_type.is_equivalent_to(req_type, referencable_types) {
                                 return false;
                             } else {
                                 continue;
@@ -124,6 +125,16 @@ impl Type {
             // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"])
             (_, Any) => true,
             (Placeholder, _) | (_, Placeholder) => true,
+            (Reference(name), other) => {
+                if let Some(referenced_type) = referencable_types.get(name) {
+                    referenced_type.is_equivalent_to(other, referencable_types)
+                } else { false }
+            }
+            (other, Reference(name)) => {
+                if let Some(referenced_type) = referencable_types.get(name) {
+                    other.is_equivalent_to(&referenced_type, referencable_types)
+                } else { false }
+            }
             (_, _) => false
         }
     }
@@ -201,36 +212,42 @@ mod test {
 
     #[test]
     fn is_equivalent_to_any() {
-        assert_eq!(false, Any.is_equivalent_to(&Bool));
-        assert_eq!(true, Bool.is_equivalent_to(&Any));
+        let referencable_types = HashMap::new();
 
-        assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any))));
-        assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any))));
+        assert_eq!(false, Any.is_equivalent_to(&Bool, &referencable_types));
+        assert_eq!(true, Bool.is_equivalent_to(&Any, &referencable_types));
+
+        assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any)), &referencable_types));
+        assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any)), &referencable_types));
     }
 
     #[test]
     fn is_equivalent_to_flattening_optional() {
+        let referencable_types = HashMap::new();
+
         let t1 = Option(Box::new(Int));
         let t2 = Option(Box::new(Option(Box::new(Int))));
-        assert_eq!(true, t1.is_equivalent_to(&t2));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
 
         let t1 = Option(Box::new(Option(Box::new(Int))));
         let t2 = Option(Box::new(Option(Box::new(Option(Box::new(Int))))));
-        assert_eq!(true, t1.is_equivalent_to(&t2));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
     }
 
     #[test]
     fn is_equivalent_to_assigning_up_to_option() {
+        let referencable_types = HashMap::new();
+
         let t1 = Int;
         let t2 = Option(Box::new(Int));
-        assert_eq!(true, t1.is_equivalent_to(&t2));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
 
         let t1 = Int;
         let t2 = Option(Box::new(Option(Box::new(Int))));
-        assert_eq!(true, t1.is_equivalent_to(&t2));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
 
         let t1 = Int;
         let t2 = Option(Box::new(Int));
-        assert_eq!(false, t2.is_equivalent_to(&t1));
+        assert_eq!(false, t2.is_equivalent_to(&t1, &referencable_types));
     }
 }

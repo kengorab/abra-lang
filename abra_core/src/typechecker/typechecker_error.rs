@@ -79,6 +79,7 @@ fn type_repr(t: &Type) -> String {
         Type::Unknown => "Unknown".to_string(),
         Type::Struct(StructType { name, .. }) => name.to_string(),
         Type::Placeholder => "_".to_string(),
+        Type::Reference(name) => name.clone(),
     }
 }
 

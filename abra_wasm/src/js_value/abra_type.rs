@@ -113,6 +113,12 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Placeholder")?;
                 obj.end()
             }
+            Type::Reference(name) => {
+                let mut obj = serializer.serialize_map(Some(1))?;
+                obj.serialize_entry("kind", "Reference")?;
+                obj.serialize_entry("name", name)?;
+                obj.end()
+            }
         }
     }
 }
