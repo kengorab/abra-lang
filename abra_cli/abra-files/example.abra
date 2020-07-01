@@ -1,10 +1,28 @@
-type Counter {
-  value: Int = 0
+//type Counter {
+//  value: Int = 0
+//  listener: ((Int) => Int)? = None
+//
+//  func tickUp(self): Counter {
+//    self.value = self.value + 1
+//
+//    if self.listener |fn| fn(self.value)
+//
+//    self
+//  }
+//
+//  func addListener(self, fn: Int => Int): Void {
+//    self.listener = fn
+//  }
+//}
+//
+//let counter = Counter()
+//
+//counter.addListener(v => println("Value: " + v))
+//
+//counter.tickUp().tickUp().tickUp()
 
-  func tickUp(self): Counter {
-    self.value = self.value + 1
-    self
-  }
-}
+//val f = () => "Hello"
+//println(f())
 
-Counter().tickUp().tickUp().value
+//(u = "", v: Int,) => (u = "", v: Int,) => "Hello"
+u => v => u + v
