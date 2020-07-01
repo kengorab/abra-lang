@@ -66,6 +66,7 @@ pub enum Token {
     #[strum(to_string = "?", serialize = "Question")] Question(Position),
     #[strum(to_string = ".", serialize = "Dot")] Dot(Position),
     #[strum(to_string = "?.", serialize = "QuestionDot")] QuestionDot(Position),
+    #[strum(to_string = "=>", serialize = "Arrow")] Arrow(Position),
 }
 
 impl Token {
@@ -119,7 +120,8 @@ impl Token {
             Token::Comma(pos) |
             Token::Question(pos) |
             Token::Dot(pos) |
-            Token::QuestionDot(pos) => pos
+            Token::QuestionDot(pos) |
+            Token::Arrow(pos) => pos
         };
         pos.clone()
     }

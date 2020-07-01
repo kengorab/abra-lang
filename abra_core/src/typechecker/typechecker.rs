@@ -2,7 +2,7 @@ use crate::builtins::native_types::field_for_type;
 use crate::common::ast_visitor::AstVisitor;
 use crate::common::typed_ast_util::wrap_in_proper_iife;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode};
 use crate::vm::prelude::Prelude;
 use crate::typechecker::types::{Type, StructType};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind};
@@ -1468,6 +1468,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else { (token, is_opt_safe) };
 
         Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx, is_opt_safe }))
+    }
+
+    fn visit_lambda(&mut self, _token: Token, node: LambdaNode) -> Result<TypedAstNode, TypecheckerError> {
+        dbg!(node);
+        unimplemented!()
     }
 }
 

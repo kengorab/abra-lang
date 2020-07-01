@@ -271,6 +271,9 @@ impl<'a> Lexer<'a> {
                 if let Some('=') = self.peek() {
                     self.expect_next()?; // Consume '=' token
                     Ok(Some(Token::Eq(pos)))
+                } else if let Some('>') = self.peek() {
+                    self.expect_next()?; // Consume '>' token
+                    Ok(Some(Token::Arrow(pos)))
                 } else {
                     Ok(Some(Token::Assign(pos)))
                 }
@@ -344,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_multi_char_operators() {
-        let input = "&& || <= >= != == ?: ?.";
+        let input = "&& || <= >= != == ?: ?. =>";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::And(Position::new(1, 1)),
@@ -355,6 +358,7 @@ mod tests {
             Token::Eq(Position::new(1, 16)),
             Token::Elvis(Position::new(1, 19)),
             Token::QuestionDot(Position::new(1, 22)),
+            Token::Arrow(Position::new(1, 25)),
         ];
         assert_eq!(expected, tokens);
     }

@@ -21,6 +21,7 @@ pub enum AstNode {
     WhileLoop(Token, WhileLoopNode),
     Break(Token),
     Accessor(Token, AccessorNode),
+    Lambda(Token, LambdaNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,6 +100,12 @@ pub struct FunctionDeclNode {
     // Tokens represent arg idents, and must be Token::Ident
     pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
+    pub body: Vec<AstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LambdaNode {
+    pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub body: Vec<AstNode>,
 }
 

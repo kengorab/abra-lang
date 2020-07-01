@@ -1,8 +1,7 @@
-use std::iter::Peekable;
+use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
-
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -26,7 +25,7 @@ enum Context {
 }
 
 pub struct Parser {
-    tokens: Peekable<IntoIter<Token>>,
+    tokens: PeekMoreIterator<IntoIter<Token>>,
     context: Vec<Context>,
 }
 
@@ -35,7 +34,7 @@ type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
-        let tokens = tokens.into_iter().peekable();
+        let tokens = tokens.into_iter().peekmore();
         Parser { tokens, context: vec![] }
     }
 
@@ -152,6 +151,7 @@ impl Parser {
             Token::Assign(_) => Some(Box::new(Parser::parse_assignment)),
             Token::LParen(_, _) => Some(Box::new(Parser::parse_invocation)),
             Token::Dot(_) | Token::QuestionDot(_) => Some(Box::new(Parser::parse_accessor)),
+            Token::Arrow(_) => Some(Box::new(Parser::parse_lambda)),
             _ => Some(Box::new(Parser::parse_binary)),
         }
     }
@@ -166,7 +166,7 @@ impl Parser {
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
-            Token::Dot(_) | Token::QuestionDot(_) => Precedence::Call,
+            Token::Dot(_) | Token::QuestionDot(_) | Token::Arrow(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
             }
@@ -225,16 +225,19 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
-        let func_token = self.expect_next()?;
-
-        let func_name = self.expect_next_token(TokenType::Ident)?;
-
-        // Parsing args
-        self.expect_next_token(TokenType::LParen)?;
+    fn parse_func_args(
+        &mut self,
+        initial_token: Option<&Token>,
+        allow_bare_arg: bool,
+    ) -> Result<Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>, ParseError> {
         let mut args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)> = Vec::new();
+        let mut first_loop = true;
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = match initial_token {
+                Some(token) if first_loop => token,
+                _ => self.peek().ok_or(ParseError::UnexpectedEof)?
+            };
+
             match token {
                 Token::RParen(_) => {
                     self.expect_next()?; // Consume ')' before ending loop
@@ -246,12 +249,18 @@ impl Parser {
 
                     match self.peek().ok_or(ParseError::UnexpectedEof)? {
                         Token::Comma(_) => self.expect_next(),
-                        Token::RParen(_) => continue,
+                        Token::RParen(_) => {
+                            first_loop = false;
+                            continue;
+                        }
                         tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
                     }?;
                 }
                 Token::Ident(_, _) => {
-                    let arg_ident = self.expect_next()?;
+                    let arg_ident = match initial_token {
+                        Some(token) if first_loop => token.clone(),
+                        _ => self.expect_next()?
+                    };
 
                     let type_ident = if let Token::Colon(_) = self.peek().ok_or(ParseError::UnexpectedEof)? {
                         self.expect_next()?; // Consume ':'
@@ -264,7 +273,7 @@ impl Parser {
                             Some(self.parse_expr()?)
                         }
                         next_tok @ _ => {
-                            if type_ident.is_none() {
+                            if type_ident.is_none() && !allow_bare_arg {
                                 return Err(ParseError::ExpectedToken(TokenType::Colon, next_tok.clone()));
                             }
                             None
@@ -275,13 +284,28 @@ impl Parser {
 
                     match self.peek().ok_or(ParseError::UnexpectedEof)? {
                         Token::Comma(_) => self.expect_next(),
-                        Token::RParen(_) => continue,
+                        Token::RParen(_) => {
+                            first_loop = false;
+                            continue;
+                        }
                         tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
                     }?;
                 }
                 tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
             }
-        }
+
+            first_loop = false;
+        };
+
+        Ok(args)
+    }
+
+    fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
+        let func_token = self.expect_next()?;
+        let func_name = self.expect_next_token(TokenType::Ident)?;
+
+        self.expect_next_token(TokenType::LParen)?;
+        let args = self.parse_func_args(None, false)?;
 
         let ret_type = match self.peek().ok_or(ParseError::UnexpectedEof)? {
             Token::Colon(_) => {
@@ -300,12 +324,7 @@ impl Parser {
             t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
         }?;
 
-        Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode {
-            name: func_name,
-            args,
-            ret_type,
-            body,
-        }))
+        Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode { name: func_name, args, ret_type, body }))
     }
 
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -571,7 +590,45 @@ impl Parser {
     }
 
     fn parse_grouped(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        // If the next token is ')', followed by '=>', we're parsing a no-args lambda
+        if let Token::RParen(_) = self.expect_peek()? {
+            self.tokens.advance_cursor();
+            if let Some(Token::Arrow(_)) = self.peek() {
+                self.expect_next()?; // Consume ')'
+                let token = self.expect_next()?; // Consume '=>'
+                let body = self.parse_expr_or_block()?;
+                return Ok(AstNode::Lambda(token, LambdaNode { args: vec![], body }));
+            } else {
+                self.tokens.reset_cursor();
+            }
+        }
+
+        // If the next token is an identifier, followed by any of the tokens which would suggest
+        // an args list, we're parsing a lambda.
+        if let Token::Ident(_, _) = self.expect_peek()? {
+            self.tokens.advance_cursor();
+            match self.expect_peek()? {
+                // A ':' (indicating a coming TypeIdentifier), a ',' (indicating a next arg name), or
+                // an '=' (indicating a default value expression) is a valid next token for a lambda.
+                Token::Colon(_) | Token::Comma(_) | Token::Assign(_) => {
+                    let ident_tok = self.expect_next_token(TokenType::Ident)?;
+                    let args = self.parse_func_args(Some(&ident_tok), true)?;
+                    let arrow_tok = self.expect_next_token(TokenType::Arrow)?;
+                    let body = self.parse_expr_or_block()?;
+                    return Ok(AstNode::Lambda(arrow_tok, LambdaNode { args, body }));
+                }
+                // Anything else means we should rewind the peeked-ahead cursor so we can continue
+                // to parse the grouped expr as normal.
+                _ => {
+                    self.tokens.reset_cursor();
+                }
+            }
+        }
+
         let expr = self.parse_expr()?;
+
+        // If the next token is ')', we've finished parsing the grouped expression. We have an infix
+        // parser for the '=>' token which expects either an identifier or a grouped expr.
         match self.expect_next()? {
             Token::RParen(_) => {
                 Ok(AstNode::Grouped(token, GroupedNode { expr: Box::new(expr) }))
@@ -703,6 +760,25 @@ impl Parser {
         };
         let field = self.expect_next_token(TokenType::Ident)?;
         Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field, is_opt_safe }))
+    }
+
+    fn parse_lambda(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+        // Since this function will be called as the infix operator resolver for the => token,
+        // we need to assert that the `left` node is either an Identifier, or a Grouped that wraps
+        // an Identifier.
+        let args = match left {
+            AstNode::Identifier(ident) => vec![(ident, None, None)],
+            AstNode::Grouped(_, GroupedNode { expr }) => {
+                match *expr {
+                    AstNode::Identifier(ident) => vec![(ident, None, None)],
+                    _ => return Err(ParseError::UnexpectedToken(token))
+                }
+            }
+            _ => return Err(ParseError::UnexpectedToken(token))
+        };
+
+        let body = self.parse_expr_or_block()?;
+        Ok(AstNode::Lambda(token, LambdaNode { args, body }))
     }
 
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -1660,6 +1736,167 @@ mod tests {
         let error = parse("func abc(a: Int b: Int) = 123").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 17), "b".to_string()));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_lambda_no_args() -> TestResult {
+        let ast = parse("() => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 4)),
+            LambdaNode {
+                args: vec![],
+                body: vec![int_literal!((1, 7), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("() => {\nval a = 123\na }")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 4)),
+            LambdaNode {
+                args: vec![],
+                body: vec![
+                    AstNode::BindingDecl(
+                        Token::Val(Position::new(2, 1)),
+                        BindingDeclNode {
+                            ident: ident_token!((2, 5), "a"),
+                            type_ann: None,
+                            expr: Some(Box::new(int_literal!((2, 9), 123))),
+                            is_mutable: false
+                        }
+                    ),
+                    AstNode::Identifier(ident_token!((3, 1), "a")),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_lambda_single_arg() -> TestResult {
+        let ast = parse("a => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 3)),
+            LambdaNode {
+                args: vec![(ident_token!((1, 1), "a"), None, None)],
+                body: vec![int_literal!((1, 6), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 5)),
+            LambdaNode {
+                args: vec![(ident_token!((1, 2), "a"), None, None)],
+                body: vec![int_literal!((1, 8), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a: String) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 13)),
+            LambdaNode {
+                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String") }), None)],
+                body: vec![int_literal!((1, 16), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a = 2) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 9)),
+            LambdaNode {
+                args: vec![(ident_token!((1, 2), "a"), None, Some(int_literal!((1, 6), 2)))],
+                body: vec![int_literal!((1, 12), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a: String,) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 14)),
+            LambdaNode {
+                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String") }), None)],
+                body: vec![int_literal!((1, 17), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_lambda_multi_arg() -> TestResult {
+        let ast = parse("(a, b: Int) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 13)),
+            LambdaNode {
+                args: vec![
+                    (ident_token!((1, 2), "a"), None, None),
+                    (ident_token!((1, 5), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 8), "Int") }), None),
+                ],
+                body: vec![int_literal!((1, 16), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a, b) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 8)),
+            LambdaNode {
+                args: vec![
+                    (ident_token!((1, 2), "a"), None, None),
+                    (ident_token!((1, 5), "b"), None, None),
+                ],
+                body: vec![int_literal!((1, 11), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a: Int, b: Int) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 18)),
+            LambdaNode {
+                args: vec![
+                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int") }), None),
+                    (ident_token!((1, 10), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
+                ],
+                body: vec![int_literal!((1, 21), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a = 3, b: Int) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 17)),
+            LambdaNode {
+                args: vec![
+                    (ident_token!((1, 2), "a"), None, Some(int_literal!((1, 6), 3))),
+                    (ident_token!((1, 9), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 12), "Int") }), None),
+                ],
+                body: vec![int_literal!((1, 20), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a: Int, b = 3) => 123")?;
+        let expected = AstNode::Lambda(
+            Token::Arrow(Position::new(1, 17)),
+            LambdaNode {
+                args: vec![
+                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int") }), None),
+                    (ident_token!((1, 10), "b"), None, Some(int_literal!((1, 14), 3))),
+                ],
+                body: vec![int_literal!((1, 20), 123)],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 
     #[test]
