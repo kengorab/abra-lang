@@ -139,6 +139,29 @@ impl Type {
         }
     }
 
+    pub fn is_unknown(&self, referencable_types: &HashMap<String, Type>) -> bool {
+        match self {
+            Type::Or(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
+            Type::Array(inner_type) |
+            Type::Option(inner_type) => inner_type.is_unknown(referencable_types),
+            Type::Fn(arg_types, ret_type) => {
+                let has_unknown_arg = arg_types.iter().any(|(_, typ, _)| typ.is_unknown(referencable_types));
+                if has_unknown_arg {
+                    return true;
+                } else {
+                    ret_type.is_unknown(referencable_types)
+                }
+            }
+            Type::Reference(name) => {
+                if let Some(referenced_type) = referencable_types.get(name) {
+                    referenced_type.is_unknown(referencable_types)
+                } else { false }
+            }
+            Type::Unknown => true,
+            _ => false
+        }
+    }
+
     pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Option<Type> {
         match type_ident {
             TypeIdentifier::Normal { ident } => {

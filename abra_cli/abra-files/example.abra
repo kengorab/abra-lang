@@ -21,8 +21,14 @@
 //
 //counter.tickUp().tickUp().tickUp()
 
-//val f = () => "Hello"
-//println(f())
+// var f = (a: ((String) => String) => String, b: String) => a(b)
+// f(f2 => f2("x"), "a")
 
-//(u = "", v: Int,) => (u = "", v: Int,) => "Hello"
-u => v => u + v
+var f = (a: String) => a
+//f = f = (a, b = "hello") => a + b
+//f = 123
+
+type Foo {
+  func greet(self, greeting: String): String = greeting
+}
+f = Foo().greet

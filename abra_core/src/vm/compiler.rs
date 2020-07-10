@@ -2,7 +2,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
@@ -655,6 +655,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::MapMk, line);
         self.write_byte(num_items as u8, line);
         Ok(())
+    }
+
+    fn visit_lambda(&mut self, _token: Token, node: TypedLambdaNode) -> Result<(), ()> {
+        dbg!(&node);
+        return Ok(());
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
