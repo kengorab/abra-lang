@@ -162,21 +162,28 @@ impl Type {
         }
     }
 
-    pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Option<Type> {
+    pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Result<Type, Token> {
         match type_ident {
             TypeIdentifier::Normal { ident } => {
                 let type_name = Token::get_ident_name(ident);
-                types.get(&type_name).map(|t| t.clone())
+                types.get(&type_name).map(|t| t.clone()).ok_or(ident.clone())
             }
             TypeIdentifier::Array { inner } => {
                 let typ = Type::from_type_ident(inner, types)?;
-                Some(Type::Array(Box::new(typ)))
+                Ok(Type::Array(Box::new(typ)))
             }
             TypeIdentifier::Option { inner } => {
                 let typ = Type::from_type_ident(inner, types)?;
-                Some(Type::Option(Box::new(typ)))
+                Ok(Type::Option(Box::new(typ)))
             }
-            // TODO: Function type ident, eg. (Int, Bool) => String
+            TypeIdentifier::Func { args, ret } => {
+                let arg_types = args.into_iter()
+                    .map(|arg| Type::from_type_ident(arg, types))
+                    .collect::<Result<Vec<_>, _>>();
+                let arg_types = arg_types?.into_iter().map(|arg_type| ("_".to_string(), arg_type, false)).collect();
+                let ret_type = Type::from_type_ident(ret, types)?;
+                Ok(Type::Fn(arg_types, Box::new(ret_type)))
+            }
             // TODO: Choice type ident, eg. Int | Float
         }
     }
