@@ -2,11 +2,12 @@ use crate::common::display_error::{DisplayError, IND_AMT};
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType};
 use crate::parser::ast::BinaryOp;
+use crate::typechecker::typed_ast::TypedAstNode;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
     IndexingMode,
-    StringTarget
+    StringTarget,
 }
 
 #[derive(Debug, PartialEq)]
@@ -42,6 +43,7 @@ pub enum TypecheckerError {
     InvalidSelfParam { token: Token },
     MissingRequiredTypeAnnotation { token: Token },
     InvalidTypeDeclDepth { token: Token },
+    ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -137,6 +139,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::InvalidSelfParam { token } => token.get_position(),
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token.get_position(),
             TypecheckerError::InvalidTypeDeclDepth { token } => token.get_position(),
+            TypecheckerError::ForbiddenUnknownType { token, .. } => token.get_position(),
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -291,7 +294,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::IncorrectArity { expected, actual, .. } => {
                 format!(
                     "Incorrect arity for invocation: ({}:{})\n{}\n\
-                    Expected {} argument{}, but {} were passed",
+                    Expected {} required argument{}, but {} were passed",
                     pos.line, pos.col, cursor_line,
                     expected, if *expected == 1 { "" } else { "s" }, actual
                 )
@@ -401,6 +404,9 @@ impl DisplayError for TypecheckerError {
                 unimplemented!()
             }
             TypecheckerError::InvalidTypeDeclDepth { .. } => {
+                unimplemented!()
+            }
+            TypecheckerError::ForbiddenUnknownType { .. } => {
                 unimplemented!()
             }
         }
@@ -582,7 +588,7 @@ Since it's a 'val', you must provide an initial value"
         let src = "true = \"abc\"".to_string();
         let err = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(1, 6)),
-            reason: None
+            reason: None,
         };
 
         let expected = format!("\
@@ -711,7 +717,7 @@ Type String is not invokeable"
 Incorrect arity for invocation: (2:1)
   |  abc(1, 2, 3)
      ^
-Expected 1 argument, but 3 were passed"
+Expected 1 required argument, but 3 were passed"
         );
         assert_eq!(expected, err.get_message(&src));
     }

@@ -177,6 +177,10 @@ pub enum TypeIdentifier {
     Normal { ident: Token },
     Array { inner: Box<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
+    Func {
+        args: Vec<TypeIdentifier>,
+        ret: Box<TypeIdentifier>
+    },
 }
 
 impl TypeIdentifier {
@@ -184,7 +188,8 @@ impl TypeIdentifier {
         match self {
             TypeIdentifier::Normal { ident } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
-            TypeIdentifier::Option { inner } => inner.get_ident()
+            TypeIdentifier::Option { inner } => inner.get_ident(),
+            TypeIdentifier::Func { ret, .. } => ret.get_ident()
         }
     }
 }

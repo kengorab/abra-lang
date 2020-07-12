@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode};
 use crate::lexer::tokens::Token;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -10,6 +10,7 @@ pub enum TypedAstNode {
     Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
     Map(Token, TypedMapNode),
+    Lambda(Token, TypedLambdaNode),
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
     TypeDecl(Token, TypedTypeDeclNode),
@@ -36,6 +37,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(token, _) => token,
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::Map(token, _) => token,
+            TypedAstNode::Lambda(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
             TypedAstNode::TypeDecl(token, _) => token,
@@ -67,6 +69,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::Map(_, node) => node.typ.clone(),
+            TypedAstNode::Lambda(_, node) => node.typ.clone(),
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { is_anon, args, ret_type, .. }) => {
                 if !is_anon { return Type::Unit; }
 
@@ -134,6 +137,14 @@ pub struct TypedArrayNode {
 pub struct TypedMapNode {
     pub typ: Type,
     pub items: Vec<(Token, TypedAstNode)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedLambdaNode {
+    pub typ: Type,
+    pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
+    pub typed_body: Option<Vec<TypedAstNode>>,
+    pub orig_node: Option<LambdaNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
