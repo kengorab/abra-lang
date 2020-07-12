@@ -277,8 +277,8 @@ impl Typechecker {
                 Some(type_ident) => {
                     let arg_type = Type::from_type_ident(&type_ident, &self.get_types_in_scope());
                     match arg_type {
-                        None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
-                        Some(arg_type) => {
+                        Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
+                        Ok(arg_type) => {
                             match default_value {
                                 Some(default_value) => {
                                     seen_optional_arg = true;
@@ -613,12 +613,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             (Some(e), None) => Ok(e.get_type()),
             (None, Some(ann)) => {
                 let ann_type = Type::from_type_ident(ann, &self.get_types_in_scope())
-                    .ok_or(TypecheckerError::UnknownType { type_ident: ann.get_ident() })?;
+                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
                 Ok(ann_type)
             }
             (Some(typed_expr), Some(ann)) => {
                 let ann_type = Type::from_type_ident(ann, &self.get_types_in_scope())
-                    .ok_or(TypecheckerError::UnknownType { type_ident: ann.get_ident() })?;
+                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
 
                 if self.are_types_equivalent(typed_expr, &ann_type)? {
                     Ok(ann_type)
@@ -688,8 +688,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             None => Type::Unknown,
             Some(ret_type) => {
                 match Type::from_type_ident(ret_type, &self.get_types_in_scope()) {
-                    None => Err(TypecheckerError::UnknownType { type_ident: ret_type.get_ident() }),
-                    Some(typ) => Ok(typ)
+                    Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
+                    Ok(typ) => Ok(typ)
                 }?
             }
         };
@@ -712,8 +712,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             None => body_type,
             Some(ret_type) => {
                 match Type::from_type_ident(&ret_type, &self.get_types_in_scope()) {
-                    None => Err(TypecheckerError::UnknownType { type_ident: ret_type.get_ident() }),
-                    Some(typ) => {
+                    Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
+                    Ok(typ) => {
                         match body.last_mut() {
                             None => Ok(body_type),
                             Some(mut node) => {
@@ -780,7 +780,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let fields = fields.into_iter()
             .map(|(field_name, field_type, default_value)| {
                 let field_type = Type::from_type_ident(&field_type, &all_types)
-                    .ok_or(TypecheckerError::UnknownType { type_ident: field_type.get_ident() })?;
+                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
                 let field_name_str = Token::get_ident_name(&field_name);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
                     return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: field_name, orig_is_field: true });
@@ -808,8 +808,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Some(ret_type_ident) => {
                     let arg_type = Type::from_type_ident(ret_type_ident, &all_types);
                     match arg_type {
-                        None => return Err(TypecheckerError::UnknownType { type_ident: ret_type_ident.get_ident() }),
-                        Some(typ) => typ,
+                        Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
+                        Ok(typ) => typ,
                     }
                 }
             };
@@ -831,8 +831,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             Some(type_ident) => {
                                 let arg_type = Type::from_type_ident(type_ident, &all_types);
                                 match arg_type {
-                                    None => return Err(TypecheckerError::UnknownType { type_ident: type_ident.get_ident() }),
-                                    Some(typ) => typ,
+                                    Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
+                                    Ok(typ) => typ,
                                 }
                             }
                         };
@@ -4748,13 +4748,19 @@ mod tests {
         assert!(typed_ast.is_ok());
 
         let typed_ast = typecheck("\
-          var fn = (a: String) => a\n\
+          var fn: (String) => String = a => a\n\
           type Person {\n\
             name: String\n\
             func greet(self, greeting: String): String = greeting + \", \" + self.name\n\
           }\n\
           fn = Person(name: \"Ken\").greet\n\
           fn(\"Hello\")\n\
+        ");
+        assert!(typed_ast.is_ok());
+
+        let typed_ast = typecheck("\
+          func call(fn: (String) => String, value: String) = fn(value)\n\
+          call((x, b = \"hello\") => b, \"hello\")\n\
         ");
         assert!(typed_ast.is_ok());
 
