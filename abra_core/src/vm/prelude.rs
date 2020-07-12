@@ -36,6 +36,7 @@ impl Prelude {
             ("Float", Type::Float),
             ("Bool", Type::Bool),
             ("String", Type::String),
+            ("Unit", Type::Unit),
         ];
         for (type_name, typ) in prelude_types {
             let binding = PreludeBinding {
