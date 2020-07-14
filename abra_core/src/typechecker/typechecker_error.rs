@@ -44,12 +44,13 @@ pub enum TypecheckerError {
     MissingRequiredTypeAnnotation { token: Token },
     InvalidTypeDeclDepth { token: Token },
     ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
+    InvalidInstantiation { token: Token, typ: Type },
 }
 
 // TODO: Replace this when I do more work on Type representations
 fn type_repr(t: &Type) -> String {
     match t {
-        Type::Unit => "()".to_string(),
+        Type::Unit => "Unit".to_string(),
         Type::Any => "Any".to_string(),
         Type::Int => "Int".to_string(),
         Type::Float => "Float".to_string(),
@@ -140,6 +141,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token.get_position(),
             TypecheckerError::InvalidTypeDeclDepth { token } => token.get_position(),
             TypecheckerError::ForbiddenUnknownType { token, .. } => token.get_position(),
+            TypecheckerError::InvalidInstantiation { token, .. } => token.get_position()
         };
         let line = lines.get(pos.line - 1).expect("There should be a line");
 
@@ -395,19 +397,45 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::InvalidSelfParamPosition { .. } => {
-                unimplemented!()
+                format!(
+                    "Invalid position for `self`: ({}:{})\n{}\n\
+                    `self` must appear as the first parameter",
+                    pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::InvalidSelfParam { .. } => {
-                unimplemented!()
+                format!(
+                    "Invalid usage of `self` parameter: ({}:{})\n{}\n\
+                    `self` can only appear within methods on types",
+                    pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::MissingRequiredTypeAnnotation { .. } => {
-                unimplemented!()
+                format!(
+                    "Missing required type annotation: ({}:{})\n{}\n\
+                    Methods must have return type explicitly annotated",
+                    pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::InvalidTypeDeclDepth { .. } => {
-                unimplemented!()
+                format!(
+                    "Invalid location for type declaration: ({}:{})\n{}\n\
+                    Types may only be declared at the root level",
+                    pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::ForbiddenUnknownType { .. } => {
-                unimplemented!()
+                format!(
+                    "Could not determine type: ({}:{})\n{}\n\
+                    Please use an explicit type annotation to denote the type",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidInstantiation { typ, .. } => {
+                format!(
+                    "Cannot create an instance of type {}: ({}:{})\n{}",
+                    type_repr(typ), pos.line, pos.col, cursor_line
+                )
             }
         }
     }
@@ -857,6 +885,21 @@ Unknown member 'nAme': (2:18)
                       ^
 Type Person does not have a member with name 'nAme'"
         );
+        assert_eq!(expected, err.get_message(&src));
+    }
+
+    #[test]
+    fn test_invalid_instantiation() {
+        let src = "val u = Unit()".to_string();
+        let err = TypecheckerError::InvalidInstantiation {
+            token: ident_token!((1, 9), "Unit"),
+            typ: Type::Unit
+        };
+
+        let expected = format!("\
+Cannot create an instance of type Unit: (1:9)
+  |  val u = Unit()
+             ^");
         assert_eq!(expected, err.get_message(&src));
     }
 }

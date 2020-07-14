@@ -1353,7 +1353,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }
                 }
-                _ => unreachable!("Anything else should be caught by an UnknownIdentifier")
+                typ @ _ => Err(TypecheckerError::InvalidInstantiation { token: target.get_token().clone(), typ }),
             }
             target_type @ _ => Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
         }
@@ -4691,8 +4691,8 @@ mod tests {
                                     typ: Type::String,
                                     name: "a".to_string(),
                                     is_mutable: false,
-                                    scope_depth: 1
-                                }
+                                    scope_depth: 1,
+                                },
                             )
                         ]),
                         orig_node: None,
@@ -4725,7 +4725,7 @@ mod tests {
                     TypedLambdaNode {
                         typ: Type::Fn(
                             vec![("a".to_string(), Type::String, false), ("b".to_string(), Type::String, true)],
-                            Box::new(Type::String)
+                            Box::new(Type::String),
                         ),
                         args: vec![
                             (ident_token!((2, 7), "a"), Type::String, None),
