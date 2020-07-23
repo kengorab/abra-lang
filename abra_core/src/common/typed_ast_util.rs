@@ -5,6 +5,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub static ANON_IDX: AtomicUsize = AtomicUsize::new(0);
 
+pub fn get_anon_name() -> String {
+    format!("$anon_{}", ANON_IDX.fetch_add(1, Ordering::Relaxed))
+}
+
 // An IIFE (immediately-invoked function expression) denotes a block of code which is meant to run
 // in its own isolated scope, without polluting the outer scope. This is especially useful/needed
 // for if-expressions and expressions which compile down to if-expressions (opt-safe accessors and
@@ -23,7 +27,8 @@ pub fn wrap_in_proper_iife(
     typ: &Type,
     scope_depth: usize,
 ) -> TypedAstNode {
-    let anon_fn_name = format!("$anon_{}", ANON_IDX.fetch_add(1, Ordering::Relaxed));
+    let anon_fn_name = get_anon_name();
+
     TypedAstNode::Invocation(
         Token::LParen(token.get_position(), false),
         TypedInvocationNode {
