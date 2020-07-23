@@ -1,6 +1,7 @@
 use crate::typechecker::types::Type;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode};
 use crate::lexer::tokens::Token;
+use crate::typechecker::typechecker::Scope;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedAstNode {
@@ -144,7 +145,7 @@ pub struct TypedLambdaNode {
     pub typ: Type,
     pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub typed_body: Option<Vec<TypedAstNode>>,
-    pub orig_node: Option<LambdaNode>,
+    pub orig_node: Option<(LambdaNode, Vec<Scope>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1355,4 +1355,33 @@ mod tests {
         let expected = new_string_obj("a, b, c, d");
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_lambdas() {
+        let input = "\
+          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
+          call(x => x + 1, 23)\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
+          call((x, y = 1) => x + y + 1, 22)\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          func getAdder(x: Int): (Int) => Int {\n\
+            (y, z = 3) => x + y + z\n\
+          }\n\
+          getAdder(20)(1)\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+    }
 }

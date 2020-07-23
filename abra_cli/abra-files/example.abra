@@ -1,37 +1,5 @@
-//type Counter {
-//  value: Int = 0
-//  listener: ((Int) => Int)? = None
-//
-//  func tickUp(self): Counter {
-//    self.value = self.value + 1
-//
-//    if self.listener |fn| fn(self.value)
-//
-//    self
-//  }
-//
-//  func addListener(self, fn: Int => Int): Void {
-//    self.listener = fn
-//  }
-//}
-//
-//let counter = Counter()
-//
-//counter.addListener(v => println("Value: " + v))
-//
-//counter.tickUp().tickUp().tickUp()
+func getAdder(x: Int): (Int) => Int {
+  y => x + y
+}
 
-// var f = (a: ((String) => String) => String, b: String) => a(b)
-// f(f2 => f2("x"), "a")
-
-//var f = (a: String) => a
-//f = f = (a, b = "hello") => a + b
-//f = 123
-
-//type Foo {
-//  func greet(self, greeting: String): String = greeting
-//}
-//f = Foo().greet
-
-func call(fn: (String) => String, value: String) = fn(value)
-call((x, b = "hello") => b, "hello")
+println(getAdder(3)(2))

@@ -10,11 +10,11 @@ use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentT
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
-#[derive(Debug, PartialEq)]
-pub(crate) struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
 
-#[derive(Debug, PartialEq)]
-pub(crate) enum ScopeKind {
+#[derive(Debug, Clone, PartialEq)]
+pub enum ScopeKind {
     Root,
     Block,
     Function(/*token: */ Token, /*name: */ String, /*is_recursive: */ bool),
@@ -23,10 +23,11 @@ pub(crate) enum ScopeKind {
     Loop,
 }
 
-pub(crate) struct Scope {
-    pub(crate) kind: ScopeKind,
-    pub(crate) bindings: HashMap<String, ScopeBinding>,
-    pub(crate) types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scope {
+    pub kind: ScopeKind,
+    pub bindings: HashMap<String, ScopeBinding>,
+    pub types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
 }
 
 impl Scope {
@@ -122,11 +123,26 @@ impl Typechecker {
     }
 
     fn are_types_equivalent(&mut self, node: &mut TypedAstNode, target_type: &Type) -> Result<bool, TypecheckerError> {
+        // if node.get_type().is_unknown(&self.referencable_types) {
+        //     // If the node's type has an unknown, we need to descend into it.
+        //     //
+        //     // Consider  `val arr: Int[] = []`; the rhs would be Type::Array(Box::new(Type::Unknown)),
+        //     // iterate over all values (there are none), and if any don't match we return false; if
+        //     // all match (they will, there are none), we update the node's type to be the target_type.
+        //     //
+        //     // Consider  `val fns: ((Int) => Int)[] = [x => x]`; the rhs would be
+        //     // Type::Array(Box::new(Type::Fn(vec![("x", Type::Unknown, false)], Box::new(Type::Unknown)))).
+        //     // Iterate over each of the nodes in the array (recursively calling are_types_equivalent). For lambdas,
+        //     // this will re-typecheck the lambda using the captured scope, and will mutate the node (will rust allow this?).
+        //     // Then when we get "back up to the top", set the type of the array node to be the target_type if nothing goes wrong,
+        //     // and return true.
+        // }
+
         let typ = match (&node, target_type) {
             (TypedAstNode::Lambda(token, lambda_node), Type::Fn(args, _)) => {
                 let has_unknown = lambda_node.args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
                 if has_unknown {
-                    let orig_node = lambda_node.orig_node.as_ref().unwrap().clone();
+                    let (orig_node, orig_scopes) = lambda_node.orig_node.as_ref().unwrap().clone();
 
                     let mut target_args_iter = args.iter();
                     let mut lambda_args_iter = lambda_node.args.iter();
@@ -150,7 +166,13 @@ impl Typechecker {
                         }
                     }
 
+                    let mut scopes = orig_scopes;
+                    std::mem::swap(&mut self.scopes, &mut scopes);
+
                     let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some(retyped_args))?;
+
+                    std::mem::swap(&mut self.scopes, &mut scopes);
+
                     *node = retyped_lambda;
                     return Ok(true);
                 } else {
@@ -721,7 +743,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                     let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
                                     Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ })
                                 } else {
-                                    Ok(body_type)
+                                    Ok(node.get_type())
                                 }
                             }
                         }
@@ -1157,7 +1179,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             else_type: else_block_type,
                         })
                     } else {
-                        Ok(if_block_type)
+                        Ok(if_block_last.get_type())
                     }
                 }
             }
@@ -1531,6 +1553,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let orig_node = node.clone();
         let LambdaNode { args, body } = node;
 
+        let orig_scopes = self.scopes.clone();
         self.scopes.push(Scope::new(ScopeKind::Lambda(token.clone())));
 
         let typed_args = if let Some(args) = args_override {
@@ -1553,7 +1576,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let typed_node = if has_unknown {
             let fn_type = Type::Fn(fn_arg_types, Box::new(Type::Unknown));
-            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node: Some(orig_node) };
+            let orig_node = Some((orig_node, orig_scopes));
+            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node };
             TypedAstNode::Lambda(token, node)
         } else {
             let typed_body = self.visit_fn_body(body)?;
@@ -4582,15 +4606,18 @@ mod tests {
                 typ: Type::Fn(vec![("a".to_string(), Type::Unknown, false)], Box::new(Type::Unknown)),
                 args: vec![(ident_token!((1, 1), "a"), Type::Unknown, None)],
                 typed_body: None,
-                orig_node: Some(LambdaNode {
-                    args: vec![(ident_token!((1, 1), "a"), None, None)],
-                    body: vec![
-                        AstNode::Literal(
-                            Token::String(Position::new(1, 6), "hello".to_string()),
-                            AstLiteralNode::StringLiteral("hello".to_string()),
-                        )
-                    ],
-                }),
+                orig_node: Some((
+                    LambdaNode {
+                        args: vec![(ident_token!((1, 1), "a"), None, None)],
+                        body: vec![
+                            AstNode::Literal(
+                                Token::String(Position::new(1, 6), "hello".to_string()),
+                                AstLiteralNode::StringLiteral("hello".to_string()),
+                            )
+                        ],
+                    },
+                    vec![Scope::root_scope()]
+                )),
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -4604,25 +4631,28 @@ mod tests {
                     (ident_token!((1, 2), "a"), Type::Unknown, None),
                     (ident_token!((1, 5), "b"), Type::String, Some(string_literal!((1, 9), "b"))),
                 ],
-                orig_node: Some(LambdaNode {
-                    args: vec![
-                        (ident_token!((1, 2), "a"), None, None),
-                        (
-                            ident_token!((1, 5), "b"),
-                            None,
-                            Some(AstNode::Literal(
-                                Token::String(Position::new(1, 9), "b".to_string()),
-                                AstLiteralNode::StringLiteral("b".to_string()),
-                            ))
-                        ),
-                    ],
-                    body: vec![
-                        AstNode::Literal(
-                            Token::String(Position::new(1, 17), "hello".to_string()),
-                            AstLiteralNode::StringLiteral("hello".to_string()),
-                        )
-                    ],
-                }),
+                orig_node: Some((
+                    LambdaNode {
+                        args: vec![
+                            (ident_token!((1, 2), "a"), None, None),
+                            (
+                                ident_token!((1, 5), "b"),
+                                None,
+                                Some(AstNode::Literal(
+                                    Token::String(Position::new(1, 9), "b".to_string()),
+                                    AstLiteralNode::StringLiteral("b".to_string()),
+                                ))
+                            ),
+                        ],
+                        body: vec![
+                            AstNode::Literal(
+                                Token::String(Position::new(1, 17), "hello".to_string()),
+                                AstLiteralNode::StringLiteral("hello".to_string()),
+                            )
+                        ],
+                    },
+                    vec![Scope::root_scope()]
+                )),
                 typed_body: None,
             },
         );
@@ -4640,6 +4670,73 @@ mod tests {
                     string_literal!((1, 16), "hello")
                 ]),
                 orig_node: None,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_lambda_closure() -> TestResult {
+        let typed_ast = typecheck("\
+          func getAdder(x: Int): (Int) => Int {\n\
+            y => x + y\n\
+          }\
+        ")?;
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: ident_token!((1, 6), "getAdder"),
+                args: vec![
+                    (ident_token!((1, 15), "x"), Type::Int, None)
+                ],
+                ret_type: Type::Fn(vec![("y".to_string(), Type::Int, false)], Box::new(Type::Int)),
+                body: vec![
+                    TypedAstNode::Lambda(
+                        Token::Arrow(Position::new(2, 3)),
+                        TypedLambdaNode {
+                            typ: Type::Fn(
+                                vec![("y".to_string(), Type::Int, false)],
+                                Box::new(Type::Int),
+                            ),
+                            args: vec![
+                                (ident_token!((2, 1), "y"), Type::Int, None)
+                            ],
+                            orig_node: None,
+                            typed_body: Some(vec![
+                                TypedAstNode::Binary(
+                                    Token::Plus(Position::new(2, 8)),
+                                    TypedBinaryNode {
+                                        typ: Type::Int,
+                                        op: BinaryOp::Add,
+                                        left: Box::new(TypedAstNode::Identifier(
+                                            ident_token!((2, 6), "x"),
+                                            TypedIdentifierNode {
+                                                typ: Type::Int,
+                                                name: "x".to_string(),
+                                                scope_depth: 1,
+                                                is_mutable: false,
+                                            },
+                                        )),
+                                        right: Box::new(TypedAstNode::Identifier(
+                                            ident_token!((2, 10), "y"),
+                                            TypedIdentifierNode {
+                                                typ: Type::Int,
+                                                name: "y".to_string(),
+                                                scope_depth: 2,
+                                                is_mutable: false,
+                                            },
+                                        )),
+                                    },
+                                )
+                            ]),
+                        },
+                    )
+                ],
+                scope_depth: 0,
+                is_recursive: false,
+                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
