@@ -10,7 +10,7 @@ use crate::builtins::native_types::{NativeArray, NativeType};
 use crate::common::util::random_string;
 use crate::common::typed_ast_util::{wrap_in_iife, get_anon_name};
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Local {
     name: String,
     depth: usize,
@@ -30,10 +30,10 @@ pub struct Upvalue {
     depth: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum ScopeKind { Root, If, Func, Loop, Block }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct Scope {
     kind: ScopeKind,
     num_locals: usize,
@@ -147,12 +147,32 @@ impl Compiler {
         const_idx
     }
 
-    fn write_pops(&mut self, num_pops: usize, line: usize) {
-        if num_pops == 1 {
+    fn write_pops(&mut self, popped_locals: &Vec<Local>, line: usize) {
+        let ops = popped_locals.iter()
+            .map(|local| if local.is_captured && !local.is_closed { Opcode::CloseUpvalueAndPop } else { Opcode::Pop })
+            .collect::<Vec<_>>();
+
+        let mut num_conseq_pops = 0;
+        for op in ops {
+            if op == Opcode::Pop {
+                num_conseq_pops += 1;
+            } else { // op = CloseUpvalueAndPop
+                if num_conseq_pops == 1 {
+                    self.write_opcode(Opcode::Pop, line);
+                } else if num_conseq_pops != 0 {
+                    self.write_opcode(Opcode::PopN, line);
+                    self.write_byte(num_conseq_pops, line);
+                }
+                num_conseq_pops = 0;
+
+                self.write_opcode(Opcode::CloseUpvalueAndPop, line);
+            }
+        }
+        if num_conseq_pops == 1 {
             self.write_opcode(Opcode::Pop, line);
-        } else if num_pops != 0 {
+        } else if num_conseq_pops != 0 {
             self.write_opcode(Opcode::PopN, line);
-            self.write_byte(num_pops as u8, line);
+            self.write_byte(num_conseq_pops, line);
         }
     }
 
@@ -355,8 +375,8 @@ impl Compiler {
             }
 
             if is_last_node {
-                let num_pops = self.pop_scope_locals().len();
-                self.write_pops(num_pops, line);
+                let pops = self.pop_scope_locals();
+                self.write_pops(&pops, line);
             }
         }
 
@@ -720,18 +740,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_function_decl(&mut self, token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
         let func_name = Token::get_ident_name(&node.name);
         let is_recursive = node.is_recursive;
-        let is_anon = node.is_anon;
         let line = token.get_position().line;
 
-        if !is_anon {
-            if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-                self.write_int_constant(0, line);
-                self.write_constant(Value::Str(func_name.clone()), line);
-                self.write_opcode(Opcode::GStore, line);
-            } else if is_recursive {
-                self.write_int_constant(0, line);
-                self.push_local(&func_name);
-            }
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+            self.write_int_constant(0, line);
+            self.write_constant(Value::Str(func_name.clone()), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else if is_recursive {
+            self.write_int_constant(0, line);
+            self.push_local(&func_name);
         }
 
         let fn_value = self.compile_function_decl(
@@ -752,21 +769,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::ClosureMk, line);
         }
 
-        if !is_anon {
-            if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-                self.write_constant(Value::Str(func_name.clone()), line);
-                self.write_opcode(Opcode::GStore, line);
-            } else if is_recursive {
-                let scope_depth = self.get_fn_depth();
-                let (local, fn_local_idx) = self.resolve_local(&func_name, scope_depth)
-                    .expect("There should have been a function pre-defined with this name");
-                local.is_closed = true;
-                self.write_store_local_instr(fn_local_idx, line);
-                self.metadata.stores.push(func_name.clone());
-                self.write_opcode(Opcode::CloseUpvalue, line);
-            } else {
-                self.push_local(func_name);
-            }
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+            self.write_constant(Value::Str(func_name.clone()), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else if is_recursive {
+            let scope_depth = self.get_fn_depth();
+            let (local, fn_local_idx) = self.resolve_local(&func_name, scope_depth)
+                .expect("There should have been a function pre-defined with this name");
+            local.is_closed = true;
+            self.write_store_local_instr(fn_local_idx, line);
+            self.metadata.stores.push(func_name.clone());
+            self.write_opcode(Opcode::CloseUpvalue, line);
+        } else {
+            self.push_local(func_name);
         }
 
         Ok(())
@@ -1021,7 +1036,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 // This is documented in #35
                 if is_last_line {
-                    let mut num_pops = compiler.pop_scope_locals().len();
+                    let mut pops = compiler.pop_scope_locals();
 
                     if !is_stmt {
                         let first_local_idx = compiler.current_scope().first_local_idx;
@@ -1031,11 +1046,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
                             // Push an empty string into metadata since this isn't a "real" store
                             compiler.metadata.stores.push("".to_string());
                         }
-                        if num_pops != 0 {
-                            num_pops -= 1;
+                        if pops.len() != 0 {
+                            pops.remove(0);
                         }
                     }
-                    compiler.write_pops(num_pops, line);
+                    compiler.write_pops(&pops, line);
                 }
             }
             Ok(())
@@ -1368,14 +1383,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // takes care of making sure the compiler's `locals` vec is in the correct state; here we
         // just need to emit the runtime popping. It's worth noting that locals in scopes deeper than
         // the loop also need to be popped
-        let mut num_locals_to_pop = 0;
-        for scope in self.scopes.iter().rev() {
-            num_locals_to_pop += scope.num_locals;
-            if scope.kind == ScopeKind::Loop {
+        let mut scopes_iter = self.scopes.iter().rev();
+        let mut split_idx = self.locals.len() as i64;
+        loop {
+            let Scope { num_locals, kind, .. } = scopes_iter.next().unwrap();
+            split_idx -= *num_locals as i64;
+            if kind == &ScopeKind::Loop {
                 break;
             }
         }
-        self.write_pops(num_locals_to_pop, line);
+        let mut locals_to_pop = self.locals.split_off(split_idx as usize);
+        self.write_pops(&locals_to_pop, line);
+        self.locals.append(&mut locals_to_pop);
 
         self.write_opcode(Opcode::Jump, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body (see visit_while_loop)

@@ -758,7 +758,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         let scope_depth = self.scopes.len() - 1;
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, is_anon: false }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -1191,8 +1191,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // If-expressions will be compiled to IIFEs, in order to ensure proper local
         // management and to ensure the stack doesn't get polluted mid-expression.
         let if_expr_node = TypedAstNode::IfExpression(token.clone(), node);
-        let scope_depth = self.scopes.len() - 1;
-        Ok(wrap_in_proper_iife(&token, if_expr_node, &typ, scope_depth))
+        Ok(wrap_in_proper_iife(&token, if_expr_node, &typ))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -2366,7 +2365,6 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
-                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2398,7 +2396,6 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
-                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2443,7 +2440,6 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
-                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -2789,7 +2785,6 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
-                                is_anon: false,
                             },
                         ),
                     ),
@@ -2834,7 +2829,6 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
-                                is_anon: false,
                             },
                         ),
                     ),
@@ -2887,7 +2881,6 @@ mod tests {
                                 ],
                                 scope_depth: 1,
                                 is_recursive: false,
-                                is_anon: false,
                             },
                         )),
                     ),
@@ -4736,7 +4729,6 @@ mod tests {
                 ],
                 scope_depth: 0,
                 is_recursive: false,
-                is_anon: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);

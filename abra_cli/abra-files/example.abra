@@ -1,5 +1,17 @@
-func getAdder(x: Int): (Int) => Int {
-  y => x + y
+var f: () => Int
+if false {
+  val x = 0
+  f = () => x
+} else {
+  val y = 1
+  f = () => y
 }
 
-println(getAdder(3)(2))
+println(f())
+
+while true {
+  val x = 123
+  f = () => x
+  break
+}
+println(f())
