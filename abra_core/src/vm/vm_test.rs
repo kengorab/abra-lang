@@ -1384,4 +1384,36 @@ mod tests {
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_lambdas_closing_over_block_bindings() {
+        let input = "\
+          var f: () => Int\n\
+          if true {\n\
+            val x = 24\n\
+            f = () => x\n\
+          } else {\n\
+            val y = 12\n\
+            f = () => y\n\
+          }\n\
+          f()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = "\
+          var f: () => Int\n\
+          while true {\n\
+            val x = 24\n\
+            f = () => x\n\
+            break\n\
+          }\n\
+          f()\
+        ";
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+    }
 }
