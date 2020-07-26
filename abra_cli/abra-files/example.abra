@@ -1,17 +1,7 @@
+func call(fn: (Int) => Int, value: Int) = fn(value)
 var f: () => Int
-if false {
-  val x = 0
-  f = () => x
-} else {
-  val y = 1
+call((x, y = 1) => {
   f = () => y
-}
-
-println(f())
-
-while true {
-  val x = 123
-  f = () => x
-  break
-}
+  x + y + 1
+}, 22)
 println(f())
