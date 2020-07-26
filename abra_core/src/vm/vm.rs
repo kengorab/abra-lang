@@ -131,10 +131,14 @@ impl VM {
         match self.stack.get_mut(index) {
             Some(slot) => *slot = value,
             None => {
-                let frame = self.call_stack.last().unwrap();
-                let chunk_name = &frame.name;
-                let offset = frame.ip;
-                panic!("Runtime error [{}+{}]:\n  No stack slot available at index {}", chunk_name, offset, index)
+                if index == self.stack.len() {
+                    self.stack.push(value)
+                } else {
+                    let frame = self.call_stack.last().unwrap();
+                    let chunk_name = &frame.name;
+                    let offset = frame.ip;
+                    panic!("Runtime error [{}+{}]:\n  No stack slot available at index {}", chunk_name, offset, index)
+                }
             }
         }
     }

@@ -1,10 +1,17 @@
-type Counter {
-  value: Int = 0
-
-  func tickUp(self): Counter {
-    self.value = self.value + 1
-    self
-  }
+var f: () => Int
+if false {
+  val x = 0
+  f = () => x
+} else {
+  val y = 1
+  f = () => y
 }
 
-Counter().tickUp().tickUp().value
+println(f())
+
+while true {
+  val x = 123
+  f = () => x
+  break
+}
+println(f())

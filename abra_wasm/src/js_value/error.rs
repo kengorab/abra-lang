@@ -318,6 +318,21 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
+                TypecheckerError::ForbiddenUnknownType { token, .. } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "forbiddenUnknownType")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidInstantiation { token, typ } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidInstantiation")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("type", &JsType(typ))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

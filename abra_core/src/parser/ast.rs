@@ -21,6 +21,7 @@ pub enum AstNode {
     WhileLoop(Token, WhileLoopNode),
     Break(Token),
     Accessor(Token, AccessorNode),
+    Lambda(Token, LambdaNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,6 +104,12 @@ pub struct FunctionDeclNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LambdaNode {
+    pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
+    pub body: Vec<AstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
@@ -170,6 +177,10 @@ pub enum TypeIdentifier {
     Normal { ident: Token },
     Array { inner: Box<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
+    Func {
+        args: Vec<TypeIdentifier>,
+        ret: Box<TypeIdentifier>
+    },
 }
 
 impl TypeIdentifier {
@@ -177,7 +188,8 @@ impl TypeIdentifier {
         match self {
             TypeIdentifier::Normal { ident } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
-            TypeIdentifier::Option { inner } => inner.get_ident()
+            TypeIdentifier::Option { inner } => inner.get_ident(),
+            TypeIdentifier::Func { ret, .. } => ret.get_ident()
         }
     }
 }

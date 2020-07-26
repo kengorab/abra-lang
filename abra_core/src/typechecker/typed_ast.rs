@@ -1,6 +1,7 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode};
 use crate::lexer::tokens::Token;
+use crate::typechecker::typechecker::Scope;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedAstNode {
@@ -10,6 +11,7 @@ pub enum TypedAstNode {
     Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
     Map(Token, TypedMapNode),
+    Lambda(Token, TypedLambdaNode),
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
     TypeDecl(Token, TypedTypeDeclNode),
@@ -36,6 +38,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(token, _) => token,
             TypedAstNode::Array(token, _) => token,
             TypedAstNode::Map(token, _) => token,
+            TypedAstNode::Lambda(token, _) => token,
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
             TypedAstNode::TypeDecl(token, _) => token,
@@ -67,16 +70,8 @@ impl TypedAstNode {
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::Map(_, node) => node.typ.clone(),
-            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { is_anon, args, ret_type, .. }) => {
-                if !is_anon { return Type::Unit; }
-
-                let args = args.iter().map(|(ident, typ, default_value)| {
-                    let name = Token::get_ident_name(ident);
-                    (name, typ.clone(), default_value.is_some())
-                }).collect();
-
-                Type::Fn(args, Box::new(ret_type.clone()))
-            }
+            TypedAstNode::Lambda(_, node) => node.typ.clone(),
+            TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
@@ -137,6 +132,14 @@ pub struct TypedMapNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TypedLambdaNode {
+    pub typ: Type,
+    pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
+    pub typed_body: Option<Vec<TypedAstNode>>,
+    pub orig_node: Option<(LambdaNode, Vec<Scope>)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypedBindingDeclNode {
     // Must be a Token::Ident
     pub ident: Token,
@@ -155,7 +158,7 @@ pub struct TypedFunctionDeclNode {
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
     pub is_recursive: bool,
-    pub is_anon: bool,
+    // pub is_anon: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
