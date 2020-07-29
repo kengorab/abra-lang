@@ -1,7 +1,13 @@
-func call(fn: (Int) => Int, value: Int) = fn(value)
-var f: () => Int
-call((x, y = 1) => {
-  f = () => y
-  x + y + 1
-}, 22)
-println(f())
+0 + if true {
+  val a = 123
+  val b = 456
+  a + b
+} else {
+  0
+} + if false {
+  0
+} else {
+  val a = 123
+  val b = 456
+  (a + b) * -1
+}

@@ -1,6 +1,5 @@
 use crate::builtins::native_types::field_for_type;
 use crate::common::ast_visitor::AstVisitor;
-use crate::common::typed_ast_util::wrap_in_proper_iife;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier};
 use crate::vm::prelude::Prelude;
@@ -1188,10 +1187,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         node.typ = typ.clone();
 
-        // If-expressions will be compiled to IIFEs, in order to ensure proper local
-        // management and to ensure the stack doesn't get polluted mid-expression.
-        let if_expr_node = TypedAstNode::IfExpression(token.clone(), node);
-        Ok(wrap_in_proper_iife(&token, if_expr_node, &typ))
+        Ok(TypedAstNode::IfExpression(token.clone(), node))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
