@@ -248,4 +248,3 @@ pub struct TypedAccessorNode {
     pub field_idx: usize,
     pub is_opt_safe: bool,
 }
-

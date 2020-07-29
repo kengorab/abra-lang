@@ -2,13 +2,13 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, };
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
 use crate::common::util::random_string;
-use crate::common::typed_ast_util::{wrap_in_iife, get_anon_name};
+use crate::common::compiler_util::get_anon_name;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Local {
@@ -322,9 +322,10 @@ impl Compiler {
         }
 
         if mark_local {
+            let (_, local_idx) = self.resolve_local(name.as_ref(), depth).unwrap();
             self.metadata.local_marks.push(name.as_ref().to_string());
             self.write_opcode(Opcode::MarkLocal, line);
-            self.write_byte((self.locals.len() - 1) as u8, line);
+            self.write_byte(local_idx as u8, line);
         }
     }
 
@@ -607,10 +608,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 },
             );
 
-            // Like other if-expressions, this is wrapped in an IIFE to protect against stack
-            // pollution mid-expression.
-            let iife = wrap_in_iife(&token, if_expr);
-            self.visit(iife)?;
+            self.visit(if_expr)?;
             return Ok(());
         }
 
@@ -1260,11 +1258,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 ));
                 layer_number -= 1;
             }
+            let if_node = if_node.expect("It should be Some after the unwinding is through");
 
-            // Like other if-expressions, this is wrapped in an IIFE to protect against stack
-            // pollution mid-expression.
-            let iife = wrap_in_iife(&token, if_node.unwrap());
-            self.visit(iife)?;
+            self.visit(if_node)?;
         } else {
             let TypedAccessorNode { target, field_name, field_idx, .. } = node;
             self.metadata.field_gets.push(field_name);
@@ -1424,7 +1420,7 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
-    use crate::common::typed_ast_util::ANON_IDX;
+    use crate::common::compiler_util::ANON_IDX;
 
     fn get_native_fn(name: &str) -> NativeFn {
         native_fns().into_iter().find(|(f, _)| &f.name == &name).unwrap().1
@@ -1688,39 +1684,27 @@ mod tests {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
             code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::ArrMk as u8, 2,
+                Opcode::IConst2 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Dup as u8,
                 Opcode::Nil as u8,
-                Opcode::Constant as u8, 3,
-                Opcode::Invoke as u8, 0, 1,
+                Opcode::Neq as u8,
+                Opcode::JumpIfF as u8, 6,
+                Opcode::MarkLocal as u8, 0,
+                Opcode::LLoad0 as u8,
+                Opcode::LStore0 as u8,
+                Opcode::Jump as u8, 3,
+                Opcode::Pop as u8,
+                Opcode::Constant as u8, 2,
                 Opcode::Return as u8
             ],
             constants: vec![
                 new_string_obj("a"),
                 new_string_obj("b"),
                 new_string_obj("c"),
-                Value::Fn(FnValue {
-                    name: "$anon_0".to_string(),
-                    code: vec![
-                        Opcode::Constant as u8, 0,
-                        Opcode::Constant as u8, 1,
-                        Opcode::ArrMk as u8, 2,
-                        Opcode::IConst2 as u8,
-                        Opcode::ArrLoad as u8,
-                        Opcode::Dup as u8,
-                        Opcode::Nil as u8,
-                        Opcode::Neq as u8,
-                        Opcode::JumpIfF as u8, 6,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::LLoad1 as u8,
-                        Opcode::LStore1 as u8,
-                        Opcode::Jump as u8, 3,
-                        Opcode::Pop as u8,
-                        Opcode::Constant as u8, 2,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8
-                    ],
-                    upvalues: vec![],
-                    receiver: None,
-                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2049,7 +2033,7 @@ mod tests {
                     code: vec![
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
-                        Opcode::MarkLocal as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
