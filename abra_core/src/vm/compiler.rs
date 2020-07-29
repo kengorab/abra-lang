@@ -58,6 +58,7 @@ pub struct Metadata {
     pub uv_loads: Vec<String>,
     pub uv_stores: Vec<String>,
     pub field_gets: Vec<String>,
+    pub local_marks: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -304,7 +305,7 @@ impl Compiler {
         self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
 
-    fn push_local<S: AsRef<str>>(&mut self, name: S) {
+    fn push_local<S: AsRef<str>>(&mut self, name: S, line: usize, mark_local: bool) {
         let depth = self.get_fn_depth();
         self.locals.push(Local {
             name: name.as_ref().to_string(),
@@ -318,6 +319,12 @@ impl Compiler {
         if scope.first_local_idx == None {
             let first_local_idx = self.locals.iter().filter(|l| l.depth == depth).count();
             scope.first_local_idx = Some(first_local_idx - 1);
+        }
+
+        if mark_local {
+            self.metadata.local_marks.push(name.as_ref().to_string());
+            self.write_opcode(Opcode::MarkLocal, line);
+            self.write_byte((self.locals.len() - 1) as u8, line);
         }
     }
 
@@ -432,14 +439,19 @@ impl Compiler {
 
         // Push return slot as local idx 0, if return value exists
         if ret_type != Type::Unit {
-            self.push_local("<ret>");
+            // We do NOT want to mark function parameters (or return values) as locals, since they're
+            // pushed onto the stack before the function's call frame starts, so, the entry
+            // in the frame's local_addrs would be incorrect. See the handling of Opcode::Invoke in the VM
+            self.push_local("<ret>", line, false);
         }
 
         // Track function arguments in local bindings, also track # optional args.
         // Argument values will already be on the stack.
         for (arg_token, _, default_value) in args.iter() {
             let ident = Token::get_ident_name(arg_token);
-            self.push_local(&ident);
+
+            // See comment above about not marking locals
+            self.push_local(&ident, line, false);
 
             // This basically adds, for each default-valued parameter `p`:
             // if (p == nil) { p = defaultValueForP }
@@ -727,7 +739,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             } else {
                 self.write_opcode(Opcode::Nil, line);
             }
-            self.push_local(ident);
+            self.push_local(ident, line, true);
         }
         Ok(())
     }
@@ -748,7 +760,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::GStore, line);
         } else if is_recursive {
             self.write_int_constant(0, line);
-            self.push_local(&func_name);
+            self.push_local(&func_name, line, true);
         }
 
         let fn_value = self.compile_function_decl(
@@ -781,7 +793,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.metadata.stores.push(func_name.clone());
             self.write_opcode(Opcode::CloseUpvalue, line);
         } else {
-            self.push_local(func_name);
+            self.push_local(func_name, line, true);
         }
 
         Ok(())
@@ -1083,7 +1095,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // scope, it'll be properly popped when the scope ends. Note that there is that value
             // floating on the stack, which is fine here since it's a local, but when we instead go
             // to the else branch...
-            self.push_local(Token::get_ident_name(ident));
+            self.push_local(Token::get_ident_name(ident), line, true);
         }
         compile_block(self, if_block, is_stmt)?;
         self.pop_scope();
@@ -1273,9 +1285,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Push intrinsic variables $idx and $iter
         self.push_scope(ScopeKind::Loop); // Create wrapper scope to hold invisible variables
         self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
-        self.push_local("$idx");
+        self.push_local("$idx", line, true);
         self.visit(*iterator)?; // Local 1 is the iterator
-        self.push_local("$iter");
+        self.push_local("$iter", line, true);
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
@@ -1296,6 +1308,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$idx", line);
         load_intrinsic(self, "$iter", line);
         self.write_opcode(Opcode::GetField, line);
+        self.metadata.field_gets.push("length".to_string());
         self.write_byte(NativeArray::get_field_idx(&Type::Array(Box::new(Type::Any)), "length") as u8, line);
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
@@ -1307,12 +1320,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
-        self.push_local(Token::get_ident_name(&iteratee));
+        self.push_local(Token::get_ident_name(&iteratee), line, true);
         if let Some(ident) = index_ident {
             let (_, slot) = self.resolve_local(&"$idx".to_string(), self.get_fn_depth()).unwrap();
             self.write_load_local_instr(slot, line); // Load $idx
             self.metadata.loads.push("$idx".to_string());
-            self.push_local(Token::get_ident_name(&ident));
+            self.push_local(Token::get_ident_name(&ident), line, true);
         }
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::IConst1, line);
@@ -1342,7 +1355,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         if let Some(ident) = &condition_binding {
             // If there is a condition binding, create a new local with initial value of Nil
             self.write_opcode(Opcode::Nil, line);
-            self.push_local(Token::get_ident_name(ident));
+            self.push_local(Token::get_ident_name(ident), line, true);
         }
 
         self.visit(*condition)?;
@@ -1695,7 +1708,8 @@ mod tests {
                         Opcode::Dup as u8,
                         Opcode::Nil as u8,
                         Opcode::Neq as u8,
-                        Opcode::JumpIfF as u8, 4,
+                        Opcode::JumpIfF as u8, 6,
+                        Opcode::MarkLocal as u8, 1,
                         Opcode::LLoad1 as u8,
                         Opcode::LStore1 as u8,
                         Opcode::Jump as u8, 3,
@@ -1981,8 +1995,10 @@ mod tests {
                     name: "a".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
+                        Opcode::MarkLocal as u8, 1,
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
+                        Opcode::MarkLocal as u8, 2,
                         Opcode::Pop as u8,
                         Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Pop as u8,
@@ -2033,6 +2049,7 @@ mod tests {
                     code: vec![
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
+                        Opcode::MarkLocal as u8, 2,
                         Opcode::Pop as u8,
                         Opcode::Return as u8,
                     ],
@@ -2048,8 +2065,10 @@ mod tests {
                     name: "a".to_string(),
                     code: vec![
                         Opcode::IConst3 as u8,
+                        Opcode::MarkLocal as u8, 1,
                         Opcode::Constant as u8, 2,
                         Opcode::ClosureMk as u8,
+                        Opcode::MarkLocal as u8, 2,
                         Opcode::Pop as u8,
                         Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Pop as u8,
@@ -2204,8 +2223,10 @@ mod tests {
                     name: "outer".to_string(),
                     code: vec![
                         Opcode::IConst1 as u8,
+                        Opcode::MarkLocal as u8, 0,
                         Opcode::Constant as u8, 1,
                         Opcode::ClosureMk as u8,
+                        Opcode::MarkLocal as u8, 1,
                         Opcode::Pop as u8,
                         Opcode::CloseUpvalueAndPop as u8,
                         Opcode::Return as u8
@@ -2485,8 +2506,9 @@ mod tests {
                 Opcode::Constant as u8, 1,
                 Opcode::GStore as u8,
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 7,
+                Opcode::JumpIfF as u8, 9,
                 Opcode::Constant as u8, 2,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::IConst1 as u8,
                 Opcode::IAdd as u8,
@@ -2541,7 +2563,8 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 7,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
@@ -2597,9 +2620,11 @@ mod tests {
                     code: vec![
                         Opcode::Constant as u8, 0,
                         Opcode::GLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
                         Opcode::LLoad1 as u8,
                         Opcode::LLoad2 as u8,
                         Opcode::IAdd as u8,
+                        Opcode::MarkLocal as u8, 3,
                         Opcode::LLoad3 as u8,
                         Opcode::LStore0 as u8,
                         Opcode::Pop as u8,
@@ -2641,6 +2666,7 @@ mod tests {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::IConst1 as u8,
+                        Opcode::MarkLocal as u8, 0,
                         Opcode::Constant as u8, 1,
                         Opcode::Constant as u8, 2,
                         Opcode::Invoke as u8, 1, 0,
@@ -2748,12 +2774,14 @@ mod tests {
                     name: "abc".to_string(),
                     code: vec![
                         Opcode::Constant as u8, 1,
+                        Opcode::MarkLocal as u8, 2,
                         Opcode::LLoad1 as u8,
                         Opcode::Nil as u8,
                         Opcode::LLoad1 as u8,
                         Opcode::LLoad2 as u8,
                         Opcode::Invoke as u8, 1, 1,
                         Opcode::IAdd as u8,
+                        Opcode::MarkLocal as u8, 3,
                         Opcode::LLoad3 as u8,
                         Opcode::LStore0 as u8,
                         Opcode::Pop as u8,
@@ -2944,6 +2972,7 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::Nil as u8,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::ArrMk as u8, 2,
@@ -2957,7 +2986,7 @@ mod tests {
                 Opcode::LLoad0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 18,
+                Opcode::JumpB as u8, 20,
                 Opcode::Pop as u8,
                 Opcode::Return as u8
             ],
@@ -2984,11 +3013,12 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 16,
+                Opcode::JumpIfF as u8, 18,
                 Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
                 Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GStore as u8,
@@ -2996,7 +3026,7 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 23,
+                Opcode::JumpB as u8, 25,
                 Opcode::Return as u8
             ],
             constants: vec![
@@ -3017,11 +3047,12 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 6,
+                Opcode::JumpIfF as u8, 8,
                 Opcode::IConst1 as u8,
-                Opcode::Pop as u8,      // <
-                Opcode::Jump as u8, 2,  // < These 3 instrs are generated by the break
-                Opcode::JumpB as u8, 9, // These 2 get falsely attributed to the break, because of #32
+                Opcode::MarkLocal as u8, 0,
+                Opcode::Pop as u8,       // <
+                Opcode::Jump as u8, 2,   // < These 3 instrs are generated by the break
+                Opcode::JumpB as u8, 11, // These 2 get falsely attributed to the break, because of #32
                 Opcode::Return as u8
             ],
             constants: vec![],
@@ -3040,17 +3071,19 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 14,
+                Opcode::JumpIfF as u8, 18,
                 Opcode::IConst1 as u8,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::IConst1 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 7,
                 Opcode::IConst2 as u8,
+                Opcode::MarkLocal as u8, 1,
                 Opcode::PopN as u8, 2,  // <
                 Opcode::Jump as u8, 3,  // < These 3 instrs are generated by the break
                 Opcode::Pop as u8,      // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
-                Opcode::JumpB as u8, 17,
+                Opcode::JumpB as u8, 21,
                 Opcode::Return as u8
             ],
             constants: vec![],
@@ -3085,18 +3118,21 @@ mod tests {
                 // val $iter = arr
                 // if $idx < arrayLen($iter) {
                 Opcode::IConst0 as u8,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::Constant as u8, 2,
                 Opcode::GLoad as u8,
+                Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
                 Opcode::LLoad1 as u8,
                 Opcode::GetField as u8, 0,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 20,
+                Opcode::JumpIfF as u8, 22,
 
                 // a = $iter[$idx]
                 Opcode::LLoad1 as u8,
                 Opcode::LLoad0 as u8,
                 Opcode::ArrLoad as u8,
+                Opcode::MarkLocal as u8, 2,
 
                 // $idx += 1
                 Opcode::LLoad0 as u8,
@@ -3113,7 +3149,7 @@ mod tests {
                 Opcode::Constant as u8, 3,
                 Opcode::Invoke as u8, 1, 0,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 27,
+                Opcode::JumpB as u8, 29,
 
                 // Cleanup/end
                 Opcode::Pop as u8,

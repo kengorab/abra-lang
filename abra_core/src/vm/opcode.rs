@@ -77,6 +77,7 @@ pub enum Opcode {
     CloseUpvalueAndPop,
     Pop,
     PopN,
+    MarkLocal,
     Dup,
     Return,
 }
@@ -160,8 +161,9 @@ impl From<&u8> for Opcode {
             73 => Opcode::CloseUpvalueAndPop,
             74 => Opcode::Pop,
             75 => Opcode::PopN,
-            76 => Opcode::Dup,
-            77 => Opcode::Return,
+            76 => Opcode::MarkLocal,
+            77 => Opcode::Dup,
+            78 => Opcode::Return,
             _ => unreachable!()
         }
     }
@@ -182,6 +184,7 @@ impl Opcode {
             Opcode::LLoad |
             Opcode::ULoad |
             Opcode::New |
+            Opcode::MarkLocal |
             Opcode::GetField => 1,
             Opcode::Invoke => 2,
             _ => 0

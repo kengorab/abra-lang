@@ -9,6 +9,7 @@ pub fn disassemble(module: Module, metadata: Metadata) -> String {
         current_uv_load: 0,
         current_store: 0,
         current_field_get: 0,
+        current_local_mark: 0,
         module,
         metadata,
     };
@@ -20,6 +21,7 @@ struct Disassembler {
     current_uv_load: usize,
     current_store: usize,
     current_field_get: usize,
+    current_local_mark: usize,
     module: Module,
     metadata: Metadata,
 }
@@ -28,7 +30,7 @@ impl Disassembler {
     fn disassemble_bytecode(&mut self, name: String, code: Vec<u8>) -> Vec<String> {
         let mut labels: HashMap<usize, String> = HashMap::new();
 
-        let mut slot_idx: i8 = -1;
+        let mut slot_idx: i16 = -1;
         let mut code = code.iter();
         let mut disassembled = Vec::new();
         while let Some(byte) = code.next() {
@@ -59,13 +61,13 @@ impl Disassembler {
                 Opcode::JumpIfF | Opcode::Jump => {
                     let imm = imms[0].expect("JumpIfF/Jump requires an immediate");
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 + (*imm as i8)) as usize, label.clone());
+                    labels.insert((slot_idx + 1 + (*imm as i16)) as usize, label.clone());
                     acc.push(format!("\t; {}", label))
                 }
                 Opcode::JumpB => {
                     let imm = imms[0].expect("JumpB requires an immediate");
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 - (*imm as i8)) as usize, label.clone());
+                    labels.insert((slot_idx + 1 - (*imm as i16)) as usize, label.clone());
                     acc.push(format!("\t; {}", label))
                 }
                 Opcode::LLoad | Opcode::LLoad0 | Opcode::LLoad1 | Opcode::LLoad2 | Opcode::LLoad3 | Opcode::LLoad4 => {
@@ -104,6 +106,14 @@ impl Disassembler {
                     let ident = self.metadata.field_gets.get(self.current_field_get)
                         .expect(&format!("There should be a field_name in the metadata at index {}", self.current_field_get));
                     self.current_field_get += 1;
+                    if !ident.is_empty() {
+                        acc.push(format!("\t; {}", ident))
+                    }
+                }
+                Opcode::MarkLocal => {
+                    let ident = self.metadata.local_marks.get(self.current_local_mark)
+                        .expect(&format!("There should be a local_mark in the metadata at index {}", self.current_local_mark));
+                    self.current_local_mark += 1;
                     if !ident.is_empty() {
                         acc.push(format!("\t; {}", ident))
                     }

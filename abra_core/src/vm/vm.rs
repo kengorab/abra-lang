@@ -78,9 +78,10 @@ pub struct Upvalue {
 struct CallFrame {
     ip: usize,
     code: Vec<u8>,
-    stack_offset: usize,
+    start_stack_idx: usize,
     name: String,
     upvalues: Vec<Arc<RefCell<Upvalue>>>,
+    local_addrs: Vec<usize>,
 }
 
 #[derive(Clone)]
@@ -115,7 +116,7 @@ impl VM {
     pub fn new(module: Module, ctx: VMContext) -> Self {
         let name = "$main".to_string();
         let Module { code, constants } = module;
-        let root_frame = CallFrame { ip: 0, code, stack_offset: 0, name, upvalues: vec![] };
+        let root_frame = CallFrame { ip: 0, code, start_stack_idx: 0, name, upvalues: vec![], local_addrs: vec![] };
 
         VM {
             ctx,
@@ -172,7 +173,7 @@ impl VM {
     }
 
     fn read_byte(&mut self) -> Option<u8> {
-        let frame: &mut CallFrame = current_frame!(self);
+        let frame = current_frame!(self);
         if frame.code.len() == frame.ip {
             None
         } else {
@@ -190,6 +191,130 @@ impl VM {
 
     fn read_instr(&mut self) -> Option<Opcode> {
         self.read_byte().map(|b| Opcode::from(&b))
+    }
+
+    fn stack_slot_for_local(&mut self, local_idx: usize) -> usize {
+        let CallFrame { local_addrs, .. } = current_frame!(self);
+        // This is worth documenting: if we're trying to resolve a local_idx and we haven't yet recorded
+        // it in local_addrs, just point that local_idx to the top of the stack. This works for the only
+        // case where it's relevant (default-valued arguments, in lambdas), but will probably ultimately
+        // need to be refactored.
+        if local_idx >= local_addrs.len() {
+            local_addrs.push(self.stack.len() - 1);
+        }
+        local_addrs[local_idx]
+    }
+
+    fn load_local(&mut self, local_idx: usize) -> Result<(), InterpretError> {
+        let stack_slot = self.stack_slot_for_local(local_idx);
+        let value = self.stack_get(stack_slot);
+        Ok(self.push(value))
+    }
+
+    fn load_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
+        let frame = current_frame!(self);
+        let uv = frame.upvalues[upvalue_idx].clone();
+        let uv = uv.borrow();
+
+        if uv.is_closed {
+            // TODO: Note, this won't work for mutable upvalues, ie. `myArray.push(1)`
+            let val = uv.val.as_ref()
+                .expect("A closed upvalue should have a val")
+                .clone();
+            self.push(val);
+        } else {
+            let value = self.stack_get(uv.slot_idx);
+            self.push(value);
+        }
+        Ok(())
+    }
+
+    fn store_local(&mut self, local_idx: usize) -> Result<(), InterpretError> {
+        let stack_slot = self.stack_slot_for_local(local_idx);
+        let value = self.pop_expect()?;
+        self.stack_insert_at(stack_slot, value); // TODO: Raise InterpretError when OOB stack_slot
+        Ok(())
+    }
+
+    fn store_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
+        let frame = current_frame!(self);
+        let uv = frame.upvalues[upvalue_idx].clone();
+        let mut uv = (*uv).borrow_mut();
+
+        if uv.is_closed {
+            let value = self.pop_expect()?;
+            uv.val = Some(value);
+        } else {
+            let value = self.pop_expect()?;
+            self.stack_insert_at(uv.slot_idx, value);
+        }
+        Ok(())
+    }
+
+    fn close_upvalues_from_idx(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
+        let max_slot_idx = self.open_upvalues.keys().max();
+        if max_slot_idx.is_none() { return Ok(()); }
+
+        for idx in stack_slot..=*max_slot_idx.unwrap() {
+            match self.open_upvalues.remove(&idx) {
+                None => continue,
+                Some(uv) => {
+                    let mut uv = (*uv).borrow_mut();
+                    uv.is_closed = true;
+                    let value = self.stack_get(uv.slot_idx);
+                    uv.val = Some(value);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn close_upvalues_for_frame(&mut self) -> Result<(), InterpretError> {
+        let start_stack_idx = current_frame!(self).start_stack_idx;
+        self.close_upvalues_from_idx(start_stack_idx)
+    }
+
+    fn close_upvalue(&mut self) -> Result<(), InterpretError> {
+        let cur_stack_slot = self.stack.len() - 1;
+        self.close_upvalues_from_idx(cur_stack_slot)
+    }
+
+    #[inline]
+    fn make_closure(&mut self) -> Result<(), InterpretError> {
+        let function = self.pop_expect()?;
+        let (name, code, upvalues, receiver) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
+            v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
+        }?;
+
+        let captures = upvalues.iter().map(|uv| {
+            match uv.capture_kind {
+                UpvalueCaptureKind::Local { local_idx } => {
+                    let stack_slot = self.stack_slot_for_local(local_idx);
+
+                    match self.open_upvalues.get(&stack_slot) {
+                        None => {
+                            let uv = Upvalue { slot_idx: stack_slot, is_closed: false, val: None };
+                            let uv = Arc::new(RefCell::new(uv));
+                            self.open_upvalues.insert(stack_slot, uv.clone());
+                            uv
+                        }
+                        Some(uv) => uv.clone(),
+                    }
+                }
+                UpvalueCaptureKind::Upvalue { upvalue_idx } => {
+                    let frame = current_frame!(self);
+                    frame.upvalues[upvalue_idx].clone()
+                }
+            }
+        });
+        // Because upvalues are discovered in static order (the order in which they're encountered
+        // in the code), but closed in _stack-pop_ order (aka, reversed), this needs to be reversed
+        // in order for the upvalue_idx's to line up properly.
+        let captures = captures.rev().collect::<Vec<_>>();
+
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
+        Ok(())
     }
 
     fn int_op<F>(&mut self, f: F) -> Result<(), InterpretError>
@@ -251,121 +376,6 @@ impl VM {
         };
         self.push(Value::Bool(res));
 
-        Ok(())
-    }
-
-    fn store_local(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
-        let CallFrame { stack_offset, .. } = current_frame!(self);
-        let stack_slot = stack_slot + *stack_offset;
-        let value = self.pop_expect()?;
-        self.stack_insert_at(stack_slot, value); // TODO: Raise InterpretError when OOB stack_slot
-        Ok(())
-    }
-
-    fn store_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
-        let frame = current_frame!(self);
-        let uv = frame.upvalues[upvalue_idx].clone();
-        let mut uv = (*uv).borrow_mut();
-
-        if uv.is_closed {
-            let value = self.pop_expect()?;
-            uv.val = Some(value);
-        } else {
-            let value = self.pop_expect()?;
-            self.stack_insert_at(uv.slot_idx, value);
-        }
-        Ok(())
-    }
-
-    fn load_local(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
-        let CallFrame { stack_offset, .. } = current_frame!(self);
-        let stack_slot = stack_slot + *stack_offset;
-        let value = self.stack_get(stack_slot);
-        Ok(self.push(value))
-    }
-
-    fn load_upvalue(&mut self, upvalue_idx: usize) -> Result<(), InterpretError> {
-        let frame = current_frame!(self);
-        let uv = frame.upvalues[upvalue_idx].clone();
-        let uv = uv.borrow();
-
-        if uv.is_closed {
-            // TODO: Note, this won't work for mutable upvalues, ie. `myArray.push(1)`
-            let val = uv.val.as_ref()
-                .expect("A closed upvalue should have a val")
-                .clone();
-            self.push(val);
-        } else {
-            let value = self.stack_get(uv.slot_idx);
-            self.push(value);
-        }
-        Ok(())
-    }
-
-    fn close_upvalues_from_idx(&mut self, stack_slot: usize) -> Result<(), InterpretError> {
-        let max_slot_idx = self.open_upvalues.keys().max();
-        if max_slot_idx.is_none() { return Ok(()); }
-
-        for idx in stack_slot..=*max_slot_idx.unwrap() {
-            match self.open_upvalues.remove(&idx) {
-                None => continue,
-                Some(uv) => {
-                    let mut uv = (*uv).borrow_mut();
-                    uv.is_closed = true;
-                    let value = self.stack_get(uv.slot_idx);
-                    uv.val = Some(value);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn close_upvalues_for_frame(&mut self) -> Result<(), InterpretError> {
-        let stack_offset = current_frame!(self).stack_offset.clone();
-        self.close_upvalues_from_idx(stack_offset)
-    }
-
-    fn close_upvalue(&mut self) -> Result<(), InterpretError> {
-        let cur_stack_slot = self.stack.len() - 1;
-        self.close_upvalues_from_idx(cur_stack_slot)
-    }
-
-    #[inline]
-    fn make_closure(&mut self) -> Result<(), InterpretError> {
-        let function = self.pop_expect()?;
-        let (name, code, upvalues, receiver) = match function {
-            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
-            v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
-        }?;
-
-        let captures = upvalues.iter().map(|uv| {
-            match uv.capture_kind {
-                UpvalueCaptureKind::Local { local_idx } => {
-                    let frame = current_frame!(self);
-                    let idx = frame.stack_offset + local_idx;
-
-                    match self.open_upvalues.get(&idx) {
-                        None => {
-                            let uv = Upvalue { slot_idx: idx, is_closed: false, val: None };
-                            let uv = Arc::new(RefCell::new(uv));
-                            self.open_upvalues.insert(idx, uv.clone());
-                            uv
-                        }
-                        Some(uv) => uv.clone(),
-                    }
-                }
-                UpvalueCaptureKind::Upvalue { upvalue_idx } => {
-                    let frame = current_frame!(self);
-                    frame.upvalues[upvalue_idx].clone()
-                }
-            }
-        });
-        // Because upvalues are discovered in static order (the order in which they're encountered
-        // in the code), but closed in _stack-pop_ order (aka, reversed), this needs to be reversed
-        // in order for the upvalue_idx's to line up properly.
-        let captures = captures.rev().collect::<Vec<_>>();
-
-        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
         Ok(())
     }
 
@@ -680,20 +690,20 @@ impl VM {
                 Opcode::Jump => {
                     let jump_offset = self.read_byte_expect()?;
 
-                    let frame: &mut CallFrame = current_frame!(self);
+                    let frame = current_frame!(self);
                     frame.ip += jump_offset;
                 }
                 Opcode::JumpIfF => {
                     let jump_offset = self.read_byte_expect()?;
                     let cond = pop_expect_bool!(self)?;
                     if !cond {
-                        let frame: &mut CallFrame = current_frame!(self);
+                        let frame = current_frame!(self);
                         frame.ip += jump_offset;
                     }
                 }
                 Opcode::JumpB => {
                     let jump_offset = self.read_byte_expect()?;
-                    let frame: &mut CallFrame = current_frame!(self);
+                    let frame = current_frame!(self);
                     frame.ip -= jump_offset;
                 }
                 Opcode::Invoke => {
@@ -728,9 +738,16 @@ impl VM {
                         None => {}
                     }
                     if has_return { arity += 1 }
-                    let stack_offset = self.stack.len() - arity;
+                    let start_stack_idx = self.stack.len() - arity;
 
-                    let frame = CallFrame { ip: 0, code, stack_offset, name, upvalues };
+                    // Initialize the frame with local_addrs for the args already on the stack, since
+                    // the function body itself won't mark these as locals
+                    let mut local_addrs = Vec::new();
+                    for l in 0..arity {
+                        local_addrs.push(self.stack.len() - (arity - l));
+                    }
+
+                    let frame = CallFrame { ip: 0, code, start_stack_idx, name, upvalues, local_addrs };
                     if self.call_stack.len() + 1 >= STACK_LIMIT {
                         break Err(InterpretError::StackOverflow);
                     }
@@ -752,6 +769,17 @@ impl VM {
                 Opcode::Dup => {
                     let value = self.stack.last().unwrap().clone();
                     self.stack.push(value);
+                }
+                Opcode::MarkLocal => {
+                    let local_idx = self.read_byte_expect()?;
+                    let CallFrame { local_addrs, .. } = current_frame!(self);
+
+                    let local_addr = self.stack.len() - 1;
+                    if local_idx >= local_addrs.len() {
+                        local_addrs.push(local_addr);
+                    } else {
+                        local_addrs[local_idx] = local_addr;
+                    }
                 }
                 Opcode::Return => {
                     let is_main_frame = self.call_stack.len() == 1;
