@@ -1,4 +1,4 @@
-import Abra from 'abra_wasm';
+import { runSync } from '../test-utils'
 
 describe('builtin functions', () => {
     test('range', () => {
@@ -7,7 +7,7 @@ describe('builtin functions', () => {
           arr
         `;
 
-        expect(Abra.runSync(input)).toEqual([0, 1, 2, 3]);
+        expect(runSync(input)).toEqual([0, 1, 2, 3]);
     });
 
     test('println', () => {
@@ -21,7 +21,7 @@ describe('builtin functions', () => {
         const input = `
           println("Hello world")
         `;
-        Abra.runSync(input);
+        runSync(input);
         // @ts-ignore
         expect(global.console.log).toHaveBeenCalledWith('Hello world');
 

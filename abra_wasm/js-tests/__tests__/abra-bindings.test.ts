@@ -1,4 +1,4 @@
-import Abra from 'abra_wasm';
+import { runSync } from '../test-utils'
 
 describe('bindings', () => {
     test('setting variables', () => {
@@ -9,7 +9,7 @@ describe('bindings', () => {
             c
         `;
 
-        expect(Abra.runSync(input)).toEqual(6);
+        expect(runSync(input)).toEqual(6);
     });
 
     test('reassigning to variables', () => {
@@ -20,7 +20,7 @@ describe('bindings', () => {
             a = a * 3
             a
         `;
-        expect(Abra.runSync(input)).toEqual(6);
+        expect(runSync(input)).toEqual(6);
     });
 
     test('chained reassignment', () => {
@@ -32,6 +32,6 @@ describe('bindings', () => {
             val e = a + b + c + d
             e
         `;
-        expect(Abra.runSync(input)).toEqual(76);
+        expect(runSync(input)).toEqual(76);
     });
 });

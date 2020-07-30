@@ -90,7 +90,7 @@ impl Serialize for RunResult {
             },
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("data", &JsWrappedError(&error))?;
+                obj.serialize_entry("error", &JsWrappedError(&error))?;
             }
         };
 
