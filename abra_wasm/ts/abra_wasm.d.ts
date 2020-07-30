@@ -3,6 +3,24 @@
 import { Error } from './types/error'
 import { Module } from './types/module'
 
+export interface TypecheckSuccess {
+    success: true,
+}
+
+export interface TypecheckFailure {
+    success: false,
+    error: Error
+}
+
+export type TypecheckResult = TypecheckSuccess | TypecheckFailure
+
+/**
+ * Reads the input string as Abra code, and typechecks it, using the wasm implementation
+ * of the compiler.
+ * This will either return an error if unsuccessful, or nothing if successful.
+ */
+export function typecheck(input: string): TypecheckResult | null;
+
 export interface CompileSuccess {
     success: true,
     module: Module

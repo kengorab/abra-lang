@@ -17,7 +17,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::{Error, compile, compile_and_run, compile_and_disassemble};
+use abra_core::{Error, typecheck, compile, compile_and_run, compile_and_disassemble};
 use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
@@ -79,13 +79,37 @@ impl Serialize for CompileResult {
 
         match &self.0 {
             Ok(module) => {
-                let mut obj = serializer.serialize_map(Some(1))?;
+                let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &true)?;
                 obj.serialize_entry("module", &JsModule(module))?;
                 obj.end()
             }
             Err(error) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("success", &false)?;
+                obj.serialize_entry("error", &JsWrappedError(error))?;
+                obj.end()
+            }
+        }
+    }
+}
+
+pub struct TypecheckedResult(Result<(), Error>);
+
+impl Serialize for TypecheckedResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        use serde::ser::SerializeMap;
+
+        match &self.0 {
+            Ok(_) => {
                 let mut obj = serializer.serialize_map(Some(1))?;
+                obj.serialize_entry("success", &true)?;
+                obj.end()
+            }
+            Err(error) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error))?;
                 obj.end()
@@ -104,13 +128,13 @@ impl Serialize for DisassembleResult {
 
         match &self.0 {
             Ok(result) => {
-                let mut obj = serializer.serialize_map(Some(1))?;
+                let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &true)?;
                 obj.serialize_entry("disassembled", result)?;
                 obj.end()
             }
             Err(error) => {
-                let mut obj = serializer.serialize_map(Some(1))?;
+                let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error))?;
                 obj.end()
@@ -130,6 +154,15 @@ pub fn disassemble(input: &str) -> JsValue {
     let result = compile_and_disassemble(input.to_string());
     let disassemble_result = DisassembleResult(result);
     JsValue::from_serde(&disassemble_result)
+        .unwrap_or(JsValue::NULL)
+}
+
+#[wasm_bindgen(js_name = typecheck)]
+pub fn typecheck_input(input: &str) -> JsValue {
+    let result = typecheck(input.to_string())
+        .map(|_| ());
+    let typecheck_result = TypecheckedResult(result);
+    JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
 }
 

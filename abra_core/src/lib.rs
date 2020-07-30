@@ -5,6 +5,7 @@ extern crate strum_macros;
 use crate::vm::value::Value;
 use crate::vm::vm::VMContext;
 use crate::vm::compiler::{Metadata, Module};
+use crate::typechecker::typed_ast::TypedAstNode;
 
 pub mod builtins;
 pub mod common;
@@ -20,7 +21,7 @@ pub enum Error {
     InterpretError(vm::vm::InterpretError),
 }
 
-pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
+pub fn typecheck(input: String) -> Result<Vec<TypedAstNode>, Error> {
     match lexer::lexer::tokenize(&input) {
         Err(e) => Err(Error::LexerError(e)),
         Ok(tokens) => match parser::parser::parse(tokens) {
@@ -28,14 +29,17 @@ pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
             Ok(ast) => {
                 match typechecker::typechecker::typecheck(ast) {
                     Err(e) => Err(Error::TypecheckerError(e)),
-                    Ok((_, nodes)) => {
-                        let result = vm::compiler::compile(nodes).unwrap();
-                        Ok(result)
-                    }
+                    Ok((_, nodes)) => Ok(nodes)
                 }
             }
         }
     }
+}
+
+pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
+    let typed_ast_nodes = typecheck(input)?;
+    let result = vm::compiler::compile(typed_ast_nodes).unwrap();
+    Ok(result)
 }
 
 pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
