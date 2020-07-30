@@ -39,17 +39,29 @@ export type CompileResult = CompileSuccess | CompileFailure
  */
 export function compile(input: string): CompileResult | null;
 
+export interface RunSuccess {
+    success: true,
+    data: any
+}
+
+export interface RunFailure {
+    success: false,
+    error: Error
+}
+
+export type RunResult = RunSuccess | RunFailure
+
 /**
  * Compiles and executes the input string as Abra code, returning the result. This could
  * result in a runtime error.
  */
-export function runSync(input: string): Error | any;
+export function runSync(input: string): RunResult;
 
 /**
  * Compiles and executes the input string as Abra code, resolving with the
  * result. This could result in a runtime error, which will also resolve as a successful Promise
  */
-export function runAsync(input: string): Promise<any>;
+export function runAsync(input: string): Promise<RunResult>;
 
 export interface DisassembleSuccess {
     success: true,

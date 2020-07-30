@@ -22,33 +22,37 @@ use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
 
-pub struct RunResult(Value);
+pub struct RunResultValue(Option<Value>);
 
-impl Serialize for RunResult {
+impl Serialize for RunResultValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
         use serde::ser::SerializeMap;
 
-        match self {
-            RunResult(Value::Nil) => serializer.serialize_none(),
-            RunResult(Value::Int(val)) => serializer.serialize_i64(*val),
-            RunResult(Value::Float(val)) => serializer.serialize_f64(*val),
-            RunResult(Value::Bool(val)) => serializer.serialize_bool(*val),
-            RunResult(Value::Str(val)) => serializer.serialize_str(val),
-            RunResult(Value::Obj(obj)) => match &*obj.borrow() {
+        if self.0.is_none() {
+            return serializer.serialize_none();
+        }
+
+        match &self.0.as_ref().unwrap() {
+            Value::Nil => serializer.serialize_none(),
+            Value::Int(val) => serializer.serialize_i64(*val),
+            Value::Float(val) => serializer.serialize_f64(*val),
+            Value::Bool(val) => serializer.serialize_bool(*val),
+            Value::Str(val) => serializer.serialize_str(val),
+            Value::Obj(obj) => match &*obj.borrow() {
                 Obj::StringObj(value) => serializer.serialize_str(value),
                 Obj::ArrayObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResult((*val).clone())).unwrap();
+                        arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                     });
                     arr.end()
                 }
                 Obj::MapObj(value) => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {
-                        obj.serialize_entry(key, &RunResult(val.clone())).unwrap();
+                        obj.serialize_entry(key, &RunResultValue(Some(val.clone()))).unwrap();
                     });
                     obj.end()
                 }
@@ -56,16 +60,41 @@ impl Serialize for RunResult {
                     let fields = &inst.fields;
                     let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                     fields.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResult((*val).clone())).unwrap();
+                        arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                     });
                     arr.end()
                 }
             }
-            RunResult(Value::Fn(FnValue { name, .. })) => serializer.serialize_str(name),
-            RunResult(Value::Closure(ClosureValue { name, .. })) => serializer.serialize_str(name),
-            RunResult(Value::NativeFn(NativeFn { name, .. })) => serializer.serialize_str(name),
-            RunResult(Value::Type(TypeValue { name, .. })) => serializer.serialize_str(name)
+            Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),
+            Value::Closure(ClosureValue { name, .. }) => serializer.serialize_str(name),
+            Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),
+            Value::Type(TypeValue { name, .. }) => serializer.serialize_str(name)
         }
+    }
+}
+
+pub struct RunResult(Result<Option<Value>, Error>);
+
+impl Serialize for RunResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        use serde::ser::SerializeMap;
+
+        let mut obj = serializer.serialize_map(Some(2))?;
+
+        match &self.0 {
+            Ok(value) => {
+                obj.serialize_entry("success", &true)?;
+                obj.serialize_entry("data", &RunResultValue((*value).clone()))?;
+            },
+            Err(error) => {
+                obj.serialize_entry("success", &false)?;
+                obj.serialize_entry("data", &JsWrappedError(&error))?;
+            }
+        };
+
+        obj.end()
     }
 }
 
@@ -181,12 +210,10 @@ pub fn run(input: &str) -> JsValue {
         print: |input| log(input)
     };
 
-    let result = match compile_and_run(input.to_string(), ctx) {
-        Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
-        Ok(None) => Ok(JsValue::UNDEFINED),
-        Err(error) => JsValue::from_serde(&JsWrappedError(&error))
-    };
-    result.unwrap_or(JsValue::from("Could not convert result to JSON"))
+    let result = compile_and_run(input.to_string(), ctx);
+    let run_result = RunResult(result);
+    JsValue::from_serde(&run_result)
+        .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = runAsync)]
@@ -197,14 +224,11 @@ pub fn run_async(input: &str) -> js_sys::Promise {
 
     let future = futures::future::ok(input.to_string())
         .and_then(move |input| {
-            match compile_and_run(input, ctx) {
-                Ok(Some(value)) => JsValue::from_serde(&RunResult(value)),
-                Ok(None) => Ok(JsValue::UNDEFINED),
-                Err(error) => JsValue::from_serde(&JsWrappedError(&error))
-            }
-        })
-        .map_err(|_| {
-            JsValue::from("Could not convert result to JSON")
+            let result = compile_and_run(input.to_string(), ctx);
+            let run_result = RunResult(result);
+            let val = JsValue::from_serde(&run_result)
+                .unwrap_or(JsValue::NULL);
+            Ok(val)
         });
     future_to_promise(future)
 }
