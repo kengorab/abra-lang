@@ -5,6 +5,10 @@ pub trait DisplayError {
         format!("{}^", " ".repeat(left_padding))
     }
 
+    fn get_underline(left_padding: usize, length: usize) -> String {
+        format!("{}{}", " ".repeat(left_padding), "^".repeat(length))
+    }
+
     fn indent() -> String {
         " ".repeat(IND_AMT)
     }

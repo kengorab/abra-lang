@@ -1,6 +1,22 @@
-use abra_core::lexer::tokens::Token;
+use abra_core::lexer::tokens::{Token, Range};
 use serde::{Serialize, Serializer};
 use crate::js_value::position::JsPosition;
+
+pub struct JsRange<'a>(pub &'a Range);
+
+impl<'a> Serialize for JsRange<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        use serde::ser::SerializeMap;
+
+        let Range { start, end } = &self.0;
+        let mut obj = serializer.serialize_map(Some(2))?;
+        obj.serialize_entry("start", &JsPosition(start))?;
+        obj.serialize_entry("end", &JsPosition(end))?;
+        obj.end()
+    }
+}
 
 pub struct JsToken<'a>(pub &'a Token);
 

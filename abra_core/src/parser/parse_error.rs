@@ -7,7 +7,6 @@ pub enum ParseError {
     UnexpectedEof,
     UnexpectedToken(Token),
     ExpectedToken(TokenType, Token),
-    Raw(String),
 }
 
 impl DisplayError for ParseError {
@@ -17,9 +16,11 @@ impl DisplayError for ParseError {
                 let pos = token.get_position();
                 let line = lines.get(pos.line - 1).expect("There should be a line");
 
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let range = token.get_range();
+                let length = range.end.col - range.start.col + 1;
+                let underline = Self::get_underline(2 * IND_AMT + pos.col, length);
                 let indent = Self::indent();
-                let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+                let message = format!("{}|{}{}\n{}", indent, indent, line, underline);
 
                 format!("Unexpected token '{}' ({}:{})\n{}", token.to_string(), pos.line, pos.col, message)
             }
@@ -38,16 +39,17 @@ impl DisplayError for ParseError {
                 let pos = actual.get_position();
                 let line = lines.get(pos.line - 1).expect("There should be a line");
 
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let range = actual.get_range();
+                let length = range.end.col - range.start.col + 1;
+                let underline = Self::get_underline(2 * IND_AMT + pos.col, length);
                 let indent = Self::indent();
-                let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+                let message = format!("{}|{}{}\n{}", indent, indent, line, underline);
 
                 // Convert from TokenType to Token, to make use of the #[strum(to_string)] meta,
                 // since strum doesn't apply the #[strum(to_string)] to the discriminants.
                 let expected: Token = Token::from_str(&expected.to_string()).unwrap();
                 format!("Expected token '{}', saw '{}' ({}:{})\n{}", expected.to_string(), actual.to_string(), pos.line, pos.col, message)
             }
-            ParseError::Raw(msg) => format!("{}", msg)
         }
     }
 }

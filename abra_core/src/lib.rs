@@ -6,6 +6,7 @@ use crate::vm::value::Value;
 use crate::vm::vm::VMContext;
 use crate::vm::compiler::{Metadata, Module};
 use crate::typechecker::typed_ast::TypedAstNode;
+use crate::common::display_error::DisplayError;
 
 pub mod builtins;
 pub mod common;
@@ -19,6 +20,17 @@ pub enum Error {
     ParseError(parser::parse_error::ParseError),
     TypecheckerError(typechecker::typechecker_error::TypecheckerError),
     InterpretError(vm::vm::InterpretError),
+}
+
+impl DisplayError for Error {
+    fn message_for_error(&self, lines: &Vec<&str>) -> String {
+        match self {
+            Error::LexerError(e) => e.message_for_error(lines),
+            Error::ParseError(e) => e.message_for_error(lines),
+            Error::TypecheckerError(e) => e.message_for_error(lines),
+            Error::InterpretError(_) => "Runtime error!".to_string()
+        }
+    }
 }
 
 pub fn typecheck(input: String) -> Result<Vec<TypedAstNode>, Error> {

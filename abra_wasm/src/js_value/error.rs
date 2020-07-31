@@ -1,4 +1,4 @@
-use crate::js_value::token::JsToken;
+use crate::js_value::token::{JsToken, JsRange};
 use crate::js_value::position::JsPosition;
 use crate::js_value::abra_type::JsType;
 use crate::js_value::binary_op::JsBinaryOp;
@@ -20,10 +20,11 @@ impl<'a> Serialize for JsWrappedError<'a> {
         match &self.0 {
             Error::ParseError(parse_error) => match parse_error {
                 ParseError::UnexpectedToken(token) => {
-                    let mut obj = serializer.serialize_map(Some(3))?;
+                    let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "unexpectedToken")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&token.get_range()))?;
                     obj.end()
                 }
                 ParseError::UnexpectedEof => {
@@ -33,18 +34,12 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.end()
                 }
                 ParseError::ExpectedToken(token_type, token) => {
-                    let mut obj = serializer.serialize_map(Some(4))?;
+                    let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "expectedToken")?;
                     obj.serialize_entry("expectedType", &token_type.to_string())?;
                     obj.serialize_entry("token", &JsToken(token))?;
-                    obj.end()
-                }
-                ParseError::Raw(msg) => {
-                    let mut obj = serializer.serialize_map(Some(3))?;
-                    obj.serialize_entry("kind", "parseError")?;
-                    obj.serialize_entry("subKind", "raw")?;
-                    obj.serialize_entry("msg", &msg)?;
+                    obj.serialize_entry("range", &JsRange(&token.get_range()))?;
                     obj.end()
                 }
             }

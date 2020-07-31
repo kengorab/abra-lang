@@ -1,5 +1,5 @@
 import { Token } from './token'
-import { Position } from './position'
+import { Position, Range } from './position'
 import { Type } from './abra-types'
 import { BinaryOp } from './binary-op'
 
@@ -14,13 +14,13 @@ export namespace Errors {
         = ParseErrors.UnexpectedToken
         | ParseErrors.UnexpectedEof
         | ParseErrors.ExpectedToken
-        | ParseErrors.Raw
 
     export namespace ParseErrors {
         interface UnexpectedToken {
             kind: 'parseError',
             subKind: 'unexpectedToken',
-            token: Token
+            token: Token,
+            range: Range
         }
 
         interface UnexpectedEof {
@@ -32,13 +32,8 @@ export namespace Errors {
             kind: 'parseError',
             subKind: 'expectedToken',
             expectedType: string,
-            token: Token
-        }
-
-        interface Raw {
-            kind: 'parseError',
-            subKind: 'raw',
-            msg: string
+            token: Token,
+            range: Range
         }
     }
 

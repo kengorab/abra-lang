@@ -9,7 +9,8 @@ export interface TypecheckSuccess {
 
 export interface TypecheckFailure {
     success: false,
-    error: Error
+    error: Error,
+    errorMessage: string
 }
 
 export type TypecheckResult = TypecheckSuccess | TypecheckFailure
@@ -28,7 +29,8 @@ export interface CompileSuccess {
 
 export interface CompileFailure {
     success: false,
-    error: Error
+    error: Error,
+    errorMessage: string
 }
 
 export type CompileResult = CompileSuccess | CompileFailure
@@ -46,7 +48,8 @@ export interface RunSuccess {
 
 export interface RunFailure {
     success: false,
-    error: Error
+    error: Error,
+    errorMessage: string
 }
 
 export type RunResult = RunSuccess | RunFailure
@@ -70,7 +73,8 @@ export interface DisassembleSuccess {
 
 export interface DisassembleFailure {
     success: false,
-    error: Error
+    error: Error,
+    errorMessage: string
 }
 
 export type DisassembleResult = DisassembleSuccess | DisassembleFailure

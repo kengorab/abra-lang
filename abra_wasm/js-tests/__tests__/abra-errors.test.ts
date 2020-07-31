@@ -14,8 +14,15 @@ describe('errors', () => {
                         kind: 'int',
                         pos: [1, 6],
                         val: 1
+                    },
+                    range: {
+                        start: [1, 6],
+                        end: [1, 6]
                     }
-                }
+                },
+                errorMessage: `Expected token 'identifier', saw 'int' (1:6)
+  |  func 1
+          ^`
             }
             expect(result).toEqual(expected)
         })

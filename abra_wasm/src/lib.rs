@@ -21,6 +21,7 @@ use abra_core::{Error, typecheck, compile, compile_and_run, compile_and_disassem
 use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
+use abra_core::common::display_error::DisplayError;
 
 pub struct RunResultValue(Option<Value>);
 
@@ -73,7 +74,7 @@ impl Serialize for RunResultValue {
     }
 }
 
-pub struct RunResult(Result<Option<Value>, Error>);
+pub struct RunResult(Result<Option<Value>, Error>, String);
 
 impl Serialize for RunResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -87,10 +88,11 @@ impl Serialize for RunResult {
             Ok(value) => {
                 obj.serialize_entry("success", &true)?;
                 obj.serialize_entry("data", &RunResultValue((*value).clone()))?;
-            },
+            }
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(&error))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
             }
         };
 
@@ -98,7 +100,7 @@ impl Serialize for RunResult {
     }
 }
 
-pub struct CompileResult(Result<Module, Error>);
+pub struct CompileResult(Result<Module, Error>, String);
 
 impl Serialize for CompileResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -117,13 +119,14 @@ impl Serialize for CompileResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
                 obj.end()
             }
         }
     }
 }
 
-pub struct TypecheckedResult(Result<(), Error>);
+pub struct TypecheckedResult(Result<(), Error>, String);
 
 impl Serialize for TypecheckedResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -141,13 +144,14 @@ impl Serialize for TypecheckedResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
                 obj.end()
             }
         }
     }
 }
 
-pub struct DisassembleResult(Result<String, Error>);
+pub struct DisassembleResult(Result<String, Error>, String);
 
 impl Serialize for DisassembleResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -166,6 +170,7 @@ impl Serialize for DisassembleResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
                 obj.end()
             }
         }
@@ -181,7 +186,7 @@ extern "C" {
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
     let result = compile_and_disassemble(input.to_string());
-    let disassemble_result = DisassembleResult(result);
+    let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
 }
@@ -190,7 +195,7 @@ pub fn disassemble(input: &str) -> JsValue {
 pub fn typecheck_input(input: &str) -> JsValue {
     let result = typecheck(input.to_string())
         .map(|_| ());
-    let typecheck_result = TypecheckedResult(result);
+    let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
 }
@@ -199,7 +204,7 @@ pub fn typecheck_input(input: &str) -> JsValue {
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
     let result = compile(input.to_string())
         .map(|(module, _)| module);
-    let compile_result = CompileResult(result);
+    let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
 }
@@ -211,7 +216,7 @@ pub fn run(input: &str) -> JsValue {
     };
 
     let result = compile_and_run(input.to_string(), ctx);
-    let run_result = RunResult(result);
+    let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)
 }
@@ -225,7 +230,7 @@ pub fn run_async(input: &str) -> js_sys::Promise {
     let future = futures::future::ok(input.to_string())
         .and_then(move |input| {
             let result = compile_and_run(input.to_string(), ctx);
-            let run_result = RunResult(result);
+            let run_result = RunResult(result, input.to_string());
             let val = JsValue::from_serde(&run_result)
                 .unwrap_or(JsValue::NULL);
             Ok(val)

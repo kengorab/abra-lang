@@ -603,7 +603,7 @@ impl Parser {
             Token::Float(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
             Token::String(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::StringLiteral(val.clone()))),
             Token::Bool(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::BoolLiteral(*val))),
-            _ => Err(ParseError::Raw(format!("Unknown literal: {:?}", token)))
+            _ => unreachable!()
         }
     }
 

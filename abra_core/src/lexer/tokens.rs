@@ -9,6 +9,20 @@ impl Default for Position {
     fn default() -> Self { Position { line: 0, col: 0 } }
 }
 
+pub struct Range {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl Range {
+    pub fn with_length(start: &Position, length: usize) -> Range {
+        Self {
+            start: start.clone(),
+            end: Position { line: start.line, col: start.col + length },
+        }
+    }
+}
+
 #[derive(Debug, Display, Clone, PartialEq, EnumString, EnumDiscriminants)]
 #[strum_discriminants(name(TokenType), derive(Display))]
 pub enum Token {
@@ -124,6 +138,61 @@ impl Token {
             Token::Arrow(pos) => pos
         };
         pos.clone()
+    }
+
+    pub fn get_range(&self) -> Range {
+        match self {
+            Token::Int(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
+            Token::Float(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
+            Token::String(pos, v) => Range::with_length(pos, format!("{}", v).len() + 1),
+            Token::Bool(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
+
+            Token::Func(pos) => Range::with_length(pos, 3),
+            Token::Val(pos) => Range::with_length(pos, 2),
+            Token::Var(pos) => Range::with_length(pos, 2),
+            Token::If(pos) => Range::with_length(pos, 1),
+            Token::Else(pos) => Range::with_length(pos, 3),
+            Token::While(pos) => Range::with_length(pos, 4),
+            Token::Break(pos) => Range::with_length(pos, 4),
+            Token::For(pos) => Range::with_length(pos, 2),
+            Token::In(pos) => Range::with_length(pos, 1),
+            Token::Type(pos) => Range::with_length(pos, 3),
+
+            Token::Ident(pos, i) => Range::with_length(pos, i.len()),
+            Token::Self_(pos) => Range::with_length(pos, 3),
+            Token::None(pos) => Range::with_length(pos, 3),
+
+            Token::Assign(pos) => Range::with_length(pos, 0),
+            Token::Plus(pos) => Range::with_length(pos, 0),
+            Token::Minus(pos) => Range::with_length(pos, 0),
+            Token::Star(pos) => Range::with_length(pos, 0),
+            Token::Slash(pos) => Range::with_length(pos, 0),
+            Token::Percent(pos) => Range::with_length(pos, 0),
+            Token::And(pos) => Range::with_length(pos, 1),
+            Token::Or(pos) => Range::with_length(pos, 1),
+            Token::Elvis(pos) => Range::with_length(pos, 1),
+            Token::GT(pos) => Range::with_length(pos, 0),
+            Token::GTE(pos) => Range::with_length(pos, 1),
+            Token::LT(pos) => Range::with_length(pos, 0),
+            Token::LTE(pos) => Range::with_length(pos, 1),
+            Token::Eq(pos) => Range::with_length(pos, 1),
+            Token::Neq(pos) => Range::with_length(pos, 1),
+            Token::Bang(pos) => Range::with_length(pos, 0),
+
+            Token::LParen(pos, _) => Range::with_length(pos, 0),
+            Token::RParen(pos) => Range::with_length(pos, 0),
+            Token::LBrack(pos, _) => Range::with_length(pos, 0),
+            Token::RBrack(pos) => Range::with_length(pos, 0),
+            Token::LBrace(pos) => Range::with_length(pos, 0),
+            Token::RBrace(pos) => Range::with_length(pos, 0),
+            Token::Pipe(pos) => Range::with_length(pos, 0),
+            Token::Colon(pos) => Range::with_length(pos, 0),
+            Token::Comma(pos) => Range::with_length(pos, 0),
+            Token::Question(pos) => Range::with_length(pos, 0),
+            Token::Dot(pos) => Range::with_length(pos, 0),
+            Token::QuestionDot(pos) => Range::with_length(pos, 1),
+            Token::Arrow(pos) => Range::with_length(pos, 1),
+        }
     }
 
     pub fn get_ident_name(token: &Token) -> String {
