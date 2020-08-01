@@ -158,7 +158,7 @@ impl Token {
             Token::In(pos) => Range::with_length(pos, 1),
             Token::Type(pos) => Range::with_length(pos, 3),
 
-            Token::Ident(pos, i) => Range::with_length(pos, i.len()),
+            Token::Ident(pos, i) => Range::with_length(pos, i.len() - 1),
             Token::Self_(pos) => Range::with_length(pos, 3),
             Token::None(pos) => Range::with_length(pos, 3),
 

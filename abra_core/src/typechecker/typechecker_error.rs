@@ -1,4 +1,4 @@
-use crate::common::display_error::{DisplayError, IND_AMT};
+use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType};
 use crate::parser::ast::BinaryOp;
@@ -45,6 +45,46 @@ pub enum TypecheckerError {
     InvalidTypeDeclDepth { token: Token },
     ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
     InvalidInstantiation { token: Token, typ: Type },
+}
+
+impl TypecheckerError {
+    pub fn get_token(&self) -> &Token {
+        match self {
+            TypecheckerError::Mismatch { token, .. } => token,
+            TypecheckerError::InvalidIfConditionType { token, .. } => token,
+            TypecheckerError::InvalidOperator { token, .. } => token,
+            TypecheckerError::MissingRequiredAssignment { ident } => ident,
+            TypecheckerError::DuplicateBinding { ident, .. } => ident,
+            TypecheckerError::DuplicateType { ident, .. } => ident,
+            TypecheckerError::DuplicateField { ident, .. } => ident,
+            TypecheckerError::UnknownIdentifier { ident } => ident,
+            TypecheckerError::InvalidAssignmentTarget { token, .. } => token,
+            TypecheckerError::AssignmentToImmutable { token, .. } => token,
+            TypecheckerError::UnannotatedUninitialized { ident, .. } => ident,
+            TypecheckerError::UnknownType { type_ident } => type_ident,
+            TypecheckerError::MissingIfExprBranch { if_token, .. } => if_token,
+            TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token,
+            TypecheckerError::InvalidInvocationTarget { token, .. } => token,
+            TypecheckerError::IncorrectArity { token, .. } => token,
+            TypecheckerError::UnexpectedParamName { token } => token,
+            TypecheckerError::DuplicateParamName { token } => token,
+            TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token,
+            TypecheckerError::InvalidBreak(token) => token,
+            TypecheckerError::InvalidRequiredArgPosition(token) => token,
+            TypecheckerError::InvalidIndexingTarget { token, .. } => token,
+            TypecheckerError::InvalidIndexingSelector { token, .. } => token,
+            TypecheckerError::UnknownMember { token, .. } => token,
+            TypecheckerError::MissingRequiredParams { token, .. } => token,
+            TypecheckerError::InvalidMixedParamType { token } => token,
+            TypecheckerError::InvalidTypeFuncInvocation { token } => token,
+            TypecheckerError::InvalidSelfParamPosition { token } => token,
+            TypecheckerError::InvalidSelfParam { token } => token,
+            TypecheckerError::MissingRequiredTypeAnnotation { token } => token,
+            TypecheckerError::InvalidTypeDeclDepth { token } => token,
+            TypecheckerError::ForbiddenUnknownType { token, .. } => token,
+            TypecheckerError::InvalidInstantiation { token, .. } => token
+        }
+    }
 }
 
 // TODO: Replace this when I do more work on Type representations
@@ -108,46 +148,10 @@ fn op_repr(op: &BinaryOp) -> String {
 
 impl DisplayError for TypecheckerError {
     fn message_for_error(&self, lines: &Vec<&str>) -> String {
-        let pos = match self {
-            TypecheckerError::Mismatch { token, .. } => token.get_position(),
-            TypecheckerError::InvalidIfConditionType { token, .. } => token.get_position(),
-            TypecheckerError::InvalidOperator { token, .. } => token.get_position(),
-            TypecheckerError::MissingRequiredAssignment { ident } => ident.get_position(),
-            TypecheckerError::DuplicateBinding { ident, .. } => ident.get_position(),
-            TypecheckerError::DuplicateType { ident, .. } => ident.get_position(),
-            TypecheckerError::DuplicateField { ident, .. } => ident.get_position(),
-            TypecheckerError::UnknownIdentifier { ident } => ident.get_position(),
-            TypecheckerError::InvalidAssignmentTarget { token, .. } => token.get_position(),
-            TypecheckerError::AssignmentToImmutable { token, .. } => token.get_position(),
-            TypecheckerError::UnannotatedUninitialized { ident, .. } => ident.get_position(),
-            TypecheckerError::UnknownType { type_ident } => type_ident.get_position(),
-            TypecheckerError::MissingIfExprBranch { if_token, .. } => if_token.get_position(),
-            TypecheckerError::IfExprBranchMismatch { if_token, .. } => if_token.get_position(),
-            TypecheckerError::InvalidInvocationTarget { token, .. } => token.get_position(),
-            TypecheckerError::IncorrectArity { token, .. } => token.get_position(),
-            TypecheckerError::UnexpectedParamName { token } => token.get_position(),
-            TypecheckerError::DuplicateParamName { token } => token.get_position(),
-            TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token.get_position(),
-            TypecheckerError::InvalidBreak(token) => token.get_position(),
-            TypecheckerError::InvalidRequiredArgPosition(token) => token.get_position(),
-            TypecheckerError::InvalidIndexingTarget { token, .. } => token.get_position(),
-            TypecheckerError::InvalidIndexingSelector { token, .. } => token.get_position(),
-            TypecheckerError::UnknownMember { token, .. } => token.get_position(),
-            TypecheckerError::MissingRequiredParams { token, .. } => token.get_position(),
-            TypecheckerError::InvalidMixedParamType { token } => token.get_position(),
-            TypecheckerError::InvalidTypeFuncInvocation { token } => token.get_position(),
-            TypecheckerError::InvalidSelfParamPosition { token } => token.get_position(),
-            TypecheckerError::InvalidSelfParam { token } => token.get_position(),
-            TypecheckerError::MissingRequiredTypeAnnotation { token } => token.get_position(),
-            TypecheckerError::InvalidTypeDeclDepth { token } => token.get_position(),
-            TypecheckerError::ForbiddenUnknownType { token, .. } => token.get_position(),
-            TypecheckerError::InvalidInstantiation { token, .. } => token.get_position()
-        };
-        let line = lines.get(pos.line - 1).expect("There should be a line");
-
-        let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+        let pos = self.get_token().get_position();
         let indent = Self::indent();
-        let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+
+        let cursor_line = Self::get_underlined_line(lines, self.get_token());
 
         match self {
             TypecheckerError::Mismatch { expected, actual, .. } => {
@@ -180,11 +184,7 @@ impl DisplayError for TypecheckerError {
                 let first_msg = format!("Duplicate variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
-                let line = lines.get(pos.line - 1).expect("There should be a line");
-
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
-                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
-
+                let cursor_line = Self::get_underlined_line(lines, orig_ident);
                 let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}", first_msg, second_msg)
@@ -194,10 +194,7 @@ impl DisplayError for TypecheckerError {
                 let first_msg = format!("Duplicate field '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
-                let line = lines.get(pos.line - 1).expect("There should be a line");
-
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
-                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+                let cursor_line = Self::get_underlined_line(lines, orig_ident);
 
                 let noun = if *orig_is_field { "Field" } else { "Method" };
                 let second_msg = format!("{} with that name is already declared in scope at ({}:{})\n{}", noun, pos.line, pos.col, cursor_line);
@@ -211,10 +208,8 @@ impl DisplayError for TypecheckerError {
                 let second_msg = match orig_ident {
                     Some(orig_ident) => {
                         let pos = orig_ident.get_position();
-                        let line = lines.get(pos.line - 1).expect("There should be a line");
+                        let cursor_line = Self::get_underlined_line(lines, orig_ident);
 
-                        let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
-                        let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
                         format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line)
                     }
                     None => format!("'{}' already declared as built-in type", ident)
@@ -242,11 +237,7 @@ impl DisplayError for TypecheckerError {
                 let first_msg = format!("Cannot assign to variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
-                let line = lines.get(pos.line - 1).expect("There should be a line");
-
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
-                let cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
-
+                let cursor_line = Self::get_underlined_line(lines, orig_ident);
                 let second_msg = format!("The binding has been declared in scope as immutable at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}\nUse 'var' instead of 'val' to create a mutable binding", first_msg, second_msg)
@@ -317,10 +308,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
                 let secondary_pos = orig_token.get_position();
-                let line = lines.get(secondary_pos.line - 1).expect("There should be a line");
-
-                let cursor = Self::get_cursor(2 * IND_AMT + secondary_pos.col);
-                let secondary_cursor_line = format!("{}|{}{}\n{}", indent, indent, line, cursor);
+                let secondary_cursor_line = Self::get_underlined_line(lines, orig_token);
 
                 format!(
                     "Missing return type declaration: ({}:{})\n{}\n\
@@ -458,7 +446,7 @@ mod tests {
         let expected = format!("\
 Type mismatch (1:5)
   |  1 + 4.4
-         ^
+         ^^^
   Expected Int, got Float"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -473,7 +461,7 @@ Type mismatch (1:5)
         let expected = format!("\
 Type mismatch (1:5)
   |  1 + 4.4
-         ^
+         ^^^
   Expected one of (Int, Float), got Int"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -504,7 +492,7 @@ Invalid operator (1:3)
         let expected = format!("\
 Expected assignment for variable 'abc' (1:5)
   |  val abc
-         ^
+         ^^^
 'val' bindings must be initialized"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -521,10 +509,10 @@ Expected assignment for variable 'abc' (1:5)
         let expected = format!("\
 Duplicate variable 'abc' (2:5)
   |  val abc = 5
-         ^
+         ^^^
 Binding already declared in scope at (1:5)
   |  val abc = 123
-         ^"
+         ^^^"
         );
 
         assert_eq!(expected, err.get_message(&src));
@@ -541,10 +529,10 @@ Binding already declared in scope at (1:5)
         let expected = format!("\
 Duplicate type 'Abc' (2:6)
   |  type Abc {{ a: Int }}
-          ^
+          ^^^
 Type already declared in scope at (1:6)
   |  type Abc {{}}
-          ^"
+          ^^^"
         );
         assert_eq!(expected, err.get_message(&src));
 
@@ -558,7 +546,7 @@ Type already declared in scope at (1:6)
         let expected = format!("\
 Duplicate type 'Int' (1:6)
   |  type Int {{}}
-          ^
+          ^^^
 'Int' already declared as built-in type"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -574,7 +562,7 @@ Duplicate type 'Int' (1:6)
         let expected = format!("\
 Unknown identifier 'abcd' (1:1)
   |  abcd
-     ^
+     ^^^^
 No binding with that name is visible in current scope"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -591,7 +579,7 @@ No binding with that name is visible in current scope"
         let expected = format!("\
 Could not determine type of mutable variable 'abcd' (1:5)
   |  var abcd
-         ^
+         ^^^^
 Since it's a 'var', you can either provide an initial value or a type annotation"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -605,7 +593,7 @@ Since it's a 'var', you can either provide an initial value or a type annotation
         let expected = format!("\
 Could not determine type of immutable variable 'abcd' (1:5)
   |  val abcd
-         ^
+         ^^^^
 Since it's a 'val', you must provide an initial value"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -643,7 +631,7 @@ Cannot assign to variable 'abc' (3:5)
          ^
 The binding has been declared in scope as immutable at (1:5)
   |  val abc = 1
-         ^
+         ^^^
 Use 'var' instead of 'val' to create a mutable binding"
         );
 
@@ -660,7 +648,7 @@ Use 'var' instead of 'val' to create a mutable binding"
         let expected = format!("\
 Unknown type 'NonExistentType' (1:11)
   |  val abcd: NonExistentType = 432
-               ^
+               ^^^^^^^^^^^^^^^
 No type with that name is visible in current scope"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -677,7 +665,7 @@ No type with that name is visible in current scope"
         let expected = format!("\
 Missing if-branch in if-else expression: (1:9)
   |  val a = if (true) {{}} else 123
-             ^
+             ^^
 Both branches must have some value when used as an expression"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -691,7 +679,7 @@ Both branches must have some value when used as an expression"
         let expected = format!("\
 Missing else-branch in if-else expression: (1:9)
   |  val a = if (true) 123 else {{}}
-             ^
+             ^^
 Both branches must have some value when used as an expression"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -709,7 +697,7 @@ Both branches must have some value when used as an expression"
         let expected = format!("\
 Type mismatch between the if-else expression branches: (1:9)
   |  val a = if (true) \"hello\" else 123
-             ^
+             ^^
 The if-branch had type String, but the else-branch had type Int"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -726,7 +714,7 @@ The if-branch had type String, but the else-branch had type Int"
         let expected = format!("\
 Cannot call target as function: (1:1)
   |  \"hello\"(a: 1, b: 4)
-     ^
+     ^^^^^^^
 Type String is not invokeable"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -744,7 +732,7 @@ Type String is not invokeable"
         let expected = format!("\
 Incorrect arity for invocation: (2:1)
   |  abc(1, 2, 3)
-     ^
+     ^^^
 Expected 1 required argument, but 3 were passed"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -761,11 +749,11 @@ Expected 1 required argument, but 3 were passed"
         let expected = format!("\
 Missing return type declaration: (2:1)
   |  abc()
-     ^
+     ^^^
 Functions that contain recursive references must explicitly declare their return type
 Missing return type annotation here (1:6):
   |  func abc() {{
-          ^"
+          ^^^"
         );
         assert_eq!(expected, err.get_message(&src));
     }
@@ -778,7 +766,7 @@ Missing return type annotation here (1:6):
         let expected = format!("\
 Unexpected break keyword: (1:14)
   |  func abc() {{ break }}
-                  ^
+                  ^^^^^
 A break keyword cannot appear outside of a loop"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -863,7 +851,7 @@ Cannot index into a target of type String, using a selector of type String"
         let expected = format!("\
 Unknown member 'size': (1:11)
   |  [1, 2, 3].size
-               ^
+               ^^^^
 Type Int[] does not have a member with name 'size'"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -882,7 +870,7 @@ Type Int[] does not have a member with name 'size'"
         let expected = format!("\
 Unknown member 'nAme': (2:18)
   |  val p = Person({{ nAme: \"hello\" }})
-                      ^
+                      ^^^^
 Type Person does not have a member with name 'nAme'"
         );
         assert_eq!(expected, err.get_message(&src));
@@ -893,13 +881,13 @@ Type Person does not have a member with name 'nAme'"
         let src = "val u = Unit()".to_string();
         let err = TypecheckerError::InvalidInstantiation {
             token: ident_token!((1, 9), "Unit"),
-            typ: Type::Unit
+            typ: Type::Unit,
         };
 
         let expected = format!("\
 Cannot create an instance of type Unit: (1:9)
   |  val u = Unit()
-             ^");
+             ^^^^");
         assert_eq!(expected, err.get_message(&src));
     }
 }
