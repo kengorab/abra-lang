@@ -1,4 +1,4 @@
-use crate::lexer::tokens::Position;
+use crate::lexer::tokens::{Position, Range};
 use crate::common::display_error::{DisplayError, IND_AMT};
 
 #[derive(Debug, PartialEq)]
@@ -9,13 +9,27 @@ pub enum LexerError {
     UnexpectedEof(Position),
 }
 
+impl LexerError {
+    pub fn get_range(&self) -> Range {
+        match self {
+            LexerError::UnexpectedChar(pos, _) => Range::with_length(pos, 1),
+            LexerError::UnterminatedString(start, end) => Range { start: start.clone(), end: end.clone() },
+            LexerError::UnexpectedEof(pos) => Range::with_length(pos, 1)
+        }
+    }
+}
+
+fn get_cursor(left_padding: usize) -> String {
+    format!("{}^", " ".repeat(left_padding))
+}
+
 impl DisplayError for LexerError {
     fn message_for_error(&self, lines: &Vec<&str>) -> String {
         match self {
             LexerError::UnexpectedChar(pos, string) => {
                 let line = lines.get(pos.line - 1).expect("There should be a line");
 
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor = get_cursor(2 * IND_AMT + pos.col);
                 let indent = Self::indent();
                 let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
 
@@ -27,11 +41,11 @@ impl DisplayError for LexerError {
 
                 let indent = Self::indent();
                 let start_message = {
-                    let cursor = Self::get_cursor(2 * IND_AMT + start_pos.col);
+                    let cursor = get_cursor(2 * IND_AMT + start_pos.col);
                     format!("{}String begins at ({}:{})\n{}|{}{}\n{}", indent, start_pos.line, start_pos.col, indent, indent, start_line, cursor)
                 };
                 let end_message = {
-                    let cursor = Self::get_cursor(2 * IND_AMT + end_pos.col);
+                    let cursor = get_cursor(2 * IND_AMT + end_pos.col);
                     format!("{}String is terminated at ({}:{})\n{}|{}{}\n{}", indent, end_pos.line, end_pos.col, indent, indent, end_line, cursor)
                 };
 
@@ -40,7 +54,7 @@ impl DisplayError for LexerError {
             LexerError::UnexpectedEof(pos) => {
                 let line = lines.get(pos.line - 1).expect("There should be a line");
 
-                let cursor = Self::get_cursor(2 * IND_AMT + pos.col);
+                let cursor = get_cursor(2 * IND_AMT + pos.col);
                 let indent = Self::indent();
                 let message = format!("{}|{}{}\n{}", indent, indent, line, cursor);
 

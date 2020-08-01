@@ -14,13 +14,7 @@ impl DisplayError for ParseError {
         match self {
             ParseError::UnexpectedToken(token) => {
                 let pos = token.get_position();
-                let line = lines.get(pos.line - 1).expect("There should be a line");
-
-                let range = token.get_range();
-                let length = range.end.col - range.start.col + 1;
-                let underline = Self::get_underline(2 * IND_AMT + pos.col, length);
-                let indent = Self::indent();
-                let message = format!("{}|{}{}\n{}", indent, indent, line, underline);
+                let message = Self::get_underlined_line(lines, token);
 
                 format!("Unexpected token '{}' ({}:{})\n{}", token.to_string(), pos.line, pos.col, message)
             }
@@ -29,7 +23,7 @@ impl DisplayError for ParseError {
                 let line_num = lines.len();
                 let col_num = last_line.len() + 1;
 
-                let cursor = Self::get_cursor(2 * IND_AMT + col_num);
+                let cursor = format!("{}^", " ".repeat(2 * IND_AMT + col_num));
                 let indent = Self::indent();
                 let message = format!("{}|{}{}\n{}", indent, indent, last_line, cursor);
 
@@ -37,13 +31,7 @@ impl DisplayError for ParseError {
             }
             ParseError::ExpectedToken(expected, actual) => {
                 let pos = actual.get_position();
-                let line = lines.get(pos.line - 1).expect("There should be a line");
-
-                let range = actual.get_range();
-                let length = range.end.col - range.start.col + 1;
-                let underline = Self::get_underline(2 * IND_AMT + pos.col, length);
-                let indent = Self::indent();
-                let message = format!("{}|{}{}\n{}", indent, indent, line, underline);
+                let message = Self::get_underlined_line(lines, actual);
 
                 // Convert from TokenType to Token, to make use of the #[strum(to_string)] meta,
                 // since strum doesn't apply the #[strum(to_string)] to the discriminants.
