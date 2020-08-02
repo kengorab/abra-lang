@@ -138,12 +138,12 @@ impl Typechecker {
         // }
 
         let typ = match (&node, target_type) {
-            (TypedAstNode::Lambda(token, lambda_node), Type::Fn(args, _)) => {
+            (TypedAstNode::Lambda(token, lambda_node), Type::Fn(expected_args, expected_ret)) => {
                 let has_unknown = lambda_node.args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
                 if has_unknown {
                     let (orig_node, orig_scopes) = lambda_node.orig_node.as_ref().unwrap().clone();
 
-                    let mut target_args_iter = args.iter();
+                    let mut target_args_iter = expected_args.iter();
                     let mut lambda_args_iter = lambda_node.args.iter();
 
                     let mut retyped_args = Vec::new();
@@ -154,12 +154,12 @@ impl Typechecker {
                             }
                             (None, Some((lambda_arg_token, lambda_arg_type, default_value))) => {
                                 if default_value.is_none() {
-                                    return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: args.len(), actual: lambda_node.args.len() });
+                                    return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
                                 }
                                 retyped_args.push((lambda_arg_token.clone(), lambda_arg_type.clone(), default_value.clone()));
                             }
                             (Some(_), None) => {
-                                return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: args.len(), actual: lambda_node.args.len() });
+                                return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
                             }
                             (None, None) => break
                         }
@@ -169,11 +169,19 @@ impl Typechecker {
                     std::mem::swap(&mut self.scopes, &mut scopes);
 
                     let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some(retyped_args))?;
+                    let lambda_type = retyped_lambda.get_type();
 
                     std::mem::swap(&mut self.scopes, &mut scopes);
 
                     *node = retyped_lambda;
-                    return Ok(true);
+
+                    if **expected_ret == Type::Unit {
+                        return Ok(true);
+                    } else {
+                        if let Type::Fn(_, ret) = lambda_type {
+                            return Ok(ret.is_equivalent_to(expected_ret, &self.referencable_types));
+                        } else { unreachable!() };
+                    }
                 } else {
                     self.resolve_ref_type(&lambda_node.typ)
                 }
@@ -4849,6 +4857,26 @@ mod tests {
         ");
         assert!(typed_ast.is_ok());
 
+        // A lambda which returns Unit can accept anything as a response (which will just be thrown out)
+        let typed_ast = typecheck("\
+          func call(fn: (String) => Unit, value: String) = fn(value)\n\
+          call((x, b = \"hello\") => b, \"hello\")\n\
+        ");
+        assert!(typed_ast.is_ok());
+
         Ok(())
+    }
+
+    #[test]
+    fn typecheck_lambda_inference_errors() {
+        let error = typecheck("\
+          var fn: (String) => Int = a => a\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Arrow(Position::new(1, 29)),
+            expected: Type::Fn(vec![("_".to_string(), Type::String, false)], Box::new(Type::Int)),
+            actual: Type::Fn(vec![("a".to_string(), Type::String, false)], Box::new(Type::String)),
+        };
+        assert_eq!(expected, error);
     }
 }
