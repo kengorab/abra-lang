@@ -42,7 +42,7 @@ impl Type {
             (Unit, Unit) | (Int, Int) | (Float, Float) |
             (String, String) | (Bool, Bool) | (Any, Any) => true,
             // For Array / Option types, compare inner type
-            (Array(t1), Array(t2)) => self::Type::is_equivalent_to(t1, t2, referencable_types),
+            (Array(t1), Array(t2)) => t1.is_equivalent_to(t2, referencable_types),
             // When comparing Option types, make sure to flatten, and then compare the root inner type
             // (ie. String??? == String?, but Int?? != String?)
             (Option(t1), Option(t2)) => {
@@ -52,35 +52,37 @@ impl Type {
                 let mut t2 = t2;
                 while let self::Type::Option(ref inner) = **t2 { t2 = inner }
 
-                self::Type::is_equivalent_to(t1, t2, referencable_types)
+                t1.is_equivalent_to(t2, referencable_types)
             }
             // A non-optional instance of a type should be assignable up to an optional version of it
             // (ie. val i: Int? = 1)
-            (t1, Option(t2)) => self::Type::is_equivalent_to(t1, t2, referencable_types),
+            (t1, Option(t2)) => t1.is_equivalent_to(t2, referencable_types),
             (Or(t1s), Or(t2s)) => {
                 let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
                 let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
                 for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                    if !self::Type::is_equivalent_to(t1, t2, referencable_types) {
+                    if !t1.is_equivalent_to(t2, referencable_types) {
                         return false;
                     }
                 }
                 true
             }
             // For Fn types compare arities, param types, and return type
-            (Fn(args1, ret1), Fn(args2, ret2)) => {
-                if args1.len() != args2.len() {
+            (Fn(args, ret), Fn(target_args, target_ret)) => {
+                let num_req_args = args.iter().filter(|(_, _, has_default)| !*has_default).count();
+                let num_target_req_args = args.iter().filter(|(_, _, has_default)| !*has_default).count();
+                if num_req_args != num_target_req_args {
                     return false;
                 }
 
-                // TODO: Factor in optional params here
-                // func abc(a: Int, b = 3) = a + b should satisfy a type of (Int, Int) => Int and also (Int) => Int
-                for ((_, t1, _), (_, t2, _)) in args1.iter().zip(args2.iter()) {
-                    if !self::Type::is_equivalent_to(t1, t2, referencable_types) {
+                // If the provided type has non-required arguments, in addition to the arguments that match the
+                // target_type, then that's ok
+                for ((_, target_arg, _), (_, arg, _)) in target_args.iter().zip(args.iter()) {
+                    if !arg.is_equivalent_to(target_arg, referencable_types) {
                         return false;
                     }
                 }
-                if !self::Type::is_equivalent_to(ret1, ret2, referencable_types) {
+                if !ret.is_equivalent_to(target_ret, referencable_types) {
                     return false;
                 }
                 true

@@ -2515,6 +2515,14 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
+        // A function with default-valued arguments beyond those required should still be acceptable
+        let typed_ast = typecheck("\
+          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
+          func incr(v: Int, incBy = 3) = v + incBy\n\
+          call(incr, 21)\n\
+        ");
+        assert!(typed_ast.is_ok());
+
         Ok(())
     }
 

@@ -1,3 +1,5 @@
 func call(fn: (Int) => Int, value: Int) = fn(value)
 
-call(x => x + "!", 24)
+func incr(v: Int, by = 1) = v + by
+
+call(incr, 23)
