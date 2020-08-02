@@ -380,7 +380,10 @@ impl Typechecker {
 
                             match typ {
                                 Type::Unit => {
-                                    if let TypedAstNode::IfExpression(token, typed_if_node) = typed_node {
+                                    if let TypedAstNode::IfExpression(token, mut typed_if_node) = typed_node {
+                                        // Explicitly set the underlying node's type to Unit, in case
+                                        // it had been Unit? (eg. an if-expr missing an else branch)
+                                        typed_if_node.typ = Type::Unit;
                                         Ok(TypedAstNode::IfStatement(token, typed_if_node))
                                     } else { unreachable!() }
                                 }
@@ -3706,6 +3709,57 @@ mod tests {
         let error = typecheck("if (1 < 2) { val num = 1 }\nnum + 2").unwrap_err();
         let expected = TypecheckerError::UnknownIdentifier { ident: Token::Ident(Position::new(2, 1), "num".to_string()) };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_if_expression_conversion_to_statement() -> TestResult {
+        let typed_ast = typecheck("\
+          func abc() {\n\
+            if true { println(\"hello\") }\n\
+          }\
+        ")?;
+        let expected = TypedAstNode::FunctionDecl(
+            Token::Func(Position::new(1, 1)),
+            TypedFunctionDeclNode {
+                name: ident_token!((1, 6), "abc"),
+                args: vec![],
+                body: vec![TypedAstNode::IfStatement(
+                    Token::If(Position::new(2, 1)),
+                    TypedIfNode {
+                        typ: Type::Unit,
+                        condition: Box::new(bool_literal!((2, 4), true)),
+                        condition_binding: None,
+                        if_block: vec![
+                            TypedAstNode::Invocation(
+                                Token::LParen(Position::new(2, 18), false),
+                                TypedInvocationNode {
+                                    typ: Type::Unit,
+                                    target: Box::new(TypedAstNode::Identifier(
+                                        ident_token!((2, 11), "println"),
+                                        TypedIdentifierNode {
+                                            typ: Type::Fn(vec![("_".to_string(), Type::Any, false)], Box::new(Type::Unit)),
+                                            name: "println".to_string(),
+                                            scope_depth: 0,
+                                            is_mutable: false
+                                        }
+                                    )),
+                                    args: vec![
+                                        Some(string_literal!((2, 19), "hello"))
+                                    ]
+                                }
+                            )
+                        ],
+                        else_block: None
+                    }
+                )],
+                ret_type: Type::Unit,
+                scope_depth: 0,
+                is_recursive: false
+            }
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
     }
 
     #[test]
