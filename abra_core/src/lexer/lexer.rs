@@ -181,9 +181,30 @@ impl<'a> Lexer<'a> {
 
         let pos = Position::new(self.line, self.col);
         match ch {
-            '+' => Ok(Some(Token::Plus(pos))),
-            '-' => Ok(Some(Token::Minus(pos))),
-            '*' => Ok(Some(Token::Star(pos))),
+            '+' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::PlusEq(pos)))
+                } else {
+                    Ok(Some(Token::Plus(pos)))
+                }
+            }
+            '-' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::MinusEq(pos)))
+                } else {
+                    Ok(Some(Token::Minus(pos)))
+                }
+            }
+            '*' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::StarEq(pos)))
+                } else {
+                    Ok(Some(Token::Star(pos)))
+                }
+            }
             '/' => {
                 if let Some('/') = self.peek() {
                     self.expect_next()?; // Consume '/' token
@@ -210,24 +231,45 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     self.next_token()
+                } else if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::SlashEq(pos)))
                 } else {
                     Ok(Some(Token::Slash(pos)))
                 }
             }
-            '%' => Ok(Some(Token::Percent(pos))),
+            '%' => {
+                if let Some('=') = self.peek() {
+                    self.expect_next()?; // Consume '=' token
+                    Ok(Some(Token::PercentEq(pos)))
+                } else {
+                    Ok(Some(Token::Percent(pos)))
+                }
+            }
             '&' => {
                 let ch = self.expect_next()?;
                 if ch != '&' {
                     let pos = Position::new(self.line, self.col);
                     Err(LexerError::UnexpectedChar(pos, ch.to_string()))
                 } else {
-                    Ok(Some(Token::And(pos)))
+                    if let Some('=') = self.peek() {
+                        self.expect_next()?; // Consume '=' token
+                        Ok(Some(Token::AndEq(pos)))
+                    } else {
+                        Ok(Some(Token::And(pos)))
+                    }
                 }
             }
             '|' => {
                 if let Some('|') = self.peek() {
                     self.expect_next()?; // Consume '|' token
-                    Ok(Some(Token::Or(pos)))
+
+                    if let Some('=') = self.peek() {
+                        self.expect_next()?; // Consume '=' token
+                        Ok(Some(Token::OrEq(pos)))
+                    } else {
+                        Ok(Some(Token::Or(pos)))
+                    }
                 } else {
                     Ok(Some(Token::Pipe(pos)))
                 }
@@ -235,7 +277,13 @@ impl<'a> Lexer<'a> {
             '?' => {
                 if let Some(':') = self.peek() {
                     self.expect_next()?; // Consume ':' token
-                    Ok(Some(Token::Elvis(pos)))
+
+                    if let Some('=') = self.peek() {
+                        self.expect_next()?; // Consume '=' token
+                        Ok(Some(Token::ElvisEq(pos)))
+                    } else {
+                        Ok(Some(Token::Elvis(pos)))
+                    }
                 } else if let Some('.') = self.peek() {
                     self.expect_next()?; // Consume '.' token
                     Ok(Some(Token::QuestionDot(pos)))
@@ -359,6 +407,23 @@ mod tests {
             Token::Elvis(Position::new(1, 19)),
             Token::QuestionDot(Position::new(1, 22)),
             Token::Arrow(Position::new(1, 25)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_multi_char_eq_operators() {
+        let input = "+= -= *= /= %= &&= ||= ?:=";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::PlusEq(Position::new(1, 1)),
+            Token::MinusEq(Position::new(1, 4)),
+            Token::StarEq(Position::new(1, 7)),
+            Token::SlashEq(Position::new(1, 10)),
+            Token::PercentEq(Position::new(1, 13)),
+            Token::AndEq(Position::new(1, 16)),
+            Token::OrEq(Position::new(1, 20)),
+            Token::ElvisEq(Position::new(1, 24)),
         ];
         assert_eq!(expected, tokens);
     }

@@ -461,31 +461,31 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let rtype = typed_right.get_type();
 
             match op {
-                BinaryOp::Add =>
+                BinaryOp::Add | BinaryOp::AddEq =>
                     match (&ltype, &rtype) {
                         (Type::String, _) | (_, Type::String) => Ok(Type::String),
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::Sub | BinaryOp::Mul =>
+                BinaryOp::Sub | BinaryOp::SubEq | BinaryOp::Mul | BinaryOp::MulEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::Div =>
+                BinaryOp::Div | BinaryOp::DivEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::Mod =>
+                BinaryOp::Mod | BinaryOp::ModEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::And | BinaryOp::Or =>
+                BinaryOp::And | BinaryOp::AndEq | BinaryOp::Or | BinaryOp::OrEq =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
@@ -497,7 +497,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
-                BinaryOp::Coalesce => {
+                BinaryOp::Coalesce | BinaryOp::CoalesceEq => {
                     match (&ltype, &rtype) {
                         (Type::Option(ltype), rtype @ _) => {
                             if !zelf.are_types_equivalent(typed_right, ltype)? {
@@ -513,16 +513,41 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         }
 
+        let pos = &token.get_position();
+        let (is_assignment, op, token) = match node.op {
+            BinaryOp::AddEq => (true, BinaryOp::Add, Token::Plus(pos.clone())),
+            BinaryOp::SubEq => (true, BinaryOp::Sub, Token::Minus(pos.clone())),
+            BinaryOp::MulEq => (true, BinaryOp::Mul, Token::Star(pos.clone())),
+            BinaryOp::DivEq => (true, BinaryOp::Div, Token::Slash(pos.clone())),
+            BinaryOp::ModEq => (true, BinaryOp::Mod, Token::Percent(pos.clone())),
+            BinaryOp::AndEq => (true, BinaryOp::And, Token::And(pos.clone())),
+            BinaryOp::OrEq => (true, BinaryOp::Or, Token::Or(pos.clone())),
+            BinaryOp::CoalesceEq => (true, BinaryOp::Coalesce, Token::Elvis(pos.clone())),
+            op @ _ => (false, op, token)
+        };
+        if is_assignment {
+            let assignment_node = AstNode::Assignment(
+                Token::Assign(pos.clone()),
+                AssignmentNode {
+                    target: node.left.clone(),
+                    expr: Box::new(AstNode::Binary(
+                        token,
+                        BinaryNode { left: node.left, op, right: node.right },
+                    )),
+                },
+            );
+            return self.visit(assignment_node);
+        }
+
         let left = *node.left;
         let typed_left = self.visit(left)?;
 
         let right = *node.right;
         let mut typed_right = self.visit(right)?;
 
-        let typ = type_for_op(self, &token, &node.op, &typed_left, &mut typed_right)?;
+        let typ = type_for_op(self, &token, &op, &typed_left, &mut typed_right)?;
 
-        let pos = &token.get_position();
-        let typed_ast_node = match &node.op {
+        let typed_ast_node = match &op {
             op @ BinaryOp::And |
             op @ BinaryOp::Or => {
                 #[inline]
@@ -544,12 +569,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 })
             }
             _ => {
-                TypedAstNode::Binary(token.clone(), TypedBinaryNode {
-                    typ,
-                    left: Box::new(typed_left),
-                    op: node.op,
-                    right: Box::new(typed_right),
-                })
+                let left = Box::new(typed_left);
+                let right = Box::new(typed_right);
+                TypedAstNode::Binary(token.clone(), TypedBinaryNode { typ, left, op, right })
             }
         };
         Ok(typed_ast_node)
@@ -1847,6 +1869,33 @@ mod tests {
             },
         );
         Ok(assert_eq!(expected, typed_ast[0]))
+    }
+
+    #[test]
+    fn typecheck_binary_assignment_operator() {
+        assert!(typecheck("var a = 1\na += 3").is_ok());
+        assert!(typecheck("var a = \"abc\"\na += 123").is_ok());
+        assert!(typecheck("var a = \"abc\"\na += \"def\"").is_ok());
+
+        assert!(typecheck("var a = 1\na -= 3").is_ok());
+        assert!(typecheck("var a = 1\na *= 3").is_ok());
+        assert!(typecheck("var a = 1.0\na /= 3").is_ok());
+        assert!(typecheck("var a = 1\na %= 3").is_ok());
+        assert!(typecheck("var a = true\na ||= false").is_ok());
+        assert!(typecheck("var a = true\na &&= false").is_ok());
+
+        assert!(typecheck("var a = None\na ?:= false").is_ok());
+    }
+
+    #[test]
+    fn typecheck_binary_assignment_operator_errors() {
+        assert!(typecheck("var a = 123\na += \"def\"").is_err());
+        assert!(typecheck("val a = 1\na *= 3").is_err());
+
+        assert!(typecheck("var a = true\na ||= 123").is_err());
+        assert!(typecheck("var a = \"asdf\"\na &&= false").is_err());
+
+        assert!(typecheck("true &&= false").is_err());
     }
 
     #[test]
@@ -3740,22 +3789,22 @@ mod tests {
                                             typ: Type::Fn(vec![("_".to_string(), Type::Any, false)], Box::new(Type::Unit)),
                                             name: "println".to_string(),
                                             scope_depth: 0,
-                                            is_mutable: false
-                                        }
+                                            is_mutable: false,
+                                        },
                                     )),
                                     args: vec![
                                         Some(string_literal!((2, 19), "hello"))
-                                    ]
-                                }
+                                    ],
+                                },
                             )
                         ],
-                        else_block: None
-                    }
+                        else_block: None,
+                    },
                 )],
                 ret_type: Type::Unit,
                 scope_depth: 0,
-                is_recursive: false
-            }
+                is_recursive: false,
+            },
         );
         assert_eq!(expected, typed_ast[0]);
 

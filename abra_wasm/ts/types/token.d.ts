@@ -10,15 +10,29 @@ export type Token
     | Tokens.Var
     | Tokens.If
     | Tokens.Else
+    | Tokens.While
+    | Tokens.Break
+    | Tokens.For
+    | Tokens.In
+    | Tokens.Type
     | Tokens.Ident
+    | Tokens.Self
+    | Tokens.None
     | Tokens.Assign
     | Tokens.Plus
+    | Tokens.PlusEq
     | Tokens.Minus
+    | Tokens.MinusEq
     | Tokens.Star
+    | Tokens.StarEq
     | Tokens.Slash
+    | Tokens.SlashEq
     | Tokens.And
+    | Tokens.AndEq
     | Tokens.Or
+    | Tokens.OrEq
     | Tokens.Elvis
+    | Tokens.ElvisEq
     | Tokens.GT
     | Tokens.GTE
     | Tokens.LT
@@ -35,6 +49,9 @@ export type Token
     | Tokens.Colon
     | Tokens.Comma
     | Tokens.Question
+    | Tokens.Dot
+    | Tokens.QuestionDot
+    | Tokens.Arrow
 
 export namespace Tokens {
     interface Int {
@@ -86,10 +103,45 @@ export namespace Tokens {
         pos: Position,
     }
 
+    interface While {
+        kind: 'while',
+        pos: Position,
+    }
+
+    interface Break {
+        kind: 'break',
+        pos: Position,
+    }
+
+    interface For {
+        kind: 'for',
+        pos: Position,
+    }
+
+    interface In {
+        kind: 'in',
+        pos: Position,
+    }
+
+    interface Type {
+        kind: 'type',
+        pos: Position,
+    }
+
     interface Ident {
         kind: 'ident',
         pos: Position,
         val: string
+    }
+
+    interface Self {
+        kind: 'self',
+        pos: Position
+    }
+
+    interface None {
+        kind: 'none',
+        pos: Position
     }
 
     interface Assign {
@@ -102,8 +154,18 @@ export namespace Tokens {
         pos: Position,
     }
 
+    interface PlusEq {
+        kind: 'plusEq',
+        pos: Position,
+    }
+
     interface Minus {
         kind: 'minus',
+        pos: Position,
+    }
+
+    interface MinusEq {
+        kind: 'minusEq',
         pos: Position,
     }
 
@@ -112,8 +174,18 @@ export namespace Tokens {
         pos: Position,
     }
 
+    interface StarEq {
+        kind: 'starEq',
+        pos: Position,
+    }
+
     interface Slash {
         kind: 'slash',
+        pos: Position,
+    }
+
+    interface SlashEq {
+        kind: 'slashEq',
         pos: Position,
     }
 
@@ -122,13 +194,28 @@ export namespace Tokens {
         pos: Position,
     }
 
+    interface AndEq {
+        kind: 'andEq',
+        pos: Position,
+    }
+
     interface Or {
         kind: 'or',
         pos: Position,
     }
 
+    interface OrEq {
+        kind: 'orEq',
+        pos: Position,
+    }
+
     interface Elvis {
         kind: 'elvis',
+        pos: Position,
+    }
+
+    interface ElvisEq {
+        kind: 'elvisEq',
         pos: Position,
     }
 
@@ -209,6 +296,21 @@ export namespace Tokens {
 
     interface Question {
         kind: 'question',
+        pos: Position,
+    }
+
+    interface Dot {
+        kind: 'dot',
+        pos: Position,
+    }
+
+    interface QuestionDot {
+        kind: 'questionDot',
+        pos: Position,
+    }
+
+    interface Arrow {
+        kind: 'arrow',
         pos: Position,
     }
 }

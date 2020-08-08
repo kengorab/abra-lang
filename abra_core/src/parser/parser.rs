@@ -158,11 +158,11 @@ impl Parser {
 
     fn get_precedence_for_token(tok: &Token) -> Precedence {
         match tok {
-            Token::Plus(_) | Token::Minus(_) => Precedence::Addition,
-            Token::Star(_) | Token::Slash(_) | Token::Percent(_) => Precedence::Multiplication,
-            Token::And(_) => Precedence::And,
-            Token::Or(_) => Precedence::Or,
-            Token::Elvis(_) => Precedence::Coalesce,
+            Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
+            Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
+            Token::And(_) | Token::AndEq(_) => Precedence::And,
+            Token::Or(_) | Token::OrEq(_) => Precedence::Or,
+            Token::Elvis(_) | Token::ElvisEq(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
             Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
@@ -670,13 +670,21 @@ impl Parser {
         let right = self.parse_precedence(prec)?;
         let op = match token {
             Token::Plus(_) => BinaryOp::Add,
+            Token::PlusEq(_) => BinaryOp::AddEq,
             Token::Minus(_) => BinaryOp::Sub,
+            Token::MinusEq(_) => BinaryOp::SubEq,
             Token::Star(_) => BinaryOp::Mul,
+            Token::StarEq(_) => BinaryOp::MulEq,
             Token::Slash(_) => BinaryOp::Div,
+            Token::SlashEq(_) => BinaryOp::DivEq,
             Token::Percent(_) => BinaryOp::Mod,
+            Token::PercentEq(_) => BinaryOp::ModEq,
             Token::And(_) => BinaryOp::And,
+            Token::AndEq(_) => BinaryOp::AndEq,
             Token::Or(_) => BinaryOp::Or,
+            Token::OrEq(_) => BinaryOp::OrEq,
             Token::Elvis(_) => BinaryOp::Coalesce,
+            Token::ElvisEq(_) => BinaryOp::CoalesceEq,
             Token::GT(_) => BinaryOp::Gt,
             Token::GTE(_) => BinaryOp::Gte,
             Token::LT(_) => BinaryOp::Lt,
@@ -1308,6 +1316,31 @@ mod tests {
     }
 
     #[test]
+    fn parse_binary_assignment_operators() -> TestResult {
+        let test_cases = vec![
+            ("a += 3", Token::PlusEq(Position::new(1, 3)), BinaryOp::AddEq, int_literal!((1, 6), 3)),
+            ("a -= 3", Token::MinusEq(Position::new(1, 3)), BinaryOp::SubEq, int_literal!((1, 6), 3)),
+            ("a *= 3", Token::StarEq(Position::new(1, 3)), BinaryOp::MulEq, int_literal!((1, 6), 3)),
+            ("a /= 3", Token::SlashEq(Position::new(1, 3)), BinaryOp::DivEq, int_literal!((1, 6), 3)),
+            ("a %= 3", Token::PercentEq(Position::new(1, 3)), BinaryOp::ModEq, int_literal!((1, 6), 3)),
+            ("a &&= true", Token::AndEq(Position::new(1, 3)), BinaryOp::AndEq, bool_literal!((1, 7), true)),
+            ("a ||= false", Token::OrEq(Position::new(1, 3)), BinaryOp::OrEq, bool_literal!((1, 7), false)),
+            ("a ?:= false", Token::ElvisEq(Position::new(1, 3)), BinaryOp::CoalesceEq, bool_literal!((1, 7), false)),
+        ];
+
+        for (input, tok, op, right) in test_cases {
+            let ast = parse(input)?;
+            let left = Box::new(identifier!((1, 1), "a"));
+            let expected = vec![
+                Binary(tok, BinaryNode { left, op, right: Box::new(right) })
+            ];
+            assert_eq!(expected, ast);
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
@@ -1689,7 +1722,7 @@ mod tests {
             args: vec![
                 TypeIdentifier::Func {
                     args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 3), "String") }],
-                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int") })
+                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int") }),
                 },
                 TypeIdentifier::Array {
                     inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int") })
@@ -1697,8 +1730,8 @@ mod tests {
             ],
             ret: Box::new(TypeIdentifier::Func {
                 args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 30), "String") }],
-                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 41), "Int") })
-            })
+                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 41), "Int") }),
+            }),
         };
         assert_eq!(expected, type_ident);
     }

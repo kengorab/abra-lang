@@ -146,9 +146,21 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::PlusEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "plusEq")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Minus(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "minus")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::MinusEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "minusEq")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
@@ -158,9 +170,21 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::StarEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "starEq")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Slash(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "slash")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::SlashEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "slashEq")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
@@ -170,9 +194,21 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::PercentEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "percentEq")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::And(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "and")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::AndEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "andEq")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
@@ -182,9 +218,21 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::OrEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "orEq")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Elvis(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "elvis")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::ElvisEq(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "elvisEq")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }

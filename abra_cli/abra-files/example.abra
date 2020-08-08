@@ -1,5 +1,3 @@
-func call(fn: (Int) => Int, value: Int) = fn(value)
-
-func incr(v: Int, by = 1) = v + by
-
-call(incr, 23)
+var a = true
+a &&= false
+println(a)

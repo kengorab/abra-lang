@@ -181,6 +181,24 @@ mod tests {
     }
 
     #[test]
+    fn interpret_binary_assignment_operators() {
+        let cases = vec![
+            ("var a = 1\na += 3\na", Value::Int(4)),
+            ("var a = 1\na -= 3\na", Value::Int(-2)),
+            ("var a = 1\na *= 3\na", Value::Int(3)),
+            ("var a = 1.0\na /= 3\na", Value::Float(1.0 / 3.0)),
+            ("var a = true\na &&= false\na", Value::Bool(false)),
+            ("var a = true\na ||= false\na", Value::Bool(true)),
+            ("var a = None\na ?:= false\na ?: true\na", Value::Bool(false)),
+        ];
+
+        for (input, expected) in cases {
+            let result = interpret(input).unwrap();
+            assert_eq!(expected, result, "Interpreting {} should be {}", input, expected);
+        }
+    }
+
+    #[test]
     fn interpret_array() {
         let result = interpret("[1, 2, 3]").unwrap();
         let expected = Value::new_array_obj(vec![

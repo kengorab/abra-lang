@@ -52,13 +52,21 @@ pub enum Token {
     // Operators
     #[strum(to_string = "=", serialize = "Assign")] Assign(Position),
     #[strum(to_string = "+", serialize = "Plus")] Plus(Position),
+    #[strum(to_string = "+=", serialize = "PlusEq")] PlusEq(Position),
     #[strum(to_string = "-", serialize = "Minus")] Minus(Position),
+    #[strum(to_string = "-=", serialize = "MinusEq")] MinusEq(Position),
     #[strum(to_string = "*", serialize = "Star")] Star(Position),
+    #[strum(to_string = "*=", serialize = "StarEq")] StarEq(Position),
     #[strum(to_string = "/", serialize = "Slash")] Slash(Position),
+    #[strum(to_string = "/=", serialize = "SlashEq")] SlashEq(Position),
     #[strum(to_string = "%", serialize = "Percent")] Percent(Position),
+    #[strum(to_string = "%=", serialize = "PercentEq")] PercentEq(Position),
     #[strum(to_string = "&&", serialize = "And")] And(Position),
+    #[strum(to_string = "&&=", serialize = "AndEq")] AndEq(Position),
     #[strum(to_string = "||", serialize = "Or")] Or(Position),
+    #[strum(to_string = "||=", serialize = "OrEq")] OrEq(Position),
     #[strum(to_string = "?:", serialize = "Elvis")] Elvis(Position),
+    #[strum(to_string = "?:=", serialize = "ElvisEq")] ElvisEq(Position),
     #[strum(to_string = ">", serialize = "GT")] GT(Position),
     #[strum(to_string = ">=", serialize = "GTE")] GTE(Position),
     #[strum(to_string = "<", serialize = "LT")] LT(Position),
@@ -108,13 +116,21 @@ impl Token {
 
             Token::Assign(pos) |
             Token::Plus(pos) |
+            Token::PlusEq(pos) |
             Token::Minus(pos) |
+            Token::MinusEq(pos) |
             Token::Star(pos) |
+            Token::StarEq(pos) |
             Token::Slash(pos) |
+            Token::SlashEq(pos) |
             Token::Percent(pos) |
+            Token::PercentEq(pos) |
             Token::And(pos) |
+            Token::AndEq(pos) |
             Token::Or(pos) |
+            Token::OrEq(pos) |
             Token::Elvis(pos) |
+            Token::ElvisEq(pos) |
             Token::GT(pos) |
             Token::GTE(pos) |
             Token::LT(pos) |
@@ -164,13 +180,21 @@ impl Token {
 
             Token::Assign(pos) => Range::with_length(pos, 0),
             Token::Plus(pos) => Range::with_length(pos, 0),
+            Token::PlusEq(pos) => Range::with_length(pos, 1),
             Token::Minus(pos) => Range::with_length(pos, 0),
+            Token::MinusEq(pos) => Range::with_length(pos, 1),
             Token::Star(pos) => Range::with_length(pos, 0),
+            Token::StarEq(pos) => Range::with_length(pos, 1),
             Token::Slash(pos) => Range::with_length(pos, 0),
+            Token::SlashEq(pos) => Range::with_length(pos, 1),
             Token::Percent(pos) => Range::with_length(pos, 0),
+            Token::PercentEq(pos) => Range::with_length(pos, 1),
             Token::And(pos) => Range::with_length(pos, 1),
+            Token::AndEq(pos) => Range::with_length(pos, 2),
             Token::Or(pos) => Range::with_length(pos, 1),
+            Token::OrEq(pos) => Range::with_length(pos, 2),
             Token::Elvis(pos) => Range::with_length(pos, 1),
+            Token::ElvisEq(pos) => Range::with_length(pos, 1),
             Token::GT(pos) => Range::with_length(pos, 0),
             Token::GTE(pos) => Range::with_length(pos, 1),
             Token::LT(pos) => Range::with_length(pos, 0),
