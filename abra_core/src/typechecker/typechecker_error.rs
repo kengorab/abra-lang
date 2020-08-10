@@ -89,6 +89,17 @@ impl TypecheckerError {
 
 // TODO: Replace this when I do more work on Type representations
 fn type_repr(t: &Type) -> String {
+    #[inline]
+    fn wrap_type_repr(t: &Type) -> String {
+        let wrap = if let Type::Fn(_, _) = t { true } else { false };
+
+        if wrap {
+            format!("({})", type_repr(t))
+        } else {
+            type_repr(t)
+        }
+    }
+
     match t {
         Type::Unit => "Unit".to_string(),
         Type::Any => "Any".to_string(),
@@ -102,7 +113,7 @@ fn type_repr(t: &Type) -> String {
                 .collect();
             format!("one of ({})", type_opts.join(", "))
         }
-        Type::Array(typ) => format!("{}[]", type_repr(typ)),
+        Type::Array(typ) => format!("{}[]", wrap_type_repr(typ)),
         Type::Map(fields, _) => {
             if fields.is_empty() {
                 format!("{{}}")
@@ -113,7 +124,7 @@ fn type_repr(t: &Type) -> String {
                 format!("{{ {} }}", pairs)
             }
         }
-        Type::Option(typ) => format!("{}?", type_repr(typ)),
+        Type::Option(typ) => format!("{}?", wrap_type_repr(typ)),
         Type::Fn(args, ret_type) => {
             let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))

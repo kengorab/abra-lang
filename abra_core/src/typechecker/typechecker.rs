@@ -122,25 +122,21 @@ impl Typechecker {
     }
 
     fn are_types_equivalent(&mut self, node: &mut TypedAstNode, target_type: &Type) -> Result<bool, TypecheckerError> {
-        // if node.get_type().is_unknown(&self.referencable_types) {
-        //     // If the node's type has an unknown, we need to descend into it.
-        //     //
-        //     // Consider  `val arr: Int[] = []`; the rhs would be Type::Array(Box::new(Type::Unknown)),
-        //     // iterate over all values (there are none), and if any don't match we return false; if
-        //     // all match (they will, there are none), we update the node's type to be the target_type.
-        //     //
-        //     // Consider  `val fns: ((Int) => Int)[] = [x => x]`; the rhs would be
-        //     // Type::Array(Box::new(Type::Fn(vec![("x", Type::Unknown, false)], Box::new(Type::Unknown)))).
-        //     // Iterate over each of the nodes in the array (recursively calling are_types_equivalent). For lambdas,
-        //     // this will re-typecheck the lambda using the captured scope, and will mutate the node (will rust allow this?).
-        //     // Then when we get "back up to the top", set the type of the array node to be the target_type if nothing goes wrong,
-        //     // and return true.
-        // }
-
-        let typ = match (&node, target_type) {
-            (TypedAstNode::Lambda(token, lambda_node), Type::Fn(expected_args, expected_ret)) => {
-                let has_unknown = lambda_node.args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
-                if has_unknown {
+        // If the node's type has an unknown, we need to descend into it.
+        //
+        // Consider  `val arr: Int[] = []`; the rhs would be Type::Array(Box::new(Type::Unknown)),
+        // iterate over all values (there are none), and if any don't match we return false; if
+        // all match (they will, there are none), we update the node's type to be the target_type.
+        //
+        // Consider  `val fns: ((Int) => Int)[] = [x => x]`; the rhs would be
+        // Type::Array(Box::new(Type::Fn(vec![("x", Type::Unknown, false)], Box::new(Type::Unknown)))).
+        // Iterate over each of the nodes in the array (recursively calling are_types_equivalent). For lambdas,
+        // this will re-typecheck the lambda using the captured scope, and will mutate the node (will rust allow this?).
+        // Then when we get "back up to the top", set the type of the array node to be the target_type if nothing goes wrong,
+        // and return true.
+        let typ = if node.get_type().is_unknown(&self.referencable_types) {
+            match (node, target_type) {
+                (TypedAstNode::Lambda(token, lambda_node), Type::Fn(expected_args, expected_ret)) => {
                     let (orig_node, orig_scopes) = lambda_node.orig_node.as_ref().unwrap().clone();
 
                     let mut target_args_iter = expected_args.iter();
@@ -173,23 +169,46 @@ impl Typechecker {
 
                     std::mem::swap(&mut self.scopes, &mut scopes);
 
-                    *node = retyped_lambda;
+                    if let TypedAstNode::Lambda(_, retyped_lambda_node) = retyped_lambda {
+                        *lambda_node = retyped_lambda_node;
+                    } else { unreachable!() }
 
                     if **expected_ret == Type::Unit {
                         return Ok(true);
                     } else {
                         if let Type::Fn(_, ret) = lambda_type {
-                            return Ok(ret.is_equivalent_to(expected_ret, &self.referencable_types));
+                            if !ret.is_equivalent_to(expected_ret, &self.referencable_types) {
+                                return Err(TypecheckerError::Mismatch {
+                                    token: token.clone(),
+                                    expected: *(*expected_ret).clone(),
+                                    actual: *ret
+                                })
+                            }
+
+                            return Ok(true);
                         } else { unreachable!() };
                     }
-                } else {
-                    self.resolve_ref_type(&lambda_node.typ)
                 }
+                (TypedAstNode::Array(_, ref mut array_node), Type::Array(ref inner_type)) => {
+                    for mut item in &mut array_node.items {
+                        if !self.are_types_equivalent(&mut item, inner_type)? {
+                            return Ok(false);
+                        }
+                    }
+                    array_node.typ = Type::Array(inner_type.clone());
+                    array_node.typ.clone()
+                }
+                (node, _) => self.resolve_ref_type(&node.get_type())
             }
-            (node, _) => self.resolve_ref_type(&node.get_type())
+        } else {
+            self.resolve_ref_type(&node.get_type())
         };
 
-        Ok(typ.is_equivalent_to(target_type, &self.referencable_types))
+        if target_type.is_unknown(&self.referencable_types) {
+            Ok(true) // TODO: This could be wrong
+        } else {
+            Ok(typ.is_equivalent_to(target_type, &self.referencable_types))
+        }
     }
 
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
@@ -601,7 +620,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else if !item_types.is_empty() {
             Type::Or(item_types.into_iter().collect())
         } else {
-            Type::Any
+            Type::Unknown
         };
 
         let items = items.into_iter()
@@ -2170,7 +2189,7 @@ mod tests {
         let typed_ast = typecheck("[]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
-            TypedArrayNode { typ: Type::Array(Box::new(Type::Any)), items: vec![] },
+            TypedArrayNode { typ: Type::Array(Box::new(Type::Unknown)), items: vec![] },
         );
         assert_eq!(expected, typed_ast[0]);
 
@@ -2346,6 +2365,8 @@ mod tests {
         );
         assert_eq!(&expected_binding, binding);
         assert_eq!(0, scope_depth);
+
+        assert!(typecheck("val arr: Int[] = []").is_ok());
 
         Ok(())
     }
@@ -4985,8 +5006,21 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Arrow(Position::new(1, 29)),
-            expected: Type::Fn(vec![("_".to_string(), Type::String, false)], Box::new(Type::Int)),
-            actual: Type::Fn(vec![("a".to_string(), Type::String, false)], Box::new(Type::String)),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          val fns: ((Int) => Int)[] = [\n\
+            x => x * 2,\n\
+            x => x + \"!\",\n\
+          ]\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Arrow(Position::new(3, 3)),
+            expected: Type::Int,
+            actual: Type::String,
         };
         assert_eq!(expected, error);
     }
