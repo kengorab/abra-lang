@@ -105,6 +105,8 @@ pub struct BindingDeclNode {
 pub struct FunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    // Must be a Token::Idents
+    pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
     pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
@@ -121,6 +123,8 @@ pub struct LambdaNode {
 pub struct TypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    // Must be Token::Idents
+    pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<(Token, TypeIdentifier, Option<AstNode>)>,
     pub methods: Vec<AstNode>,

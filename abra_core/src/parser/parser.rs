@@ -328,9 +328,37 @@ impl Parser {
         Ok(args)
     }
 
+    fn parse_type_args(&mut self) -> Result<Vec<Token>, ParseError> {
+        let mut type_args = Vec::new();
+        if let Token::LT(_) = self.expect_peek()? {
+            self.expect_next()?; // Consume '<'
+
+            loop {
+                let ident = self.expect_next_token(TokenType::Ident)?;
+                type_args.push(ident);
+
+                match self.expect_next()? {
+                    Token::Comma(_) => {
+                        if let Token::GT(_) = self.expect_peek()? {
+                            self.expect_next()?; // Consume '>'
+                            break;
+                        } else {
+                            continue;
+                        }
+                    }
+                    Token::GT(_) => break,
+                    tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+                }
+            }
+        }
+        Ok(type_args)
+    }
+
     fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
-        let func_token = self.expect_next()?;
-        let func_name = self.expect_next_token(TokenType::Ident)?;
+        let token = self.expect_next()?;
+        let name = self.expect_next_token(TokenType::Ident)?;
+
+        let type_args = self.parse_type_args()?;
 
         self.expect_next_token(TokenType::LParen)?;
         let args = self.parse_func_args(None, false)?;
@@ -352,7 +380,7 @@ impl Parser {
             t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
         }?;
 
-        Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode { name: func_name, args, ret_type, body }))
+        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { name, type_args, args, ret_type, body }))
     }
 
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -401,6 +429,8 @@ impl Parser {
             }
         })?;
 
+        let type_args = self.parse_type_args()?;
+
         self.expect_next_token(TokenType::LBrace)?;
 
         let mut fields = Vec::new();
@@ -433,7 +463,7 @@ impl Parser {
 
         self.expect_next_token(TokenType::RBrace)?;
 
-        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods }))
+        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods, type_args }))
     }
 
     #[inline]
@@ -1779,6 +1809,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                type_args: vec![],
                 args: vec![],
                 ret_type: None,
                 body: vec![
@@ -1793,6 +1824,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                type_args: vec![],
                 args: vec![],
                 ret_type: None,
                 body: vec![
@@ -1864,6 +1896,21 @@ mod tests {
         };
         let expected = Some(TypeIdentifier::Normal { ident: ident_token!((1, 19), "String") });
         assert_eq!(&expected, ret_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_func_decl_type_args() -> TestResult {
+        let ast = parse("func abc<T>(a: T, b: T?) = 123")?;
+        let type_args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { type_args, .. }) => type_args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            ident_token!((1, 10), "T")
+        ];
+        assert_eq!(&expected, type_args);
 
         Ok(())
     }
@@ -2063,6 +2110,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![],
                 methods: vec![],
             },
@@ -2074,6 +2122,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None)],
                 methods: vec![],
             },
@@ -2087,6 +2136,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![
                     (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
                     (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }, None),
@@ -2102,6 +2152,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![
                     (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
                     (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool") }, Some(bool_literal!((1, 45), true)))
@@ -2112,6 +2163,61 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_type_args() -> TestResult {
+        // Testing with a type argument
+        let ast = parse("type List<T> { }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "List"),
+                type_args: vec![ident_token!((1, 11), "T")],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Testing with multiple type arguments (with and without trailing commas)
+        let ast = parse("type List<T, U> { }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "List"),
+                type_args: vec![
+                    ident_token!((1, 11), "T"),
+                    ident_token!((1, 14), "U"),
+                ],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("type List<T, U,> { }")?;
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_type_args_error() {
+        let error = parse("type List<> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::GT(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<1> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 1));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<[]> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LBrack(Position::new(1, 11), false));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<T, ,> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Comma(Position::new(1, 14)));
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -2126,12 +2232,14 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![],
                 methods: vec![
                     AstNode::FunctionDecl(
                         Token::Func(Position::new(2, 1)),
                         FunctionDeclNode {
                             name: Token::Ident(Position::new(2, 6), "hello".to_string()),
+                            type_args: vec![],
                             args: vec![
                                 (Token::Self_(Position::new(2, 12)), None, None),
                             ],

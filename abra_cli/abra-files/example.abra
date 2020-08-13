@@ -1,3 +1,19 @@
-var a = true
-a &&= false
-println(a)
+type List<T, U> {
+  items: T[]
+
+  func push(self, item: T) {
+    self.items.push(T)
+  }
+
+  func get(self, index: Int): T? {
+    self.items[index]
+  }
+}
+
+func push<T>(self, arr: T[], item: T) {
+  arr.push(item)
+}
+
+val arr: Int[] = []
+push(arr: arr, item: 123)
+println(arr)

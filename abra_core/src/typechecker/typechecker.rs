@@ -181,8 +181,8 @@ impl Typechecker {
                                 return Err(TypecheckerError::Mismatch {
                                     token: token.clone(),
                                     expected: *(*expected_ret).clone(),
-                                    actual: *ret
-                                })
+                                    actual: *ret,
+                                });
                             }
 
                             return Ok(true);
@@ -725,7 +725,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let FunctionDeclNode { name, args, ret_type, body } = node;
+        let FunctionDeclNode { name, args, ret_type, body, .. } = node;
 
         let func_name = Token::get_ident_name(&name);
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
