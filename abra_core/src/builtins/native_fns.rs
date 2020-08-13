@@ -1,4 +1,4 @@
-use crate::typechecker::types::Type;
+use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VMContext;
 use std::cmp::Ordering;
@@ -56,9 +56,9 @@ impl NativeFnDesc<'_> {
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), false));
         let opt_args = self.opt_args.iter()
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), true));
-        let args = req_args.chain(opt_args).collect();
+        let arg_types = req_args.chain(opt_args).collect();
 
-        Type::Fn(args, Box::new(self.return_type.clone()))
+        Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(self.return_type.clone()) })
     }
 }
 

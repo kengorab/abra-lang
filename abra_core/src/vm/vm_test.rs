@@ -990,6 +990,33 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_generics() {
+        let input = r#"
+          func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
+            val newArr: U[] = []
+
+            if start |u| { newArr.push(u) } else {}
+
+            for i in arr { newArr.push(fn(i)) }
+            newArr
+          }
+          map(
+             arr: ["1", "23", "456"],
+             fn: s => (s + "!").length,
+             start: 17
+          )
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(17),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_while_loop() {
         let input = "\
           var a = 0\n\

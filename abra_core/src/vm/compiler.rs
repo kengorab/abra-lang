@@ -2,8 +2,8 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, };
-use crate::typechecker::types::Type;
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
@@ -700,7 +700,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_lambda(&mut self, token: Token, node: TypedLambdaNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let ret_type = if let Type::Fn(_, ret_type) = node.typ { *ret_type } else { unreachable!() };
+        let ret_type = if let Type::Fn(FnType { ret_type, .. }) = node.typ { *ret_type } else { unreachable!() };
         let body = node.typed_body.unwrap();
         let scope_depth = self.get_fn_depth();
         let fn_value = self.compile_function_decl(token, None, node.args, ret_type, body, scope_depth)?;
@@ -1139,7 +1139,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let typ = target.get_type();
         let (arity, has_return) = match typ {
-            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
+            Type::Fn(FnType { arg_types, ret_type, .. }) => (arg_types.len(), *ret_type != Type::Unit),
             _ => unreachable!() // This should have been caught during typechecking
         };
 
