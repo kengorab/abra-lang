@@ -15,7 +15,7 @@ func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
 
   if start |u| {
     newArr.push(u)
-  } else {}
+  }
 
   for i in arr {
     newArr.push(fn(i))

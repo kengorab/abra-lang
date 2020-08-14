@@ -995,7 +995,7 @@ mod tests {
           func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
             val newArr: U[] = []
 
-            if start |u| { newArr.push(u) } else {}
+            if start |u| newArr.push(u)
 
             for i in arr { newArr.push(fn(i)) }
             newArr

@@ -1097,6 +1097,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
         compile_block(self, if_block, is_stmt)?;
         self.pop_scope();
+
+        // ...we need to pop that floating value off of the stack. Each block correctly cleans
+        // up its locals (via the pop_scope() call), but since this value is placed on the stack
+        // _before_ the blocks (and only (optionally) captured as a local in _one_ of them), we need
+        // to make sure we pop it within the else-block too.
+        // But if there IS no else-block to compile, we still need to properly emit this pop, and we
+        // need to ensure this pop is only reachable if the if-block isn't taken; let's make a dummy
+        // else-block so the jumps are handled properly.
+        let else_block = match else_block {
+            Some(block) => Some(block),
+            None => if condition_binding.is_some() { Some(vec![]) } else { None }
+        };
         if else_block.is_some() {
             self.write_opcode(Opcode::Jump, line);
             self.write_byte(0, line); // <- Replaced after compiling else-block
@@ -1109,15 +1121,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let jump_offset_slot_idx = code.len();
 
-        if condition_binding.is_some() {
-            // ...we need to pop that floating value off of the stack. Each block correctly cleans
-            // up its locals (via the pop_scope() call), but since this value is placed on the stack
-            // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
-            // make sure we "manually" clean it up here. We also need to make sure this happens
-            // regardless of whether there's an else-block to compile.
-            self.write_opcode(Opcode::Pop, line);
-        }
         if let Some(else_block) = else_block {
+            // Pop the floating condition binding value off the stack, if present. See comment above
+            // for how we know we can always do this here (tl;dr there will _always_ be an else-block
+            // if there is a condition binding).
+            if condition_binding.is_some() {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
             self.push_scope(ScopeKind::If);
             compile_block(self, else_block, is_stmt)?;
             self.pop_scope();
