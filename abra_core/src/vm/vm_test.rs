@@ -24,7 +24,7 @@ mod tests {
         let ctx = VMContext::default();
 
         let mut vm = VM::new(module, ctx);
-        vm.run().unwrap()
+        vm.run(false).unwrap()
     }
 
     #[test]
@@ -669,6 +669,7 @@ mod tests {
             ],
             upvalues: vec![],
             receiver: None,
+            has_return: true,
         });
         assert_eq!(expected, result);
     }

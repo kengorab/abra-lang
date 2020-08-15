@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::cell::RefCell;
 use std::sync::Arc;
+use crate::builtins::native_fns::NativeFn;
 
 // Helper macros
 macro_rules! pop_expect_string {
@@ -102,7 +103,7 @@ impl VMContext {
 }
 
 pub struct VM {
-    ctx: VMContext,
+    pub ctx: VMContext,
     constants: Vec<Value>,
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
@@ -282,8 +283,8 @@ impl VM {
     #[inline]
     fn make_closure(&mut self) -> Result<(), InterpretError> {
         let function = self.pop_expect()?;
-        let (name, code, upvalues, receiver) = match function {
-            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
+        let (name, code, upvalues, receiver, has_return) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => Ok((name, code, upvalues, receiver, has_return)),
             v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
         }?;
 
@@ -313,7 +314,7 @@ impl VM {
         // in order for the upvalue_idx's to line up properly.
         let captures = captures.rev().collect::<Vec<_>>();
 
-        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver, has_return }));
         Ok(())
     }
 
@@ -379,10 +380,85 @@ impl VM {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
+    fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn)-> Result<Option<Value>, InterpretError> {
+        let num_args = self.stack.len() - arity;
+        let args = self.stack.split_off(num_args);
+        if native_fn.has_return {
+            self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
+        }
+        return Ok(native_fn.invoke(args, self));
+    }
+
+    fn start_call_frame(&mut self, arity: usize, func_value: Value) -> Result<(), InterpretError> {
+        let mut arity = arity;
+        let (name, code, upvalues, receiver, has_return) = match func_value {
+            Value::Fn(FnValue { name, code, receiver, has_return, .. }) => (name, code, vec![], receiver, has_return),
+            Value::Closure(ClosureValue { name, code, captures, receiver, has_return, .. }) => (name, code, captures, receiver, has_return),
+            _ => unreachable!("Native functions should be handled separately")
+        };
+
+        match receiver {
+            Some(receiver) => {
+                let mut args = self.stack.split_off(self.stack.len() - arity);
+                self.stack.push(Value::Obj(receiver));
+                self.stack.append(&mut args);
+                arity += 1;
+            }
+            None => {}
+        }
+        if has_return { arity += 1 }
+        let start_stack_idx = self.stack.len() - arity;
+
+        // Initialize the frame with local_addrs for the args already on the stack, since
+        // the function body itself won't mark these as locals
+        let mut local_addrs = Vec::new();
+        for l in 0..arity {
+            local_addrs.push(self.stack.len() - (arity - l));
+        }
+
+        let frame = CallFrame { ip: 0, code, start_stack_idx, name, upvalues, local_addrs };
+        if self.call_stack.len() + 1 >= STACK_LIMIT {
+            return Err(InterpretError::StackOverflow);
+        }
+        self.call_stack.push(frame);
+
+        Ok(())
+    }
+
+    pub fn invoke_fn(&mut self, args: Vec<Value>, func: Value) -> Result<Option<Value>, InterpretError> {
+        let arity = args.len();
+        let has_return = match &func {
+            Value::NativeFn(native_fn) => return self.invoke_native_fn(arity, native_fn),
+            Value::Fn(FnValue { has_return, .. }) |
+            Value::Closure(ClosureValue { has_return, .. }) => has_return.clone(),
+            _ => unreachable!()
+        };
+
+        if has_return {
+            self.push(Value::Nil);
+        }
+
+        let arity = args.len();
+        for arg in args {
+            self.push(arg);
+        }
+
+        self.start_call_frame(arity, func)?;
+
+        let res = self.run(true)?;
+        if has_return {
+            Ok(res)
+        } else {
+            if let Some(res) = res {
+                self.push(res);
+            }
+            Ok(None)
+        }
+    }
+
+    pub fn run(&mut self, isolated: bool) -> Result<Option<Value>, InterpretError> {
         loop {
-            let instr = self.read_instr()
-                .ok_or(InterpretError::EndOfBytes)?;
+            let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
             match instr {
                 Opcode::Constant => {
@@ -708,50 +784,15 @@ impl VM {
                 }
                 Opcode::Invoke => {
                     let target = self.pop_expect()?;
-                    let mut arity = self.read_byte_expect()?;
-                    let has_return = self.read_byte_expect()? == 1;
+                    let arity = self.read_byte_expect()?;
 
-                    let (name, code, upvalues, receiver) = match target {
-                        Value::NativeFn(native_fn) => {
-                            let num_args = self.stack.len() - arity;
-                            let args = self.stack.split_off(num_args);
-                            if has_return { self.stack.pop(); } // <-- Pop off nil (<ret> placeholder) value
-                            if let Some(value) = native_fn.invoke(&self.ctx, args) {
-                                self.push(value);
-                            }
-                            continue;
+                    if let Value::NativeFn(native_fn) = &target {
+                        if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
+                            self.push(value);
                         }
-                        Value::Fn(FnValue { name, code, receiver, .. }) => (name, code, vec![], receiver),
-                        Value::Closure(ClosureValue { name, code, captures, receiver, .. }) => (name, code, captures, receiver),
-                        v @ _ => {
-                            return Err(InterpretError::TypeError("Function".to_string(), v.to_string()));
-                        }
-                    };
-
-                    match receiver {
-                        Some(receiver) => {
-                            let mut args = self.stack.split_off(self.stack.len() - arity);
-                            self.stack.push(Value::Obj(receiver));
-                            self.stack.append(&mut args);
-                            arity += 1;
-                        }
-                        None => {}
+                        continue;
                     }
-                    if has_return { arity += 1 }
-                    let start_stack_idx = self.stack.len() - arity;
-
-                    // Initialize the frame with local_addrs for the args already on the stack, since
-                    // the function body itself won't mark these as locals
-                    let mut local_addrs = Vec::new();
-                    for l in 0..arity {
-                        local_addrs.push(self.stack.len() - (arity - l));
-                    }
-
-                    let frame = CallFrame { ip: 0, code, start_stack_idx, name, upvalues, local_addrs };
-                    if self.call_stack.len() + 1 >= STACK_LIMIT {
-                        break Err(InterpretError::StackOverflow);
-                    }
-                    self.call_stack.push(frame);
+                    self.start_call_frame(arity, target)?;
                 }
                 Opcode::ClosureMk => self.make_closure()?,
                 Opcode::CloseUpvalue => self.close_upvalue()?,
@@ -782,11 +823,22 @@ impl VM {
                     }
                 }
                 Opcode::Return => {
-                    let is_main_frame = self.call_stack.len() == 1;
+                    if isolated {
+                        let top = self.pop();
 
+                        // Ensure that any upvalues that are created in the current frame are closed
+                        self.close_upvalues_for_frame()?;
+
+                        // Pop off current frame, so the next loop will resume with the previous frame
+                        self.call_stack.pop();
+
+                        break Ok(top);
+                    }
+
+                    let is_main_frame = self.call_stack.len() == 1;
                     if is_main_frame {
                         let top = self.pop();
-                        break Ok(top.clone());
+                        break Ok(top);
                     } else {
                         // Ensure that any upvalues that are created in the current frame are closed
                         self.close_upvalues_for_frame()?;
