@@ -1,19 +1,31 @@
-type List<T, U> {
-  items: T[]
+//type List<T, U> {
+//  items: T[]
+//
+//  func push(self, item: T) {
+//    self.items.push(T)
+//  }
+//
+//  func get(self, index: Int): T? {
+//    self.items[index]
+//  }
+//}
 
-  func push(self, item: T) {
-    self.items.push(T)
+func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
+  val newArr: U[] = []
+
+  if start |u| {
+    newArr.push(u)
   }
 
-  func get(self, index: Int): T? {
-    self.items[index]
+  for i in arr {
+    newArr.push(fn(i))
   }
+  newArr
 }
 
-func push<T>(self, arr: T[], item: T) {
-  arr.push(item)
-}
-
-val arr: Int[] = []
-push(arr: arr, item: 123)
-println(arr)
+val lengths = map(
+   arr: ["1", "23", "456"],
+   fn: s => (s + "!").length,
+   start: 17
+)
+println(lengths)

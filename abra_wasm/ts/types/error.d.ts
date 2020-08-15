@@ -74,6 +74,8 @@ export namespace Errors {
         | TypecheckerErrors.DuplicateBinding
         | TypecheckerErrors.DuplicateField
         | TypecheckerErrors.DuplicateType
+        | TypecheckerErrors.DuplicateTypeArgument
+        | TypecheckerErrors.UnboundGeneric
         | TypecheckerErrors.UnknownIdentifier
         | TypecheckerErrors.InvalidAssignmentTarget
         | TypecheckerErrors.AssignmentToImmutable
@@ -152,6 +154,19 @@ export namespace Errors {
             subKind: 'duplicateType',
             ident: Token,
             origIdent: Token | null
+        }
+
+        interface DuplicateTypeArgument extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'duplicateTypeArgument',
+            ident: Token,
+            origIdent: Token
+        }
+
+        interface UnboundGeneric extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'unboundGeneric',
+            ident: Token
         }
 
         interface UnknownIdentifier extends BaseError {

@@ -1,4 +1,4 @@
-use abra_core::typechecker::types::{Type, StructType};
+use abra_core::typechecker::types::{Type, StructType, FnType};
 use serde::{Serialize, Serializer};
 
 pub struct JsType<'a>(pub &'a Type);
@@ -69,14 +69,15 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
-            Type::Fn(args, return_type) => {
+            Type::Fn(FnType { arg_types, type_args, ret_type}) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
-                let args: Vec<(String, JsType)> = args.iter()
+                let args: Vec<(String, JsType)> = arg_types.iter()
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("args", &args)?;
-                obj.serialize_entry("returnType", &JsType(return_type))?;
+                obj.serialize_entry("typeArgs", &type_args)?;
+                obj.serialize_entry("returnType", &JsType(ret_type))?;
                 obj.end()
             }
             Type::Type(name, _) => {
@@ -114,8 +115,14 @@ impl<'a> Serialize for JsType<'a> {
                 obj.end()
             }
             Type::Reference(name) => {
-                let mut obj = serializer.serialize_map(Some(1))?;
+                let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Reference")?;
+                obj.serialize_entry("name", name)?;
+                obj.end()
+            }
+            Type::Generic(name) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Generic")?;
                 obj.serialize_entry("name", name)?;
                 obj.end()
             }

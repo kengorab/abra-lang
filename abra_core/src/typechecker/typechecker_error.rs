@@ -1,6 +1,6 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::{Type, StructType};
+use crate::typechecker::types::{Type, StructType, FnType};
 use crate::parser::ast::BinaryOp;
 use crate::typechecker::typed_ast::TypedAstNode;
 
@@ -19,6 +19,8 @@ pub enum TypecheckerError {
     DuplicateBinding { ident: Token, orig_ident: Token },
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
+    DuplicateTypeArgument { ident: Token, orig_ident: Token },
+    UnboundGeneric(Token),
     UnknownIdentifier { ident: Token },
     InvalidAssignmentTarget { token: Token, reason: Option<InvalidAssignmentTargetReason> },
     AssignmentToImmutable { orig_ident: Token, token: Token },
@@ -56,6 +58,8 @@ impl TypecheckerError {
             TypecheckerError::MissingRequiredAssignment { ident } => ident,
             TypecheckerError::DuplicateBinding { ident, .. } => ident,
             TypecheckerError::DuplicateType { ident, .. } => ident,
+            TypecheckerError::DuplicateTypeArgument { ident, .. } => ident,
+            TypecheckerError::UnboundGeneric(token) => token,
             TypecheckerError::DuplicateField { ident, .. } => ident,
             TypecheckerError::UnknownIdentifier { ident } => ident,
             TypecheckerError::InvalidAssignmentTarget { token, .. } => token,
@@ -91,7 +95,7 @@ impl TypecheckerError {
 fn type_repr(t: &Type) -> String {
     #[inline]
     fn wrap_type_repr(t: &Type) -> String {
-        let wrap = if let Type::Fn(_, _) = t { true } else { false };
+        let wrap = if let Type::Fn(_) = t { true } else { false };
 
         if wrap {
             format!("({})", type_repr(t))
@@ -125,14 +129,15 @@ fn type_repr(t: &Type) -> String {
             }
         }
         Type::Option(typ) => format!("{}?", wrap_type_repr(typ)),
-        Type::Fn(args, ret_type) => {
-            let args = args.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
+        Type::Fn(FnType { arg_types, ret_type, .. }) => {
+            let args = arg_types.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
         Type::Type(name, _) => name.to_string(),
         Type::Unknown => "Unknown".to_string(),
         Type::Struct(StructType { name, .. }) => name.to_string(),
         Type::Placeholder => "_".to_string(),
+        Type::Generic(name) |
         Type::Reference(name) => name.clone(),
     }
 }
@@ -233,6 +238,23 @@ impl DisplayError for TypecheckerError {
                     }
                     None => format!("'{}' already declared as built-in type", ident)
                 };
+
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::DuplicateTypeArgument { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
+                let ident = Token::get_ident_name(&ident);
+                let first_msg = format!("Duplicate type argument '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+
+                let pos = orig_ident.get_position();
+                let cursor_line = Self::get_underlined_line(lines, orig_ident);
+
+                let second_msg = format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerError::UnboundGeneric(token) => {
+                let ident = Token::get_ident_name(token);
+                let first_msg = format!("Type argument '{}' is unbound ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let second_msg = format!("There is not enough information to determine a possible value for '{}'", ident);
 
                 format!("{}\n{}", first_msg, second_msg)
             }

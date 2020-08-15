@@ -2,8 +2,8 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, };
-use crate::typechecker::types::Type;
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
@@ -700,7 +700,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_lambda(&mut self, token: Token, node: TypedLambdaNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let ret_type = if let Type::Fn(_, ret_type) = node.typ { *ret_type } else { unreachable!() };
+        let ret_type = if let Type::Fn(FnType { ret_type, .. }) = node.typ { *ret_type } else { unreachable!() };
         let body = node.typed_body.unwrap();
         let scope_depth = self.get_fn_depth();
         let fn_value = self.compile_function_decl(token, None, node.args, ret_type, body, scope_depth)?;
@@ -1097,6 +1097,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
         compile_block(self, if_block, is_stmt)?;
         self.pop_scope();
+
+        // ...we need to pop that floating value off of the stack. Each block correctly cleans
+        // up its locals (via the pop_scope() call), but since this value is placed on the stack
+        // _before_ the blocks (and only (optionally) captured as a local in _one_ of them), we need
+        // to make sure we pop it within the else-block too.
+        // But if there IS no else-block to compile, we still need to properly emit this pop, and we
+        // need to ensure this pop is only reachable if the if-block isn't taken; let's make a dummy
+        // else-block so the jumps are handled properly.
+        let else_block = match else_block {
+            Some(block) => Some(block),
+            None => if condition_binding.is_some() { Some(vec![]) } else { None }
+        };
         if else_block.is_some() {
             self.write_opcode(Opcode::Jump, line);
             self.write_byte(0, line); // <- Replaced after compiling else-block
@@ -1109,15 +1121,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let jump_offset_slot_idx = code.len();
 
-        if condition_binding.is_some() {
-            // ...we need to pop that floating value off of the stack. Each block correctly cleans
-            // up its locals (via the pop_scope() call), but since this value is placed on the stack
-            // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
-            // make sure we "manually" clean it up here. We also need to make sure this happens
-            // regardless of whether there's an else-block to compile.
-            self.write_opcode(Opcode::Pop, line);
-        }
         if let Some(else_block) = else_block {
+            // Pop the floating condition binding value off the stack, if present. See comment above
+            // for how we know we can always do this here (tl;dr there will _always_ be an else-block
+            // if there is a condition binding).
+            if condition_binding.is_some() {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
             self.push_scope(ScopeKind::If);
             compile_block(self, else_block, is_stmt)?;
             self.pop_scope();
@@ -1139,7 +1150,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let typ = target.get_type();
         let (arity, has_return) = match typ {
-            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
+            Type::Fn(FnType { arg_types, ret_type, .. }) => (arg_types.len(), *ret_type != Type::Unit),
             _ => unreachable!() // This should have been caught during typechecking
         };
 
