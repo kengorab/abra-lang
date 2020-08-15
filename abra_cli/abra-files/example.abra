@@ -10,22 +10,7 @@
 //  }
 //}
 
-func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
-  val newArr: U[] = []
-
-  if start |u| {
-    newArr.push(u)
-  }
-
-  for i in arr {
-    newArr.push(fn(i))
-  }
-  newArr
-}
-
-val lengths = map(
-   arr: ["1", "23", "456"],
-   fn: s => (s + "!").length,
-   start: 17
-)
-println(lengths)
+val arr = [1, 2, 3]
+arr.push(4)
+arr.push(5)
+arr
