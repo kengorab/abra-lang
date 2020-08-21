@@ -69,7 +69,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
-            Type::Fn(FnType { arg_types, type_args, ret_type}) => {
+            Type::Fn(FnType { arg_types, type_args, ret_type }) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
                 let args: Vec<(String, JsType)> = arg_types.iter()
@@ -91,10 +91,14 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Unknown")?;
                 obj.end()
             }
-            Type::Struct(StructType { name, fields, methods, static_fields }) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
+            Type::Struct(StructType { name, type_args, fields, methods, static_fields }) => {
+                let mut obj = serializer.serialize_map(Some(6))?;
                 obj.serialize_entry("kind", "Struct")?;
                 obj.serialize_entry("name", name)?;
+                let type_args: Vec<(String, JsType)> = type_args.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("typeArgs", &type_args)?;
                 let fields: Vec<(String, JsType)> = fields.iter()
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
@@ -114,10 +118,14 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Placeholder")?;
                 obj.end()
             }
-            Type::Reference(name) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
+            Type::Reference(name, type_args) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Reference")?;
                 obj.serialize_entry("name", name)?;
+                let type_args: Vec<JsType> = type_args.iter()
+                    .map(|typ| JsType(typ))
+                    .collect();
+                obj.serialize_entry("typeArgs", &type_args)?;
                 obj.end()
             }
             Type::Generic(name) => {

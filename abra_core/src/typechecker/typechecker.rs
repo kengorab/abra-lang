@@ -95,6 +95,34 @@ impl Typechecker {
             .collect()
     }
 
+    fn get_generics_in_scope(&self) -> HashSet<String> {
+        self.scopes.iter().rev().flat_map(|scope| scope.types.iter())
+            .filter_map(|(_, (typ, _))| if let Type::Generic(name) = typ { Some(name.clone()) } else { None })
+            .collect()
+    }
+
+    fn type_from_type_ident(&self, type_ident: &TypeIdentifier) -> Result<Type, TypecheckerError> {
+        let type_from_ident = Type::from_type_ident(type_ident, &self.get_types_in_scope());
+        match type_from_ident {
+            Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
+            Ok(typ) => {
+                if let Type::Reference(name, ref_type_args) = &typ {
+                    if let Type::Struct(StructType { type_args, .. }) = &self.referencable_types[name] {
+                        if ref_type_args.len() != type_args.len() {
+                            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                                token: type_ident.get_ident(),
+                                actual_type: self.referencable_types[name].clone(),
+                                actual: ref_type_args.len(),
+                                expected: type_args.len(),
+                            });
+                        }
+                    } else { unreachable!("Can't reference anything but Struct types") }
+                }
+                Ok(typ)
+            }
+        }
+    }
+
     fn add_type(&mut self, name: String, type_decl_node: Option<TypedAstNode>, typ: Type) {
         let scope = self.scopes.last_mut().unwrap();
         scope.types.insert(name, (typ, type_decl_node));
@@ -116,7 +144,10 @@ impl Typechecker {
 
     fn resolve_ref_type(&self, typ: &Type) -> Type {
         match typ {
-            Type::Reference(name) => self.referencable_types[name].clone(),
+            Type::Reference(name, type_args) => {
+                Type::hydrate_reference_type(name, type_args, &self.referencable_types)
+                    .expect(&format!("There should be a type referencable by name '{}'", name))
+            }
             t @ _ => t.clone()
         }
     }
@@ -182,7 +213,7 @@ impl Typechecker {
                             // generic value should be yet. Maybe it's the return type annotation for a function (in which case,
                             // we'll only know this at invocation-time); or it's conditional on the re-evaluation of the lambda
                             // node. Return true here, under the assumption that it'll be determined outside of this function.
-                            if expected_ret.is_generic() {
+                            if expected_ret.has_unbound_generic() {
                                 return Ok(true);
                             }
 
@@ -332,31 +363,26 @@ impl Typechecker {
 
             match type_ident {
                 Some(type_ident) => {
-                    let arg_type = Type::from_type_ident(&type_ident, &self.get_types_in_scope());
-                    match arg_type {
-                        Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
-                        Ok(arg_type) => {
-                            match default_value {
-                                Some(default_value) => {
-                                    seen_optional_arg = true;
-                                    let mut default_value = self.visit(default_value)?;
-                                    if self.are_types_equivalent(&mut default_value, &arg_type)? {
-                                        let arg_name = Token::get_ident_name(&token);
-                                        self.add_binding(&arg_name, &token, &arg_type, false);
-                                        typed_args.push((token, arg_type, Some(default_value)));
-                                    } else {
-                                        return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
-                                    }
-                                }
-                                None => {
-                                    if seen_optional_arg {
-                                        return Err(TypecheckerError::InvalidRequiredArgPosition(token));
-                                    }
-                                    let arg_name = Token::get_ident_name(&token);
-                                    self.add_binding(&arg_name, &token, &arg_type, false);
-                                    typed_args.push((token, arg_type, None));
-                                }
+                    let arg_type = self.type_from_type_ident(&type_ident)?;
+                    match default_value {
+                        Some(default_value) => {
+                            seen_optional_arg = true;
+                            let mut default_value = self.visit(default_value)?;
+                            if self.are_types_equivalent(&mut default_value, &arg_type)? {
+                                let arg_name = Token::get_ident_name(&token);
+                                self.add_binding(&arg_name, &token, &arg_type, false);
+                                typed_args.push((token, arg_type, Some(default_value)));
+                            } else {
+                                return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
                             }
+                        }
+                        None => {
+                            if seen_optional_arg {
+                                return Err(TypecheckerError::InvalidRequiredArgPosition(token));
+                            }
+                            let arg_name = Token::get_ident_name(&token);
+                            self.add_binding(&arg_name, &token, &arg_type, false);
+                            typed_args.push((token, arg_type, None));
                         }
                     }
                 }
@@ -692,15 +718,23 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         };
 
         let typ = match (&mut typed_expr, &type_ann) {
-            (Some(e), None) => Ok(e.get_type()),
-            (None, Some(ann)) => {
-                let ann_type = Type::from_type_ident(ann, &self.get_types_in_scope())
-                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
-                Ok(ann_type)
+            (Some(e), None) => {
+                let typ = e.get_type();
+                if typ.has_unbound_generic() {
+                    let available_generics = self.get_generics_in_scope();
+                    let generic = typ.extract_unbound_generics().iter()
+                        .filter(|generic_name| !available_generics.contains(*generic_name))
+                        .map(|g| g.clone())
+                        .next();
+                    if let Some(unbound_generic) = generic {
+                        return Err(TypecheckerError::UnboundGeneric(ident, unbound_generic));
+                    }
+                }
+                Ok(typ)
             }
+            (None, Some(ann)) => self.type_from_type_ident(ann),
             (Some(typed_expr), Some(ann)) => {
-                let ann_type = Type::from_type_ident(ann, &self.get_types_in_scope())
-                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
+                let ann_type = self.type_from_type_ident(ann)?;
 
                 if self.are_types_equivalent(typed_expr, &ann_type)? {
                     Ok(ann_type)
@@ -744,7 +778,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
         let mut seen = HashMap::<String, Token>::new();
-        let mut scope_type_args = Vec::new();
         for type_arg in &type_args {
             let name = Token::get_ident_name(type_arg);
             match seen.get(&name) {
@@ -754,19 +787,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
                     scope.types.insert(name.clone(), (Type::Generic(name.clone()), None));
-                    scope_type_args.push((name.clone(), Type::Generic(name)));
                 }
             }
         }
         self.scopes.push(scope);
 
         let args = self.visit_fn_args(args, true, false)?;
-
-        // Keep track of all generics referenced in the args; if the return type of this func includes
-        // a generic that's not present here, we won't have enough information to determine that type, so we error.
-        let valid_type_args = args.iter()
-            .flat_map(|(_, t, _)| t.extract_generics().into_iter())
-            .collect::<HashSet<_>>();
 
         // Store a stub version of the function type, based on what we know so far. Recursive references
         // to the function within its body will be typed according to whatever is saved now. If we cannot
@@ -775,9 +801,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // typechecked later in (say, for example, within the function body), a return type of Unknown
         // will signal a recursive reference to a function which is missing a return type. Note: this is
         // a fairly brittle abstraction, and should probably be readdressed.
-        // Note also that we need to add this reference to the previous scope, which is achieved via
-        // this pop/push.
-        let scope = self.scopes.pop().unwrap();
+        // Note also that we need to add this reference to the previous scope, so once we determine the
+        // initial return type...
         let arg_types = args.iter()
             .filter_map(|(ident, typ, default_value)| {
                 match ident {
@@ -790,71 +815,66 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             .collect::<Vec<_>>();
         let initial_ret_type = match &ret_type {
             None => Type::Unknown,
-            Some(ret_type) => {
-                // Add generic values to the types in scope
-                let mut types_in_scope = self.get_types_in_scope();
-                for (name, typ) in scope_type_args.clone() {
-                    types_in_scope.insert(name, typ);
-                }
-                match Type::from_type_ident(ret_type, &types_in_scope) {
-                    Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
-                    Ok(typ) => Ok(typ)
-                }?
-            }
+            Some(ret_type) => self.type_from_type_ident(ret_type)?,
         };
-        // See comment at declaration of valid_type_args above
-        if initial_ret_type.is_generic() {
-            let ret_generics = initial_ret_type.extract_generics();
+        if initial_ret_type.has_unbound_generic() {
+            // The valid type args for a return type are all of the generics available in scope, minus
+            // the fn type args that aren't referenced in the arguments (and are thus unbound).
+            let arg_type_args = args.iter()
+                .flat_map(|(_, t, _)| t.extract_unbound_generics().into_iter())
+                .collect::<HashSet<_>>();
+            let unresolvable_type_arg_names = type_args.iter()
+                .map(Token::get_ident_name)
+                .filter(|type_arg_name| !arg_type_args.contains(type_arg_name))
+                .collect::<HashSet<_>>();
+            let generics_in_scope = self.get_generics_in_scope();
+            let valid_return_type_args = generics_in_scope.difference(&unresolvable_type_arg_names).collect::<HashSet<_>>();
+
+            let ret_generics = initial_ret_type.extract_unbound_generics();
             for name in ret_generics {
-                if !valid_type_args.contains(&name) {
+                if !valid_return_type_args.contains(&&name) {
                     let ret_type = ret_type.expect("Should be Some if initial_ret_type is anything but Unknown");
-                    return Err(TypecheckerError::UnboundGeneric(ret_type.get_ident()));
+                    let ident_token = ret_type.get_ident();
+                    let ret_type_name = Token::get_ident_name(&ident_token);
+                    return Err(TypecheckerError::UnboundGeneric(ident_token, ret_type_name));
                 }
             }
         }
 
+        // ...we pop off the scope, add the function there, and then push the scope back on.
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
         let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(initial_ret_type.clone()) });
+        let scope = self.scopes.pop().unwrap();
         self.add_binding(&func_name, &name, &func_type, false);
         self.scopes.push(scope);
 
         let mut body = self.visit_fn_body(body)?;
         let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
 
-        let fn_scope = self.scopes.pop().unwrap();
-        let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
-            is_recursive
-        } else {
-            unreachable!("A function's scope should always be of ScopeKind::Function")
-        };
-
         let ret_type = match ret_type {
             None => body_type,
             Some(ret_type) => {
-                let mut types_in_scope = self.get_types_in_scope();
-                for (name, typ) in scope_type_args.clone() {
-                    types_in_scope.insert(name, typ);
-                }
-                match Type::from_type_ident(&ret_type, &types_in_scope) {
-                    Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
-                    Ok(typ) => {
-                        match body.last_mut() {
-                            None => Ok(body_type),
-                            Some(mut node) => {
-                                if !self.are_types_equivalent(&mut node, &typ)? {
-                                    let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                                    Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ })
-                                } else if typ.is_generic() {
-                                    Ok(typ)
-                                } else {
-                                    Ok(node.get_type())
-                                }
-                            }
+                let typ = self.type_from_type_ident(&ret_type)?;
+                match body.last_mut() {
+                    None => body_type,
+                    Some(mut node) => {
+                        if !self.are_types_equivalent(&mut node, &typ)? {
+                            let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
+                            return Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ });
+                        } else if typ.has_unbound_generic() {
+                            typ
+                        } else {
+                            node.get_type()
                         }
                     }
-                }?
+                }
             }
         };
+        let fn_scope = self.scopes.pop().unwrap();
+        let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
+            is_recursive
+        } else { unreachable!("A function's scope should always be of ScopeKind::Function") };
+
         // Rewrite the return type of the previously-inserted func_type stub
         let ScopeBinding(_, func_type, _) = self.get_binding_mut(&func_name).unwrap();
         if let Type::Fn(FnType { ret_type: return_type, .. }) = func_type {
@@ -870,7 +890,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::InvalidTypeDeclDepth { token });
         }
 
-        let TypeDeclNode { name, fields, methods, .. } = node;
+        let TypeDeclNode { name, type_args, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
 
         if let Some((_, typed_decl_node)) = self.get_type(&new_type_name) {
@@ -887,7 +907,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
         // reference we must look it up by name in self.referencable_types. This level of indirection
         // allows for cyclic types.
-        let typeref = Type::Reference(new_type_name.clone());
+        let typeref = Type::Reference(new_type_name.clone(), vec![]);
 
         let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
         self.add_binding(&new_type_name, &name, &binding_type, false);
@@ -897,16 +917,36 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // As we progress through this type declaration, we build up this value in
         // self.referencable_types. This value will be used for values of type Type::Reference, when
         // the referenced type is "materialized".
-        let typedef = StructType { name: new_type_name.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
+        let type_arg_names = type_args.iter()
+            .map(|name| {
+                let name = Token::get_ident_name(name);
+                (name.clone(), Type::Generic(name))
+            })
+            .collect();
+        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names, fields: vec![], static_fields: vec![], methods: vec![] };
         self.referencable_types.insert(new_type_name.clone(), Type::Struct(typedef));
 
-        let all_types = self.get_types_in_scope();
-        self.scopes.push(Scope::new(ScopeKind::TypeDef));
+        // Insert Generics for all type_args present
+        let mut scope = Scope::new(ScopeKind::TypeDef);
+        let mut seen = HashMap::<String, Token>::new();
+        for type_arg in &type_args {
+            let name = Token::get_ident_name(type_arg);
+            match seen.get(&name) {
+                Some(orig_ident) => {
+                    return Err(TypecheckerError::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
+                }
+                None => {
+                    seen.insert(name.clone(), type_arg.clone());
+                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None));
+                }
+            }
+        }
+        self.scopes.push(scope);
+
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
             .map(|(field_name, field_type, default_value)| {
-                let field_type = Type::from_type_ident(&field_type, &all_types)
-                    .map_err(|tok| TypecheckerError::UnknownType { type_ident: tok })?;
+                let field_type = self.type_from_type_ident(&field_type)?;
                 let field_name_str = Token::get_ident_name(&field_name);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
                     return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: field_name, orig_is_field: true });
@@ -924,20 +964,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             .collect();
 
         for func_decl_node in &methods {
-            let FunctionDeclNode { name, ret_type, args, .. } = match &func_decl_node {
+            let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &func_decl_node {
                 AstNode::FunctionDecl(_, node) => node,
                 _ => unreachable!()
             };
+            let struct_type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
+
+            // Create temporary "scope" to capture function's type_args, and...
+            let mut fn_type_arg_names = Vec::new();
+            let mut scope = Scope::new(ScopeKind::TypeDef);
+            for fn_type_arg in fn_type_args {
+                let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
+                if let Some(orig_ident) = struct_type_args.get(&fn_type_arg_name) {
+                    return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
+                }
+                fn_type_arg_names.push(fn_type_arg_name.clone());
+                scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
+            }
+            self.scopes.push(scope);
 
             let ret_type = match ret_type {
                 None => return Err(TypecheckerError::MissingRequiredTypeAnnotation { token: name.clone() }),
-                Some(ret_type_ident) => {
-                    let arg_type = Type::from_type_ident(ret_type_ident, &all_types);
-                    match arg_type {
-                        Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
-                        Ok(typ) => typ,
-                    }
-                }
+                Some(ret_type_ident) => self.type_from_type_ident(ret_type_ident)?,
             };
 
             let mut is_static = true;
@@ -954,13 +1002,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                     default_value.get_type()
                                 }
                             },
-                            Some(type_ident) => {
-                                let arg_type = Type::from_type_ident(type_ident, &all_types);
-                                match arg_type {
-                                    Err(tok) => return Err(TypecheckerError::UnknownType { type_ident: tok }),
-                                    Ok(typ) => typ,
-                                }
-                            }
+                            Some(type_ident) => self.type_from_type_ident(type_ident)?,
                         };
                         arg_types.push((Token::get_ident_name(ident).clone(), arg_type.clone(), default_value.is_some()));
                     }
@@ -968,13 +1010,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
 
             let fn_name = Token::get_ident_name(name).clone();
-            let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(ret_type.clone()) });
+            let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
             let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
             if is_static {
+                // TODO: Handle static methods referencing type's type_args
                 typedef.static_fields.push((fn_name, fn_type, true))
             } else {
                 typedef.methods.push((fn_name, fn_type))
             }
+            // ...pop off the temporary scope here.
+            self.scopes.pop();
         }
 
         let binding = self.get_binding_mut(&new_type_name).unwrap();
@@ -1000,6 +1045,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Ok((tok, field_type, default_value))
         }).collect::<Result<Vec<(Token, Type, Option<TypedAstNode>)>, _>>();
         let typed_fields = typed_fields?;
+
+        // Record TypeDeclNode for type, registering the freshly-typed fields. Later on, we'll mutate
+        // this TypeDeclNode and add static fields and methods, but this allows for methods to reference
+        // fields of instances of this current type within their bodies.
+        let (_, node) = self.get_type_mut(&new_type_name).unwrap();
+        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields: typed_fields, static_fields: vec![], methods: vec![] });
+        *node = Some(type_decl_node);
 
         let mut method_names = HashMap::<String, Token>::new();
         let mut typed_methods = Vec::new();
@@ -1028,7 +1080,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         .is_none();
                     if is_static {
                         let cur_typedef = match &self.cur_typedef {
-                            Some(Type::Reference(name)) => self.referencable_types.get(name),
+                            Some(Type::Reference(name, _)) => self.referencable_types.get(name),
                             Some(t) => Some(t),
                             None => None
                         };
@@ -1049,14 +1101,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             };
         }
 
+        if let (_, Some(TypedAstNode::TypeDecl(_, type_decl_node))) = self.get_type_mut(&new_type_name).unwrap() {
+            type_decl_node.static_fields = static_fields;
+            type_decl_node.methods = typed_methods;
+        } else { unreachable!("We should have just defined this node up above"); }
+
         self.scopes.pop();
         self.cur_typedef = None;
 
-        // Update the type to have a proper TypedAstNode value
-        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields: typed_fields, static_fields, methods: typed_methods });
-        let (_, node) = self.get_type_mut(&new_type_name).unwrap();
-        *node = Some(type_decl_node.clone());
-        Ok(type_decl_node)
+        // Return type_decl_node for type
+        Ok(self.get_type(&new_type_name).unwrap().1.unwrap())
     }
 
     fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
@@ -1305,7 +1359,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             zelf: &mut Typechecker,
             invocation_target: Token,
             args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
-            arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
+            arg_types: &Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
             generics: &mut HashMap<String, Type>,
         ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerError> {
             // Check for duplicate named parameters
@@ -1349,19 +1403,19 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let mut missing_params = Vec::new();
             let mut args = args;
             for (arg_name, expected_arg_type, is_optional) in arg_types {
-                match args.remove(&arg_name) {
+                match args.remove(arg_name) {
                     None => {
                         if !is_optional {
-                            missing_params.push(arg_name);
+                            missing_params.push(arg_name.clone());
                         } else {
-                            typed_args.push((arg_name, None));
+                            typed_args.push((arg_name.clone(), None));
                         }
                     }
                     Some((_, arg)) => {
                         if !missing_params.is_empty() { continue; }
 
                         let typed_arg = typecheck_arg(zelf, arg, &expected_arg_type, generics)?;
-                        typed_args.push((arg_name, Some(typed_arg)));
+                        typed_args.push((arg_name.clone(), Some(typed_arg)));
                     }
                 }
             }
@@ -1379,7 +1433,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let arg_type = typed_arg.get_type();
 
             let mut generics_need_refit = false;
-            let expected_arg_type = if expected_arg_type.is_generic() {
+            let expected_arg_type = if expected_arg_type.has_unbound_generic() {
                 let potential_types = Type::try_fit_generics(&arg_type, &expected_arg_type);
                 if let Some(pairs) = potential_types {
                     for (name, value) in pairs {
@@ -1446,12 +1500,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     typed_args
                 } else { // num_named should equal args.len()
                     let target_token = target.get_token().clone();
-                    verify_named_args_invocation(self, target_token, args, arg_types, &mut generics)?.into_iter()
+                    verify_named_args_invocation(self, target_token, args, &arg_types, &mut generics)?.into_iter()
                         .map(|(_name, node)| node)
                         .collect()
                 };
 
-                let ret_type = if ret_type.is_generic() {
+                let ret_type = if ret_type.has_unbound_generic() {
                     Type::substitute_generics(&ret_type, &generics)
                 } else {
                     *ret_type
@@ -1460,7 +1514,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: ret_type, target: Box::new(target), args: typed_args }))
             }
             Type::Type(_, t) => match self.resolve_ref_type(&*t) {
-                Type::Struct(StructType { name, fields: expected_fields, .. }) => {
+                Type::Struct(struct_type) => {
+                    let StructType { name, fields: expected_fields, .. } = &struct_type;
                     let target_token = target.get_token().clone();
 
                     let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
@@ -1494,7 +1549,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }).collect();
 
-                    Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ: *t.clone(), target: Box::new(target), fields }))
+                    let typ = match *t {
+                        Type::Reference(name, _) => {
+                            let pairs = generics.into_iter().map(|(_, typ)| typ).collect();
+                            Type::Reference(name, pairs)
+                        }
+                        _ => unreachable!(format!("Unexpected type {:?} used here", t))
+                    };
+
+                    Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ, target: Box::new(target), fields }))
                 }
                 t @ Type::Int | t @ Type::Float | t @ Type::String | t @ Type::Bool => {
                     if args.len() != 1 {
@@ -1650,15 +1713,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let field_name = Token::get_ident_name(&field).clone();
 
         let field_data = match self.resolve_ref_type(&target_type) {
-            Type::Struct(StructType { fields, methods, .. }) => {
+            Type::Struct(StructType { fields, methods, type_args, .. }) => {
+                let generics = type_args.into_iter().collect();
                 let num_fields = fields.len();
                 fields.iter().enumerate()
                     .find(|(_, (name, _, _))| &field_name == name)
-                    .map(|(idx, (_, typ, _))| (idx, typ.clone()))
+                    .map(|(idx, (_, typ, _))| (idx, Type::substitute_generics(typ, &generics)))
                     .or_else(|| {
                         methods.iter().enumerate()
                             .find(|(_, (name, _))| &field_name == name)
-                            .map(|(idx, (_, typ))| (num_fields + idx, typ.clone()))
+                            .map(|(idx, (_, typ))| (num_fields + idx, Type::substitute_generics(typ, &generics)))
                     })
             }
             Type::Type(_, typ) => match self.resolve_ref_type(&*typ) {
@@ -2877,7 +2941,7 @@ mod tests {
         let error = typecheck("\
           func map<T, U, V>(arr: T[], fn: (T) => U): V[] { [] }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::UnboundGeneric(ident_token!((1, 44), "V"));
+        let expected = TypecheckerError::UnboundGeneric(ident_token!((1, 44), "V"), "V".to_string());
         assert_eq!(expected, error);
 
         let error = typecheck("\
@@ -2907,9 +2971,10 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
         let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
-        assert_eq!(Type::Reference("Person".to_string()), typ);
+        assert_eq!(Type::Reference("Person".to_string(), vec![]), typ);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
             methods: vec![],
@@ -2931,9 +2996,10 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
         let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
-        assert_eq!(Type::Reference("Person".to_string()), typ);
+        assert_eq!(Type::Reference("Person".to_string(), vec![]), typ);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("name".to_string(), Type::String, false),
                 ("age".to_string(), Type::Int, true),
@@ -2960,7 +3026,7 @@ mod tests {
         let expected = TypedAstNode::Identifier(
             ident_token!((6, 1), "node"),
             TypedIdentifierNode {
-                typ: Type::Reference("Node".to_string()),
+                typ: Type::Reference("Node".to_string(), vec![]),
                 name: "node".to_string(),
                 is_mutable: false,
                 scope_depth: 0,
@@ -2969,11 +3035,12 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Node".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("value".to_string(), Type::Int, false),
                 (
                     "next".to_string(),
-                    Type::Option(Box::new(Type::Reference("Node".to_string()))),
+                    Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
                     true
                 ),
             ],
@@ -3018,7 +3085,7 @@ mod tests {
           }
         ";
         let (typechecker, typed_ast) = typecheck_get_typechecker(input);
-        let person_type = Type::Reference("Person".to_string());
+        let person_type = Type::Reference("Person".to_string(), vec![]);
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -3113,6 +3180,7 @@ mod tests {
         assert_eq!(expected, typed_ast[0]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("name".to_string(), Type::String, false)
             ],
@@ -3166,6 +3234,7 @@ mod tests {
         assert_eq!(expected, typed_ast[0]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("name".to_string(), Type::String, false)
             ],
@@ -3209,6 +3278,200 @@ mod tests {
         ";
         let error = typecheck(input).unwrap_err();
         let expected = TypecheckerError::MissingRequiredTypeAnnotation { token: ident_token!((2, 6), "hello") };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_type_decl_generics() -> TestResult {
+        let input = "type List<T> { items: T[] }";
+        let (typechecker, _) = typecheck_get_typechecker(input);
+        let expected_type = Type::Struct(StructType {
+            name: "List".to_string(),
+            type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
+            fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
+            static_fields: vec![],
+            methods: vec![],
+        });
+        assert_eq!(expected_type, typechecker.referencable_types["List"]);
+
+        let input = r#"
+          type List<T> { items: T[] }
+          val l = List(items: [1, 2, 3])
+          l
+        "#;
+        let typed_ast = typecheck(input)?;
+        let actual_type = typed_ast.last().unwrap().get_type();
+        let expected_type = Type::Reference("List".to_string(), vec![Type::Int]);
+        assert_eq!(expected_type, actual_type);
+
+        let input = r#"
+          type List<T> { items: T[] }
+          val l: List<Int> = List(items: [1, 2, 3])
+        "#;
+        let res = typecheck(input);
+        assert!(res.is_ok());
+
+        let input = r#"
+          type List<T> { items: T[] }
+          val l: List<Int> = List(items: [])
+        "#;
+        let res = typecheck(input);
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_type_decl_generics_errors() {
+        let input = "type List<T, U, T> { items: T[] }";
+        let error = typecheck(input).unwrap_err();
+        let expected = TypecheckerError::DuplicateTypeArgument {
+            ident: ident_token!((1, 17), "T"),
+            orig_ident: ident_token!((1, 11), "T"),
+        };
+        assert_eq!(expected, error);
+
+        let input = "\
+          type List<T> { items: T[] }\n\
+          val l = List(items: [])\
+        ";
+        let error = typecheck(input).unwrap_err();
+        let expected = TypecheckerError::UnboundGeneric(ident_token!((2, 5), "l"), "T".to_string());
+        assert_eq!(expected, error);
+
+        let input = "\
+          type List<T> { items: T[] }\n\
+          val l: List<String> = List(items: [1, 2, 3])\
+        ";
+        let error = typecheck(input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LParen(Position::new(2, 27), false),
+            expected: Type::Reference("List".to_string(), vec![Type::String]),
+            actual: Type::Reference("List".to_string(), vec![Type::Int]),
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_type_decl_generics_fields_and_methods() -> TestResult {
+        let type_def = r#"
+          type List<T> {
+            items: T[]
+            func push(self, item: T): T[] {
+              self.items.push(item)
+              self.items
+            }
+            func map<U>(self, fn: (T) => U): U[] = []
+            func concat(self, other: List<T>): List<T> {
+              List(items: self.items.concat(other.items))
+            }
+          }
+        "#;
+
+        let input = format!(r#"{}
+          val l: List<Int> = List(items: [1, 2, 3])
+          val items: Int[] = l.items
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        let input = format!(r#"{}
+          val l: List<Int> = List(items: [1, 2, 3])
+          l.push(4)
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        let input = format!(r#"{}
+          val l: List<String> = List(items: [])
+          l.push("abc")
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        let input = format!(r#"{}
+          val l: List<String> = List(items: [])
+          val lengths: Int[] = l.map(s => s.length)
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        let input = format!(r#"{}
+          List(items: [1, 2, 3]).concat(List(items: [4, 5, 6]))
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_type_decl_generics_fields_and_methods_errors() {
+        let type_def = "\
+          type List<T> {\n\
+            items: T[]\n\
+            func push(self, item: T): T[] {\n\
+              self.items.push(item)\n\
+              self.items\n\
+            }\n\
+          }\
+        ";
+
+        let input = format!("{}\n\
+          val l: List<Int> = List(items: [1, 2, 3])\n\
+          l.items.push(\"abcd\")\
+        ", type_def);
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(9, 14), "abcd".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, error);
+
+        let input = format!("{}\n\
+          val l: List<Int> = List(items: [1, 2, 3])\n\
+          l.push(\"abcd\")\
+        ", type_def);
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(9, 8), "abcd".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, error);
+
+        let list_struct_type = Type::Struct(StructType {
+            name: "List".to_string(),
+            type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
+            fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
+            static_fields: vec![],
+            methods: vec![],
+        });
+        let input = "\
+          type List<T> { items: T[] }\n\
+          val l: List = List(items: [1, 2, 3])\
+        ";
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::InvalidTypeArgumentArity {
+            token: ident_token!((2, 8), "List"),
+            actual_type: list_struct_type.clone(),
+            expected: 1,
+            actual: 0,
+        };
+        assert_eq!(expected, error);
+
+        let input = "\
+          type List<T> { items: T[] }\n\
+          val l: List<Int, Int> = List(items: [1, 2, 3])\
+        ";
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::InvalidTypeArgumentArity {
+            token: ident_token!((2, 8), "List"),
+            actual_type: list_struct_type,
+            expected: 1,
+            actual: 2,
+        };
         assert_eq!(expected, error);
     }
 
@@ -3368,7 +3631,7 @@ mod tests {
                         target: Box::new(TypedAstNode::Identifier(
                             ident_token!((3, 1), "a"),
                             TypedIdentifierNode {
-                                typ: Type::Reference("Person".to_string()),
+                                typ: Type::Reference("Person".to_string(), vec![]),
                                 name: "a".to_string(),
                                 is_mutable: false,
                                 scope_depth: 0,
@@ -3385,6 +3648,7 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
             methods: vec![],
@@ -3436,7 +3700,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "bogusField"),
-            target_type: Type::Reference("Person".to_string()),
+            target_type: Type::Reference("Person".to_string(), vec![]),
         };
         assert_eq!(expected, err);
 
@@ -4151,12 +4415,12 @@ mod tests {
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
-                typ: Type::Reference("Person".to_string()),
+                typ: Type::Reference("Person".to_string(), vec![]),
                 target: Box::new(
                     TypedAstNode::Identifier(
                         ident_token!((2, 1), "Person"),
                         TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string()))),
+                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
                             name: "Person".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
@@ -4171,6 +4435,7 @@ mod tests {
         assert_eq!(expected, typed_ast[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
             methods: vec![],
@@ -4185,12 +4450,12 @@ mod tests {
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
-                typ: Type::Reference("Person".to_string()),
+                typ: Type::Reference("Person".to_string(), vec![]),
                 target: Box::new(
                     TypedAstNode::Identifier(
                         ident_token!((2, 1), "Person"),
                         TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string()))),
+                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
                             name: "Person".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
@@ -4206,6 +4471,7 @@ mod tests {
         assert_eq!(expected, typed_ast[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("name".to_string(), Type::String, false),
                 ("age".to_string(), Type::Int, true),
@@ -4671,7 +4937,7 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((3, 1), "p"),
                     TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string()),
+                        typ: Type::Reference("Person".to_string(), vec![]),
                         name: "p".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
@@ -4685,6 +4951,7 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_typ = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
             methods: vec![],
@@ -4704,7 +4971,7 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((3, 1), "p"),
                     TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string()),
+                        typ: Type::Reference("Person".to_string(), vec![]),
                         name: "p".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
@@ -4718,6 +4985,7 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![
                 ("name".to_string(), Type::String, false),
                 ("age".to_string(), Type::Int, true),
@@ -4782,7 +5050,7 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((2, 1), "Person"),
                     TypedIdentifierNode {
-                        typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string()))),
+                        typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
                         name: "Person".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
@@ -4796,6 +5064,7 @@ mod tests {
         assert_eq!(expected, typed_ast[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![],
             static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }), true)],
             methods: vec![],
@@ -4823,7 +5092,7 @@ mod tests {
                         target: Box::new(TypedAstNode::Identifier(
                             ident_token!((3, 1), "p"),
                             TypedIdentifierNode {
-                                typ: Type::Reference("Person".to_string()),
+                                typ: Type::Reference("Person".to_string(), vec![]),
                                 name: "p".to_string(),
                                 scope_depth: 0,
                                 is_mutable: false,
@@ -4842,6 +5111,7 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::Option(Box::new(Type::String)), true)],
             static_fields: vec![],
             methods: vec![],
@@ -4861,7 +5131,7 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((3, 1), "p"),
                     TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string()),
+                        typ: Type::Reference("Person".to_string(), vec![]),
                         name: "p".to_string(),
                         scope_depth: 0,
                         is_mutable: false,
@@ -4875,6 +5145,7 @@ mod tests {
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
+            type_args: vec![],
             fields: vec![("name".to_string(), Type::String, true)],
             static_fields: vec![],
             methods: vec![],
@@ -4893,7 +5164,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
-            target_type: Type::Reference("Person".to_string()),
+            target_type: Type::Reference("Person".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 

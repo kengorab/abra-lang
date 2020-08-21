@@ -15,7 +15,6 @@ pub enum Type {
     Array(Box<Type>),
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
-    // Fn(/* arg_types: */ Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>, /* ret_type: */ Box<Type>),
     Fn(FnType),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
@@ -23,7 +22,7 @@ pub enum Type {
     Unknown,
     Placeholder,
     Generic(/* name: */ String),
-    Reference(/* name: */ String),
+    Reference(/* name: */ String, /* type_args: */ Vec<Type>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -36,6 +35,7 @@ pub struct FnType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct StructType {
     pub name: String,
+    pub type_args: Vec<(String, Type)>,
     pub fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
@@ -100,9 +100,20 @@ impl Type {
             (Type(_name1, _t1), Type(_name2, _t2)) => {
                 false
             }
-            // TODO (improve this (obviously))
-            (Struct(StructType { name: name1, .. }), Struct(StructType { name: name2, .. })) => {
-                name1 == name2
+            (Struct(StructType { name: name1, type_args: type_args1, .. }), Struct(StructType { name: name2, type_args: type_args2, .. })) => {
+                if name1 != name2 { return false; }
+
+                if type_args1.len() != type_args2.len() { return false; }
+                for ((name1, type1), (name2, type2)) in type_args1.iter().zip(type_args2.iter()) {
+                    if name1 != name2 { return false; }
+
+                    // For `type List<T> { items: T[] }`, if we want to do `val list: List<String> = List(items: [])`,
+                    // and test the equivalence of the two types, we'll be comparing List<T> (rhs) to List<String> (lhs),
+                    // since the `T` on the rhs has yet to be resolved. In this case, essentially skip that type_arg.
+                    if let Generic(_) = type1 { continue; }
+                    if !type1.is_equivalent_to(type2, referencable_types) { return false; }
+                }
+                true
             }
             // TODO (This should be unreachable right now anwyay...)
             (Map(_fields1, _), Map(_fields2, _)) => {
@@ -136,19 +147,34 @@ impl Type {
             // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"])
             (_, Any) => true,
             (Placeholder, _) | (_, Placeholder) => true,
-            (Reference(name), other) => {
+            (Reference(name, _), other) => {
                 if let Some(referenced_type) = referencable_types.get(name) {
                     referenced_type.is_equivalent_to(other, referencable_types)
                 } else { false }
             }
-            (other, Reference(name)) => {
-                if let Some(referenced_type) = referencable_types.get(name) {
+            (other, Reference(name, type_args)) => {
+                if let Some(referenced_type) = Self::hydrate_reference_type(name, type_args, referencable_types) {
                     other.is_equivalent_to(&referenced_type, referencable_types)
                 } else { false }
             }
             (Generic(t1), Generic(t2)) => t1 == t2,
             (_, _) => false
         }
+    }
+
+    pub fn hydrate_reference_type(name: &String, type_args: &Vec<Type>, referencable_types: &HashMap<String, Type>) -> Option<Type> {
+        if let Some(referenced_type) = referencable_types.get(name) {
+            match referenced_type.clone() {
+                Type::Struct(struct_type) => {
+                    // Hydrate the struct's type arguments from the Reference
+                    let type_args = struct_type.type_args.iter().zip(type_args.iter())
+                        .map(|((name, _), typ)| (name.clone(), typ.clone()))
+                        .collect();
+                    Some(Type::Struct(StructType { type_args, ..struct_type }))
+                }
+                _ => unreachable!("Nothing other than StructTypes should be referencable")
+            }
+        } else { None }
     }
 
     pub fn is_unknown(&self, referencable_types: &HashMap<String, Type>) -> bool {
@@ -164,7 +190,7 @@ impl Type {
                     ret_type.is_unknown(referencable_types)
                 }
             }
-            Type::Reference(name) => {
+            Type::Reference(name, _) => {
                 if let Some(referenced_type) = referencable_types.get(name) {
                     referenced_type.is_unknown(referencable_types)
                 } else { false }
@@ -174,29 +200,34 @@ impl Type {
         }
     }
 
-    pub fn extract_generics(&self) -> Vec<String> {
+    pub fn extract_unbound_generics(&self) -> Vec<String> {
         match self {
             Type::Generic(name) => vec![name.clone()],
             Type::Or(type_opts) => {
                 type_opts.iter()
-                    .flat_map(|typ| typ.extract_generics().into_iter())
+                    .flat_map(|typ| typ.extract_unbound_generics())
                     .collect::<Vec<String>>()
-            },
+            }
             Type::Array(inner_type) |
-            Type::Option(inner_type) => inner_type.extract_generics(),
+            Type::Option(inner_type) => inner_type.extract_unbound_generics(),
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
                 arg_types.iter()
                     .map(|(_, typ, _)| typ)
                     .chain(std::iter::once(&**ret_type))
-                    .flat_map(|typ| typ.extract_generics().into_iter())
+                    .flat_map(|typ| typ.extract_unbound_generics())
                     .collect::<Vec<String>>()
+            }
+            Type::Reference(_, type_args) => {
+                type_args.iter()
+                    .flat_map(|typ| typ.extract_unbound_generics())
+                    .collect()
             }
             _ => vec![]
         }
     }
 
-    pub fn is_generic(&self) -> bool {
-        !self.extract_generics().is_empty()
+    pub fn has_unbound_generic(&self) -> bool {
+        !self.extract_unbound_generics().is_empty()
     }
 
     pub fn substitute_generics(typ: &Type, available_generics: &HashMap<String, Type>) -> Type {
@@ -213,6 +244,10 @@ impl Type {
                 let ret_type = Type::substitute_generics(ret_type, available_generics);
                 Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type) })
             }
+            Type::Reference(name, type_args) => {
+                let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();
+                Type::Reference(name.clone(), type_args)
+            }
             // Type::Struct(_) => {},
             // Type::Or(_) => {},
             // Type::Map(_, _) => {},
@@ -221,7 +256,7 @@ impl Type {
     }
 
     pub fn try_fit_generics(typ: &Type, target_type: &Type) -> Option<Vec<(String, Type)>> {
-        if !target_type.is_generic() { return None; }
+        if !target_type.has_unbound_generic() { return None; }
 
         match (target_type, typ) {
             (Type::Generic(name), target_type) => Some(vec![(name.clone(), target_type.clone())]),
@@ -254,9 +289,15 @@ impl Type {
 
     pub fn from_type_ident(type_ident: &TypeIdentifier, types: &HashMap<String, Type>) -> Result<Type, Token> {
         match type_ident {
-            TypeIdentifier::Normal { ident } => {
+            TypeIdentifier::Normal { ident, type_args } => {
                 let type_name = Token::get_ident_name(ident);
-                types.get(&type_name).map(|t| t.clone()).ok_or(ident.clone())
+                let mut typ = types.get(&type_name).map(|t| t.clone()).ok_or(ident.clone())?;
+                if let Type::Reference(_, ref mut ref_type_args) = typ {
+                    *ref_type_args = type_args.as_ref().unwrap_or(&vec![]).iter()
+                        .map(|type_ident| Self::from_type_ident(type_ident, types))
+                        .collect::<Result<Vec<_>, _>>()?;
+                }
+                Ok(typ)
             }
             TypeIdentifier::Array { inner } => {
                 let typ = Type::from_type_ident(inner, types)?;
@@ -287,26 +328,30 @@ mod test {
     use crate::parser::ast::{AstNode, BindingDeclNode};
     use super::*;
 
-    fn parse_type_ident<S: Into<std::string::String>>(input: S) -> super::Type {
-        let base_types: HashMap<std::string::String, super::Type> = {
-            let mut types = HashMap::new();
-            types.insert("Int".to_string(), Int);
-            types.insert("Float".to_string(), Float);
-            types.insert("Bool".to_string(), Bool);
-            types.insert("String".to_string(), String);
-            types
-        };
-
+    fn parse_type_ident_with_types<S: Into<std::string::String>>(input: S, base_types: &HashMap<std::string::String, super::Type>) -> super::Type {
         let type_ident: std::string::String = input.into();
         let val_stmt = format!("val a: {}", type_ident);
         let tokens = tokenize(&val_stmt).unwrap();
         let ast = parse(tokens).unwrap();
         match ast.first().unwrap() {
             AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
-                super::Type::from_type_ident(&type_ann, &base_types).unwrap()
+                super::Type::from_type_ident(&type_ann, base_types).unwrap()
             }
             _ => unreachable!()
         }
+    }
+
+    fn base_types() -> HashMap<std::string::String, super::Type> {
+        let mut types = HashMap::new();
+        types.insert("Int".to_string(), Int);
+        types.insert("Float".to_string(), Float);
+        types.insert("Bool".to_string(), Bool);
+        types.insert("String".to_string(), String);
+        types
+    }
+
+    fn parse_type_ident<S: Into<std::string::String>>(input: S) -> super::Type {
+        parse_type_ident_with_types(input, &base_types())
     }
 
     #[test]
@@ -328,6 +373,20 @@ mod test {
 
         assert_eq!(Array(Box::new(Option(Box::new(Int)))), parse_type_ident("Int?[]"));
         assert_eq!(Option(Box::new(Array(Box::new(Int)))), parse_type_ident("Int[]?"));
+    }
+
+    #[test]
+    fn from_type_ident_parameterized_type() {
+        let types = {
+            let mut base_types = base_types();
+            base_types.insert("List".to_string(), Reference("List".to_string(), vec![]));
+            base_types
+        };
+        let parsed_type = parse_type_ident_with_types("List<Int>", &types);
+        assert_eq!(Reference("List".to_string(), vec![Int]), parsed_type);
+
+        let parsed_type = parse_type_ident_with_types("List<List<Int>>", &types);
+        assert_eq!(Reference("List".to_string(), vec![Reference("List".to_string(), vec![Int])]), parsed_type);
     }
 
     #[test]
@@ -369,6 +428,46 @@ mod test {
         let t1 = Int;
         let t2 = Option(Box::new(Int));
         assert_eq!(false, t2.is_equivalent_to(&t1, &referencable_types));
+    }
+
+    #[test]
+    fn is_equivalent_to_parameterized_structs() {
+        let struct_type = StructType {
+            name: "List".to_string(),
+            type_args: vec![("T".to_string(), Generic("T".to_string()))],
+            fields: vec![],
+            static_fields: vec![],
+            methods: vec![],
+        };
+        let referencable_types = {
+            let mut t = HashMap::new();
+            t.insert("List".to_string(), Struct(struct_type.clone()));
+            t
+        };
+
+        // val l: List<Int> = List(items: [1, 2])
+        let rhs = Struct(StructType {
+            type_args: vec![("T".to_string(), Int)],
+            ..struct_type.clone()
+        });
+        let lhs = Reference("List".to_string(), vec![Int]);
+        assert_eq!(true, rhs.is_equivalent_to(&lhs, &referencable_types));
+
+        // val l: List<Int> = List(items: [])
+        let rhs = Struct(StructType {
+            type_args: vec![("T".to_string(), Generic("T".to_string()))],
+            ..struct_type.clone()
+        });
+        let lhs = Reference("List".to_string(), vec![Int]);
+        assert_eq!(true, rhs.is_equivalent_to(&lhs, &referencable_types));
+
+        // val l: List<String> = List(items: [1, 2])
+        let rhs = Struct(StructType {
+            type_args: vec![("T".to_string(), Int)],
+            ..struct_type
+        });
+        let lhs = Reference("List".to_string(), vec![String]);
+        assert_eq!(false, rhs.is_equivalent_to(&lhs, &referencable_types));
     }
 
     #[test]

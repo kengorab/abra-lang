@@ -160,11 +160,13 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnboundGeneric(ident) => {
-                    let mut obj = serializer.serialize_map(Some(3))?;
+                TypecheckerError::UnboundGeneric(ident, generic_name) => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unboundGeneric")?;
                     obj.serialize_entry("ident", &JsToken(ident))?;
+                    obj.serialize_entry("genericName", generic_name)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::UnknownIdentifier { ident } => {
@@ -387,6 +389,17 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("subKind", "invalidInstantiation")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("type", &JsType(typ))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidTypeArgumentArity { token, actual_type, expected, actual } => {
+                    let mut obj = serializer.serialize_map(Some(7))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "missingTypeArguments")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("actualType", &JsType(actual_type))?;
+                    obj.serialize_entry("expected", expected)?;
+                    obj.serialize_entry("actual", actual)?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

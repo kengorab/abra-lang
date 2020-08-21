@@ -20,7 +20,7 @@ pub enum TypecheckerError {
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
-    UnboundGeneric(Token),
+    UnboundGeneric(Token, String),
     UnknownIdentifier { ident: Token },
     InvalidAssignmentTarget { token: Token, reason: Option<InvalidAssignmentTargetReason> },
     AssignmentToImmutable { orig_ident: Token, token: Token },
@@ -47,6 +47,7 @@ pub enum TypecheckerError {
     InvalidTypeDeclDepth { token: Token },
     ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
     InvalidInstantiation { token: Token, typ: Type },
+    InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
 }
 
 impl TypecheckerError {
@@ -59,7 +60,7 @@ impl TypecheckerError {
             TypecheckerError::DuplicateBinding { ident, .. } => ident,
             TypecheckerError::DuplicateType { ident, .. } => ident,
             TypecheckerError::DuplicateTypeArgument { ident, .. } => ident,
-            TypecheckerError::UnboundGeneric(token) => token,
+            TypecheckerError::UnboundGeneric(token, _) => token,
             TypecheckerError::DuplicateField { ident, .. } => ident,
             TypecheckerError::UnknownIdentifier { ident } => ident,
             TypecheckerError::InvalidAssignmentTarget { token, .. } => token,
@@ -86,7 +87,8 @@ impl TypecheckerError {
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
             TypecheckerError::ForbiddenUnknownType { token, .. } => token,
-            TypecheckerError::InvalidInstantiation { token, .. } => token
+            TypecheckerError::InvalidInstantiation { token, .. } => token,
+            TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
         }
     }
 }
@@ -135,10 +137,26 @@ fn type_repr(t: &Type) -> String {
         }
         Type::Type(name, _) => name.to_string(),
         Type::Unknown => "Unknown".to_string(),
-        Type::Struct(StructType { name, .. }) => name.to_string(),
+        Type::Struct(StructType { name, type_args, .. }) => {
+            if type_args.is_empty() { return name.clone(); }
+
+            let type_args_repr = type_args.iter()
+                .map(|(_, typ)| type_repr(typ))
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{}<{}>", name, type_args_repr)
+        }
         Type::Placeholder => "_".to_string(),
-        Type::Generic(name) |
-        Type::Reference(name) => name.clone(),
+        Type::Generic(name) => name.clone(),
+        Type::Reference(name, type_args) => {
+            if type_args.is_empty() { return name.clone(); }
+
+            let type_args_repr = type_args.iter()
+                .map(|typ| type_repr(typ))
+                .collect::<Vec<String>>()
+                .join(", ");
+            format!("{}<{}>", name, type_args_repr)
+        }
     }
 }
 
@@ -251,10 +269,9 @@ impl DisplayError for TypecheckerError {
                 let second_msg = format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypecheckerError::UnboundGeneric(token) => {
-                let ident = Token::get_ident_name(token);
-                let first_msg = format!("Type argument '{}' is unbound ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
-                let second_msg = format!("There is not enough information to determine a possible value for '{}'", ident);
+            TypecheckerError::UnboundGeneric(_, type_arg_ident) => {
+                let first_msg = format!("Type argument '{}' is unbound ({}:{})\n{}", type_arg_ident, pos.line, pos.col, cursor_line);
+                let second_msg = format!("There is not enough information to determine a possible value for '{}'", type_arg_ident);
 
                 format!("{}\n{}", first_msg, second_msg)
             }
@@ -464,6 +481,16 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Cannot create an instance of type {}: ({}:{})\n{}",
                     type_repr(typ), pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidTypeArgumentArity { actual_type, actual, expected, .. } => {
+                format!(
+                    "Expected {} type argument{}, but {} {} provided: ({}:{})\n{}\n{}",
+                    expected, if *expected == 1 { "" } else { "s" }, actual, if *actual == 1 { "was" } else { "were" }, pos.line, pos.col, cursor_line,
+                    format!(
+                        "Provide {} type argument{} to match type {}",
+                        expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
+                    )
                 )
             }
         }
@@ -902,6 +929,7 @@ Type Int[] does not have a member with name 'size'"
             token: Token::Ident(Position::new(2, 18), "nAme".to_string()),
             target_type: Type::Struct(StructType {
                 name: "Person".to_string(),
+                type_args: vec![],
                 fields: vec![("name".to_string(), Type::String, false)],
                 static_fields: vec![],
                 methods: vec![],

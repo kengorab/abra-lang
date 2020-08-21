@@ -102,6 +102,7 @@ export namespace Errors {
         | TypecheckerErrors.InvalidTypeDeclDepth
         | TypecheckerErrors.ForbiddenUnknownType
         | TypecheckerErrors.InvalidInstantiation
+        | TypecheckerErrors.InvalidTypeArgumentArity
 
     export namespace TypecheckerErrors {
         interface Mismatch extends BaseError {
@@ -166,7 +167,8 @@ export namespace Errors {
         interface UnboundGeneric extends BaseError {
             kind: 'typecheckerError',
             subKind: 'unboundGeneric',
-            ident: Token
+            ident: Token,
+            genericName: string
         }
 
         interface UnknownIdentifier extends BaseError {
@@ -338,6 +340,15 @@ export namespace Errors {
             subKind: 'invalidInstantiation',
             token: Token,
             type: Type
+        }
+
+        interface InvalidTypeArgumentArity extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'invalidTypeArgumentArity',
+            token: Token,
+            actualType: Type,
+            expected: number,
+            actual: number
         }
     }
 
