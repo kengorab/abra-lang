@@ -9,6 +9,13 @@ export type Type
     | Types.Array
     | Types.Option
     | Types.Fn
+    | Types._Type
+    | Types.Unknown
+    | Types.Struct
+    | Types.Placeholder
+    | Types.Reference
+    | Types.Generic
+
 
 export namespace Types {
     interface Int {
@@ -52,7 +59,41 @@ export namespace Types {
 
     interface Fn {
         kind: 'Fn',
+        typeArgs: string[],
         args: [string, Type][],
         returnType: Type
+    }
+
+    interface _Type {
+        kind: 'type',
+        name: string
+    }
+
+    interface Unknown {
+        kind: 'unknown'
+    }
+
+    interface Struct {
+        kind: 'unknown',
+        name: string,
+        typeArgs: string[],
+        fields: [string, Type][],
+        staticFields: [string, Type][],
+        methods: [string, Type][]
+    }
+
+    interface Placeholder {
+        kind: 'placeholder'
+    }
+
+    interface Reference {
+        kind: 'reference',
+        name: string,
+        typeArgs: string[],
+    }
+
+    interface Generic {
+        kind: 'generic',
+        name: string
     }
 }

@@ -1403,6 +1403,45 @@ mod tests {
     }
 
     #[test]
+    fn interpret_structs_generics() {
+        let input = r#"
+          type List<T> {
+            items: T[] = []
+
+            func push(self, item: T): Unit { self.items.push(item) }
+
+            func map<U>(self, fn: (T) => U): U[] {
+              val newArr: U[] = []
+              for item in self.items
+                newArr.push(fn(item))
+              newArr
+            }
+
+            func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+              var acc = initialValue
+              for item in self.items
+                acc = fn(acc, item)
+              acc
+            }
+
+            func concat(self, other: List<T>): List<T> {
+              val items = self.items
+              List(items: items.concat(other.items))
+            }
+          }
+
+          var list: List<Int> = List(items: [])
+          for n in range(1, 500) { list.push(n) }
+          list = list.concat(List(items: range(500, 1000)))
+          list = List(items: list.map(i => i * 5))
+          list.reduce(0, (acc, i) => acc + i)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(2497500);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_lambdas() {
         let input = "\
           func call(fn: (Int) => Int, value: Int) = fn(value)\n\

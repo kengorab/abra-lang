@@ -1,16 +1,57 @@
-//type List<T, U> {
-//  items: T[]
-//
-//  func push(self, item: T) {
-//    self.items.push(T)
-//  }
-//
-//  func get(self, index: Int): T? {
-//    self.items[index]
-//  }
-//}
+type List<T> {
+  items: T[] = []
 
-val arr = [1, 2, 3]
-arr.push(4)
-arr.push(5)
-arr
+  func push(self, item: T): Unit {
+    self.items.push(item)
+  }
+
+  func get(self, index: Int): T? {
+    self.items[index]
+  }
+
+  func map<U>(self, fn: (T) => U): U[] {
+    val newArr: U[] = []
+    for item in self.items
+      newArr.push(fn(item))
+    newArr
+  }
+
+  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+    var acc = initialValue
+    for item in self.items
+      acc = fn(acc, item)
+    acc
+  }
+
+  // Calling this method won't work right now, needs to be fixed.
+  // The error message is 'Expected List<T>, got List<Int>', for the `other` arg. Weird
+  func merge(self, other: List<T>): List<T> {
+    val items = self.items
+    List(items: items.concat(other.items))
+  }
+}
+
+//val list: List<String> = List(items: [])
+
+val list: List<Int> = List(items: [1, 2])
+//list.push(3)
+//list.push(4)
+//println(list.items)
+
+// See comment above on `merge`
+//println(list.merge(list))
+println(
+  List(items: range(1, 10))
+    .merge(List(items: range(10, 15)))
+    .items
+)
+
+//if list.get(0) |i| println(i)
+//
+//val items = list.map(i => i * 7 + "!")
+//println(items)
+//
+//val sum1 = List(items: range(1, 1000))
+//  .map(i => i * 5)
+//  .reduce(0, (acc, i) => acc + i)
+//println("Sum 1: " + sum1)

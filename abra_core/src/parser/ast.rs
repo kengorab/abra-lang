@@ -186,19 +186,19 @@ pub struct AccessorNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeIdentifier {
-    Normal { ident: Token },
+    Normal { ident: Token, type_args: Option<Vec<TypeIdentifier>> },
     Array { inner: Box<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
     Func {
         args: Vec<TypeIdentifier>,
-        ret: Box<TypeIdentifier>
+        ret: Box<TypeIdentifier>,
     },
 }
 
 impl TypeIdentifier {
     pub fn get_ident(&self) -> Token {
         match self {
-            TypeIdentifier::Normal { ident } => ident.clone(),
+            TypeIdentifier::Normal { ident, .. } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
             TypeIdentifier::Option { inner } => inner.get_ident(),
             TypeIdentifier::Func { ret, .. } => ret.get_ident()
