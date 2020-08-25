@@ -65,7 +65,8 @@ macro_rules! identifier {
         match $pos {
             (line, col) => {
                 AstNode::Identifier(
-                    Token::Ident(Position::new(line, col), $ident_name.to_string())
+                    Token::Ident(Position::new(line, col), $ident_name.to_string()),
+                    None
                 )
             }
         }

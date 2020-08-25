@@ -11,7 +11,7 @@ pub enum AstNode {
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
     TypeDecl(Token, TypeDeclNode),
-    Identifier(Token),
+    Identifier(Token, Option<Vec<TypeIdentifier>>),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
     IfStatement(Token, IfNode),
@@ -180,7 +180,8 @@ pub struct WhileLoopNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AccessorNode {
     pub target: Box<AstNode>,
-    pub field: Token,
+    // Must be an AstNode::Identifier
+    pub field: Box<AstNode>,
     pub is_opt_safe: bool,
 }
 

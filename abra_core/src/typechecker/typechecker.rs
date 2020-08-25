@@ -1114,11 +1114,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         Ok(self.get_type(&new_type_name).unwrap().1.unwrap())
     }
 
-    fn visit_ident(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_ident(&mut self, token: Token, type_args: Option<Vec<TypeIdentifier>>) -> Result<TypedAstNode, TypecheckerError> {
         let name = Token::get_ident_name(&token);
 
-        match self.get_binding(&name) {
-            None => Err(TypecheckerError::UnknownIdentifier { ident: token }),
+        let node = match self.get_binding(&name) {
+            None => return Err(TypecheckerError::UnknownIdentifier { ident: token }),
             Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
                 let binding_typ = typ.clone();
                 let is_mutable = is_mutable.clone();
@@ -1145,17 +1145,48 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }
                 }
-                let node = TypedIdentifierNode { typ: binding_typ, name: name.clone(), is_mutable, scope_depth };
-                Ok(TypedAstNode::Identifier(token, node))
+                TypedIdentifierNode { typ: binding_typ, name: name.clone(), is_mutable, scope_depth }
+            }
+        };
+
+        #[inline]
+        fn get_type_generics(zelf: &mut Typechecker, typ: &Type) -> Vec<String> {
+            match zelf.resolve_ref_type(typ) {
+                Type::Fn(FnType { type_args, .. }) => type_args,
+                Type::Struct(StructType { type_args, .. }) => type_args.iter().map(|a| a.0.clone()).collect(),
+                Type::Type(_, typ) => get_type_generics(zelf, &*typ),
+                _ => vec![]
             }
         }
+        let typ_generics = get_type_generics(self, &node.typ);
+        let num_provided = type_args.as_ref().map_or(0, Vec::len);
+        if typ_generics.len() != 0 && num_provided != 0 && typ_generics.len() != num_provided {
+            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                token,
+                actual_type: node.typ,
+                expected: typ_generics.len(),
+                actual: num_provided,
+            });
+        }
+
+        let mut node = node;
+        if let Some(type_args) = type_args {
+            let mut available_generics = HashMap::new();
+            for (type_ident, type_arg_name) in type_args.iter().zip(typ_generics) {
+                let typ = self.type_from_type_ident(&type_ident)?;
+                available_generics.insert(type_arg_name, typ);
+            }
+            node.typ = Type::substitute_generics(&node.typ, &available_generics);
+        }
+
+        Ok(TypedAstNode::Identifier(token, node))
     }
 
     fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<TypedAstNode, TypecheckerError> {
         let AssignmentNode { target, expr } = node;
         match *target {
-            AstNode::Identifier(ident_tok) => {
-                let ident = self.visit_ident(ident_tok.clone())?;
+            AstNode::Identifier(ident_tok, _) => {
+                let ident = self.visit_ident(ident_tok.clone(), None)?;
                 let (typ, is_mutable) = match &ident {
                     TypedAstNode::Identifier(_, TypedIdentifierNode { typ, is_mutable, .. }) => (typ, is_mutable),
                     _ => unreachable!()
@@ -1441,7 +1472,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         if !generics.contains_key(&name) {
                             if value == Type::Unknown {
                                 generics_need_refit = true;
-                            } else {
+                            } else if !generics.contains_key(&name) {
                                 generics.insert(name, value);
                             }
                         }
@@ -1525,6 +1556,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     }
 
                     let mut generics = HashMap::new();
+                    for (type_arg_name, type_arg_type) in type_args {
+                        if type_arg_type.has_unbound_generic() { continue; }
+                        generics.insert(type_arg_name.clone(), type_arg_type.clone());
+                    }
                     let typed_args = verify_named_args_invocation(self, target_token, args, expected_fields, &mut generics)?;
 
                     let default_field_values = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
@@ -1721,20 +1756,47 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         }
 
-        let field_name = Token::get_ident_name(&field).clone();
+        let (field_ident, ident_type_args) = if let AstNode::Identifier(field_ident, type_args) = *field {
+            (field_ident, type_args)
+        } else { unreachable!("The `field` field on AccessorNode must be an AstNode::Identifier"); };
+        let field_name = Token::get_ident_name(&field_ident).clone();
 
         let field_data = match self.resolve_ref_type(&target_type) {
             Type::Struct(StructType { fields, methods, type_args, .. }) => {
-                let generics = type_args.into_iter().collect();
+                let mut generics = type_args.into_iter().collect();
                 let num_fields = fields.len();
-                fields.iter().enumerate()
-                    .find(|(_, (name, _, _))| &field_name == name)
-                    .map(|(idx, (_, typ, _))| (idx, Type::substitute_generics(typ, &generics)))
-                    .or_else(|| {
-                        methods.iter().enumerate()
-                            .find(|(_, (name, _))| &field_name == name)
-                            .map(|(idx, (_, typ))| (num_fields + idx, Type::substitute_generics(typ, &generics)))
-                    })
+
+                let mut field_data = None;
+                for (idx, (name, typ, _)) in fields.iter().enumerate() {
+                    if &field_name != name { continue; }
+                    field_data = Some((idx, Type::substitute_generics(typ, &generics)));
+                    break;
+                }
+                if field_data.is_none() {
+                    for (idx, (name, typ)) in methods.iter().enumerate() {
+                        if &field_name != name { continue; }
+
+                        if let Some(ident_type_args) = &ident_type_args {
+                            if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
+                                if ident_type_args.len() != fn_type_args.len() {
+                                    return Err(TypecheckerError::InvalidTypeArgumentArity {
+                                        token: token.clone(),
+                                        actual_type: typ.clone(),
+                                        expected: fn_type_args.len(),
+                                        actual: ident_type_args.len(),
+                                    });
+                                }
+                                for (type_arg_name, type_arg_ident) in fn_type_args.iter().zip(ident_type_args) {
+                                    let type_arg_type = self.type_from_type_ident(type_arg_ident)?;
+                                    generics.insert(type_arg_name.clone(), type_arg_type);
+                                }
+                            } else { unreachable!("A method's type should be a Type::Fn"); }
+                        }
+                        field_data = Some((num_fields + idx, Type::substitute_generics(typ, &generics)));
+                        break;
+                    }
+                }
+                field_data
             }
             Type::Type(_, typ) => match self.resolve_ref_type(&*typ) {
                 Type::Struct(StructType { static_fields, .. }) => {
@@ -1749,7 +1811,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         };
         let (field_idx, mut typ) = field_data.ok_or_else(|| {
-            TypecheckerError::UnknownMember { token: field.clone(), target_type: target_type.clone() }
+            TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() }
         })?;
         if is_opt {
             typ = Type::Option(Box::new(typ))
@@ -3324,7 +3386,21 @@ mod tests {
 
         let input = r#"
           type List<T> { items: T[] }
+          val l = List<Int>(items: [1, 2, 3])
+        "#;
+        let res = typecheck(input);
+        assert!(res.is_ok());
+
+        let input = r#"
+          type List<T> { items: T[] }
           val l: List<Int> = List(items: [])
+        "#;
+        let res = typecheck(input);
+        assert!(res.is_ok());
+
+        let input = r#"
+          type List<T> { items: T[] }
+          val l = List<Int>(items: [])
         "#;
         let res = typecheck(input);
         assert!(res.is_ok());
@@ -3361,6 +3437,18 @@ mod tests {
             actual: Type::Reference("List".to_string(), vec![Type::Int]),
         };
         assert_eq!(expected, error);
+
+        let input = "\
+          type List<T> { items: T[] }\n\
+          val l = List<String>(items: [1, 2, 3])\
+        ";
+        let error = typecheck(input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrack(Position::new(2, 29), false),
+            expected: Type::Array(Box::new(Type::String)),
+            actual: Type::Array(Box::new(Type::Int)),
+        };
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -3377,6 +3465,11 @@ mod tests {
             }
             func concat(self, other: List<T>): List<T> {
               List(items: self.items.concat(other.items))
+            }
+            func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+              var acc = initialValue
+              for item in self.items { acc = fn(acc, item) }
+              acc
             }
           }
         "#;
@@ -3422,6 +3515,15 @@ mod tests {
         let res = typecheck(&input);
         assert!(res.is_ok());
 
+        let input = format!(r#"{}
+          List(items: [1, 2, 3]).reduce<String[]>([], (acc, i) => {{
+            acc.push(i + "!")
+            acc
+          }})
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
         Ok(())
     }
 
@@ -3434,6 +3536,9 @@ mod tests {
               self.items.push(item)\n\
               self.items\n\
             }\n\
+            func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {\n\
+              initialValue\n\
+            }\n\
           }\
         ";
 
@@ -3443,7 +3548,7 @@ mod tests {
         ", type_def);
         let error = typecheck(&input).unwrap_err();
         let expected = TypecheckerError::Mismatch {
-            token: Token::String(Position::new(9, 14), "abcd".to_string()),
+            token: Token::String(Position::new(12, 14), "abcd".to_string()),
             expected: Type::Int,
             actual: Type::String,
         };
@@ -3455,7 +3560,31 @@ mod tests {
         ", type_def);
         let error = typecheck(&input).unwrap_err();
         let expected = TypecheckerError::Mismatch {
-            token: Token::String(Position::new(9, 8), "abcd".to_string()),
+            token: Token::String(Position::new(12, 8), "abcd".to_string()),
+            expected: Type::Int,
+            actual: Type::String,
+        };
+        assert_eq!(expected, error);
+
+        let input = format!("{}\n\
+          val l = List(items: [1, 2, 3])\n\
+          l.reduce([], (acc, i) => acc.concat([i]))\
+        ", type_def);
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Arrow(Position::new(12, 23)),
+            expected: Type::Array(Box::new(Type::Unknown)),
+            actual: Type::Array(Box::new(Type::Unknown)),
+        };
+        assert_eq!(expected, error);
+
+        let input = format!("{}\n\
+          val l = List(items: [1, 2, 3])\n\
+          l.reduce<Int>(\"\", (acc, i) => acc + i)\
+        ", type_def);
+        let error = typecheck(&input).unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(12, 15), "".to_string()),
             expected: Type::Int,
             actual: Type::String,
         };
