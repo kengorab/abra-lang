@@ -908,10 +908,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // reference we must look it up by name in self.referencable_types. This level of indirection
         // allows for cyclic types.
         let typeref = Type::Reference(new_type_name.clone(), vec![]);
-
         let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
         self.add_binding(&new_type_name, &name, &binding_type, false);
-
         self.add_type(new_type_name.clone(), None, typeref.clone());
 
         // As we progress through this type declaration, we build up this value in
@@ -922,9 +920,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 let name = Token::get_ident_name(name);
                 (name.clone(), Type::Generic(name))
             })
-            .collect();
-        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names, fields: vec![], static_fields: vec![], methods: vec![] };
+            .collect::<Vec<(String, Type)>>();
+        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
         self.referencable_types.insert(new_type_name.clone(), Type::Struct(typedef));
+
+        // Update the Reference type of the type's identifier to include the generics, and establish
+        // that Reference as the cur_typedef
+        let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
+        let typeref = Type::Reference(new_type_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
+        *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
+        self.cur_typedef = Some(typeref);
 
         // Insert Generics for all type_args present
         let mut scope = Scope::new(ScopeKind::TypeDef);
@@ -1021,10 +1026,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             // ...pop off the temporary scope here.
             self.scopes.pop();
         }
-
-        let binding = self.get_binding_mut(&new_type_name).unwrap();
-        binding.1 = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
-        self.cur_typedef = Some(typeref);
 
         // ------------------------  End First-pass Type Gathering  ------------------------ \\
         // --- Now that the current type has been made available to the environment, we  --- \\
@@ -1515,7 +1516,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             Type::Type(_, t) => match self.resolve_ref_type(&*t) {
                 Type::Struct(struct_type) => {
-                    let StructType { name, fields: expected_fields, .. } = &struct_type;
+                    let StructType { name, fields: expected_fields, type_args, .. } = &struct_type;
                     let target_token = target.get_token().clone();
 
                     let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
@@ -1551,7 +1552,17 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                     let typ = match *t {
                         Type::Reference(name, _) => {
-                            let pairs = generics.into_iter().map(|(_, typ)| typ).collect();
+                            let mut generics_iter = generics.into_iter();
+                            let mut struct_type_args_iter = type_args.iter();
+
+                            let mut pairs = Vec::new();
+                            loop {
+                                match (generics_iter.next(), struct_type_args_iter.next()) {
+                                    (Some((_, resolved_type_arg)), _) => pairs.push(resolved_type_arg),
+                                    (_, Some((_, unbound_generic))) => pairs.push(unbound_generic.clone()),
+                                    (None, None) => break
+                                }
+                            }
                             Type::Reference(name, pairs)
                         }
                         _ => unreachable!(format!("Unexpected type {:?} used here", t))
@@ -3356,12 +3367,14 @@ mod tests {
     fn typecheck_type_decl_generics_fields_and_methods() -> TestResult {
         let type_def = r#"
           type List<T> {
-            items: T[]
-            func push(self, item: T): T[] {
+            items: T[] = []
+            func push(self, item: T): List<T> {
               self.items.push(item)
-              self.items
+              self
             }
-            func map<U>(self, fn: (T) => U): U[] = []
+            func map<U>(self, fn: (T) => U): List<U> {
+              List(items: self.items.map(fn))
+            }
             func concat(self, other: List<T>): List<T> {
               List(items: self.items.concat(other.items))
             }
@@ -3390,8 +3403,15 @@ mod tests {
         assert!(res.is_ok());
 
         let input = format!(r#"{}
+          val l: List<String> = List()
+          l.push("abc")
+        "#, type_def);
+        let res = typecheck(&input);
+        assert!(res.is_ok());
+
+        let input = format!(r#"{}
           val l: List<String> = List(items: [])
-          val lengths: Int[] = l.map(s => s.length)
+          val lengths: List<Int> = l.map(s => s.length)
         "#, type_def);
         let res = typecheck(&input);
         assert!(res.is_ok());
