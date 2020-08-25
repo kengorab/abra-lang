@@ -11,7 +11,7 @@ pub enum AstNode {
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
     TypeDecl(Token, TypeDeclNode),
-    Identifier(Token),
+    Identifier(Token, Option<Vec<TypeIdentifier>>),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
     IfStatement(Token, IfNode),
@@ -105,6 +105,8 @@ pub struct BindingDeclNode {
 pub struct FunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    // Must be a Token::Idents
+    pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
     pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
@@ -121,6 +123,8 @@ pub struct LambdaNode {
 pub struct TypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    // Must be Token::Idents
+    pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<(Token, TypeIdentifier, Option<AstNode>)>,
     pub methods: Vec<AstNode>,
@@ -176,25 +180,26 @@ pub struct WhileLoopNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AccessorNode {
     pub target: Box<AstNode>,
-    pub field: Token,
+    // Must be an AstNode::Identifier
+    pub field: Box<AstNode>,
     pub is_opt_safe: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeIdentifier {
-    Normal { ident: Token },
+    Normal { ident: Token, type_args: Option<Vec<TypeIdentifier>> },
     Array { inner: Box<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
     Func {
         args: Vec<TypeIdentifier>,
-        ret: Box<TypeIdentifier>
+        ret: Box<TypeIdentifier>,
     },
 }
 
 impl TypeIdentifier {
     pub fn get_ident(&self) -> Token {
         match self {
-            TypeIdentifier::Normal { ident } => ident.clone(),
+            TypeIdentifier::Normal { ident, .. } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
             TypeIdentifier::Option { inner } => inner.get_ident(),
             TypeIdentifier::Func { ret, .. } => ret.get_ident()

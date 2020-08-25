@@ -98,9 +98,7 @@ impl Disassembler {
                 }
                 Opcode::Invoke => {
                     let arity = imms[0].expect("Invoke requires an arity");
-                    let has_return = imms[1].expect("Invoke requires an arity") == &1;
-
-                    acc.push(format!("\t; (arity: {}, has_return: {})", arity, has_return))
+                    acc.push(format!("\t; (arity: {})", arity))
                 }
                 Opcode::GetField => {
                     let ident = self.metadata.field_gets.get(self.current_field_get)

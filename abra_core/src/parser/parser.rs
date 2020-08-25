@@ -80,6 +80,18 @@ impl Parser {
         self.peek().ok_or(ParseError::UnexpectedEof)
     }
 
+    fn expect_peek_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
+        self.expect_peek().and_then(|tok| {
+            let tok = tok.clone();
+            let token_type: TokenType = tok.clone().into();
+            if token_type != expected_token {
+                Err(ParseError::ExpectedToken(expected_token, tok))
+            } else {
+                Ok(tok)
+            }
+        })
+    }
+
     // Begin Pratt plumbing
 
     fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseError> {
@@ -193,56 +205,95 @@ impl Parser {
         }
     }
 
-    fn parse_type_identifier(&mut self) -> Result<TypeIdentifier, ParseError> {
+    fn parse_type_identifier(&mut self, consume: bool) -> Result<TypeIdentifier, ParseError> {
+        // Rather than delegate to functions, just use some handy macros to either consume the token
+        // or just pass over it.
+        macro_rules! expect_next {
+            () => {
+              if consume {
+                  self.expect_next()?;
+              } else {
+                  self.tokens.advance_cursor();
+              }
+            };
+        }
+        macro_rules! expect_next_token {
+            ($token_type:expr) => {
+              if consume {
+                  self.expect_next_token($token_type)?
+              } else {
+                  let tok = self.expect_peek_token($token_type)?;
+                  self.tokens.advance_cursor();
+                  tok
+              }
+            };
+        }
+
         let mut left = if let Token::LParen(_, _) = self.expect_peek()? {
-            self.expect_next()?; // Consume '('
+            expect_next!(); // Consume '('
 
             let mut types = Vec::new();
             loop {
                 if let Token::RParen(_) = self.expect_peek()? {
-                    self.expect_next()?; // Consume ')'
+                    expect_next!(); // Consume ')'
                     break;
                 }
-                types.push(self.parse_type_identifier()?);
+                types.push(self.parse_type_identifier(consume)?);
                 if let Token::Comma(_) = self.expect_peek()? {
-                    self.expect_next()?; // Consume ','
+                    expect_next!(); // Consume ','
                 }
             }
 
             if types.len() == 1 {
                 if let Some(Token::Arrow(_)) = self.peek() {
-                    self.expect_next()?; // Consume '=>'
-                    let ret_type = self.parse_type_identifier()?;
+                    expect_next!(); // Consume '=>'
+                    let ret_type = self.parse_type_identifier(consume)?;
                     TypeIdentifier::Func { args: types, ret: Box::new(ret_type) }
                 } else {
                     types.into_iter().next().unwrap()
                 }
             } else {
-                self.expect_next_token(TokenType::Arrow)?;
+                expect_next_token!(TokenType::Arrow);
 
-                let ret_type = self.parse_type_identifier()?;
+                let ret_type = self.parse_type_identifier(consume)?;
                 TypeIdentifier::Func { args: types, ret: Box::new(ret_type) }
             }
         } else {
-            match self.expect_next_token(TokenType::Ident)? {
-                ident @ Token::Ident(_, _) => TypeIdentifier::Normal { ident },
+            let ident = match expect_next_token!(TokenType::Ident) {
+                ident @ Token::Ident(_, _) => ident,
                 _ => unreachable!() // Since expect_next_token verifies it's a TokenType::Ident
-            }
+            };
+            let type_args = if let Some(Token::LT(_)) = self.peek() {
+                expect_next_token!(TokenType::LT);
+                let mut type_args = Vec::new();
+                loop {
+                    let type_arg = self.parse_type_identifier(consume)?;
+                    type_args.push(type_arg);
+                    if let Token::Comma(_) = self.expect_peek()? {
+                        expect_next!(); // Consume ','
+                    } else {
+                        expect_next_token!(TokenType::GT);
+                        break;
+                    }
+                }
+                Some(type_args)
+            } else { None };
+            TypeIdentifier::Normal { ident, type_args }
         };
 
         let mut next_token = self.peek();
         loop {
             match next_token {
                 Some(Token::LBrack(_, _)) => {
-                    self.expect_next()?; // Consume '['
+                    expect_next!(); // Consume '['
                     match self.expect_peek()? {
-                        Token::RBrack(_) => self.expect_next(), // Consume ']'
+                        Token::RBrack(_) => Ok(expect_next!()), // Consume ']'
                         t => Err(ParseError::ExpectedToken(TokenType::RBrack, t.clone())),
                     }?;
                     left = TypeIdentifier::Array { inner: Box::new(left) }
                 }
                 Some(Token::Question(_)) => {
-                    self.expect_next()?; // Consume '?'
+                    expect_next!(); // Consume '?'
                     left = TypeIdentifier::Option { inner: Box::new(left) }
                 }
                 _ => break
@@ -292,7 +343,7 @@ impl Parser {
 
                     let type_ident = if let Token::Colon(_) = self.peek().ok_or(ParseError::UnexpectedEof)? {
                         self.expect_next()?; // Consume ':'
-                        Some(self.parse_type_identifier()?)
+                        Some(self.parse_type_identifier(true)?)
                     } else { None };
 
                     let default_value = match self.peek().ok_or(ParseError::UnexpectedEof)? {
@@ -328,9 +379,37 @@ impl Parser {
         Ok(args)
     }
 
+    fn parse_type_args(&mut self) -> Result<Vec<Token>, ParseError> {
+        let mut type_args = Vec::new();
+        if let Token::LT(_) = self.expect_peek()? {
+            self.expect_next()?; // Consume '<'
+
+            loop {
+                let ident = self.expect_next_token(TokenType::Ident)?;
+                type_args.push(ident);
+
+                match self.expect_next()? {
+                    Token::Comma(_) => {
+                        if let Token::GT(_) = self.expect_peek()? {
+                            self.expect_next()?; // Consume '>'
+                            break;
+                        } else {
+                            continue;
+                        }
+                    }
+                    Token::GT(_) => break,
+                    tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+                }
+            }
+        }
+        Ok(type_args)
+    }
+
     fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
-        let func_token = self.expect_next()?;
-        let func_name = self.expect_next_token(TokenType::Ident)?;
+        let token = self.expect_next()?;
+        let name = self.expect_next_token(TokenType::Ident)?;
+
+        let type_args = self.parse_type_args()?;
 
         self.expect_next_token(TokenType::LParen)?;
         let args = self.parse_func_args(None, false)?;
@@ -338,7 +417,7 @@ impl Parser {
         let ret_type = match self.peek().ok_or(ParseError::UnexpectedEof)? {
             Token::Colon(_) => {
                 self.expect_next()?;
-                Some(self.parse_type_identifier()?)
+                Some(self.parse_type_identifier(true)?)
             }
             _ => None
         };
@@ -352,7 +431,7 @@ impl Parser {
             t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
         }?;
 
-        Ok(AstNode::FunctionDecl(func_token, FunctionDeclNode { name: func_name, args, ret_type, body }))
+        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { name, type_args, args, ret_type, body }))
     }
 
     fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -373,7 +452,7 @@ impl Parser {
         let type_ann = match self.peek() {
             Some(Token::Colon(_)) => {
                 self.expect_next()?; // Consume ':'
-                let type_ident = self.parse_type_identifier()?;
+                let type_ident = self.parse_type_identifier(true)?;
                 Ok(Some(type_ident))
             }
             Some(_) | None => Ok(None)
@@ -401,6 +480,8 @@ impl Parser {
             }
         })?;
 
+        let type_args = self.parse_type_args()?;
+
         self.expect_next_token(TokenType::LBrace)?;
 
         let mut fields = Vec::new();
@@ -415,7 +496,7 @@ impl Parser {
                 Token::Ident(_, _) => {
                     let field_name = self.expect_next()?;
                     self.expect_next_token(TokenType::Colon)?;
-                    let field_type = self.parse_type_identifier()?;
+                    let field_type = self.parse_type_identifier(true)?;
                     let default_value = if let Some(Token::Assign(_)) = self.peek() {
                         self.expect_next()?; // Consume '='
                         Some(self.parse_expr()?)
@@ -433,7 +514,7 @@ impl Parser {
 
         self.expect_next_token(TokenType::RBrace)?;
 
-        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods }))
+        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods, type_args }))
     }
 
     #[inline]
@@ -760,13 +841,13 @@ impl Parser {
                 }
 
                 match self.parse_expr()? {
-                    ident @ AstNode::Identifier(_) => {
+                    ident @ AstNode::Identifier(_, _) => {
                         if let Token::Colon(_) = self.expect_peek()? {
                             self.expect_next()?; // Consume ':'
                             let arg_value = self.parse_expr()?;
                             // Kind of silly, but I can't destruct ident while also @-ing it
                             let arg_name = match ident {
-                                AstNode::Identifier(arg_name) => arg_name,
+                                AstNode::Identifier(arg_name, None) => arg_name,
                                 _ => unreachable!()
                             };
                             args.push((Some(arg_name), arg_value));
@@ -795,7 +876,8 @@ impl Parser {
             _ => false
         };
         let field = self.expect_next_token(TokenType::Ident)?;
-        Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field, is_opt_safe }))
+        let field = self.parse_ident(field)?;
+        Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field: Box::new(field), is_opt_safe }))
     }
 
     fn parse_lambda(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
@@ -803,10 +885,10 @@ impl Parser {
         // we need to assert that the `left` node is either an Identifier, or a Grouped that wraps
         // an Identifier.
         let args = match left {
-            AstNode::Identifier(ident) => vec![(ident, None, None)],
+            AstNode::Identifier(ident, _) => vec![(ident, None, None)],
             AstNode::Grouped(_, GroupedNode { expr }) => {
                 match *expr {
-                    AstNode::Identifier(ident) => vec![(ident, None, None)],
+                    AstNode::Identifier(ident, _) => vec![(ident, None, None)],
                     _ => return Err(ParseError::UnexpectedToken(token))
                 }
             }
@@ -877,10 +959,48 @@ impl Parser {
     }
 
     fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
-        match &token {
-            Token::Ident(_, _) | Token::Self_(_) | Token::None(_) => Ok(AstNode::Identifier(token)),
-            _ => Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
+        let ident_token = match &token {
+            Token::Ident(_, _) | Token::Self_(_) | Token::None(_) => token,
+            _ => return Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
+        };
+        let mut types = Vec::new();
+        if let Some(Token::LT(_)) = self.peek() {
+            self.tokens.advance_cursor();
+            loop {
+                if self.peek().is_none() {
+                    return Err(ParseError::UnexpectedEof);
+                }
+
+                if let Some(Token::GT(_)) = self.peek() {
+                    if types.is_empty() {
+                        self.tokens.reset_cursor();
+                    } else {
+                        self.tokens.advance_cursor();
+                    }
+                    break;
+                }
+                let type_ident_res = self.parse_type_identifier(false);
+                match type_ident_res {
+                    Err(_) => {
+                        self.tokens.reset_cursor();
+                        break;
+                    }
+                    Ok(type_ident) => {
+                        types.push(type_ident);
+                        if let Some(Token::Comma(_)) = self.peek() {
+                            self.tokens.advance_cursor();
+                        }
+                    }
+                }
+            }
+            if let Some(Token::LParen(_, _)) = self.peek() {
+                self.tokens.truncate_iterator_to_cursor();
+            } else {
+                self.tokens.reset_cursor();
+            }
         }
+        let types = if types.is_empty() { None } else { Some(types) };
+        Ok(AstNode::Identifier(ident_token, types))
     }
 }
 
@@ -1572,20 +1692,22 @@ mod tests {
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
             let tokens = tokenize(&input.to_string()).unwrap();
             let mut parser = Parser::new(tokens);
-            parser.parse_type_identifier().unwrap()
+            parser.parse_type_identifier(true).unwrap()
         }
 
         // Plain idents, optionals, and arrays
         let type_ident = parse_type_identifier("Bool");
         let expected = TypeIdentifier::Normal {
-            ident: Token::Ident(Position::new(1, 1), "Bool".to_string())
+            ident: Token::Ident(Position::new(1, 1), "Bool".to_string()),
+            type_args: None,
         };
         assert_eq!(expected, type_ident);
 
         let type_ident = parse_type_identifier("Int[]");
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string()),
+                type_args: None,
             })
         };
         assert_eq!(expected, type_ident);
@@ -1594,21 +1716,24 @@ mod tests {
         let type_ident = parse_type_identifier("Int?");
         let expected = TypeIdentifier::Option {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 1), "Int".to_string()),
+                type_args: None,
             })
         };
         assert_eq!(expected, type_ident);
         let type_ident = parse_type_identifier("(Int)?");
         let expected = TypeIdentifier::Option {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 2), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 2), "Int".to_string()),
+                type_args: None,
             })
         };
         assert_eq!(expected, type_ident);
         let type_ident = parse_type_identifier("(((Int)?))");
         let expected = TypeIdentifier::Option {
             inner: Box::new(TypeIdentifier::Normal {
-                ident: Token::Ident(Position::new(1, 4), "Int".to_string())
+                ident: Token::Ident(Position::new(1, 4), "Int".to_string()),
+                type_args: None,
             })
         };
         assert_eq!(expected, type_ident);
@@ -1618,7 +1743,8 @@ mod tests {
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string()),
+                    type_args: None,
                 })
             })
         };
@@ -1627,7 +1753,8 @@ mod tests {
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 2), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 2), "Int".to_string()),
+                    type_args: None,
                 })
             })
         };
@@ -1637,7 +1764,8 @@ mod tests {
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Option {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 1), "Int".to_string()),
+                    type_args: None,
                 })
             })
         };
@@ -1646,7 +1774,8 @@ mod tests {
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Option {
                 inner: Box::new(TypeIdentifier::Normal {
-                    ident: Token::Ident(Position::new(1, 2), "Int".to_string())
+                    ident: Token::Ident(Position::new(1, 2), "Int".to_string()),
+                    type_args: None,
                 })
             })
         };
@@ -1657,7 +1786,8 @@ mod tests {
             inner: Box::new(TypeIdentifier::Array {
                 inner: Box::new(TypeIdentifier::Option {
                     inner: Box::new(TypeIdentifier::Normal {
-                        ident: Token::Ident(Position::new(1, 1), "Int".to_string())
+                        ident: Token::Ident(Position::new(1, 1), "Int".to_string()),
+                        type_args: None,
                     })
                 })
             })
@@ -1668,7 +1798,7 @@ mod tests {
         let type_ident = parse_type_identifier("() => Int");
         let expected = TypeIdentifier::Func {
             args: vec![],
-            ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int") }),
+            ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int"), type_args: None }),
         };
         assert_eq!(expected, type_ident);
 
@@ -1676,7 +1806,7 @@ mod tests {
         let expected = TypeIdentifier::Func {
             args: vec![],
             ret: Box::new(TypeIdentifier::Option {
-                inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int") })
+                inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int"), type_args: None })
             }),
         };
         assert_eq!(expected, type_ident);
@@ -1685,7 +1815,7 @@ mod tests {
             inner: Box::new(
                 TypeIdentifier::Func {
                     args: vec![],
-                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 8), "Int") }),
+                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 8), "Int"), type_args: None }),
                 }
             ),
         };
@@ -1694,12 +1824,12 @@ mod tests {
         let type_ident = parse_type_identifier("(String, Int?) => Int");
         let expected = TypeIdentifier::Func {
             args: vec![
-                TypeIdentifier::Normal { ident: ident_token!((1, 2), "String") },
+                TypeIdentifier::Normal { ident: ident_token!((1, 2), "String"), type_args: None },
                 TypeIdentifier::Option {
-                    inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 10), "Int") })
+                    inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 10), "Int"), type_args: None })
                 },
             ],
-            ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int") }),
+            ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int"), type_args: None }),
         };
         assert_eq!(expected, type_ident);
 
@@ -1707,12 +1837,12 @@ mod tests {
         let expected = TypeIdentifier::Array {
             inner: Box::new(TypeIdentifier::Func {
                 args: vec![
-                    TypeIdentifier::Normal { ident: ident_token!((1, 3), "String") },
+                    TypeIdentifier::Normal { ident: ident_token!((1, 3), "String"), type_args: None },
                     TypeIdentifier::Array {
-                        inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 11), "Int") })
+                        inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 11), "Int"), type_args: None })
                     },
                 ],
-                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }),
+                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }),
             })
         };
         assert_eq!(expected, type_ident);
@@ -1721,17 +1851,57 @@ mod tests {
         let expected = TypeIdentifier::Func {
             args: vec![
                 TypeIdentifier::Func {
-                    args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 3), "String") }],
-                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int") }),
+                    args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 3), "String"), type_args: None }],
+                    ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int"), type_args: None }),
                 },
                 TypeIdentifier::Array {
-                    inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int") })
+                    inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int"), type_args: None })
                 }
             ],
             ret: Box::new(TypeIdentifier::Func {
-                args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 30), "String") }],
-                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 41), "Int") }),
+                args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 30), "String"), type_args: None }],
+                ret: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 41), "Int"), type_args: None }),
             }),
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("List<Int>");
+        let expected = TypeIdentifier::Normal {
+            ident: ident_token!((1, 1), "List"),
+            type_args: Some(vec![
+                TypeIdentifier::Normal { ident: ident_token!((1, 6), "Int"), type_args: None },
+            ]),
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("Map<String, Int>");
+        let expected = TypeIdentifier::Normal {
+            ident: ident_token!((1, 1), "Map"),
+            type_args: Some(vec![
+                TypeIdentifier::Normal { ident: ident_token!((1, 5), "String"), type_args: None },
+                TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None },
+            ]),
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("Map<String, Map<String, List<Int>>>");
+        let expected = TypeIdentifier::Normal {
+            ident: ident_token!((1, 1), "Map"),
+            type_args: Some(vec![
+                TypeIdentifier::Normal { ident: ident_token!((1, 5), "String"), type_args: None },
+                TypeIdentifier::Normal {
+                    ident: ident_token!((1, 13), "Map"),
+                    type_args: Some(vec![
+                        TypeIdentifier::Normal { ident: ident_token!((1, 17), "String"), type_args: None },
+                        TypeIdentifier::Normal {
+                            ident: ident_token!((1, 25), "List"),
+                            type_args: Some(vec![
+                                TypeIdentifier::Normal { ident: ident_token!((1, 30), "Int"), type_args: None },
+                            ]),
+                        },
+                    ]),
+                },
+            ]),
         };
         assert_eq!(expected, type_ident);
     }
@@ -1779,6 +1949,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                type_args: vec![],
                 args: vec![],
                 ret_type: None,
                 body: vec![
@@ -1793,6 +1964,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                type_args: vec![],
                 args: vec![],
                 ret_type: None,
                 body: vec![
@@ -1817,7 +1989,7 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None)
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), None)
         ];
         assert_eq!(&expected, args);
 
@@ -1827,8 +1999,8 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
-            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }) }), None)
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), None),
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }) }), None)
         ];
         assert_eq!(&expected, args);
 
@@ -1839,7 +2011,7 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None)
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), None)
         ];
         assert_eq!(&expected, args);
 
@@ -1850,8 +2022,8 @@ mod tests {
             _ => unreachable!()
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
-            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int") }), Some(int_literal!((1, 27), 2))),
+            (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), None),
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }), Some(int_literal!((1, 27), 2))),
             (ident_token!((1, 30), "c"), None, Some(int_literal!((1, 34), 4))),
         ];
         assert_eq!(&expected, args);
@@ -1862,8 +2034,23 @@ mod tests {
             AstNode::FunctionDecl(_, FunctionDeclNode { ret_type, .. }) => ret_type,
             _ => unreachable!()
         };
-        let expected = Some(TypeIdentifier::Normal { ident: ident_token!((1, 19), "String") });
+        let expected = Some(TypeIdentifier::Normal { ident: ident_token!((1, 19), "String"), type_args: None });
         assert_eq!(&expected, ret_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_func_decl_type_args() -> TestResult {
+        let ast = parse("func abc<T>(a: T, b: T?) = 123")?;
+        let type_args = match ast.first().unwrap() {
+            AstNode::FunctionDecl(_, FunctionDeclNode { type_args, .. }) => type_args,
+            _ => unreachable!()
+        };
+        let expected = vec![
+            ident_token!((1, 10), "T")
+        ];
+        assert_eq!(&expected, type_args);
 
         Ok(())
     }
@@ -1922,7 +2109,7 @@ mod tests {
                             is_mutable: false,
                         },
                     ),
-                    AstNode::Identifier(ident_token!((3, 1), "a")),
+                    identifier!((3, 1), "a"),
                 ],
             },
         );
@@ -1957,7 +2144,7 @@ mod tests {
         let expected = AstNode::Lambda(
             Token::Arrow(Position::new(1, 13)),
             LambdaNode {
-                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String") }), None)],
+                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String"), type_args: None }), None)],
                 body: vec![int_literal!((1, 16), 123)],
             },
         );
@@ -1977,7 +2164,7 @@ mod tests {
         let expected = AstNode::Lambda(
             Token::Arrow(Position::new(1, 14)),
             LambdaNode {
-                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String") }), None)],
+                args: vec![(ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "String"), type_args: None }), None)],
                 body: vec![int_literal!((1, 17), 123)],
             },
         );
@@ -1994,7 +2181,7 @@ mod tests {
             LambdaNode {
                 args: vec![
                     (ident_token!((1, 2), "a"), None, None),
-                    (ident_token!((1, 5), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 8), "Int") }), None),
+                    (ident_token!((1, 5), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 8), "Int"), type_args: None }), None),
                 ],
                 body: vec![int_literal!((1, 16), 123)],
             },
@@ -2019,8 +2206,8 @@ mod tests {
             Token::Arrow(Position::new(1, 18)),
             LambdaNode {
                 args: vec![
-                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int") }), None),
-                    (ident_token!((1, 10), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int") }), None),
+                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int"), type_args: None }), None),
+                    (ident_token!((1, 10), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), None),
                 ],
                 body: vec![int_literal!((1, 21), 123)],
             },
@@ -2033,7 +2220,7 @@ mod tests {
             LambdaNode {
                 args: vec![
                     (ident_token!((1, 2), "a"), None, Some(int_literal!((1, 6), 3))),
-                    (ident_token!((1, 9), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 12), "Int") }), None),
+                    (ident_token!((1, 9), "b"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 12), "Int"), type_args: None }), None),
                 ],
                 body: vec![int_literal!((1, 20), 123)],
             },
@@ -2045,7 +2232,7 @@ mod tests {
             Token::Arrow(Position::new(1, 17)),
             LambdaNode {
                 args: vec![
-                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int") }), None),
+                    (ident_token!((1, 2), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int"), type_args: None }), None),
                     (ident_token!((1, 10), "b"), None, Some(int_literal!((1, 14), 3))),
                 ],
                 body: vec![int_literal!((1, 20), 123)],
@@ -2063,6 +2250,7 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![],
                 methods: vec![],
             },
@@ -2074,7 +2262,8 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
-                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None)],
+                type_args: vec![],
+                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None)],
                 methods: vec![],
             },
         );
@@ -2087,9 +2276,10 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![
-                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
-                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int") }, None),
+                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None),
+                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int"), type_args: None }, None),
                 ],
                 methods: vec![],
             },
@@ -2102,9 +2292,10 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![
-                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String") }, None),
-                    (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool") }, Some(bool_literal!((1, 45), true)))
+                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None),
+                    (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None }, Some(bool_literal!((1, 45), true)))
                 ],
                 methods: vec![],
             },
@@ -2112,6 +2303,61 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_type_args() -> TestResult {
+        // Testing with a type argument
+        let ast = parse("type List<T> { }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "List"),
+                type_args: vec![ident_token!((1, 11), "T")],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Testing with multiple type arguments (with and without trailing commas)
+        let ast = parse("type List<T, U> { }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "List"),
+                type_args: vec![
+                    ident_token!((1, 11), "T"),
+                    ident_token!((1, 14), "U"),
+                ],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+        let ast = parse("type List<T, U,> { }")?;
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_type_decl_type_args_error() {
+        let error = parse("type List<> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::GT(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<1> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 1));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<[]> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LBrack(Position::new(1, 11), false));
+        assert_eq!(expected, error);
+
+        let error = parse("type List<T, ,> { }").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Comma(Position::new(1, 14)));
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -2126,12 +2372,14 @@ mod tests {
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
                 fields: vec![],
                 methods: vec![
                     AstNode::FunctionDecl(
                         Token::Func(Position::new(2, 1)),
                         FunctionDeclNode {
                             name: Token::Ident(Position::new(2, 6), "hello".to_string()),
+                            type_args: vec![],
                             args: vec![
                                 (Token::Self_(Position::new(2, 12)), None, None),
                             ],
@@ -2185,11 +2433,11 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         let ast = parse("self")?;
-        let expected = AstNode::Identifier(Token::Self_(Position::new(1, 1)));
+        let expected = AstNode::Identifier(Token::Self_(Position::new(1, 1)), None);
         assert_eq!(expected, ast[0]);
 
         let ast = parse("None")?;
-        let expected = AstNode::Identifier(Token::None(Position::new(1, 1)));
+        let expected = AstNode::Identifier(Token::None(Position::new(1, 1)), None);
         Ok(assert_eq!(expected, ast[0]))
     }
 
@@ -2265,11 +2513,7 @@ mod tests {
             IndexingNode {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
-                    Some(Box::new(
-                        AstNode::Identifier(
-                            Token::Ident(Position::new(1, 6), "a".to_string()),
-                        )
-                    )),
+                    Some(Box::new(identifier!((1, 6), "a"))),
                     None,
                 ),
             },
@@ -2283,11 +2527,7 @@ mod tests {
                 target: Box::new(identifier!((1, 1), "abcd")),
                 index: IndexingMode::Range(
                     None,
-                    Some(Box::new(
-                        AstNode::Identifier(
-                            Token::Ident(Position::new(1, 7), "b".to_string()),
-                        )
-                    )),
+                    Some(Box::new(identifier!((1, 7), "b"))),
                 ),
             },
         );
@@ -2700,9 +2940,7 @@ mod tests {
         let expected = AstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             IfNode {
-                condition: Box::new(
-                    AstNode::Identifier(ident_token!((1, 4), "a"))
-                ),
+                condition: Box::new(identifier!((1, 4), "a")),
                 condition_binding: Some(ident_token!((1, 7), "item")),
                 if_block: vec![
                     string_literal!((1, 13), "hello")
@@ -2781,12 +3019,54 @@ mod tests {
                     Token::Dot(Position::new(1, 4)),
                     AccessorNode {
                         target: Box::new(identifier!((1, 1), "abc")),
-                        field: ident_token!((1, 5), "def"),
+                        field: Box::new(identifier!((1, 5), "def")),
                         is_opt_safe: false,
                     },
                 )),
                 args: vec![
                     (None, int_literal!((1, 9), 4)),
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc<Int>(4)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 9), false),
+            InvocationNode {
+                target: Box::new(
+                    AstNode::Identifier(
+                        ident_token!((1, 1), "abc"),
+                        Some(vec![TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int"), type_args: None }]),
+                    )
+                ),
+                args: vec![
+                    (None, int_literal!((1, 10), 4))
+                ],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("abc<Int, List<Int>>(4)")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 20), false),
+            InvocationNode {
+                target: Box::new(
+                    AstNode::Identifier(
+                        ident_token!((1, 1), "abc"),
+                        Some(vec![
+                            TypeIdentifier::Normal { ident: ident_token!((1, 5), "Int"), type_args: None },
+                            TypeIdentifier::Normal {
+                                ident: ident_token!((1, 10), "List"),
+                                type_args: Some(vec![
+                                    TypeIdentifier::Normal { ident: ident_token!((1, 15), "Int"), type_args: None },
+                                ]),
+                            },
+                        ]),
+                    )
+                ),
+                args: vec![
+                    (None, int_literal!((1, 21), 4))
                 ],
             },
         );
@@ -2938,7 +3218,7 @@ mod tests {
                     AstNode::Binary(
                         Token::LT(Position::new(1, 9)),
                         BinaryNode {
-                            left: Box::new(AstNode::Identifier(ident_token!((1, 7), "a"))),
+                            left: Box::new(identifier!((1, 7), "a")),
                             op: BinaryOp::Lt,
                             right: Box::new(int_literal!((1, 11), 3)),
                         },
@@ -2958,7 +3238,7 @@ mod tests {
                     AstNode::Binary(
                         Token::Plus(Position::new(3, 3)),
                         BinaryNode {
-                            left: Box::new(AstNode::Identifier(ident_token!((3, 1), "a"))),
+                            left: Box::new(identifier!((3, 1), "a")),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
@@ -2975,9 +3255,7 @@ mod tests {
         let expected = AstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             WhileLoopNode {
-                condition: Box::new(
-                    AstNode::Identifier(ident_token!((1, 7), "a"))
-                ),
+                condition: Box::new(identifier!((1, 7), "a")),
                 condition_binding: Some(ident_token!((1, 10), "item")),
                 body: vec![
                     string_literal!((1, 18), "hello")
@@ -3058,7 +3336,7 @@ mod tests {
             Token::Dot(Position::new(1, 4)),
             AccessorNode {
                 target: Box::new(identifier!((1, 1), "abc")),
-                field: ident_token!((1, 5), "def"),
+                field: Box::new(identifier!((1, 5), "def")),
                 is_opt_safe: false,
             },
         );
@@ -3075,15 +3353,15 @@ mod tests {
                             Token::Dot(Position::new(1, 4)),
                             AccessorNode {
                                 target: Box::new(identifier!((1, 1), "abc")),
-                                field: ident_token!((1, 5), "def"),
+                                field: Box::new(identifier!((1, 5), "def")),
                                 is_opt_safe: false,
                             },
                         )),
-                        field: ident_token!((1, 9), "ghi"),
+                        field: Box::new(identifier!((1, 9), "ghi")),
                         is_opt_safe: false,
                     },
                 )),
-                field: ident_token!((1, 13), "jkl"),
+                field: Box::new(identifier!((1, 13), "jkl")),
                 is_opt_safe: false,
             },
         );
@@ -3099,7 +3377,7 @@ mod tests {
             Token::QuestionDot(Position::new(1, 4)),
             AccessorNode {
                 target: Box::new(identifier!((1, 1), "abc")),
-                field: ident_token!((1, 6), "def"),
+                field: Box::new(identifier!((1, 6), "def")),
                 is_opt_safe: true,
             },
         );
@@ -3116,15 +3394,15 @@ mod tests {
                             Token::Dot(Position::new(1, 4)),
                             AccessorNode {
                                 target: Box::new(identifier!((1, 1), "abc")),
-                                field: ident_token!((1, 5), "def"),
+                                field: Box::new(identifier!((1, 5), "def")),
                                 is_opt_safe: false,
                             },
                         )),
-                        field: ident_token!((1, 10), "ghi"),
+                        field: Box::new(identifier!((1, 10), "ghi")),
                         is_opt_safe: true,
                     },
                 )),
-                field: ident_token!((1, 15), "jkl"),
+                field: Box::new(identifier!((1, 15), "jkl")),
                 is_opt_safe: true,
             },
         );

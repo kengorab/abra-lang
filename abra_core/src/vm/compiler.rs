@@ -2,8 +2,8 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, };
-use crate::typechecker::types::Type;
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
@@ -438,8 +438,10 @@ impl Compiler {
 
         self.push_scope(ScopeKind::Func);
 
+        let has_return = ret_type != Type::Unit;
+
         // Push return slot as local idx 0, if return value exists
-        if ret_type != Type::Unit {
+        if has_return {
             // We do NOT want to mark function parameters (or return values) as locals, since they're
             // pushed onto the stack before the function's call frame starts, so, the entry
             // in the frame's local_addrs would be incorrect. See the handling of Opcode::Invoke in the VM
@@ -517,8 +519,7 @@ impl Compiler {
             if is_last_line {
                 let popped_locals = self.pop_scope_locals();
 
-                let should_handle_return = ret_type != Type::Unit;
-                if should_handle_return {
+                if has_return {
                     self.write_store_local_instr(0, line);
                     self.metadata.stores.push("<ret>".to_string());
                 }
@@ -538,7 +539,7 @@ impl Compiler {
             .collect::<Vec<Upvalue>>();
         self.upvalues.truncate(self.upvalues.len() - fn_upvalues.len());
 
-        Ok(FnValue { name: func_name.clone(), code, upvalues: fn_upvalues.clone(), receiver: None })
+        Ok(FnValue { name: func_name.clone(), code, upvalues: fn_upvalues.clone(), receiver: None, has_return })
     }
 }
 
@@ -700,7 +701,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_lambda(&mut self, token: Token, node: TypedLambdaNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let ret_type = if let Type::Fn(_, ret_type) = node.typ { *ret_type } else { unreachable!() };
+        let ret_type = if let Type::Fn(FnType { ret_type, .. }) = node.typ { *ret_type } else { unreachable!() };
         let body = node.typed_body.unwrap();
         let scope_depth = self.get_fn_depth();
         let fn_value = self.compile_function_decl(token, None, node.args, ret_type, body, scope_depth)?;
@@ -1097,6 +1098,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
         compile_block(self, if_block, is_stmt)?;
         self.pop_scope();
+
+        // ...we need to pop that floating value off of the stack. Each block correctly cleans
+        // up its locals (via the pop_scope() call), but since this value is placed on the stack
+        // _before_ the blocks (and only (optionally) captured as a local in _one_ of them), we need
+        // to make sure we pop it within the else-block too.
+        // But if there IS no else-block to compile, we still need to properly emit this pop, and we
+        // need to ensure this pop is only reachable if the if-block isn't taken; let's make a dummy
+        // else-block so the jumps are handled properly.
+        let else_block = match else_block {
+            Some(block) => Some(block),
+            None => if condition_binding.is_some() { Some(vec![]) } else { None }
+        };
         if else_block.is_some() {
             self.write_opcode(Opcode::Jump, line);
             self.write_byte(0, line); // <- Replaced after compiling else-block
@@ -1109,15 +1122,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let jump_offset_slot_idx = code.len();
 
-        if condition_binding.is_some() {
-            // ...we need to pop that floating value off of the stack. Each block correctly cleans
-            // up its locals (via the pop_scope() call), but since this value is placed on the stack
-            // _before_ the blocks (and optionally captured as a local in _one_ of them), we need to
-            // make sure we "manually" clean it up here. We also need to make sure this happens
-            // regardless of whether there's an else-block to compile.
-            self.write_opcode(Opcode::Pop, line);
-        }
         if let Some(else_block) = else_block {
+            // Pop the floating condition binding value off the stack, if present. See comment above
+            // for how we know we can always do this here (tl;dr there will _always_ be an else-block
+            // if there is a condition binding).
+            if condition_binding.is_some() {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
             self.push_scope(ScopeKind::If);
             compile_block(self, else_block, is_stmt)?;
             self.pop_scope();
@@ -1139,7 +1151,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let typ = target.get_type();
         let (arity, has_return) = match typ {
-            Type::Fn(args, ret) => (args.len(), *ret != Type::Unit),
+            Type::Fn(FnType { arg_types, ret_type, .. }) => (arg_types.len(), *ret_type != Type::Unit),
             _ => unreachable!() // This should have been caught during typechecking
         };
 
@@ -1158,8 +1170,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.write_opcode(Opcode::Invoke, line);
         self.write_byte(arity as u8, line);
-        let incl_ret_slot_op = if has_return { 1 } else { 0 };
-        self.write_byte(incl_ret_slot_op, line);
         Ok(())
     }
 
@@ -1974,6 +1984,7 @@ mod tests {
                         }
                     ],
                     receiver: None,
+                    has_return: true,
                 }),
                 Value::Fn(FnValue {
                     name: "a".to_string(),
@@ -1990,6 +2001,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: false,
                 }),
             ],
         };
@@ -2027,6 +2039,7 @@ mod tests {
                         }
                     ],
                     receiver: None,
+                    has_return: true,
                 }),
                 Value::Fn(FnValue {
                     name: "c".to_string(),
@@ -2044,6 +2057,7 @@ mod tests {
                         }
                     ],
                     receiver: None,
+                    has_return: false,
                 }),
                 Value::Fn(FnValue {
                     name: "a".to_string(),
@@ -2060,6 +2074,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: false,
                 }),
             ],
         };
@@ -2165,6 +2180,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 }),
             ],
         };
@@ -2202,6 +2218,7 @@ mod tests {
                         }
                     ],
                     receiver: None,
+                    has_return: true,
                 }),
                 Value::Fn(FnValue {
                     name: "outer".to_string(),
@@ -2217,6 +2234,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: false,
                 }),
             ],
         };
@@ -2618,6 +2636,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 })
             ],
         };
@@ -2653,12 +2672,13 @@ mod tests {
                         Opcode::MarkLocal as u8, 0,
                         Opcode::Constant as u8, 1,
                         Opcode::Constant as u8, 2,
-                        Opcode::Invoke as u8, 1, 0,
+                        Opcode::Invoke as u8, 1,
                         Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: false,
                 }),
             ],
         };
@@ -2681,14 +2701,14 @@ mod tests {
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 2, 1,
+                Opcode::Invoke as u8, 2,
                 Opcode::Pop as u8,
                 Opcode::Nil as u8,
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Constant as u8, 0,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 2, 1,
+                Opcode::Invoke as u8, 2,
                 Opcode::Return as u8
             ],
             constants: vec![
@@ -2714,6 +2734,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 }),
             ],
         };
@@ -2753,6 +2774,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 }),
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
@@ -2763,7 +2785,7 @@ mod tests {
                         Opcode::Nil as u8,
                         Opcode::LLoad1 as u8,
                         Opcode::LLoad2 as u8,
-                        Opcode::Invoke as u8, 1, 1,
+                        Opcode::Invoke as u8, 1,
                         Opcode::IAdd as u8,
                         Opcode::MarkLocal as u8, 3,
                         Opcode::LLoad3 as u8,
@@ -2775,6 +2797,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 })
             ],
         };
@@ -2816,6 +2839,7 @@ mod tests {
                             ],
                             upvalues: vec![],
                             receiver: None,
+                            has_return: true,
                         }),
                         ("getName2".to_string(), FnValue {
                             name: "getName2".to_string(),
@@ -2823,13 +2847,14 @@ mod tests {
                                 Opcode::Nil as u8,
                                 Opcode::LLoad1 as u8,
                                 Opcode::GetField as u8, 1,
-                                Opcode::Invoke as u8, 0, 1,
+                                Opcode::Invoke as u8, 0,
                                 Opcode::LStore0 as u8,
                                 Opcode::Pop as u8,
                                 Opcode::Return as u8
                             ],
                             upvalues: vec![],
                             receiver: None,
+                            has_return: true,
                         }),
                     ],
                     static_fields: vec![],
@@ -2864,7 +2889,7 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::Constant as u8, 1,
                 Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 1, 1,
+                Opcode::Invoke as u8, 1,
                 Opcode::Constant as u8, 3,
                 Opcode::GStore as u8,
                 Opcode::Return as u8
@@ -2884,6 +2909,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: true,
                 }),
                 Value::Str("two".to_string()),
             ],
@@ -3110,7 +3136,7 @@ mod tests {
                 Opcode::LLoad1 as u8,
                 Opcode::GetField as u8, 0,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 22,
+                Opcode::JumpIfF as u8, 21,
 
                 // a = $iter[$idx]
                 Opcode::LLoad1 as u8,
@@ -3131,9 +3157,9 @@ mod tests {
                 Opcode::LLoad2 as u8,
                 Opcode::StrConcat as u8,
                 Opcode::Constant as u8, 3,
-                Opcode::Invoke as u8, 1, 0,
+                Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 29,
+                Opcode::JumpB as u8, 28,
 
                 // Cleanup/end
                 Opcode::Pop as u8,
@@ -3223,11 +3249,12 @@ mod tests {
                     code: vec![
                         Opcode::Constant as u8, 0,
                         Opcode::Constant as u8, 1,
-                        Opcode::Invoke as u8, 1, 0,
+                        Opcode::Invoke as u8, 1,
                         Opcode::Return as u8,
                     ],
                     upvalues: vec![],
                     receiver: None,
+                    has_return: false,
                 }),
                 Value::Str("abc".to_string()),
             ],

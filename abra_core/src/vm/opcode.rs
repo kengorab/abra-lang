@@ -186,8 +186,8 @@ impl Opcode {
             Opcode::New |
             Opcode::MarkLocal |
             Opcode::GetField |
+            Opcode::Invoke |
             Opcode::SetField => 1,
-            Opcode::Invoke => 2,
             _ => 0
         }
     }

@@ -1,6 +1,6 @@
-use crate::typechecker::types::Type;
+use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, Obj};
-use crate::vm::vm::VMContext;
+use crate::vm::vm::VM;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -8,13 +8,14 @@ use std::cell::RefCell;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return None//Value::Nil.
-pub type NativeAbraFn = fn(&VMContext, &Option<Arc<RefCell<Obj>>>, Vec<Value>) -> Option<Value>;
+pub type NativeAbraFn = fn(&Option<Arc<RefCell<Obj>>>, Vec<Value>, &mut VM) -> Option<Value>;
 
 #[derive(Clone)]
 pub struct NativeFn {
     pub name: &'static str,
     pub receiver: Option<Arc<RefCell<Obj>>>,
     pub native_fn: NativeAbraFn,
+    pub has_return: bool,
 }
 
 impl Debug for NativeFn {
@@ -36,39 +37,44 @@ impl PartialOrd for NativeFn {
 }
 
 impl NativeFn {
-    pub fn invoke(&self, ctx: &VMContext, args: Vec<Value>) -> Option<Value> {
+    pub fn invoke(&self, args: Vec<Value>, vm_ref: &mut VM) -> Option<Value> {
         let func = self.native_fn;
-        let receiver = &self.receiver;
-        func(ctx, receiver, args)
+        func(&self.receiver, args, vm_ref)
     }
 }
 
-pub struct NativeFnDesc<'a> {
+pub struct NativeFnDesc {
     pub name: &'static str,
-    pub args: Vec<(&'static str, &'a Type)>,
-    pub opt_args: Vec<(&'static str, &'a Type)>,
+    pub type_args: Vec<&'static str>,
+    pub args: Vec<(&'static str, Type)>,
+    pub opt_args: Vec<(&'static str, Type)>,
     pub return_type: Type,
 }
 
-impl NativeFnDesc<'_> {
+impl NativeFnDesc {
     pub fn get_fn_type(&self) -> Type {
+        let type_args = self.type_args.iter()
+            .map(|name| name.to_string())
+            .collect();
+
         let req_args = self.args.iter()
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), false));
         let opt_args = self.opt_args.iter()
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), true));
-        let args = req_args.chain(opt_args).collect();
+        let arg_types = req_args.chain(opt_args).collect();
 
-        Type::Fn(args, Box::new(self.return_type.clone()))
+        Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(self.return_type.clone()) })
     }
 }
 
-pub fn native_fns() -> Vec<(NativeFnDesc<'static>, NativeFn)> {
+pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
     let mut native_fns = Vec::new();
 
     native_fns.push((
         NativeFnDesc {
             name: "println",
-            args: vec![("_", &Type::Any)],
+            type_args: vec![],
+            args: vec![("_", Type::Any)],
             opt_args: vec![],
             return_type: Type::Unit,
         },
@@ -76,32 +82,35 @@ pub fn native_fns() -> Vec<(NativeFnDesc<'static>, NativeFn)> {
             name: "println",
             receiver: None,
             native_fn: println,
+            has_return: false,
         }));
 
     native_fns.push((
         NativeFnDesc {
             name: "range",
-            args: vec![("from", &Type::Int), ("to", &Type::Int)],
-            opt_args: vec![("increment", &Type::Int)],
+            type_args: vec![],
+            args: vec![("from", Type::Int), ("to", Type::Int)],
+            opt_args: vec![("increment", Type::Int)],
             return_type: Type::Array(Box::new(Type::Int)),
         },
         NativeFn {
             name: "range",
             receiver: None,
             native_fn: range,
+            has_return: true,
         }));
 
     native_fns
 }
 
-fn println(ctx: &VMContext, _receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>) -> Option<Value> {
+fn println(_receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
     let val = args.first().unwrap();
-    let print_fn = ctx.print;
+    let print_fn = vm.ctx.print;
     print_fn(&format!("{}", val.to_string()));
     None
 }
 
-fn range(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>) -> Option<Value> {
+fn range(_receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
     let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
         panic!("range requires an Int as first argument")
     };
@@ -128,13 +137,20 @@ fn range(_ctx: &VMContext, _receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Valu
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::vm::compiler::Module;
+    use crate::vm::vm::VMContext;
+
+    fn make_vm() -> VM {
+        let module = Module { code: vec![], constants: vec![] };
+        VM::new(module, VMContext::default())
+    }
 
     #[test]
     fn range_returning_int_array() {
-        let ctx = VMContext::default();
+        let mut vm = make_vm();
 
         // Test w/ increment of 1
-        let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(5), Value::Int(1)]);
+        let arr = range(&None, vec![Value::Int(0), Value::Int(5), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(1),
@@ -145,7 +161,7 @@ mod test {
         assert_eq!(expected, arr);
 
         // Test w/ increment of 2
-        let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(5), Value::Int(2)]);
+        let arr = range(&None, vec![Value::Int(0), Value::Int(5), Value::Int(2)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(2),
@@ -156,20 +172,20 @@ mod test {
 
     #[test]
     fn range_returning_single_element_int_array() {
-        let ctx = VMContext::default();
+        let mut vm = make_vm();
 
         // Test w/ increment larger than range
-        let arr = range(&ctx, &&None, vec![Value::Int(0), Value::Int(5), Value::Int(5)]);
+        let arr = range(&&None, vec![Value::Int(0), Value::Int(5), Value::Int(5)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 1)
-        let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(1), Value::Int(1)]);
+        let arr = range(&None, vec![Value::Int(0), Value::Int(1), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 0) -> Empty array
-        let arr = range(&ctx, &None, vec![Value::Int(0), Value::Int(0), Value::Int(1)]);
+        let arr = range(&None, vec![Value::Int(0), Value::Int(0), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![]));
         assert_eq!(expected, arr);
     }

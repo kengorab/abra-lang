@@ -1,3 +1,50 @@
-var a = true
-a &&= false
-println(a)
+type List<T> {
+  items: T[] = []
+
+  func push(self, item: T): Unit {
+    self.items.push(item)
+  }
+
+  func get(self, index: Int): T? {
+    self.items[index]
+  }
+
+  func map<U>(self, fn: (T) => U): U[] {
+    val newArr: U[] = []
+    for item in self.items
+      newArr.push(fn(item))
+    newArr
+  }
+
+  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+    var acc = initialValue
+    for item in self.items
+      acc = fn(acc, item)
+    acc
+  }
+
+  func merge(self, other: List<T>): List<T> {
+    val items = self.items
+    List(items: items.concat(other.items))
+  }
+
+  func slice(self, start: Int): List<T> {
+    List(items: self.items[start:])
+  }
+
+  func join(self, joiner = ","): String {
+    if self.items[0] |head| {
+      var str = "" + head
+      self.slice(1).reduce(str, (acc, i) => acc + joiner + i)
+    } else {
+      ""
+    }
+  }
+}
+
+func sum(list: List<Int>): Int = list.reduce(0, (acc, i) => acc + i)
+
+val items = range(0, 1001)
+sum(List(items: items))
+
+List(items: items).slice(987).join(joiner: ", ")

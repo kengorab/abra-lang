@@ -13,6 +13,7 @@ pub struct FnValue {
     pub code: Vec<u8>,
     pub upvalues: Vec<Upvalue>,
     pub receiver: Option<Arc<RefCell<Obj>>>,
+    pub has_return: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -21,6 +22,7 @@ pub struct ClosureValue {
     pub code: Vec<u8>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
     pub receiver: Option<Arc<RefCell<Obj>>>,
+    pub has_return: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]

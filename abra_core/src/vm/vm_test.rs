@@ -24,7 +24,7 @@ mod tests {
         let ctx = VMContext::default();
 
         let mut vm = VM::new(module, ctx);
-        vm.run().unwrap()
+        vm.run(false).unwrap()
     }
 
     #[test]
@@ -669,6 +669,7 @@ mod tests {
             ],
             upvalues: vec![],
             receiver: None,
+            has_return: true,
         });
         assert_eq!(expected, result);
     }
@@ -986,6 +987,33 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(4);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_generics() {
+        let input = r#"
+          func map<T, U>(arr: T[], fn: (T) => U, start: U? = None): U[] {
+            val newArr: U[] = []
+
+            if start |u| newArr.push(u)
+
+            for i in arr { newArr.push(fn(i)) }
+            newArr
+          }
+          map(
+             arr: ["1", "23", "456"],
+             fn: s => (s + "!").length,
+             start: 17
+          )
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(17),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -1371,6 +1399,51 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("a, b, c, d");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_structs_generics() {
+        let input = r#"
+          type List<T> {
+            items: T[] = []
+
+            func push(self, item: T): Unit { self.items.push(item) }
+
+            func map<U>(self, fn: (T) => U): U[] {
+              val newArr: U[] = []
+              for item in self.items
+                newArr.push(fn(item))
+              newArr
+            }
+
+            func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+              var acc = initialValue
+              for item in self.items
+                acc = fn(acc, item)
+              acc
+            }
+
+            func concat(self, other: List<T>): List<T> {
+              val items = self.items
+              List(items: items.concat(other.items))
+            }
+          }
+
+          func sum(list: Int[]) = list.reduce(0, (acc, i) => acc + i)
+
+          var list: List<Int> = List(items: [])
+          for n in range(1, 500) { list.push(n) }
+          list = list.concat(List(items: range(500, 1000)))
+          list = List(items: list.map(i => i * 5))
+          val nums = list.reduce<Int[]>([], (acc, i) => {
+            acc.push(i)
+            acc
+          })
+          sum(nums)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(2497500);
         assert_eq!(expected, result);
     }
 
