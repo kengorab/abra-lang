@@ -1,43 +1,50 @@
-type Node<T> {
-  value: T
-  next: Node<T>? = None
-}
+type List<T> {
+  items: T[] = []
 
-type LinkedList<T> {
-  count: Int = 0
-  head: Node<T>? = None
+  func push(self, item: T): Unit {
+    self.items.push(item)
+  }
 
-  func push(self, item: T): LinkedList<T> {
-    if self.head |head| {
-      var node = head
-      while node.next |n| { node = n }
-      node.next = Node(value: item)
+  func get(self, index: Int): T? {
+    self.items[index]
+  }
+
+  func map<U>(self, fn: (T) => U): U[] {
+    val newArr: U[] = []
+    for item in self.items
+      newArr.push(fn(item))
+    newArr
+  }
+
+  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {
+    var acc = initialValue
+    for item in self.items
+      acc = fn(acc, item)
+    acc
+  }
+
+  func merge(self, other: List<T>): List<T> {
+    val items = self.items
+    List(items: items.concat(other.items))
+  }
+
+  func slice(self, start: Int): List<T> {
+    List(items: self.items[start:])
+  }
+
+  func join(self, joiner = ","): String {
+    if self.items[0] |head| {
+      var str = "" + head
+      self.slice(1).reduce(str, (acc, i) => acc + joiner + i)
     } else {
-      self.head = Node(value: item)
+      ""
     }
-
-    self
-  }
-
-  func toString(self): String {
-    var str = "["
-    if self.head |head| {
-      var node = head
-
-      while node.next |n| {
-        str = str + node.value + ", "
-        node = n
-      }
-
-      str += node.value
-    }
-    str + "]"
   }
 }
 
-val list: LinkedList<String> = LinkedList()
-list.push("a")
-  .push("b")
-  .push("c")
-  .push("d")
-  .toString()
+func sum(list: List<Int>): Int = list.reduce(0, (acc, i) => acc + i)
+
+val items = range(0, 1001)
+sum(List(items: items))
+
+List(items: items).slice(987).join(joiner: ", ")

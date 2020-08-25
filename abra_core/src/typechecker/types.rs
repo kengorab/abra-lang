@@ -222,6 +222,7 @@ impl Type {
                     .flat_map(|typ| typ.extract_unbound_generics())
                     .collect()
             }
+            Type::Type(_, typ) => typ.extract_unbound_generics(),
             _ => vec![]
         }
     }
@@ -248,6 +249,7 @@ impl Type {
                 let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();
                 Type::Reference(name.clone(), type_args)
             }
+            Type::Type(name, typ) => Type::Type(name.clone(), Box::new(Type::substitute_generics(typ, available_generics))),
             // Type::Struct(_) => {},
             // Type::Or(_) => {},
             // Type::Map(_, _) => {},

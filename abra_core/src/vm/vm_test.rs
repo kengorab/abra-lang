@@ -1430,11 +1430,17 @@ mod tests {
             }
           }
 
+          func sum(list: Int[]) = list.reduce(0, (acc, i) => acc + i)
+
           var list: List<Int> = List(items: [])
           for n in range(1, 500) { list.push(n) }
           list = list.concat(List(items: range(500, 1000)))
           list = List(items: list.map(i => i * 5))
-          list.reduce(0, (acc, i) => acc + i)
+          val nums = list.reduce<Int[]>([], (acc, i) => {
+            acc.push(i)
+            acc
+          })
+          sum(nums)
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(2497500);
