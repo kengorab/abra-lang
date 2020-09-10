@@ -1,50 +1,62 @@
-use crate::typechecker::types::{Type, FnType};
+use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::native_fns::{NativeFn, NativeFnDesc};
+use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields};
 use crate::vm::vm::VM;
 use std::sync::Arc;
 use std::cell::RefCell;
 
 pub trait NativeType {
-    fn fields(typ: &Type) -> Vec<(&'static str, Type)>;
-    fn methods(typ: &Type) -> Vec<NativeFnDesc>;
+    fn get_field_or_method(name: &str) -> Option<(usize, Type)>;
     fn get_field_value(obj: &Arc<RefCell<Obj>>, field_idx: usize) -> Value;
 
-    fn fields_and_methods(typ: &Type) -> Vec<(&'static str, Type)> {
-        let mut fields = Self::fields(typ);
-
-        let mut methods = Self::methods(typ).into_iter()
-            .map(|m| (m.name, m.get_fn_type()))
-            .collect::<Vec<(&str, Type)>>();
-        fields.append(&mut methods);
-        fields
-    }
-
-    fn get_field_idx(typ: &Type, field_name: &str) -> usize {
-        match Self::get_field(typ, field_name) {
+    fn get_field_idx(field_name: &str) -> usize {
+        match Self::get_field_or_method(field_name) {
             Some((idx, _)) => idx,
             None => unreachable!()
         }
     }
+}
 
-    fn get_field(typ: &Type, field_name: &str) -> Option<(usize, (&'static str, Type))> {
-        Self::fields_and_methods(typ).into_iter().enumerate().find(|(_, (name, _))| name == &field_name)
+pub type NativeString = crate::builtins::gen_native_types::NativeString;
+
+impl NativeStringMethodsAndFields for crate::builtins::gen_native_types::NativeString {
+    fn field_length(obj: &Arc<RefCell<Obj>>) -> Value {
+        match &*(obj.borrow()) {
+            Obj::StringObj(value) => Value::Int(value.len() as i64),
+            _ => unreachable!()
+        }
+    }
+
+    fn method_to_lower(receiver: &Option<Arc<RefCell<Obj>>>, _: Vec<Value>, _: &mut VM) -> Option<Value> {
+        let string = match &*(receiver.as_ref().unwrap().borrow()) {
+            Obj::StringObj(value) => value.clone(),
+            _ => unreachable!()
+        };
+
+        Some(Value::new_string_obj(string.to_lowercase()))
+    }
+
+    fn method_to_upper(receiver: &Option<Arc<RefCell<Obj>>>, _: Vec<Value>, _: &mut VM) -> Option<Value> {
+        let string = match &*(receiver.as_ref().unwrap().borrow()) {
+            Obj::StringObj(value) => value.clone(),
+            _ => unreachable!()
+        };
+
+        Some(Value::new_string_obj(string.to_uppercase()))
     }
 }
 
-pub fn field_for_type(typ: &Type, field_name: &str) -> Option<(usize, (&'static str, Type))> {
-    match &typ {
-        Type::Array(_) => NativeArray::get_field(typ, field_name),
-        Type::String => NativeString::get_field(typ, field_name),
-        _ => None
+pub type NativeArray = crate::builtins::gen_native_types::NativeArray;
+
+impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeArray {
+    fn field_length(obj: &Arc<RefCell<Obj>>) -> Value {
+        match &*(obj.borrow()) {
+            Obj::ArrayObj(values) => Value::Int(values.len() as i64),
+            _ => unreachable!()
+        }
     }
-}
 
-// TODO: This could stand to be cleaned up a bit
-pub struct NativeArray;
-
-impl NativeArray {
-    fn push(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+    fn method_push(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
         let item = args.into_iter().next().expect("Array::push requires 1 argument");
 
         let mut receiver = receiver.as_ref().unwrap().borrow_mut();
@@ -55,7 +67,7 @@ impl NativeArray {
         None
     }
 
-    fn concat(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+    fn method_concat(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
         let arg = args.into_iter().next().expect("Array::concat requires 1 argument");
         let mut other_arr = match arg {
             Value::Obj(obj) => match &*obj.borrow() {
@@ -79,7 +91,7 @@ impl NativeArray {
         Some(result)
     }
 
-    fn map(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+    fn method_map(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         match &*receiver.as_ref().unwrap().borrow() {
             Obj::ArrayObj(array) => {
                 let callback = args.into_iter().next().expect("Array::map requires 1 argument");
@@ -100,7 +112,7 @@ impl NativeArray {
         }
     }
 
-    fn filter(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+    fn method_filter(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         match &*receiver.as_ref().unwrap().borrow() {
             Obj::ArrayObj(array) => {
                 let callback = args.into_iter().next().expect("Array::filter requires 1 argument");
@@ -123,7 +135,8 @@ impl NativeArray {
         }
     }
 
-    fn reduce(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+
+    fn method_reduce(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         match &*receiver.as_ref().unwrap().borrow() {
             Obj::ArrayObj(array) => {
                 let mut args = args.into_iter();
@@ -141,196 +154,6 @@ impl NativeArray {
                 }
 
                 Some(accumulator)
-            }
-            _ => unreachable!()
-        }
-    }
-}
-
-impl NativeType for NativeArray {
-    fn fields(_: &Type) -> Vec<(&'static str, Type)> {
-        vec![
-            ("length", Type::Int)
-        ]
-    }
-
-    fn methods(typ: &Type) -> Vec<NativeFnDesc> {
-        let inner_type = match typ {
-            Type::Array(inner_type) => &**inner_type,
-            _ => unreachable!()
-        };
-
-        vec![
-            NativeFnDesc {
-                name: "push",
-                type_args: vec![],
-                args: vec![("item", inner_type.clone())],
-                opt_args: vec![],
-                return_type: Type::Unit,
-            },
-            NativeFnDesc {
-                name: "concat",
-                type_args: vec![],
-                args: vec![("items", typ.clone())],
-                opt_args: vec![],
-                return_type: typ.clone(),
-            },
-            NativeFnDesc {
-                name: "map",
-                type_args: vec!["U"],
-                args: vec![("fn", Type::Fn(FnType {
-                    arg_types: vec![
-                        ("item".to_string(), inner_type.clone(), false),
-                    ],
-                    type_args: vec!["U".to_string()],
-                    ret_type: Box::new(Type::Generic("U".to_string())),
-                }))],
-                opt_args: vec![],
-                return_type: Type::Array(Box::new(Type::Generic("U".to_string()))),
-            },
-            NativeFnDesc {
-                name: "filter",
-                type_args: vec![],
-                args: vec![("fn", Type::Fn(FnType {
-                    arg_types: vec![
-                        ("item".to_string(), inner_type.clone(), false),
-                    ],
-                    type_args: vec![],
-                    ret_type: Box::new(Type::Bool), // TODO: Allow returning of Optionals
-                }))],
-                opt_args: vec![],
-                return_type: typ.clone(),
-            },
-            NativeFnDesc {
-                name: "reduce",
-                type_args: vec!["U"],
-                args: vec![
-                    ("initialValue", Type::Generic("U".to_string())),
-                    ("fn", Type::Fn(FnType {
-                        arg_types: vec![
-                            ("accumulator".to_string(), Type::Generic("U".to_string()), false),
-                            ("item".to_string(), inner_type.clone(), false),
-                        ],
-                        type_args: vec!["U".to_string()],
-                        ret_type: Box::new(Type::Generic("U".to_string())),
-                    })),
-                ],
-                opt_args: vec![],
-                return_type: Type::Generic("U".to_string()),
-            }
-        ]
-    }
-
-    fn get_field_value(obj: &Arc<RefCell<Obj>>, field_idx: usize) -> Value {
-        match &*obj.borrow() {
-            Obj::ArrayObj(value) => {
-                match field_idx {
-                    0 => Value::Int(value.len() as i64),
-                    1 => Value::NativeFn(NativeFn {
-                        name: "push",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeArray::push,
-                        has_return: false,
-                    }),
-                    2 => Value::NativeFn(NativeFn {
-                        name: "concat",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeArray::concat,
-                        has_return: true,
-                    }),
-                    3 => Value::NativeFn(NativeFn {
-                        name: "map",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeArray::map,
-                        has_return: true,
-                    }),
-                    4 => Value::NativeFn(NativeFn {
-                        name: "filter",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeArray::filter,
-                        has_return: true,
-                    }),
-                    5 => Value::NativeFn(NativeFn {
-                        name: "reduce",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeArray::reduce,
-                        has_return: true,
-                    }),
-                    _ => unreachable!()
-                }
-            }
-            _ => unreachable!()
-        }
-    }
-}
-
-pub struct NativeString;
-
-impl NativeString {
-    fn to_lower(receiver: &Option<Arc<RefCell<Obj>>>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let string = match &*(receiver.as_ref().unwrap().borrow()) {
-            Obj::StringObj(value) => value.clone(),
-            _ => unreachable!()
-        };
-
-        Some(Value::new_string_obj(string.to_lowercase()))
-    }
-
-    fn to_upper(receiver: &Option<Arc<RefCell<Obj>>>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let string = match &*(receiver.as_ref().unwrap().borrow()) {
-            Obj::StringObj(value) => value.clone(),
-            _ => unreachable!()
-        };
-
-        Some(Value::new_string_obj(string.to_uppercase()))
-    }
-}
-
-impl NativeType for NativeString {
-    fn fields(_: &Type) -> Vec<(&'static str, Type)> {
-        vec![
-            ("length", Type::Int),
-        ]
-    }
-
-    fn methods(_: &Type) -> Vec<NativeFnDesc> {
-        vec![
-            NativeFnDesc {
-                name: "toLower",
-                type_args: vec![],
-                args: vec![],
-                opt_args: vec![],
-                return_type: Type::String,
-            },
-            NativeFnDesc {
-                name: "toUpper",
-                type_args: vec![],
-                args: vec![],
-                opt_args: vec![],
-                return_type: Type::String,
-            }
-        ]
-    }
-
-    fn get_field_value(obj: &Arc<RefCell<Obj>>, field_idx: usize) -> Value {
-        match &*obj.borrow() {
-            Obj::StringObj(value) => {
-                match field_idx {
-                    0 => Value::Int(value.len() as i64),
-                    1 => Value::NativeFn(NativeFn {
-                        name: "toLower",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeString::to_lower,
-                        has_return: true,
-                    }),
-                    2 => Value::NativeFn(NativeFn {
-                        name: "toUpper",
-                        receiver: Some(obj.clone()),
-                        native_fn: NativeString::to_upper,
-                        has_return: true,
-                    }),
-                    _ => unreachable!()
-                }
             }
             _ => unreachable!()
         }

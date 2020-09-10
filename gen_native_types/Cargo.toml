@@ -1,9 +1,11 @@
 [package]
-name = "abra"
-version = "0.1.0"
+name = "gen_native_types"
+version = "0.0.1"
 authors = ["Ken Gorab <ken.gorab@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 abra_core = { path = "../abra_core" }
-clap = { git = "https://github.com/clap-rs/clap" }
+heck = "0.3.1"
+proc-macro2 = "1.0.20"
+quote = "1.0.7"

@@ -1,4 +1,4 @@
-use crate::builtins::native_types::field_for_type;
+use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier};
@@ -58,6 +58,10 @@ pub struct Typechecker {
 }
 
 impl Typechecker {
+    pub fn get_referencable_types(&self) -> &HashMap<String, Type> {
+        &self.referencable_types
+    }
+
     fn get_binding(&self, name: &str) -> Option<(&ScopeBinding, usize)> {
         let mut depth = 0;
         for scope in self.scopes.iter().rev() {
@@ -1761,58 +1765,64 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else { unreachable!("The `field` field on AccessorNode must be an AstNode::Identifier"); };
         let field_name = Token::get_ident_name(&field_ident).clone();
 
-        let field_data = match self.resolve_ref_type(&target_type) {
+        let (field_data, mut generics) = match self.resolve_ref_type(&target_type) {
             Type::Struct(StructType { fields, methods, type_args, .. }) => {
-                let mut generics = type_args.into_iter().collect();
+                let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
+
                 let num_fields = fields.len();
-
-                let mut field_data = None;
-                for (idx, (name, typ, _)) in fields.iter().enumerate() {
-                    if &field_name != name { continue; }
-                    field_data = Some((idx, Type::substitute_generics(typ, &generics)));
-                    break;
-                }
-                if field_data.is_none() {
-                    for (idx, (name, typ)) in methods.iter().enumerate() {
-                        if &field_name != name { continue; }
-
-                        if let Some(ident_type_args) = &ident_type_args {
-                            if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
-                                if ident_type_args.len() != fn_type_args.len() {
-                                    return Err(TypecheckerError::InvalidTypeArgumentArity {
-                                        token: token.clone(),
-                                        actual_type: typ.clone(),
-                                        expected: fn_type_args.len(),
-                                        actual: ident_type_args.len(),
-                                    });
-                                }
-                                for (type_arg_name, type_arg_ident) in fn_type_args.iter().zip(ident_type_args) {
-                                    let type_arg_type = self.type_from_type_ident(type_arg_ident)?;
-                                    generics.insert(type_arg_name.clone(), type_arg_type);
-                                }
-                            } else { unreachable!("A method's type should be a Type::Fn"); }
-                        }
-                        field_data = Some((num_fields + idx, Type::substitute_generics(typ, &generics)));
-                        break;
-                    }
-                }
-                field_data
+                let field_data = fields.iter().enumerate()
+                    .find_map(|(idx, (name, typ, _))| {
+                        if &field_name == name { Some((idx, typ.clone())) } else { None }
+                    })
+                    .or_else(|| {
+                        methods.iter().enumerate().find_map(|(idx, (name, typ))| {
+                            if &field_name == name { Some((idx + num_fields, typ.clone())) } else { None }
+                        })
+                    });
+                (field_data, generics)
             }
+            Type::Array(inner_type) => {
+                let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
+                let field_data = NativeArray::get_field_or_method(&field_name);
+                (field_data, generics)
+            }
+            Type::String => (NativeString::get_field_or_method(&field_name), HashMap::new()),
             Type::Type(_, typ) => match self.resolve_ref_type(&*typ) {
                 Type::Struct(StructType { static_fields, .. }) => {
-                    static_fields.iter().enumerate()
+                    let field_data = static_fields.iter().enumerate()
                         .find(|(_, (name, _, _))| &field_name == name)
-                        .map(|(idx, (_, typ, _))| (idx, typ.clone()))
+                        .map(|(idx, (_, typ, _))| (idx, typ.clone()));
+                    (field_data, HashMap::new())
                 }
                 _ => unimplemented!()
             }
-            typ @ _ => {
-                field_for_type(&typ, &field_name).map(|(idx, (_, typ))| (idx, typ.clone()))
+            _ => (None, HashMap::new())
+        };
+
+        let (field_idx, mut typ) = match field_data {
+            Some((field_idx, typ)) => {
+                if let Some(ident_type_args) = &ident_type_args {
+                    if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
+                        if ident_type_args.len() != fn_type_args.len() {
+                            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                                token: token.clone(),
+                                actual_type: typ.clone(),
+                                expected: fn_type_args.len(),
+                                actual: ident_type_args.len(),
+                            });
+                        }
+                        for (type_arg_name, type_arg_ident) in fn_type_args.iter().zip(ident_type_args) {
+                            let type_arg_type = self.type_from_type_ident(type_arg_ident)?;
+                            generics.insert(type_arg_name.clone(), type_arg_type);
+                        }
+                    }
+                }
+                (field_idx, Type::substitute_generics(&typ, &generics))
+            }
+            None => {
+                return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() });
             }
         };
-        let (field_idx, mut typ) = field_data.ok_or_else(|| {
-            TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() }
-        })?;
         if is_opt {
             typ = Type::Option(Box::new(typ))
         }
@@ -3479,6 +3489,7 @@ mod tests {
           val items: Int[] = l.items
         "#, type_def);
         let res = typecheck(&input);
+        dbg!(&res);
         assert!(res.is_ok());
 
         let input = format!(r#"{}

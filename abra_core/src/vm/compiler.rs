@@ -1315,7 +1315,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$iter", line);
         self.write_opcode(Opcode::GetField, line);
         self.metadata.field_gets.push("length".to_string());
-        self.write_byte(NativeArray::get_field_idx(&Type::Array(Box::new(Type::Any)), "length") as u8, line);
+        self.write_byte(NativeArray::get_field_idx("length") as u8, line);
         self.write_opcode(Opcode::LT, line);
         self.write_opcode(Opcode::JumpIfF, line);
         self.write_byte(0, line); // <- Replaced after compiling loop body

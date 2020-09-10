@@ -1,0 +1,16 @@
+type NativeString {
+  length: Int
+
+  func toLower(self): NativeString { self }
+  func toUpper(self): NativeString { self }
+}
+
+type NativeArray<T> {
+  length: Int
+
+  func push(self, item: T): Unit {}
+  func concat(self, other: T[]): T[] {}
+  func map<U>(self, fn: (T) => U): U[] {}
+  func filter(self, fn: (T) => Bool): T[] {}
+  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
+}
