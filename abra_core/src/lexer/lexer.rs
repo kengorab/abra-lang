@@ -173,6 +173,7 @@ impl<'a> Lexer<'a> {
                 "for" => Token::For(pos),
                 "in" => Token::In(pos),
                 "type" => Token::Type(pos),
+                "enum" => Token::Enum(pos),
                 "None" => Token::None(pos),
                 s @ _ => Token::Ident(pos, s.to_string())
             };
@@ -500,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_keywords() {
-        let input = "true false val var if else func while break for in type self";
+        let input = "true false val var if else func while break for in type enum self";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
@@ -515,7 +516,8 @@ mod tests {
             Token::For(Position::new(1, 45)),
             Token::In(Position::new(1, 49)),
             Token::Type(Position::new(1, 52)),
-            Token::Self_(Position::new(1, 57)),
+            Token::Enum(Position::new(1, 57)),
+            Token::Self_(Position::new(1, 62)),
         ];
         assert_eq!(expected, tokens);
     }

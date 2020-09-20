@@ -43,6 +43,7 @@ pub enum Token {
     #[strum(to_string = "for", serialize = "For")] For(Position),
     #[strum(to_string = "in", serialize = "In")] In(Position),
     #[strum(to_string = "type", serialize = "Type")] Type(Position),
+    #[strum(to_string = "enum", serialize = "Enum")] Enum(Position),
 
     // Identifiers
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
@@ -109,6 +110,7 @@ impl Token {
             Token::For(pos) |
             Token::In(pos) |
             Token::Type(pos) |
+            Token::Enum(pos) |
 
             Token::Ident(pos, _) |
             Token::Self_(pos) |
@@ -173,6 +175,7 @@ impl Token {
             Token::For(pos) => Range::with_length(pos, 2),
             Token::In(pos) => Range::with_length(pos, 1),
             Token::Type(pos) => Range::with_length(pos, 3),
+            Token::Enum(pos) => Range::with_length(pos, 3),
 
             Token::Ident(pos, i) => Range::with_length(pos, i.len() - 1),
             Token::Self_(pos) => Range::with_length(pos, 3),
