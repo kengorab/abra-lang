@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -196,7 +196,7 @@ impl Parser {
             Token::Func(_) => self.parse_func_decl(),
             Token::Val(_) => self.parse_binding_decl(),
             Token::Var(_) => self.parse_binding_decl(),
-            Token::Type(_) => self.parse_type_decl(),
+            Token::Type(_) | Token::Enum(_) => self.parse_type_decl(),
             Token::If(_) => self.parse_if_statement(),
             Token::While(_) => self.parse_while_statement(),
             Token::For(_) => self.parse_for_statement(),
@@ -481,7 +481,8 @@ impl Parser {
     }
 
     fn parse_type_decl(&mut self) -> Result<AstNode, ParseError> {
-        let token = self.expect_next()?;
+        let keyword_tok = self.expect_next()?;
+        let is_enum = if let Token::Enum(_) = &keyword_tok { true } else { false };
 
         let name = self.expect_next().and_then(|tok| {
             match tok {
@@ -495,6 +496,7 @@ impl Parser {
         self.expect_next_token(TokenType::LBrace)?;
 
         let mut fields = Vec::new();
+        let mut variants = Vec::new();
         let mut methods = Vec::new();
         loop {
             let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
@@ -505,14 +507,19 @@ impl Parser {
                 }
                 Token::Ident(_, _) => {
                     let field_name = self.expect_next()?;
-                    self.expect_next_token(TokenType::Colon)?;
-                    let field_type = self.parse_type_identifier(true)?;
-                    let default_value = if let Some(Token::Assign(_)) = self.peek() {
-                        self.expect_next()?; // Consume '='
-                        Some(self.parse_expr()?)
-                    } else { None };
 
-                    fields.push((field_name, field_type, default_value));
+                    if is_enum {
+                        variants.push(field_name);
+                    } else {
+                        self.expect_next_token(TokenType::Colon)?;
+                        let field_type = self.parse_type_identifier(true)?;
+                        let default_value = if let Some(Token::Assign(_)) = self.peek() {
+                            self.expect_next()?; // Consume '='
+                            Some(self.parse_expr()?)
+                        } else { None };
+
+                        fields.push((field_name, field_type, default_value));
+                    }
                 }
                 Token::Func(_) => {
                     let method = self.parse_func_decl()?;
@@ -524,7 +531,11 @@ impl Parser {
 
         self.expect_next_token(TokenType::RBrace)?;
 
-        Ok(AstNode::TypeDecl(token, TypeDeclNode { name, fields, methods, type_args }))
+        if is_enum {
+            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { name, variants, methods }))
+        } else {
+            Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { name, fields, methods, type_args }))
+        }
     }
 
     #[inline]
@@ -2451,6 +2462,45 @@ mod tests {
         let error = parse("type Person { name: 1234").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 21), 1234));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_enum_decl() -> TestResult {
+        let input = "\
+          enum Color {\n\
+            Red\n\
+            Blue\n\
+          }\
+        ";
+        let ast = parse(input)?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            EnumDeclNode {
+                name: ident_token!((1, 6), "Color"),
+                variants: vec![
+                    ident_token!((2, 1), "Red"),
+                    ident_token!((3, 1), "Blue"),
+                ],
+                methods: vec![]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let input = "enum Direction { Red, Blue }";
+        let ast = parse(input)?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            EnumDeclNode {
+                name: ident_token!((1, 6), "Direction"),
+                variants: vec![
+                    ident_token!((1, 18), "Red"),
+                    ident_token!((1, 23), "Blue"),
+                ],
+                methods: vec![]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+        Ok(())
     }
 
     #[test]

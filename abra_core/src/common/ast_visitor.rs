@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -16,6 +16,7 @@ pub trait AstVisitor<V, E> {
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
             FunctionDecl(tok, node) => self.visit_func_decl(tok, node),
             TypeDecl(tok, node) => self.visit_type_decl(tok, node),
+            EnumDecl(tok, node) => self.visit_enum_decl(tok, node),
             Identifier(tok, type_args) => self.visit_ident(tok, type_args),
             Assignment(tok, node) => self.visit_assignment(tok, node),
             Indexing(tok, node) => self.visit_indexing(tok, node),
@@ -39,6 +40,7 @@ pub trait AstVisitor<V, E> {
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<V, E>;
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<V, E>;
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<V, E>;
+    fn visit_enum_decl(&mut self, token: Token, node: EnumDeclNode) -> Result<V, E>;
     fn visit_ident(&mut self, token: Token, type_args: Option<Vec<TypeIdentifier>>) -> Result<V, E>;
     fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<V, E>;
     fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<V, E>;

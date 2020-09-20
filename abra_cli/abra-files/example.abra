@@ -6,8 +6,13 @@
 // std/math.abra
 // export native func cos(angle: Int | Float): Float
 
-val i: Int | Float = 0
+//val i: Int | Float = 0
+//
+//func cos<T>(angle: T | Int | Float) = angle
+//
+//val x = cos(i)
 
-func cos<T>(angle: T | Int | Float) = angle
-
-val x = cos(i)
+enum Gender {
+  Male
+  Female
+}

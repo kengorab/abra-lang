@@ -11,6 +11,7 @@ pub enum AstNode {
     BindingDecl(Token, BindingDeclNode),
     FunctionDecl(Token, FunctionDeclNode),
     TypeDecl(Token, TypeDeclNode),
+    EnumDecl(Token, EnumDeclNode),
     Identifier(Token, Option<Vec<TypeIdentifier>>),
     Assignment(Token, AssignmentNode),
     Indexing(Token, IndexingNode),
@@ -127,6 +128,15 @@ pub struct TypeDeclNode {
     pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<(Token, TypeIdentifier, Option<AstNode>)>,
+    pub methods: Vec<AstNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub variants: Vec<Token>,
     pub methods: Vec<AstNode>,
 }
 
