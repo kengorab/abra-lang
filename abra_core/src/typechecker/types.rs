@@ -1,13 +1,12 @@
 use crate::parser::ast::TypeIdentifier;
 use crate::lexer::tokens::Token;
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     Unit,
     Any,
-    Or(Vec<Type>),
+    Union(Vec<Type>),
     Int,
     Float,
     String,
@@ -66,15 +65,34 @@ impl Type {
             // A non-optional instance of a type should be assignable up to an optional version of it
             // (ie. val i: Int? = 1)
             (t1, Option(t2)) => t1.is_equivalent_to(t2, referencable_types),
-            (Or(t1s), Or(t2s)) => {
-                let t1s = HashSet::<self::Type>::from_iter(t1s.clone().into_iter());
-                let t2s = HashSet::<self::Type>::from_iter(t2s.clone().into_iter());
-                for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                    if !t1.is_equivalent_to(t2, referencable_types) {
-                        return false;
+            (Union(t1s), Union(t2s)) => {
+                // None of this is ideal, and it's all incredibly poorly written, shame on me. Since
+                // there should be no difference between `Int | Float` and `Float | Int`, but there is
+                // no simple equivalence check, we can't just do a hash set comparison. At least, not as far
+                // as I could see, because we need to test equivalence w.r.t. `referencable_types`. So what I
+                // regretfully decided to do was take all permutations of the target type's union values and
+                // compare against each of them. It's awful, I'm sorry.
+                let types_as_refs = t1s.into_iter()
+                    .map(|t| t)
+                    .collect::<Vec<&Self>>();
+                let all_refs = &[types_as_refs.as_slice()];
+                let permutator = permutate::Permutator::new(all_refs);
+
+                for t1s in permutator {
+                    'inner: for (t1, t2) in t1s.iter().zip(t2s.iter()) {
+                        if !t1.is_equivalent_to(t2, referencable_types) {
+                            break 'inner;
+                        }
+                        return true;
                     }
                 }
-                true
+                return false;
+            }
+            (t1, Union(ts)) => {
+                for t in ts {
+                    if t == t1 { return true; }
+                }
+                false
             }
             // For Fn types compare arities, param types, and return type
             (Fn(FnType { arg_types: args, ret_type: ret, .. }), Fn(FnType { arg_types: target_args, ret_type: target_ret, .. })) => {
@@ -179,7 +197,7 @@ impl Type {
 
     pub fn is_unknown(&self, referencable_types: &HashMap<String, Type>) -> bool {
         match self {
-            Type::Or(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
+            Type::Union(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
             Type::Array(inner_type) |
             Type::Option(inner_type) => inner_type.is_unknown(referencable_types),
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
@@ -203,10 +221,10 @@ impl Type {
     pub fn extract_unbound_generics(&self) -> Vec<String> {
         match self {
             Type::Generic(name) => vec![name.clone()],
-            Type::Or(type_opts) => {
+            Type::Union(type_opts) => {
                 type_opts.iter()
                     .flat_map(|typ| typ.extract_unbound_generics())
-                    .collect::<Vec<String>>()
+                    .collect()
             }
             Type::Array(inner_type) |
             Type::Option(inner_type) => inner_type.extract_unbound_generics(),
@@ -250,8 +268,30 @@ impl Type {
                 Type::Reference(name.clone(), type_args)
             }
             Type::Type(name, typ) => Type::Type(name.clone(), Box::new(Type::substitute_generics(typ, available_generics))),
+            Type::Union(types) => {
+                let mut opts = Vec::new();
+                let mut types_iter = types.into_iter();
+                let typ = types_iter.next().expect("Union types should never be empty");
+                let mut queue = vec![typ.clone()];
+
+                while let Some(t) = queue.pop() {
+                    if let Type::Union(opts) = t {
+                        let mut opts = opts.into_iter().collect();
+                        queue.append(&mut opts);
+                    } else {
+                        let t = Type::substitute_generics(&t, available_generics);
+                        if let Type::Union(opts) = t {
+                            let mut opts = opts.into_iter().collect();
+                            queue.append(&mut opts);
+                        } else {
+                            opts.push(t);
+                            types_iter.next().map(|t| queue.push(t.clone()));
+                        }
+                    }
+                }
+                Type::Union(opts)
+            }
             // Type::Struct(_) => {},
-            // Type::Or(_) => {},
             // Type::Map(_, _) => {},
             t @ _ => t.clone(),
         }
@@ -285,6 +325,31 @@ impl Type {
             }
             (Type::Option(target_inner), Type::Option(inner)) => Self::try_fit_generics(inner, target_inner),
             (Type::Array(target_inner), Type::Array(inner)) => Self::try_fit_generics(inner, target_inner),
+            (Type::Union(target_opts), t) => {
+                let (generics, target_opts) = target_opts.into_iter().map(Type::clone)
+                    .partition::<Vec<Type>, _>(|t| if let Type::Generic(_) = t { true } else { false });
+
+                let target_opts = target_opts.into_iter().map(|t| t.clone()).collect::<HashSet<Type>>();
+                let opts = match t {
+                    Type::Union(opts) => opts.clone(),
+                    t @ _ => vec![t.clone()]
+                }.into_iter().collect::<HashSet<Type>>();
+                let possibilities = opts.difference(&target_opts).map(|t| t.clone()).collect::<Vec<_>>();
+                let typ = if possibilities.is_empty() {
+                    t.clone()
+                } else if possibilities.len() == 1 {
+                    possibilities.into_iter().next().unwrap()
+                } else {
+                    Type::Union(possibilities)
+                };
+
+                let pairs = generics.into_iter()
+                    .map(|t| if let Type::Generic(name) = t { name } else { unreachable!() })
+                    .map(|t| (t, typ.clone()))
+                    .collect();
+
+                Some(pairs)
+            }
             _ => None
         }
     }
@@ -308,6 +373,25 @@ impl Type {
             TypeIdentifier::Option { inner } => {
                 let typ = Type::from_type_ident(inner, types)?;
                 Ok(Type::Option(Box::new(typ)))
+            }
+            TypeIdentifier::Union { left, right } => {
+                let mut union_types = Vec::new();
+                let left = Type::from_type_ident(left, types)?;
+                union_types.push(left);
+
+                let mut right_iter = right;
+                loop {
+                    if let TypeIdentifier::Union { left, right } = &**right_iter {
+                        let typ = Type::from_type_ident(left, types)?;
+                        union_types.push(typ);
+                        right_iter = right;
+                    } else {
+                        let typ = Type::from_type_ident(right_iter, types)?;
+                        union_types.push(typ);
+                        break;
+                    }
+                }
+                Ok(Type::Union(union_types))
             }
             TypeIdentifier::Func { args, ret } => {
                 let arg_types = args.into_iter()
@@ -375,6 +459,30 @@ mod test {
 
         assert_eq!(Array(Box::new(Option(Box::new(Int)))), parse_type_ident("Int?[]"));
         assert_eq!(Option(Box::new(Array(Box::new(Int)))), parse_type_ident("Int[]?"));
+    }
+
+    #[test]
+    fn from_type_ident_unions() {
+        let expected = Union(vec![Int, Float]);
+        assert_eq!(expected, parse_type_ident("Int | Float"));
+
+        let expected = Union(vec![String, Int, Float]);
+        assert_eq!(expected, parse_type_ident("String | Int | Float"));
+
+        let expected = Union(vec![Option(Box::new(String)), Option(Box::new(Int)), Float]);
+        assert_eq!(expected, parse_type_ident("String? | Int? | Float"));
+
+        let expected = Fn(FnType {
+            type_args: vec![],
+            arg_types: vec![
+                ("_".to_string(), Union(vec![Int, Float]), false)
+            ],
+            ret_type: Box::new(Union(vec![Int, Float])),
+        });
+        assert_eq!(expected, parse_type_ident("(Int | Float) => Int | Float"));
+
+        let expected = Option(Box::new(Union(vec![Int, Float])));
+        assert_eq!(expected, parse_type_ident("(Int | Float)?"));
     }
 
     #[test]
@@ -620,5 +728,61 @@ mod test {
             ("U".to_string(), String),
         ];
         assert_eq!(Some(expected), result);
+
+        #[inline]
+        fn assert_union_eq(expected: Vec<super::Type>, actual: super::Type) {
+            // Pretty annoying: it's not deterministic which order the union type's types will be in - compare ignoring order
+            if let Union(opts) = actual {
+                let opts = opts.into_iter().collect::<HashSet<_>>();
+                let expected = expected.into_iter().collect::<HashSet<_>>();
+                assert_eq!(expected, opts);
+            } else { assert!(false, "The type should be a Union") }
+        }
+
+        // Given: T | Int & Int | Float; Expect: { T: Float }
+        let t = Union(vec![Int, Float]);
+        let target = Union(vec![Generic("T".to_string()), Int]);
+        let result = super::Type::try_fit_generics(&t, &target);
+        let expected = vec![
+            ("T".to_string(), Float),
+        ];
+        assert_eq!(Some(expected), result);
+
+        // Given: T | Float | Int & Int | String | Float; Expect: { T: String }
+        let t = Union(vec![Int, String, Float]);
+        let target = Union(vec![Generic("T".to_string()), Float, Int]);
+        let result = super::Type::try_fit_generics(&t, &target);
+        let expected = vec![
+            ("T".to_string(), String),
+        ];
+        assert_eq!(Some(expected), result);
+
+        // Given: T | Int & Int | String | Float; Expect: { T: String | Float }
+        let t = Union(vec![Int, String, Float]);
+        let target = Union(vec![Generic("T".to_string()), Int]);
+        let result = super::Type::try_fit_generics(&t, &target);
+        let (name, typ) = result.unwrap().into_iter().next().unwrap();
+        assert_eq!("T".to_string(), name);
+        assert_union_eq(vec![String, Float], typ);
+
+        // Given: T | U | Int & Int | String | Float; Expect: { T: String | Float, U: String | Float }
+        let t = Union(vec![Int, String, Float]);
+        let target = Union(vec![Generic("T".to_string()), Generic("U".to_string()), Int]);
+        let result = super::Type::try_fit_generics(&t, &target);
+        let mut results = result.unwrap().into_iter();
+        let (name, typ) = results.next().unwrap();
+        assert_eq!("T".to_string(), name);
+        assert_union_eq(vec![String, Float], typ);
+        let (name, typ) = results.next().unwrap();
+        assert_eq!("U".to_string(), name);
+        assert_union_eq(vec![String, Float], typ);
+
+        // Given: T | Float | Int & Int | Float; Expect: { T: Int | Float }
+        let t = Union(vec![Int, Float]);
+        let target = Union(vec![Generic("T".to_string()), Int, Float]);
+        let result = super::Type::try_fit_generics(&t, &target);
+        let (name, typ) = result.unwrap().into_iter().next().unwrap();
+        assert_eq!("T".to_string(), name);
+        assert_union_eq(vec![Int, Float], typ);
     }
 }

@@ -497,7 +497,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             (op @ UnaryOp::Minus, _) | (op @ UnaryOp::Negate, _) => {
                 let expected = if op == &UnaryOp::Minus {
-                    Type::Or(vec![Type::Int, Type::Float])
+                    Type::Union(vec![Type::Int, Type::Float])
                 } else {
                     Type::Bool
                 };
@@ -657,7 +657,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 .nth(0)
                 .expect("We know the size is 1")
         } else if !item_types.is_empty() {
-            Type::Or(item_types.into_iter().collect())
+            Type::Union(item_types.into_iter().collect())
         } else {
             Type::Unknown
         };
@@ -1969,7 +1969,7 @@ mod tests {
         let err = typecheck("-\"bad\"").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Minus(Position::new(1, 1)),
-            expected: Type::Or(vec![Type::Int, Type::Float]),
+            expected: Type::Union(vec![Type::Int, Type::Float]),
             actual: Type::String,
         };
         assert_eq!(expected, err);
@@ -1977,7 +1977,7 @@ mod tests {
         let err = typecheck("-false").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Minus(Position::new(1, 1)),
-            expected: Type::Or(vec![Type::Int, Type::Float]),
+            expected: Type::Union(vec![Type::Int, Type::Float]),
             actual: Type::Bool,
         };
         assert_eq!(expected, err);
@@ -3007,6 +3007,22 @@ mod tests {
         });
         assert_eq!(expected, typ);
 
+        // Verify generic resolution works for union types
+        let typed_ast = typecheck("\
+          func cos<T>(angle: T | Float) = angle\n\
+          cos(1.23)\
+        ")?;
+        let typ = typed_ast.last().unwrap().get_type();
+        let expected = Type::Union(vec![Type::Float, Type::Float]); // <- Redundant, I know
+        assert_eq!(expected, typ);
+        let typed_ast = typecheck("\
+          func cos<T>(angle: T | Float) = angle\n\
+          cos(12)\
+        ")?;
+        let typ = typed_ast.last().unwrap().get_type();
+        let expected = Type::Union(vec![Type::Int, Type::Float]);
+        assert_eq!(expected, typ);
+
         Ok(())
     }
 
@@ -3489,7 +3505,6 @@ mod tests {
           val items: Int[] = l.items
         "#, type_def);
         let res = typecheck(&input);
-        dbg!(&res);
         assert!(res.is_ok());
 
         let input = format!(r#"{}

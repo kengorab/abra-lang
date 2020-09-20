@@ -301,6 +301,16 @@ impl Parser {
             next_token = self.peek();
         };
 
+        if let Some(Token::Pipe(_)) = self.peek() {
+            expect_next!(); // Consume '|'
+
+            let right = self.parse_type_identifier(consume)?;
+            left = TypeIdentifier::Union {
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+
         Ok(left)
     }
 
@@ -1902,6 +1912,23 @@ mod tests {
                     ]),
                 },
             ]),
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("String | Int");
+        let expected = TypeIdentifier::Union {
+            left: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 1), "String"), type_args: None }),
+            right: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 10), "Int"), type_args: None }),
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("String | Int | Float");
+        let expected = TypeIdentifier::Union {
+            left: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 1), "String"), type_args: None }),
+            right: Box::new(TypeIdentifier::Union {
+                left: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 10), "Int"), type_args: None }),
+                right: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 16), "Float"), type_args: None }),
+            }),
         };
         assert_eq!(expected, type_ident);
     }

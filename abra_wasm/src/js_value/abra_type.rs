@@ -25,7 +25,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Any")?;
                 obj.end()
             }
-            Type::Or(opts) => {
+            Type::Union(opts) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Or")?;
                 let opts: Vec<JsType> = opts.iter().map(|opt| JsType(opt)).collect();
