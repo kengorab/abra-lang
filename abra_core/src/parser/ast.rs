@@ -136,7 +136,7 @@ pub struct EnumDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub variants: Vec<Token>,
+    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>>)>,
     pub methods: Vec<AstNode>,
 }
 

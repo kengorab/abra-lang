@@ -12,7 +12,8 @@
 //
 //val x = cos(i)
 
-enum Gender {
-  Male
-  Female
+enum Direction {
+  Red
+  Blue
+  Rgb(r: Int, g: Int, b: Int)
 }

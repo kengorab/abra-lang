@@ -509,7 +509,11 @@ impl Parser {
                     let field_name = self.expect_next()?;
 
                     if is_enum {
-                        variants.push(field_name);
+                        let args = if let Token::LParen(_, _) = self.expect_peek()? {
+                            self.expect_next_token(TokenType::LParen)?;
+                            Some(self.parse_func_args(None, false)?)
+                        } else { None };
+                        variants.push((field_name, args));
                     } else {
                         self.expect_next_token(TokenType::Colon)?;
                         let field_type = self.parse_type_identifier(true)?;
@@ -2478,11 +2482,11 @@ mod tests {
             EnumDeclNode {
                 name: ident_token!((1, 6), "Color"),
                 variants: vec![
-                    ident_token!((2, 1), "Red"),
-                    ident_token!((3, 1), "Blue"),
+                    (ident_token!((2, 1), "Red"), None),
+                    (ident_token!((3, 1), "Blue"), None),
                 ],
-                methods: vec![]
-            }
+                methods: vec![],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -2493,13 +2497,34 @@ mod tests {
             EnumDeclNode {
                 name: ident_token!((1, 6), "Direction"),
                 variants: vec![
-                    ident_token!((1, 18), "Red"),
-                    ident_token!((1, 23), "Blue"),
+                    (ident_token!((1, 18), "Red"), None),
+                    (ident_token!((1, 23), "Blue"), None),
                 ],
-                methods: vec![]
-            }
+                methods: vec![],
+            },
         );
         assert_eq!(expected, ast[0]);
+
+        let input = "enum Direction { Red, Blue, Rgb(r: Int, g: Int, b: Int) }";
+        let ast = parse(input)?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            EnumDeclNode {
+                name: ident_token!((1, 6), "Direction"),
+                variants: vec![
+                    (ident_token!((1, 18), "Red"), None),
+                    (ident_token!((1, 23), "Blue"), None),
+                    (ident_token!((1, 29), "Rgb"), Some(vec![
+                        (ident_token!((1, 33), "r"), Some(TypeIdentifier::Normal {ident: ident_token!((1, 36), "Int"), type_args: None }), None),
+                        (ident_token!((1, 41), "g"), Some(TypeIdentifier::Normal {ident: ident_token!((1, 44), "Int"), type_args: None }), None),
+                        (ident_token!((1, 49), "b"), Some(TypeIdentifier::Normal {ident: ident_token!((1, 52), "Int"), type_args: None }), None),
+                    ])),
+                ],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
         Ok(())
     }
 
