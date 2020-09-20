@@ -190,6 +190,7 @@ pub enum TypeIdentifier {
     Normal { ident: Token, type_args: Option<Vec<TypeIdentifier>> },
     Array { inner: Box<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
+    Union { left: Box<TypeIdentifier>, right: Box<TypeIdentifier> },
     Func {
         args: Vec<TypeIdentifier>,
         ret: Box<TypeIdentifier>,
@@ -202,6 +203,7 @@ impl TypeIdentifier {
             TypeIdentifier::Normal { ident, .. } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
             TypeIdentifier::Option { inner } => inner.get_ident(),
+            TypeIdentifier::Union { left, .. } => left.get_ident(),
             TypeIdentifier::Func { ret, .. } => ret.get_ident()
         }
     }

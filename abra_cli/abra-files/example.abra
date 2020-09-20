@@ -1,2 +1,13 @@
-val arr = [1, 2, 3]
-arr.reduce<Int, Int>(0, (acc, i) => acc + i)
+// import std/math as Math
+// Math.cos(45)
+//import cos from std/math
+//cos(45)
+
+// std/math.abra
+// export native func cos(angle: Int | Float): Float
+
+val i: Int | Float = 0
+
+func cos<T>(angle: T | Int | Float) = angle
+
+val x = cos(i)

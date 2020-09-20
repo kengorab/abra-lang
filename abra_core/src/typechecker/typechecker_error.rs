@@ -113,11 +113,11 @@ fn type_repr(t: &Type) -> String {
         Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
         Type::Bool => "Bool".to_string(),
-        Type::Or(options) => {
+        Type::Union(options) => {
             let type_opts: Vec<String> = options.iter()
-                .map(|t| type_repr(t))
+                .map(|t| wrap_type_repr(t))
                 .collect();
-            format!("one of ({})", type_opts.join(", "))
+            format!("{}", type_opts.join(" | "))
         }
         Type::Array(typ) => format!("{}[]", wrap_type_repr(typ)),
         Type::Map(fields, _) => {
@@ -524,13 +524,13 @@ Type mismatch (1:5)
     fn test_mismatch_error_with_ortype() {
         let src = "1 + 4.4".to_string();
         let token = Token::Float(Position::new(1, 5), 4.4);
-        let err = TypecheckerError::Mismatch { token, expected: Type::Or(vec![Type::Int, Type::Float]), actual: Type::Int };
+        let err = TypecheckerError::Mismatch { token, expected: Type::Union(vec![Type::Int, Type::Float]), actual: Type::Int };
 
         let expected = format!("\
 Type mismatch (1:5)
   |  1 + 4.4
          ^^^
-  Expected one of (Int, Float), got Int"
+  Expected Int | Float, got Int"
         );
         assert_eq!(expected, err.get_message(&src));
     }
