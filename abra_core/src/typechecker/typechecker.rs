@@ -1171,7 +1171,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     let faked_args = args.clone().into_iter()
                         .map(|(tok, ident, _)| (tok, ident, None))
                         .collect();
-                    let faked_args = self.visit_fn_args(faked_args, true, false)?;
+                    let faked_args = self.visit_fn_args(faked_args, false, false)?;
                     Type::Fn(FnType {
                         type_args: vec![],
                         ret_type: Box::new(enum_ret_type),
@@ -1201,7 +1201,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let variant_node = match args {
                 None => EnumVariantKind::Basic,
                 Some(args) => {
-                    let args = self.visit_fn_args(args, true, false)?;
+                    let args = self.visit_fn_args(args, false, false)?;
                     EnumVariantKind::Constructor(args)
                 }
             };
@@ -3951,6 +3951,14 @@ mod tests {
         let expected = TypecheckerError::DuplicateBinding {
             ident: ident_token!((1, 28), "temp"),
             orig_ident: ident_token!((1, 17), "temp"),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Temp { Hot(self), Cold }\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidSelfParam {
+            token: Token::Self_(Position::new(1, 17))
         };
         assert_eq!(expected, error);
     }
