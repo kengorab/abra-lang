@@ -17,6 +17,7 @@ pub enum Type {
     Fn(FnType),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
     Struct(StructType),
+    Enum(EnumType),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
@@ -37,6 +38,13 @@ pub struct StructType {
     pub type_args: Vec<(String, Type)>,
     pub fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
+    pub methods: Vec<(String, Type)>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct EnumType {
+    pub name: String,
+    pub variants: Vec<(/* name: */ String, /* type: */ Type)>,
     pub methods: Vec<(String, Type)>,
 }
 
@@ -133,6 +141,9 @@ impl Type {
                 }
                 true
             }
+            (Enum(EnumType { name: name1, .. }), Enum(EnumType { name: name2, .. })) => {
+                name1 == name2
+            }
             // TODO (This should be unreachable right now anwyay...)
             (Map(_fields1, _), Map(_fields2, _)) => {
                 false
@@ -189,6 +200,9 @@ impl Type {
                         .map(|((name, _), typ)| (name.clone(), typ.clone()))
                         .collect();
                     Some(Type::Struct(StructType { type_args, ..struct_type }))
+                }
+                Type::Enum(enum_type) => {
+                    Some(Type::Enum(enum_type))
                 }
                 _ => unreachable!("Nothing other than StructTypes should be referencable")
             }

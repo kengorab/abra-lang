@@ -1,6 +1,6 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::{Type, StructType, FnType};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::parser::ast::BinaryOp;
 use crate::typechecker::typed_ast::TypedAstNode;
 
@@ -145,6 +145,9 @@ fn type_repr(t: &Type) -> String {
                 .collect::<Vec<String>>()
                 .join(", ");
             format!("{}<{}>", name, type_args_repr)
+        }
+        Type::Enum(EnumType { name, .. }) => {
+            format!("{}", name)
         }
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),

@@ -12,8 +12,11 @@
 //
 //val x = cos(i)
 
-enum Direction {
+enum Color {
   Red
   Blue
   Rgb(r: Int, g: Int, b: Int)
+  Darken(base: Color = Color.Red, amount: Float = 10.0)
 }
+
+val c = Color.Darken(base: Color.Rgb(1, 2, 3), amount: 456.7)
