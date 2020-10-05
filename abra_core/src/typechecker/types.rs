@@ -45,6 +45,7 @@ pub struct StructType {
 pub struct EnumType {
     pub name: String,
     pub variants: Vec<(/* name: */ String, /* type: */ Type)>,
+    pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
 }
 

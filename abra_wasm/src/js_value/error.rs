@@ -130,13 +130,13 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field } => {
+                TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field, orig_is_enum_variant } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateField")?;
                     obj.serialize_entry("ident", &JsToken(ident))?;
                     obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
-                    obj.serialize_entry("origType", if *orig_is_field { "field" } else { "method" })?;
+                    obj.serialize_entry("origType", if *orig_is_field { "field" } else if *orig_is_enum_variant { "enum variant" } else { "method" })?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

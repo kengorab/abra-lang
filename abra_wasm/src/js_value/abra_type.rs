@@ -113,7 +113,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("methods", &methods)?;
                 obj.end()
             }
-            Type::Enum(EnumType { name, variants, methods }) => {
+            Type::Enum(EnumType { name, variants, static_fields, methods }) => {
                 let mut obj = serializer.serialize_map(Some(6))?;
                 obj.serialize_entry("kind", "Enum")?;
                 obj.serialize_entry("name", name)?;
@@ -121,6 +121,10 @@ impl<'a> Serialize for JsType<'a> {
                     .map(|(name, _)| name.clone())
                     .collect();
                 obj.serialize_entry("variants", &variants)?;
+                let static_fields: Vec<(String, JsType)> = static_fields.iter()
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("staticFields", &static_fields)?;
                 let methods: Vec<(String, JsType)> = methods.iter()
                     .map(|(name, typ)| (name.clone(), JsType(typ)))
                     .collect();
