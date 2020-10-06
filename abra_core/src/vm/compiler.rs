@@ -2,7 +2,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode};
 use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, FnValue, TypeValue};
 use crate::vm::prelude::Prelude;
@@ -865,6 +865,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
 
         Ok(())
+    }
+
+    fn visit_enum_decl(&mut self, _token: Token, node: TypedEnumDeclNode) -> Result<(), ()> {
+        dbg!(node);
+        todo!()
     }
 
     fn visit_identifier(&mut self, token: Token, node: TypedIdentifierNode) -> Result<(), ()> {

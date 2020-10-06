@@ -16,7 +16,7 @@ pub trait AstVisitor<V, E> {
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
             FunctionDecl(tok, node) => self.visit_func_decl(tok, node),
             TypeDecl(tok, node) => self.visit_type_decl(tok, node),
-            EnumDecl(tok, node) => self.visit_enum_decl(tok, node),
+            EnumDecl(tok, node)=> self.visit_enum_decl(tok, node),
             Identifier(tok, type_args) => self.visit_ident(tok, type_args),
             Assignment(tok, node) => self.visit_assignment(tok, node),
             Indexing(tok, node) => self.visit_indexing(tok, node),

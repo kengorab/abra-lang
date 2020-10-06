@@ -12,8 +12,21 @@
 //
 //val x = cos(i)
 
-enum Direction {
+enum Color {
   Red
   Blue
   Rgb(r: Int, g: Int, b: Int)
+  Darken(base: Color = Color.Red, amount: Float = 10.0)
+
+  func black(): String {
+    "0x000000"
+  }
+
+  func hexCode(self): String {
+    "0xffffff"
+  }
 }
+
+val c = Color.Darken(base: Color.Rgb(1, 2, 3), amount: 456.7)
+println(Color.black())
+println(c.hexCode())

@@ -1,6 +1,6 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::{Type, StructType, FnType};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::parser::ast::BinaryOp;
 use crate::typechecker::typed_ast::TypedAstNode;
 
@@ -17,7 +17,7 @@ pub enum TypecheckerError {
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
-    DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool },
+    DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
     UnboundGeneric(Token, String),
@@ -146,6 +146,9 @@ fn type_repr(t: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, type_args_repr)
         }
+        Type::Enum(EnumType { name, .. }) => {
+            format!("{}", name)
+        }
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
@@ -231,14 +234,14 @@ impl DisplayError for TypecheckerError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field } => {
+            TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field, orig_is_enum_variant } => {
                 let ident = Token::get_ident_name(&ident);
                 let first_msg = format!("Duplicate field '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
 
-                let noun = if *orig_is_field { "Field" } else { "Method" };
+                let noun = if *orig_is_field { "Field" } else if *orig_is_enum_variant { "Enum variant" } else { "Method" };
                 let second_msg = format!("{} with that name is already declared in scope at ({}:{})\n{}", noun, pos.line, pos.col, cursor_line);
 
                 format!("{}\n{}", first_msg, second_msg)
