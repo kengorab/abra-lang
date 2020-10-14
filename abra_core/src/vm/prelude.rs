@@ -40,7 +40,7 @@ impl Prelude {
         ];
         for (type_name, typ) in prelude_types {
             let binding = PreludeBinding {
-                typ: Type::Type(type_name.to_string(), Box::new(typ.clone())),
+                typ: Type::Type(type_name.to_string(), Box::new(typ.clone()), false), // TODO: is_enum should not be hard-coded false
                 value: Value::Type(TypeValue {
                     name: type_name.to_string(),
                     methods: vec![],

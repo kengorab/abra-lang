@@ -186,6 +186,7 @@ pub struct TypedEnumDeclNode {
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
     pub variants: Vec<(Token, Type, EnumVariantKind)>,
+    pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub methods: Vec<(String, TypedAstNode)>,
 }
 

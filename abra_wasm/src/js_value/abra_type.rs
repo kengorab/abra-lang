@@ -80,7 +80,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("returnType", &JsType(ret_type))?;
                 obj.end()
             }
-            Type::Type(name, _) => {
+            Type::Type(name, _, _) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Type")?;
                 obj.serialize_entry("name", name)?;

@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantValue};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -60,6 +60,12 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.serialize_entry("name", &name)?;
                 obj.end()
             }
+            Value::Enum(EnumValue { name, .. }) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "type")?;
+                obj.serialize_entry("name", &name)?;
+                obj.end()
+            }
             Value::Nil => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("kind", "nil")?;
@@ -106,6 +112,13 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("type", &JsWrappedValue(&inst.typ))?;
                 let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
+                obj.end()
+            }
+            Obj::EnumVariant(EnumVariantValue { enum_name, name, .. }) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "type")?;
+                obj.serialize_entry("enumName", &enum_name)?;
+                obj.serialize_entry("name", &name)?;
                 obj.end()
             }
         }

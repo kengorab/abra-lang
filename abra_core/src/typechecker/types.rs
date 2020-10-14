@@ -15,7 +15,7 @@ pub enum Type {
     Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
     Option(Box<Type>),
     Fn(FnType),
-    Type(/* type_name: */ String, /* underlying_type: */ Box<Type>),
+    Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
@@ -124,7 +124,7 @@ impl Type {
                 true
             }
             // TODO
-            (Type(_name1, _t1), Type(_name2, _t2)) => {
+            (Type(_name1, _t1, _is_enum1), Type(_name2, _t2, _is_enum2)) => {
                 false
             }
             (Struct(StructType { name: name1, type_args: type_args1, .. }), Struct(StructType { name: name2, type_args: type_args2, .. })) => {
@@ -255,7 +255,7 @@ impl Type {
                     .flat_map(|typ| typ.extract_unbound_generics())
                     .collect()
             }
-            Type::Type(_, typ) => typ.extract_unbound_generics(),
+            Type::Type(_, typ, _) => typ.extract_unbound_generics(),
             _ => vec![]
         }
     }
@@ -282,7 +282,7 @@ impl Type {
                 let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();
                 Type::Reference(name.clone(), type_args)
             }
-            Type::Type(name, typ) => Type::Type(name.clone(), Box::new(Type::substitute_generics(typ, available_generics))),
+            Type::Type(name, typ, is_enum) => Type::Type(name.clone(), Box::new(Type::substitute_generics(typ, available_generics)), *is_enum),
             Type::Union(types) => {
                 let mut opts = Vec::new();
                 let mut types_iter = types.into_iter();
