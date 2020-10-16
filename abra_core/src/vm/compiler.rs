@@ -2,9 +2,9 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind};
 use crate::typechecker::types::{Type, FnType};
-use crate::vm::value::{Value, FnValue, TypeValue};
+use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantValue};
 use crate::vm::prelude::Prelude;
 use crate::builtins::native_types::{NativeArray, NativeType};
 use crate::common::util::random_string;
@@ -107,6 +107,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
         TypedAstNode::TypeDecl(_, _) |
+        TypedAstNode::EnumDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
         TypedAstNode::Break(_) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
@@ -867,9 +868,86 @@ impl TypedAstVisitor<(), ()> for Compiler {
         Ok(())
     }
 
-    fn visit_enum_decl(&mut self, _token: Token, node: TypedEnumDeclNode) -> Result<(), ()> {
-        dbg!(node);
-        todo!()
+    fn visit_enum_decl(&mut self, token: Token, node: TypedEnumDeclNode) -> Result<(), ()> {
+        let line = token.get_position().line;
+        let TypedEnumDeclNode { name, variants, static_fields, methods, .. } = node;
+
+        let enum_name = Token::get_ident_name(&name);
+
+        // To handle self-referencing enums, initially store `0` as a placeholder
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+            self.write_int_constant(0, line);
+            self.write_constant(Value::Str(enum_name.clone()), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else { // ...otherwise, it's a local
+            unreachable!("Enum declarations are only allowed at the root scope");
+        }
+
+        let variants = variants.into_iter().enumerate()
+            .map(|(idx, (ident_tok, _typ, variant_kind))| {
+                let name = Token::get_ident_name(&ident_tok);
+                let arity = match variant_kind {
+                    EnumVariantKind::Basic => 0,
+                    EnumVariantKind::Constructor(args) => args.len()
+                };
+
+                (name.clone(), EnumVariantValue { enum_name: enum_name.clone(), name, idx, arity, methods: vec![], values: None })
+            })
+            .collect();
+
+        let mut compiled_methods = Vec::with_capacity(methods.len());
+        for (method_name, method_node) in methods {
+            let (method_tok, method_node) = match method_node {
+                TypedAstNode::FunctionDecl(tok, node) => (tok, node),
+                _ => unreachable!()
+            };
+
+            let method = self.compile_function_decl(
+                method_tok,
+                Some(method_node.name),
+                method_node.args,
+                method_node.ret_type,
+                method_node.body,
+                method_node.scope_depth,
+            )?;
+            compiled_methods.push((method_name, method));
+        }
+
+        let mut compiled_static_fields = Vec::new();
+        for (_, _, value) in static_fields {
+            if let Some(TypedAstNode::FunctionDecl(method_tok, method_node)) = value {
+                let method_name = Token::get_ident_name(&method_node.name).clone();
+                let method = self.compile_function_decl(
+                    method_tok,
+                    Some(method_node.name),
+                    method_node.args,
+                    method_node.ret_type,
+                    method_node.body,
+                    method_node.scope_depth,
+                )?;
+                compiled_static_fields.push((method_name, method));
+            }
+        }
+
+        let enum_value = Value::Enum(EnumValue {
+            name: enum_name.clone(),
+            variants,
+            methods: compiled_methods,
+            static_fields: compiled_static_fields,
+        });
+        let const_idx = self.add_constant(enum_value);
+        self.write_opcode(Opcode::Constant, line);
+        self.write_byte(const_idx, line);
+
+        // Overwrite placeholder created at start
+        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+            self.write_constant(Value::Str(enum_name.clone()), line);
+            self.write_opcode(Opcode::GStore, line);
+        } else { // ...otherwise, it's a local
+            unreachable!("Type declarations are only allowed at the root scope");
+        }
+
+        Ok(())
     }
 
     fn visit_identifier(&mut self, token: Token, node: TypedIdentifierNode) -> Result<(), ()> {
@@ -2863,6 +2941,55 @@ mod tests {
                         }),
                     ],
                     static_fields: vec![],
+                }),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_enum_decl_variants() {
+        let chunk = compile("enum Status { On, Off }");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::Constant as u8, 0,
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                Value::Str("Status".to_string()),
+                Value::Enum(EnumValue {
+                    name: "Status".to_string(),
+                    methods: vec![],
+                    static_fields: vec![],
+                    variants: vec![
+                        (
+                            "On".to_string(),
+                            EnumVariantValue {
+                                enum_name: "Status".to_string(),
+                                name: "On".to_string(),
+                                idx: 0,
+                                methods: vec![],
+                                arity: 0,
+                                values: None,
+                            }
+                        ),
+                        (
+                            "Off".to_string(),
+                            EnumVariantValue {
+                                enum_name: "Status".to_string(),
+                                name: "Off".to_string(),
+                                idx: 1,
+                                methods: vec![],
+                                arity: 0,
+                                values: None,
+                            }
+                        )
+                    ],
                 }),
             ],
         };

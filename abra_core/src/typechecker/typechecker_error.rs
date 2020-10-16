@@ -135,7 +135,7 @@ fn type_repr(t: &Type) -> String {
             let args = arg_types.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
             format!("({}) => {}", args, type_repr(ret_type))
         }
-        Type::Type(name, _) => name.to_string(),
+        Type::Type(name, _, _) => name.to_string(),
         Type::Unknown => "Unknown".to_string(),
         Type::Struct(StructType { name, type_args, .. }) => {
             if type_args.is_empty() { return name.clone(); }

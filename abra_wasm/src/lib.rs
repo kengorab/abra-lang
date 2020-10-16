@@ -18,7 +18,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
 use abra_core::{Error, typecheck, compile, compile_and_run, compile_and_disassemble};
-use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue};
+use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantValue};
 use abra_core::vm::vm::VMContext;
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
@@ -65,11 +65,13 @@ impl Serialize for RunResultValue {
                     });
                     arr.end()
                 }
+                Obj::EnumVariant(EnumVariantValue { name, .. }) => serializer.serialize_str(name)
             }
             Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),
             Value::Closure(ClosureValue { name, .. }) => serializer.serialize_str(name),
             Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),
-            Value::Type(TypeValue { name, .. }) => serializer.serialize_str(name)
+            Value::Type(TypeValue { name, .. }) => serializer.serialize_str(name),
+            Value::Enum(EnumValue { name, .. }) => serializer.serialize_str(name),
         }
     }
 }
