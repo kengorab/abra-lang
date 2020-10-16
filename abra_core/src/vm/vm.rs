@@ -445,7 +445,7 @@ impl VM {
 
         self.start_call_frame(arity, func)?;
 
-        let res = self.run(true)?;
+        let res = self.run_from_call_stack_depth(self.call_stack.len())?;
         if has_return {
             Ok(res)
         } else {
@@ -456,7 +456,15 @@ impl VM {
         }
     }
 
-    pub fn run(&mut self, isolated: bool) -> Result<Option<Value>, InterpretError> {
+    pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
+        self.run_from_call_stack_depth(1)
+    }
+
+    /// Run the VM to execute bytecode, starting from `init_call_stack_depth`. When running the VM,
+    /// via the `run` method, this should be 1; when executing a function's bytecode from a native
+    /// context, the initial call stack depth needs to be provided so we know when to return the
+    /// value to that native context. (See comments in the `Opcode::Return` block)
+    fn run_from_call_stack_depth(&mut self, init_call_stack_depth: usize) -> Result<Option<Value>, InterpretError> {
         loop {
             let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
@@ -866,29 +874,23 @@ impl VM {
                     }
                 }
                 Opcode::Return => {
-                    if isolated {
-                        let top = self.pop();
+                    let is_complete = self.call_stack.len() == init_call_stack_depth;
 
-                        // Ensure that any upvalues that are created in the current frame are closed
-                        self.close_upvalues_for_frame()?;
+                    // If the call stack is complete (ie, we've returned back up to the stack depth
+                    // when the run was issued), we want to pop the value off the stack and return it.
+                    let top = if is_complete { self.pop() } else { None };
 
-                        // Pop off current frame, so the next loop will resume with the previous frame
-                        self.call_stack.pop();
+                    // Ensure that any upvalues that are created in the current frame are closed, and
+                    // pop off current frame, so the next loop will resume with the previous frame. We
+                    // want to do this regardless of whether we're complete. This is important because
+                    // if the `run` function is called when invoking a fn from a native context, the
+                    // completeness condition will be dependant on init_call_stack_depth > 1.
+                    self.close_upvalues_for_frame()?;
+                    self.call_stack.pop();
 
-                        break Ok(top);
-                    }
+                    if is_complete { break Ok(top); }
 
-                    let is_main_frame = self.call_stack.len() == 1;
-                    if is_main_frame {
-                        let top = self.pop();
-                        break Ok(top);
-                    } else {
-                        // Ensure that any upvalues that are created in the current frame are closed
-                        self.close_upvalues_for_frame()?;
-
-                        // Pop off current frame, so the next loop will resume with the previous frame
-                        self.call_stack.pop();
-                    }
+                    continue;
                 }
             }
         }

@@ -18,9 +18,12 @@ enum Color {
   }
 }
 
-println(Color.Red.hex())
-println(Color.Green.hex())
-println(Color.Blue.hex())
-println(Color.black().hex())
-println(Color.white().hex())
-println(Color.RGB(red: 128, green: 128, blue: 128).hex())
+
+[
+  Color.Red,
+  Color.Green,
+  Color.Blue,
+  Color.black(),
+  Color.white(),
+  Color.RGB(1, 2, 3)
+].map(c => c.hex())
