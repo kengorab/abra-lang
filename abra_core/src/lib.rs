@@ -58,7 +58,7 @@ pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
 pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
     let (module, _) = compile(input)?;
     let mut vm = vm::vm::VM::new(module, ctx);
-    match vm.run(false) {
+    match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),
         Ok(None) => Ok(None),
         Err(e) => Err(Error::InterpretError(e)),

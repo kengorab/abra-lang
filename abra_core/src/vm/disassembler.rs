@@ -1,6 +1,6 @@
 use crate::vm::compiler::{Metadata, Module};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, FnValue, TypeValue};
+use crate::vm::value::{Value, FnValue, TypeValue, EnumValue};
 use std::collections::HashMap;
 
 pub fn disassemble(module: Module, metadata: Metadata) -> String {
@@ -154,7 +154,8 @@ impl Disassembler {
                     let values = (name, code.clone());
                     Some(vec![values])
                 },
-                Value::Type(TypeValue { name, methods, static_fields }) => {
+                Value::Type(TypeValue { name, methods, static_fields }) |
+                Value::Enum(EnumValue { name, methods, static_fields, .. }) => {
                     let mut values = vec![];
 
                     for (_, fn_value) in methods {

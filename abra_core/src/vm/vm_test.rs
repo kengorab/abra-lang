@@ -24,7 +24,7 @@ mod tests {
         let ctx = VMContext::default();
 
         let mut vm = VM::new(module, ctx);
-        vm.run(false).unwrap()
+        vm.run().unwrap()
     }
 
     #[test]
@@ -1338,11 +1338,14 @@ mod tests {
             }
           }
 
-          val hexCodes = [Color.Red, Color.Green, Color.Blue].map(c => c.hex())
-          hexCodes.push(Color.black().hex())
-          hexCodes.push(Color.white().hex())
-          hexCodes.push(Color.RGB(red: 128, green: 128, blue: 128).hex())
-          hexCodes
+          [
+            Color.Red,
+            Color.Green,
+            Color.Blue,
+            Color.black(),
+            Color.white(),
+            Color.RGB(red: 128, green: 128, blue: 128)
+          ].map(c => c.hex())
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
