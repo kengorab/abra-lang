@@ -24,7 +24,7 @@ mod tests {
         let ctx = VMContext::default();
 
         let mut vm = VM::new(module, ctx);
-        vm.run(false).unwrap()
+        vm.run().unwrap()
     }
 
     #[test]
@@ -1312,6 +1312,50 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = new_string_obj("I am Ken");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_enum() {
+        let input = r#"
+          enum Color {
+            Red
+            Green
+            Blue
+            RGB(red: Int, green: Int, blue: Int)
+
+            func white(): Color = Color.RGB(red: 255, green: 255, blue: 255)
+
+            func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
+
+            func hex(self): String {
+              if self == Color.Red "0xFF0000"
+              else if self == Color.Green "0x00FF00"
+              else if self == Color.Blue "0x0000FF"
+              else if self == Color.white() "0xFFFFFF"
+              else if self == Color.black() "0x000000"
+              else "TODO: Implement pattern matching"
+            }
+          }
+
+          [
+            Color.Red,
+            Color.Green,
+            Color.Blue,
+            Color.black(),
+            Color.white(),
+            Color.RGB(red: 128, green: 128, blue: 128)
+          ].map(c => c.hex())
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("0xFF0000"),
+            new_string_obj("0x00FF00"),
+            new_string_obj("0x0000FF"),
+            new_string_obj("0x000000"),
+            new_string_obj("0xFFFFFF"),
+            new_string_obj("TODO: Implement pattern matching"),
+        ]);
         assert_eq!(expected, result);
     }
 

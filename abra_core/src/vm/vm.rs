@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -380,7 +380,7 @@ impl VM {
         Ok(())
     }
 
-    fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn)-> Result<Option<Value>, InterpretError> {
+    fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn) -> Result<Option<Value>, InterpretError> {
         let num_args = self.stack.len() - arity;
         let args = self.stack.split_off(num_args);
         if native_fn.has_return {
@@ -445,7 +445,7 @@ impl VM {
 
         self.start_call_frame(arity, func)?;
 
-        let res = self.run(true)?;
+        let res = self.run_from_call_stack_depth(self.call_stack.len())?;
         if has_return {
             Ok(res)
         } else {
@@ -456,7 +456,15 @@ impl VM {
         }
     }
 
-    pub fn run(&mut self, isolated: bool) -> Result<Option<Value>, InterpretError> {
+    pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
+        self.run_from_call_stack_depth(1)
+    }
+
+    /// Run the VM to execute bytecode, starting from `init_call_stack_depth`. When running the VM,
+    /// via the `run` method, this should be 1; when executing a function's bytecode from a native
+    /// context, the initial call stack depth needs to be provided so we know when to return the
+    /// value to that native context. (See comments in the `Opcode::Return` block)
+    fn run_from_call_stack_depth(&mut self, init_call_stack_depth: usize) -> Result<Option<Value>, InterpretError> {
         loop {
             let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
@@ -560,6 +568,7 @@ impl VM {
                     let value = match inst {
                         Value::Obj(obj) => match &*obj.borrow() {
                             Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
+                            Obj::EnumVariant(inst) => inst.methods[field_idx].clone(),
                             Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
                             Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
                             _ => unreachable!()
@@ -567,6 +576,25 @@ impl VM {
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[field_idx].clone();
                             Value::Fn(field_value)
+                        }
+                        Value::Enum(EnumValue { variants, static_fields, methods, .. }) => {
+                            if field_idx >= variants.len() {
+                                let (_, field_value) = static_fields[field_idx - variants.len()].clone();
+                                Value::Fn(field_value)
+                            } else {
+                                let (_, variant_value) = variants[field_idx].clone();
+                                let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {
+                                    for (_, mut method_value) in methods {
+                                        method_value.receiver = Some(instance_value.clone());
+                                        match *instance_value.borrow_mut() {
+                                            Obj::EnumVariant(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
+                                            _ => unreachable!()
+                                        }
+                                    }
+                                    instance_value
+                                } else { unreachable!() };
+                                Value::Obj(instance_value)
+                            }
                         }
                         _ => unreachable!()
                     };
@@ -786,13 +814,36 @@ impl VM {
                     let target = self.pop_expect()?;
                     let arity = self.read_byte_expect()?;
 
-                    if let Value::NativeFn(native_fn) = &target {
-                        if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
-                            self.push(value);
+                    match &target {
+                        Value::NativeFn(native_fn) => {
+                            if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
+                                self.push(value);
+                            }
+                            continue;
                         }
-                        continue;
+                        Value::Obj(obj) => {
+                            let mut obj = (*obj).borrow_mut();
+                            match *obj {
+                                Obj::EnumVariant(ref mut evv) => {
+                                    let arity = evv.arity;
+                                    let num_args = self.stack.len() - arity;
+                                    let args = self.stack.split_off(num_args);
+                                    self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
+
+                                    evv.values = Some(args);
+                                }
+                                _ => unreachable!()
+                            };
+                        }
+                        _ => {
+                            self.start_call_frame(arity, target)?;
+                            continue;
+                        }
                     }
-                    self.start_call_frame(arity, target)?;
+
+                    // The Value::Obj(Obj::EnumVariant) path above is the only way to reach here; since
+                    // it mutates `target` as an Arc<RefCell<Obj>>, we can't push it until the match ends.
+                    self.push(target);
                 }
                 Opcode::ClosureMk => self.make_closure()?,
                 Opcode::CloseUpvalue => self.close_upvalue()?,
@@ -823,29 +874,21 @@ impl VM {
                     }
                 }
                 Opcode::Return => {
-                    if isolated {
-                        let top = self.pop();
+                    let is_complete = self.call_stack.len() == init_call_stack_depth;
 
-                        // Ensure that any upvalues that are created in the current frame are closed
-                        self.close_upvalues_for_frame()?;
+                    // If the call stack is complete (ie, we've returned back up to the stack depth
+                    // when the run was issued), we want to pop the value off the stack and return it.
+                    let top = if is_complete { self.pop() } else { None };
 
-                        // Pop off current frame, so the next loop will resume with the previous frame
-                        self.call_stack.pop();
+                    // Ensure that any upvalues that are created in the current frame are closed, and
+                    // pop off current frame, so the next loop will resume with the previous frame. We
+                    // want to do this regardless of whether we're complete. This is important because
+                    // if the `run` function is called when invoking a fn from a native context, the
+                    // completeness condition will be dependant on init_call_stack_depth > 1.
+                    self.close_upvalues_for_frame()?;
+                    self.call_stack.pop();
 
-                        break Ok(top);
-                    }
-
-                    let is_main_frame = self.call_stack.len() == 1;
-                    if is_main_frame {
-                        let top = self.pop();
-                        break Ok(top);
-                    } else {
-                        // Ensure that any upvalues that are created in the current frame are closed
-                        self.close_upvalues_for_frame()?;
-
-                        // Pop off current frame, so the next loop will resume with the previous frame
-                        self.call_stack.pop();
-                    }
+                    if is_complete { break Ok(top); }
                 }
             }
         }

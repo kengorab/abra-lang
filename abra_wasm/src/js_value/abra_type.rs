@@ -1,4 +1,4 @@
-use abra_core::typechecker::types::{Type, StructType, FnType};
+use abra_core::typechecker::types::{Type, StructType, FnType, EnumType};
 use serde::{Serialize, Serializer};
 
 pub struct JsType<'a>(pub &'a Type);
@@ -80,7 +80,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("returnType", &JsType(ret_type))?;
                 obj.end()
             }
-            Type::Type(name, _) => {
+            Type::Type(name, _, _) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Type")?;
                 obj.serialize_entry("name", name)?;
@@ -103,6 +103,24 @@ impl<'a> Serialize for JsType<'a> {
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("fields", &fields)?;
+                let static_fields: Vec<(String, JsType)> = static_fields.iter()
+                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("staticFields", &static_fields)?;
+                let methods: Vec<(String, JsType)> = methods.iter()
+                    .map(|(name, typ)| (name.clone(), JsType(typ)))
+                    .collect();
+                obj.serialize_entry("methods", &methods)?;
+                obj.end()
+            }
+            Type::Enum(EnumType { name, variants, static_fields, methods }) => {
+                let mut obj = serializer.serialize_map(Some(6))?;
+                obj.serialize_entry("kind", "Enum")?;
+                obj.serialize_entry("name", name)?;
+                let variants: Vec<String> = variants.iter()
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                obj.serialize_entry("variants", &variants)?;
                 let static_fields: Vec<(String, JsType)> = static_fields.iter()
                     .map(|(name, typ, _)| (name.clone(), JsType(typ)))
                     .collect();

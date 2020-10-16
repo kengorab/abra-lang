@@ -15,6 +15,7 @@ pub enum TypedAstNode {
     BindingDecl(Token, TypedBindingDeclNode),
     FunctionDecl(Token, TypedFunctionDeclNode),
     TypeDecl(Token, TypedTypeDeclNode),
+    EnumDecl(Token, TypedEnumDeclNode),
     Identifier(Token, TypedIdentifierNode),
     Assignment(Token, TypedAssignmentNode),
     Indexing(Token, TypedIndexingNode),
@@ -42,6 +43,7 @@ impl TypedAstNode {
             TypedAstNode::BindingDecl(token, _) => token,
             TypedAstNode::FunctionDecl(token, _) => token,
             TypedAstNode::TypeDecl(token, _) => token,
+            TypedAstNode::EnumDecl(token, _) => token,
             TypedAstNode::Identifier(token, _) => token,
             TypedAstNode::Assignment(token, _) => token,
             TypedAstNode::Indexing(token, _) => token,
@@ -74,6 +76,7 @@ impl TypedAstNode {
             TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::BindingDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |
+            TypedAstNode::EnumDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
@@ -167,6 +170,22 @@ pub struct TypedTypeDeclNode {
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<(Token, Type, Option<TypedAstNode>)>,
+    pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
+    pub methods: Vec<(String, TypedAstNode)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum EnumVariantKind {
+    Basic,
+    Constructor(/* args: */ Vec<(Token, Type, Option<TypedAstNode>)>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedEnumDeclNode {
+    // Must be a Token::Ident
+    pub name: Token,
+    // Tokens represent arg idents, and must be Token::Ident
+    pub variants: Vec<(Token, Type, EnumVariantKind)>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub methods: Vec<(String, TypedAstNode)>,
 }

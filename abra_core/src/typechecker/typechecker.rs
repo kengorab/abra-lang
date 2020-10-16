@@ -1,10 +1,10 @@
 use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode};
 use crate::vm::prelude::Prelude;
-use crate::typechecker::types::{Type, StructType, FnType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -111,16 +111,20 @@ impl Typechecker {
             Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
             Ok(typ) => {
                 if let Type::Reference(name, ref_type_args) = &typ {
-                    if let Type::Struct(StructType { type_args, .. }) = &self.referencable_types[name] {
-                        if ref_type_args.len() != type_args.len() {
-                            return Err(TypecheckerError::InvalidTypeArgumentArity {
-                                token: type_ident.get_ident(),
-                                actual_type: self.referencable_types[name].clone(),
-                                actual: ref_type_args.len(),
-                                expected: type_args.len(),
-                            });
+                    match &self.referencable_types[name] {
+                        Type::Struct(StructType { type_args, .. }) => {
+                            if ref_type_args.len() != type_args.len() {
+                                return Err(TypecheckerError::InvalidTypeArgumentArity {
+                                    token: type_ident.get_ident(),
+                                    actual_type: self.referencable_types[name].clone(),
+                                    actual: ref_type_args.len(),
+                                    expected: type_args.len(),
+                                });
+                            }
                         }
-                    } else { unreachable!("Can't reference anything but Struct types") }
+                        Type::Enum(_) => {}
+                        _ => unreachable!("Can't reference anything but Struct types")
+                    }
                 }
                 Ok(typ)
             }
@@ -455,6 +459,136 @@ impl Typechecker {
                 }
             })
             .collect()
+    }
+
+    fn typecheck_typedef_methods_phase_1(
+        &mut self,
+        type_args: &Vec<Token>,
+        methods: &Vec<AstNode>,
+    ) -> Result<(/* static_fields: */ Vec<(String, Type, bool)>, /* typed_methods: */ Vec<(String, Type)>), TypecheckerError> {
+        let mut static_fields = Vec::new();
+        let mut typed_methods = Vec::new();
+
+        for func_decl_node in methods {
+            let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &func_decl_node {
+                AstNode::FunctionDecl(_, node) => node,
+                _ => unreachable!()
+            };
+            let type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
+
+            // Create temporary "scope" to capture function's type_args, and...
+            let mut fn_type_arg_names = Vec::new();
+            let mut scope = Scope::new(ScopeKind::TypeDef);
+            for fn_type_arg in fn_type_args {
+                let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
+                if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
+                    return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
+                }
+                fn_type_arg_names.push(fn_type_arg_name.clone());
+                scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
+            }
+            self.scopes.push(scope);
+
+            let ret_type = match ret_type {
+                None => return Err(TypecheckerError::MissingRequiredTypeAnnotation { token: name.clone() }),
+                Some(ret_type_ident) => self.type_from_type_ident(ret_type_ident)?,
+            };
+
+            let mut is_static = true;
+            let mut arg_types = Vec::new();
+            for (ident, type_ident, default_value) in args {
+                match ident {
+                    Token::Self_(_) => is_static = false,
+                    ident @ _ => {
+                        let arg_type = match type_ident {
+                            None => match default_value {
+                                None => unreachable!(), // This should be caught during parsing
+                                Some(default_value) => {
+                                    let default_value = self.visit(default_value.clone())?;
+                                    default_value.get_type()
+                                }
+                            },
+                            Some(type_ident) => self.type_from_type_ident(type_ident)?,
+                        };
+                        arg_types.push((Token::get_ident_name(ident).clone(), arg_type.clone(), default_value.is_some()));
+                    }
+                }
+            }
+
+            let fn_name = Token::get_ident_name(name).clone();
+            let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
+            // let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+            if is_static {
+                // TODO: Handle static methods referencing type's type_args
+                // typedef.static_fields.push((fn_name, fn_type, true))
+                static_fields.push((fn_name, fn_type, true))
+            } else {
+                // typedef.methods.push((fn_name, fn_type))
+                typed_methods.push((fn_name, fn_type))
+            }
+            // ...pop off the temporary scope here.
+            self.scopes.pop();
+        }
+
+        Ok((static_fields, typed_methods))
+    }
+
+    fn typecheck_typedef_methods_phase_2(
+        &mut self,
+        is_enum: bool,
+        methods: Vec<AstNode>,
+        field_names: HashMap<String, Token>,
+    ) -> Result<(/* static_fields: */ Vec<(Token, Type, Option<TypedAstNode>)>, /* typed_methods: */ Vec<(String, TypedAstNode)>), TypecheckerError> {
+        let mut method_names = HashMap::<String, Token>::new();
+        let mut static_fields = Vec::new();
+        let mut typed_methods = Vec::new();
+        for func_decl_node in methods {
+            let name_tok = match &func_decl_node {
+                AstNode::FunctionDecl(_, FunctionDeclNode { name, .. }) => name.clone(),
+                _ => unreachable!()
+            };
+            let name = Token::get_ident_name(&name_tok).clone();
+
+            if let Some(orig_ident) = method_names.get(&name) {
+                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: false, orig_is_enum_variant: false });
+            } else if let Some(orig_ident) = field_names.get(&name) {
+                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: !is_enum, orig_is_enum_variant: is_enum });
+            }
+
+            method_names.insert(name.clone(), name_tok.clone());
+
+            let typed_func_decl = self.visit(func_decl_node)?;
+            match &typed_func_decl {
+                TypedAstNode::FunctionDecl(tok, TypedFunctionDeclNode { name, args, .. }) => {
+                    let name = Token::get_ident_name(&name);
+                    let is_static = args.iter()
+                        .find(|(ident, _, _)| if let Token::Self_(_) = ident { true } else { false })
+                        .is_none();
+                    if is_static {
+                        let cur_typedef = match &self.cur_typedef {
+                            Some(Type::Reference(name, _)) => self.referencable_types.get(name),
+                            Some(t) => Some(t),
+                            None => None
+                        };
+                        let cur_typedef_static_fields = match cur_typedef {
+                            Some(Type::Struct(StructType { static_fields, .. })) |
+                            Some(Type::Enum(EnumType { static_fields, .. })) => static_fields,
+                            _ => unreachable!("cur_typedef should be present")
+                        };
+                        let fn_type = cur_typedef_static_fields.iter()
+                            .find(|(field_name, _, _)| &name == field_name)
+                            .map(|(_, typ, _)| typ.clone())
+                            .unwrap();
+                        static_fields.push((tok.clone(), fn_type, Some(typed_func_decl)));
+                    } else {
+                        typed_methods.push((name, typed_func_decl));
+                    }
+                }
+                _ => unreachable!()
+            };
+        }
+
+        Ok((static_fields, typed_methods))
     }
 }
 
@@ -912,7 +1046,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // reference we must look it up by name in self.referencable_types. This level of indirection
         // allows for cyclic types.
         let typeref = Type::Reference(new_type_name.clone(), vec![]);
-        let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
+        let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
         self.add_binding(&new_type_name, &name, &binding_type, false);
         self.add_type(new_type_name.clone(), None, typeref.clone());
 
@@ -932,7 +1066,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // that Reference as the cur_typedef
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         let typeref = Type::Reference(new_type_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
-        *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()));
+        *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
         self.cur_typedef = Some(typeref);
 
         // Insert Generics for all type_args present
@@ -958,7 +1092,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 let field_type = self.type_from_type_ident(&field_type)?;
                 let field_name_str = Token::get_ident_name(&field_name);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
-                    return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: field_name, orig_is_field: true });
+                    return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: field_name, orig_is_field: true, orig_is_enum_variant: false });
                 } else {
                     field_names.insert(field_name_str.clone(), field_name.clone());
                 }
@@ -972,64 +1106,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             .map(|(name, typ, default_value_node)| (Token::get_ident_name(name).clone(), typ.clone(), default_value_node.is_some()))
             .collect();
 
-        for func_decl_node in &methods {
-            let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &func_decl_node {
-                AstNode::FunctionDecl(_, node) => node,
-                _ => unreachable!()
-            };
-            let struct_type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
-
-            // Create temporary "scope" to capture function's type_args, and...
-            let mut fn_type_arg_names = Vec::new();
-            let mut scope = Scope::new(ScopeKind::TypeDef);
-            for fn_type_arg in fn_type_args {
-                let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
-                if let Some(orig_ident) = struct_type_args.get(&fn_type_arg_name) {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
-                }
-                fn_type_arg_names.push(fn_type_arg_name.clone());
-                scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
-            }
-            self.scopes.push(scope);
-
-            let ret_type = match ret_type {
-                None => return Err(TypecheckerError::MissingRequiredTypeAnnotation { token: name.clone() }),
-                Some(ret_type_ident) => self.type_from_type_ident(ret_type_ident)?,
-            };
-
-            let mut is_static = true;
-            let mut arg_types = Vec::new();
-            for (ident, type_ident, default_value) in args {
-                match ident {
-                    Token::Self_(_) => is_static = false,
-                    ident @ _ => {
-                        let arg_type = match type_ident {
-                            None => match default_value {
-                                None => unreachable!(), // This should be caught during parsing
-                                Some(default_value) => {
-                                    let default_value = self.visit(default_value.clone())?;
-                                    default_value.get_type()
-                                }
-                            },
-                            Some(type_ident) => self.type_from_type_ident(type_ident)?,
-                        };
-                        arg_types.push((Token::get_ident_name(ident).clone(), arg_type.clone(), default_value.is_some()));
-                    }
-                }
-            }
-
-            let fn_name = Token::get_ident_name(name).clone();
-            let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
-            let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
-            if is_static {
-                // TODO: Handle static methods referencing type's type_args
-                typedef.static_fields.push((fn_name, fn_type, true))
-            } else {
-                typedef.methods.push((fn_name, fn_type))
-            }
-            // ...pop off the temporary scope here.
-            self.scopes.pop();
-        }
+        let (static_methods, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
+        let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+        typedef.static_fields = static_methods;
+        typedef.methods = typed_methods;
 
         // ------------------------  End First-pass Type Gathering  ------------------------ \\
         // --- Now that the current type has been made available to the environment, we  --- \\
@@ -1058,54 +1138,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields: typed_fields, static_fields: vec![], methods: vec![] });
         *node = Some(type_decl_node);
 
-        let mut method_names = HashMap::<String, Token>::new();
-        let mut typed_methods = Vec::new();
-        let mut static_fields = Vec::new();
-        for func_decl_node in methods {
-            let name_tok = match &func_decl_node {
-                AstNode::FunctionDecl(_, FunctionDeclNode { name, .. }) => name.clone(),
-                _ => unreachable!()
-            };
-            let name = Token::get_ident_name(&name_tok).clone();
-
-            if let Some(orig_ident) = method_names.get(&name) {
-                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: false });
-            } else if let Some(orig_ident) = field_names.get(&name) {
-                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: true });
-            }
-
-            method_names.insert(name.clone(), name_tok.clone());
-
-            let typed_func_decl = self.visit(func_decl_node)?;
-            match &typed_func_decl {
-                TypedAstNode::FunctionDecl(tok, TypedFunctionDeclNode { name, args, .. }) => {
-                    let name = Token::get_ident_name(&name);
-                    let is_static = args.iter()
-                        .find(|(ident, _, _)| if let Token::Self_(_) = ident { true } else { false })
-                        .is_none();
-                    if is_static {
-                        let cur_typedef = match &self.cur_typedef {
-                            Some(Type::Reference(name, _)) => self.referencable_types.get(name),
-                            Some(t) => Some(t),
-                            None => None
-                        };
-                        let cur_typedef_static_fields = match cur_typedef {
-                            Some(Type::Struct(StructType { static_fields, .. })) => static_fields,
-                            _ => unreachable!("cur_typedef should be present")
-                        };
-                        let fn_type = cur_typedef_static_fields.iter()
-                            .find(|(field_name, _, _)| &name == field_name)
-                            .map(|(_, typ, _)| typ.clone())
-                            .unwrap();
-                        static_fields.push((tok.clone(), fn_type, Some(typed_func_decl)));
-                    } else {
-                        typed_methods.push((name, typed_func_decl));
-                    }
-                }
-                _ => unreachable!()
-            };
-        }
-
+        let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(false, methods, field_names)?;
         if let (_, Some(TypedAstNode::TypeDecl(_, type_decl_node))) = self.get_type_mut(&new_type_name).unwrap() {
             type_decl_node.static_fields = static_fields;
             type_decl_node.methods = typed_methods;
@@ -1116,6 +1149,124 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         // Return type_decl_node for type
         Ok(self.get_type(&new_type_name).unwrap().1.unwrap())
+    }
+
+    fn visit_enum_decl(&mut self, token: Token, node: EnumDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+        if self.scopes.len() != 1 {
+            return Err(TypecheckerError::InvalidTypeDeclDepth { token });
+        }
+
+        let EnumDeclNode { name, variants, methods, .. } = node;
+        let new_enum_name = Token::get_ident_name(&name);
+
+        if let Some((_, typed_decl_node)) = self.get_type(&new_enum_name) {
+            let token = typed_decl_node.map(|node| node.get_token().clone());
+            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
+        }
+
+        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // ---    See comment in visit_type_decl above, the process here is similar      --- \\
+        // --------------------------------------------------------------------------------- \\
+
+        // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
+        // reference we must look it up by name in self.referencable_types. This level of indirection
+        // allows for cyclic types.
+        let typeref = Type::Reference(new_enum_name.clone(), vec![]);
+        let binding_type = Type::Type(new_enum_name.clone(), Box::new(typeref.clone()), true);
+        self.add_binding(&new_enum_name, &name, &binding_type, false);
+        self.add_type(new_enum_name.clone(), None, typeref.clone());
+
+        let typedef = EnumType { name: new_enum_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
+        self.referencable_types.insert(new_enum_name.clone(), Type::Enum(typedef));
+
+        let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
+        let typeref = Type::Reference(new_enum_name.clone(), vec![]);
+        *binding_type = Type::Type(new_enum_name.clone(), Box::new(typeref.clone()), true);
+        self.cur_typedef = Some(typeref);
+
+        let scope = Scope::new(ScopeKind::TypeDef);
+        self.scopes.push(scope);
+
+        let mut variant_names = HashMap::<String, Token>::new();
+        let mut typed_variants = Vec::new();
+        for (name, args) in &variants {
+            let variant_name = Token::get_ident_name(name).clone();
+            if let Some(orig_ident) = variant_names.get(&variant_name) {
+                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name.clone(), orig_is_field: false, orig_is_enum_variant: true });
+            } else {
+                variant_names.insert(variant_name.clone(), name.clone());
+            }
+            let enum_ret_type = self.cur_typedef.clone().unwrap();
+            let variant_type = match args {
+                None => enum_ret_type,
+                Some(args) => {
+                    // Handle the case where a variant arg's default value is itself a variant - since
+                    // we haven't finished typechecking variants yet, that will fail. This is a dirty hack
+                    // to still reuse the `visit_fn_args` method while forcibly not checking args' default values.
+                    let faked_args = args.clone().into_iter()
+                        .map(|(tok, ident, _)| (tok, ident, None))
+                        .collect();
+                    let faked_args = self.visit_fn_args(faked_args, false, false)?;
+                    Type::Fn(FnType {
+                        type_args: vec![],
+                        ret_type: Box::new(enum_ret_type),
+                        arg_types: faked_args.iter().zip(args.iter())
+                            .map(|((arg_name, arg_type, _), (_, _, default_value_node))| {
+                                let arg_name = Token::get_ident_name(arg_name).clone();
+                                // Since we forced the default_value_node to be None in `faked_args`, we need to
+                                // obtain the `is_some` status from the original arg. This is gross
+                                (arg_name, arg_type.clone(), default_value_node.is_some())
+                            }).collect(),
+                    })
+                }
+            };
+            typed_variants.push((variant_name, variant_type.clone()));
+        }
+
+        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&new_enum_name) { typedef } else { unreachable!() };
+        typedef.variants = typed_variants.clone();
+
+        let type_args = vec![];
+        let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
+        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&new_enum_name) { typedef } else { unreachable!() };
+        typedef.static_fields = static_fields;
+        typedef.methods = typed_methods;
+
+        // ------------------------  End First-pass Type Gathering  ------------------------ \\
+        // --- Now that the current type has been made available to the environment, we  --- \\
+        // --- can make references to this type's own fields/methods/static methods it.  --- \\
+        // --------------------------------------------------------------------------------- \\
+        // ----------------------- Begin Variant/Method Typechecking ----------------------- \\
+        let mut variant_nodes = Vec::new();
+        for ((name, args), (_, variant_type)) in variants.into_iter().zip(typed_variants) {
+            let variant_node = match args {
+                None => EnumVariantKind::Basic,
+                Some(args) => {
+                    let args = self.visit_fn_args(args, false, false)?;
+                    EnumVariantKind::Constructor(args)
+                }
+            };
+            variant_nodes.push((name, variant_type, variant_node));
+        }
+
+        // Record EnumDecl for enum, registering the freshly-typed variants. Later on, we'll mutate
+        // this EnumDecl node and add static fields and methods, but this allows for methods to reference
+        // variants of this current enum within their bodies.
+        let (_, node) = self.get_type_mut(&new_enum_name).unwrap();
+        let enum_decl_node = TypedAstNode::EnumDecl(token, TypedEnumDeclNode { name, variants: variant_nodes, static_fields: vec![], methods: vec![] });
+        *node = Some(enum_decl_node);
+
+        let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(true, methods, variant_names)?;
+        if let (_, Some(TypedAstNode::EnumDecl(_, enum_decl_node))) = self.get_type_mut(&new_enum_name).unwrap() {
+            enum_decl_node.static_fields = static_fields;
+            enum_decl_node.methods = typed_methods;
+        } else { unreachable!("We should have just defined this node up above"); }
+
+        self.scopes.pop();
+        self.cur_typedef = None;
+
+        // Return enum_decl_node for enum
+        Ok(self.get_type(&new_enum_name).unwrap().1.unwrap())
     }
 
     fn visit_ident(&mut self, token: Token, type_args: Option<Vec<TypeIdentifier>>) -> Result<TypedAstNode, TypecheckerError> {
@@ -1158,7 +1309,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             match zelf.resolve_ref_type(typ) {
                 Type::Fn(FnType { type_args, .. }) => type_args,
                 Type::Struct(StructType { type_args, .. }) => type_args.iter().map(|a| a.0.clone()).collect(),
-                Type::Type(_, typ) => get_type_generics(zelf, &*typ),
+                Type::Type(_, typ, _) => get_type_generics(zelf, &*typ),
                 _ => vec![]
             }
         }
@@ -1549,7 +1700,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: ret_type, target: Box::new(target), args: typed_args }))
             }
-            Type::Type(_, t) => match self.resolve_ref_type(&*t) {
+            Type::Type(_, t, _) => match self.resolve_ref_type(&*t) {
                 Type::Struct(struct_type) => {
                     let StructType { name, fields: expected_fields, type_args, .. } = &struct_type;
                     let target_token = target.get_token().clone();
@@ -1787,14 +1938,32 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 (field_data, generics)
             }
             Type::String => (NativeString::get_field_or_method(&field_name), HashMap::new()),
-            Type::Type(_, typ) => match self.resolve_ref_type(&*typ) {
+            Type::Type(_, typ, _) => match self.resolve_ref_type(&*typ) {
                 Type::Struct(StructType { static_fields, .. }) => {
                     let field_data = static_fields.iter().enumerate()
                         .find(|(_, (name, _, _))| &field_name == name)
                         .map(|(idx, (_, typ, _))| (idx, typ.clone()));
                     (field_data, HashMap::new())
                 }
+                Type::Enum(EnumType { variants, static_fields, .. }) => {
+                    let num_variants = variants.len();
+                    let field_data = variants.iter().enumerate()
+                        .find(|(_, (variant_name, _))| &field_name == variant_name)
+                        .map(|(idx, (_, typ))| (idx, typ.clone()))
+                        .or_else(|| {
+                            static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
+                                if &field_name == name { Some((idx + num_variants, typ.clone())) } else { None }
+                            })
+                        });
+                    (field_data, HashMap::new())
+                }
                 _ => unimplemented!()
+            }
+            Type::Enum(EnumType { methods, .. }) => {
+                let field_data = methods.iter().enumerate().find_map(|(idx, (name, typ))| {
+                    if &field_name == name { Some((idx, typ.clone())) } else { None }
+                });
+                (field_data, HashMap::new())
             }
             _ => (None, HashMap::new())
         };
@@ -3158,7 +3327,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = typecheck("type Person { age: Int, age: String }").unwrap_err();
-        let expected = TypecheckerError::DuplicateField { orig_ident: ident_token!((1, 15), "age"), ident: ident_token!((1, 25), "age"), orig_is_field: true };
+        let expected = TypecheckerError::DuplicateField { orig_ident: ident_token!((1, 15), "age"), ident: ident_token!((1, 25), "age"), orig_is_field: true, orig_is_enum_variant: false };
         assert_eq!(expected, error);
 
         let error = typecheck("type Person { age: String = true }").unwrap_err();
@@ -3358,6 +3527,7 @@ mod tests {
             orig_ident: ident_token!((2, 6), "hello"),
             ident: ident_token!((3, 6), "hello"),
             orig_is_field: false,
+            orig_is_enum_variant: false,
         };
         assert_eq!(expected, error);
 
@@ -3646,6 +3816,291 @@ mod tests {
             actual_type: list_struct_type,
             expected: 1,
             actual: 2,
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_enum_decl() -> TestResult {
+        let typed_ast = typecheck("enum Temp { Hot, Cold }")?;
+        let expected = TypedAstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            TypedEnumDeclNode {
+                name: ident_token!((1, 6), "Temp"),
+                static_fields: vec![],
+                methods: vec![],
+                variants: vec![
+                    (
+                        ident_token!((1, 13), "Hot"),
+                        Type::Reference("Temp".to_string(), vec![]),
+                        EnumVariantKind::Basic
+                    ),
+                    (
+                        ident_token!((1, 18), "Cold"),
+                        Type::Reference("Temp".to_string(), vec![]),
+                        EnumVariantKind::Basic
+                    ),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("\
+          enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
+        ")?;
+        let expected = TypedAstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            TypedEnumDeclNode {
+                name: ident_token!((1, 6), "AngleMode"),
+                static_fields: vec![],
+                methods: vec![],
+                variants: vec![
+                    (
+                        ident_token!((1, 18), "Radians"),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![("rads".to_string(), Type::Float, false)],
+                            ret_type: Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                        }),
+                        EnumVariantKind::Constructor(vec![
+                            (ident_token!((1, 26), "rads"), Type::Float, None)
+                        ])
+                    ),
+                    (
+                        ident_token!((1, 40), "Degrees"),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![("degs".to_string(), Type::Float, false)],
+                            ret_type: Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                        }),
+                        EnumVariantKind::Constructor(vec![
+                            (ident_token!((1, 48), "degs"), Type::Float, None)
+                        ])
+                    ),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Verify that constructor variants can have default arg values that are themselves enum variants
+        let typed_ast = typecheck("\
+          enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
+        ")?;
+        let expected = TypedAstNode::EnumDecl(
+            Token::Enum(Position::new(1, 1)),
+            TypedEnumDeclNode {
+                name: ident_token!((1, 6), "Color"),
+                methods: vec![],
+                static_fields: vec![],
+                variants: vec![
+                    (
+                        ident_token!((1, 14), "Red"),
+                        Type::Reference("Color".to_string(), vec![]),
+                        EnumVariantKind::Basic
+                    ),
+                    (
+                        ident_token!((1, 19), "Darken"),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![
+                                ("base".to_string(), Type::Reference("Color".to_string(), vec![]), true),
+                                ("amount".to_string(), Type::Float, true),
+                            ],
+                            ret_type: Box::new(Type::Reference("Color".to_string(), vec![])),
+                        }),
+                        EnumVariantKind::Constructor(vec![
+                            (
+                                ident_token!((1, 26), "base"),
+                                Type::Reference("Color".to_string(), vec![]),
+                                Some(TypedAstNode::Accessor(
+                                    Token::Dot(Position::new(1, 45)),
+                                    TypedAccessorNode {
+                                        typ: Type::Reference("Color".to_string(), vec![]),
+                                        target: Box::new(TypedAstNode::Identifier(
+                                            ident_token!((1, 40), "Color"),
+                                            TypedIdentifierNode {
+                                                typ: Type::Type(
+                                                    "Color".to_string(),
+                                                    Box::new(Type::Reference("Color".to_string(), vec![])),
+                                                    true
+                                                ),
+                                                name: "Color".to_string(),
+                                                is_mutable: false,
+                                                scope_depth: 0,
+                                            },
+                                        )),
+                                        field_idx: 0,
+                                        field_name: "Red".to_string(),
+                                        is_opt_safe: false,
+                                    },
+                                ))
+                            ),
+                            (
+                                ident_token!((1, 51), "amount"),
+                                Type::Float,
+                                Some(float_literal!((1, 67), 10.0))
+                            )
+                        ])
+                    ),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_enum_decl_errors() {
+        let error = typecheck("enum Temp { Hot, Hot }").unwrap_err();
+        let expected = TypecheckerError::DuplicateField {
+            ident: ident_token!((1, 18), "Hot"),
+            orig_ident: ident_token!((1, 13), "Hot"),
+            orig_is_field: false,
+            orig_is_enum_variant: true,
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Temp { Hot, Cold }\n\
+          enum Temp { Hot, Cold, Tepid }\
+        ").unwrap_err();
+        let expected = TypecheckerError::DuplicateType {
+            ident: ident_token!((2, 6), "Temp"),
+            orig_ident: Some(Token::Enum(Position::new(1, 1))),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Temp { Hot(temp: Int, temp: Int), Cold }\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::DuplicateBinding {
+            ident: ident_token!((1, 28), "temp"),
+            orig_ident: ident_token!((1, 17), "temp"),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Temp { Hot(self), Cold }\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidSelfParam {
+            token: Token::Self_(Position::new(1, 17))
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_variants() {
+        let is_ok = typecheck("\
+          enum Scale { Fahrenheit, Celsius }\n\
+          func isBoiling(amount: Float, scale: Scale) = amount\n\
+          isBoiling(212.0, Scale.Fahrenheit)\
+        ").is_ok();
+        assert!(is_ok);
+
+        let is_ok = typecheck("\
+          enum Scale { Fahrenheit(degs: Float), Celsius(degs: Float) }\n\
+          func isBoiling(scale: Scale) = true\n\
+          isBoiling(Scale.Fahrenheit(degs: 212.0))\
+        ").is_ok();
+        assert!(is_ok);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_variants_errors() {
+        let error = typecheck("\
+          enum Scale { Fahrenheit, Celsius }\n\
+          func isBoiling(amount: Float, scale: Scale = 123) = amount\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(2, 46), 123),
+            actual: Type::Int,
+            expected: Type::Reference("Scale".to_string(), vec![]),
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Scale { Fahrenheit(degs: Float), Celsius(degs: Float) }\n\
+          func isBoiling(scale: Scale) = true\n\
+          isBoiling(Scale.Fahrenheit(degs: \"212.0\"))\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::String(Position::new(3, 34), "212.0".to_string()),
+            actual: Type::String,
+            expected: Type::Float,
+        };
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_methods() {
+        let is_ok = typecheck("\
+          enum Color {\n\
+            Red\n\
+            Green\n\
+            func hexCode(self): String = \"0xffffff\"\n\
+          }\n\
+          val hex: String = Color.Red.hexCode()\
+        ").is_ok();
+        assert!(is_ok);
+
+        // Test static methods
+        let is_ok = typecheck("\
+          enum Color {\n\
+            Red\n\
+            Green\n\
+            func gray(): String = \"0x777\"\n\
+          }\n\
+          val hex: String = Color.gray()\
+        ").is_ok();
+        assert!(is_ok);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_methods_errors() {
+        let error = typecheck("\
+          enum Color {\n\
+            Red\n\
+            Green\n\
+            func hexCode(self): String = \"0xffffff\"\n\
+          }\n\
+          Color.Red.hex()\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((6, 11), "hex"),
+            target_type: Type::Reference("Color".to_string(), vec![])
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Color {\n\
+            Red\n\
+            Green\n\
+            func black(self): String = \"0x000000\"\n\
+          }\n\
+          Color.white()\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((6, 7), "white"),
+            target_type: Type::Type(
+                "Color".to_string(),
+                Box::new(Type::Reference("Color".to_string(), vec![])),
+                true
+            )
+        };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Color {\n\
+            Red\n\
+            func Red(): String = \"0xFF0000\"\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::DuplicateField {
+            ident: ident_token!((3, 6), "Red"),
+            orig_ident: ident_token!((2, 1), "Red"),
+            orig_is_field: false,
+            orig_is_enum_variant: true,
         };
         assert_eq!(expected, error);
     }
@@ -4595,7 +5050,7 @@ mod tests {
                     TypedAstNode::Identifier(
                         ident_token!((2, 1), "Person"),
                         TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
+                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
                             name: "Person".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
@@ -4630,7 +5085,7 @@ mod tests {
                     TypedAstNode::Identifier(
                         ident_token!((2, 1), "Person"),
                         TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
+                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
                             name: "Person".to_string(),
                             is_mutable: false,
                             scope_depth: 0,
@@ -5225,7 +5680,7 @@ mod tests {
                 target: Box::new(TypedAstNode::Identifier(
                     ident_token!((2, 1), "Person"),
                     TypedIdentifierNode {
-                        typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![]))),
+                        typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
                         name: "Person".to_string(),
                         scope_depth: 0,
                         is_mutable: false,

@@ -1,13 +1,28 @@
-// import std/math as Math
-// Math.cos(45)
-//import cos from std/math
-//cos(45)
+enum Color {
+  Red
+  Green
+  Blue
+  RGB(red: Int, green: Int, blue: Int)
 
-// std/math.abra
-// export native func cos(angle: Int | Float): Float
+  func white(): Color = Color.RGB(red: 255, green: 255, blue: 255)
 
-val i: Int | Float = 0
+  func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
 
-func cos<T>(angle: T | Int | Float) = angle
+  func hex(self): String {
+    if self == Color.Red "0xFF0000"
+    else if self == Color.Green "0x00FF00"
+    else if self == Color.Blue "0x0000FF"
+    else if self == Color.white() "0xFFFFFF"
+    else if self == Color.black() "0x000000"
+    else "TODO: Implement pattern matching"
+  }
+}
 
-val x = cos(i)
+[
+  Color.Red,
+  Color.Green,
+  Color.Blue,
+  Color.black(),
+  Color.white(),
+  Color.RGB(1, 2, 3)
+].map(c => c.hex())

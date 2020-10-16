@@ -192,7 +192,7 @@ mod test {
         let (module, _) = compile(typed_ast).unwrap();
 
         let mut vm = VM::new(module, VMContext::default());
-        vm.run(false).unwrap()
+        vm.run().unwrap()
     }
 
     #[test]
@@ -296,6 +296,7 @@ mod test {
         assert_eq!(Some(expected), result);
 
         // Verify closures work
+        // TODO: See #172
         let result = interpret(r#"
           var total = 0
           val arr = [1, 2, 3, 4]
@@ -306,6 +307,16 @@ mod test {
           arr2.concat([total])
         "#);
         let expected = int_array![3, 6, 9, 12, 10];
+        assert_eq!(Some(expected), result);
+
+        // Verify deep call stack initiated from native fn call
+        let result = interpret(r#"
+          func mult1(a: Int) = a * 1
+          func sub1(a: Int) = mult1(a) - 1
+          func sameNum(a: Int) = sub1(a) + 1
+          [1, 2].map(i => sameNum(i))
+        "#);
+        let expected = int_array![1, 2];
         assert_eq!(Some(expected), result);
     }
 

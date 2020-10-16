@@ -33,6 +33,24 @@ pub struct TypeValue {
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct EnumValue {
+    pub name: String,
+    pub variants: Vec<(String, EnumVariantValue)>,
+    pub methods: Vec<(String, FnValue)>,
+    pub static_fields: Vec<(String, FnValue)>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct EnumVariantValue {
+    pub enum_name: String,
+    pub name: String,
+    pub idx: usize,
+    pub methods: Vec<Value>,
+    pub arity: usize,
+    pub values: Option<Vec<Value>>,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -46,6 +64,7 @@ pub enum Value {
     Closure(ClosureValue),
     NativeFn(NativeFn),
     Type(TypeValue),
+    Enum(EnumValue),
     Nil,
 }
 
@@ -61,6 +80,7 @@ impl Value {
             Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
             Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
+            Value::Enum(EnumValue { name, .. }) => format!("<enum {}>", name),
             Value::Nil => format!("None"),
         }
     }
@@ -84,6 +104,11 @@ impl Value {
         let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
+
+    pub fn new_enum_variant_obj(evv: EnumVariantValue) -> Value {
+        let inst = Obj::EnumVariant(evv);
+        Value::Obj(Arc::new(RefCell::new(inst)))
+    }
 }
 
 impl Display for Value {
@@ -101,6 +126,7 @@ impl Display for Value {
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
             Value::Type(TypeValue { name, .. }) => write!(f, "<type {}>", name),
+            Value::Enum(EnumValue { name, .. }) => write!(f, "<enum {}>", name),
             Value::Nil => write!(f, "None"),
         }
     }
@@ -118,6 +144,7 @@ pub enum Obj {
     ArrayObj(Vec<Value>),
     MapObj(HashMap<String, Value>),
     InstanceObj(InstanceObj),
+    EnumVariant(EnumVariantValue),
 }
 
 impl Obj {
@@ -133,6 +160,15 @@ impl Obj {
                 match &*inst.typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
+                }
+            }
+            Obj::EnumVariant(EnumVariantValue { enum_name, name, values, .. }) => {
+                match values {
+                    None => format!("{}.{}", enum_name, name),
+                    Some(values) => {
+                        let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+                        format!("{}.{}({})", enum_name, name, values)
+                    }
                 }
             }
         }
@@ -158,6 +194,28 @@ impl PartialOrd for Obj {
                     }
                     Some(Ordering::Equal)
                 }
+            }
+            (Obj::EnumVariant(evv1), Obj::EnumVariant(evv2)) => {
+                match evv1.idx.cmp(&evv2.idx) {
+                    Ordering::Equal => {}
+                    v @ _ => return Some(v)
+                };
+                match evv1.enum_name.cmp(&evv2.enum_name) {
+                    Ordering::Equal => {}
+                    v @ _ => return Some(v)
+                };
+                if evv1.arity > 0 { // evv2.arity should also be 0
+                    let evv1_values = evv1.values.as_ref().expect("If it has an arity > 0, it should have values");
+                    let evv2_values = evv2.values.as_ref().expect("If it has an arity > 0, it should have values");
+                    for (v1, v2) in evv1_values.iter().zip(evv2_values.iter()) {
+                        if let Some(o) = v1.partial_cmp(&v2) {
+                            if o != Ordering::Equal {
+                                return Some(o);
+                            }
+                        }
+                    }
+                }
+                Some(Ordering::Equal)
             }
             (_, _) => None
         }
