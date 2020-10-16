@@ -889,8 +889,6 @@ impl VM {
                     self.call_stack.pop();
 
                     if is_complete { break Ok(top); }
-
-                    continue;
                 }
             }
         }
