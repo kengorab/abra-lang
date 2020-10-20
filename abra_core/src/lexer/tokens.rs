@@ -42,6 +42,7 @@ pub enum Token {
     #[strum(to_string = "break", serialize = "Break")] Break(Position),
     #[strum(to_string = "for", serialize = "For")] For(Position),
     #[strum(to_string = "in", serialize = "In")] In(Position),
+    #[strum(to_string = "match", serialize = "Match")] Match(Position),
     #[strum(to_string = "type", serialize = "Type")] Type(Position),
     #[strum(to_string = "enum", serialize = "Enum")] Enum(Position),
 
@@ -109,6 +110,7 @@ impl Token {
             Token::Break(pos) |
             Token::For(pos) |
             Token::In(pos) |
+            Token::Match(pos) |
             Token::Type(pos) |
             Token::Enum(pos) |
 
@@ -174,6 +176,7 @@ impl Token {
             Token::Break(pos) => Range::with_length(pos, 4),
             Token::For(pos) => Range::with_length(pos, 2),
             Token::In(pos) => Range::with_length(pos, 1),
+            Token::Match(pos) => Range::with_length(pos, 4),
             Token::Type(pos) => Range::with_length(pos, 3),
             Token::Enum(pos) => Range::with_length(pos, 3),
 
