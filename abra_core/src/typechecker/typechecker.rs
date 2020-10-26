@@ -1,10 +1,10 @@
 use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
 use crate::vm::prelude::Prelude;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -259,6 +259,28 @@ impl Typechecker {
         }
     }
 
+    fn visit_block(&mut self, is_stmt: bool, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+        let len = body.len();
+        body.into_iter().enumerate()
+            .map(|(idx, mut node)| {
+                // If the last node of an if-expression is an if-statement, treat it as an if-expr.
+                // This is due to the fact that if-blocks are only treated as expressions in certain
+                // situations, namely when an expression is already expected. Otherwise, they're parsed
+                // as an if-statement. However, since the last item in an if-expression's block is the
+                // "return value" for that block, the last slot is ALSO a valid place for an expression
+                // to be. This is much more difficult to represent in the parser, so it's done here.
+                if !is_stmt && idx == len - 1 {
+                    if let AstNode::IfStatement(token, if_node) = node {
+                        node = AstNode::IfExpression(token, if_node)
+                    } else if let AstNode::MatchStatement(token, match_node) = node {
+                        node = AstNode::MatchExpression(token, match_node)
+                    }
+                }
+                self.visit(node)
+            })
+            .collect()
+    }
+
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
     fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
@@ -290,47 +312,110 @@ impl Typechecker {
             scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
         }
         self.scopes.push(scope);
-        let if_block_len = if_block.len();
-        let if_block: Result<Vec<_>, _> = if_block.into_iter().enumerate()
-            .map(|(idx, mut node)| {
-                // If the last node of an if-expression is an if-statement, treat it as an if-expr.
-                // This is due to the fact that if-blocks are only treated as expressions in certain
-                // situations, namely when an expression is already expected. Otherwise, they're parsed
-                // as an if-statement. However, since the last item in an if-expression's block is the
-                // "return value" for that block, the last slot is ALSO a valid place for an expression
-                // to be. This is much more difficult to represent in the parser, so it's done here.
-                if !is_stmt && idx == if_block_len - 1 {
-                    if let AstNode::IfStatement(token, if_node) = node {
-                        node = AstNode::IfExpression(token, if_node)
-                    }
-                }
-                self.visit(node)
-            })
-            .collect();
-        let if_block = if_block?;
+        let if_block = self.visit_block(is_stmt, if_block)?;
         self.scopes.pop();
 
-        self.scopes.push(Scope::new(ScopeKind::Block));
         let else_block = match else_block {
             None => None,
-            Some(nodes) => {
-                let else_block_len = nodes.len();
-                let else_block: Result<Vec<_>, _> = nodes.into_iter().enumerate()
-                    .map(|(idx, mut node)| {
-                        if !is_stmt && idx == else_block_len - 1 {
-                            if let AstNode::IfStatement(token, if_node) = node {
-                                node = AstNode::IfExpression(token, if_node)
-                            }
-                        }
-                        self.visit(node)
-                    })
-                    .collect();
-                Some(else_block?)
+            Some(body) => {
+                self.scopes.push(Scope::new(ScopeKind::Block));
+                let else_block = self.visit_block(is_stmt, body)?;
+                self.scopes.pop();
+
+                Some(else_block)
             }
         };
-        self.scopes.pop();
 
+        // Temporarily use Type::Unit as a placeholder, if it's an expression it'll be updated later
         Ok(TypedIfNode { typ: Type::Unit, condition, condition_binding, if_block, else_block })
+    }
+
+    fn flatten_match_case_types(typ: Type) -> Vec<Type> {
+        match typ {
+            Type::Union(opts) => opts.into_iter().flat_map(Self::flatten_match_case_types).collect(),
+            Type::Option(t) => vec![Self::flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
+            _ => vec![typ]
+        }
+    }
+
+    // Called from visit_match_expression and visit_match_statement, but it has to be up here since it's
+    // not part of the AstVisitor trait.
+    fn visit_match_node(&mut self, is_stmt: bool, match_token: &Token, node: MatchNode) -> Result<TypedMatchNode, TypecheckerError> {
+        let MatchNode { target, branches } = node;
+
+        let target = self.visit(*target)?;
+        let target_type = self.resolve_ref_type(&target.get_type());
+
+        let mut possibilities = Self::flatten_match_case_types(target_type);//.into_iter().collect::<HashSet<_>>();
+        let mut seen_wildcard = false;
+
+        let mut typed_branches = Vec::new();
+        for (case, block) in branches {
+            let MatchCase { match_type, case_binding } = case;
+            let (match_type, case_token) = match match_type {
+                MatchCaseType::Ident(ident) => {
+                    if seen_wildcard {
+                        return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
+                    }
+
+                    let t = if let Token::None(_) = &ident {
+                        if possibilities.contains(&Type::Unknown) {
+                            possibilities.remove_item(&Type::Unknown);
+                            Type::Unknown
+                        } else {
+                            return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
+                        }
+                    } else {
+                        let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
+                        let typ = self.type_from_type_ident(&type_ident)?;
+                        if possibilities.contains(&typ) {
+                            possibilities.remove_item(&typ);
+                            typ
+                        } else {
+                            return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
+                        }
+                    };
+                    (t, ident)
+                }
+                MatchCaseType::Compound(_) => todo!(),
+                MatchCaseType::Wildcard(token) => {
+                    if seen_wildcard {
+                        return Err(TypecheckerError::DuplicateMatchCase { token });
+                    }
+                    seen_wildcard = true;
+                    let t = if possibilities.is_empty() {
+                        return Err(TypecheckerError::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
+                    } else if possibilities.len() == 1 {
+                        possibilities.drain(..).next().unwrap()
+                    } else {
+                        Type::Union(possibilities.drain(..).collect())
+                    };
+                    (t, token)
+                }
+            };
+
+            let mut scope = Scope::new(ScopeKind::Block);
+            let case_binding_name = if let Some(ident) = case_binding {
+                let ident_name = Token::get_ident_name(&ident).clone();
+                scope.bindings.insert(ident_name.clone(), ScopeBinding(ident, match_type.clone(), false));
+                Some(ident_name)
+            } else { None };
+
+            if block.is_empty() && !is_stmt {
+                return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
+            }
+            self.scopes.push(scope);
+            let typed_block = self.visit_block(is_stmt, block)?;
+            self.scopes.pop();
+
+            typed_branches.push((match_type, case_binding_name, typed_block));
+        }
+        if !possibilities.is_empty() {
+            return Err(TypecheckerError::NonExhaustiveMatch { token: match_token.clone() });
+        }
+
+        // Temporarily use Type::Unit as a placeholder, if it's an expression it'll be updated later
+        Ok(TypedMatchNode { typ: Type::Unit, target: Box::new(target), branches: typed_branches })
     }
 
     fn visit_fn_args(
@@ -447,6 +532,25 @@ impl Typechecker {
                                         // it had been Unit? (eg. an if-expr missing an else branch)
                                         typed_if_node.typ = Type::Unit;
                                         Ok(TypedAstNode::IfStatement(token, typed_if_node))
+                                    } else { unreachable!() }
+                                }
+                                _ => Ok(typed_node)
+                            }
+                        }
+                        AstNode::MatchStatement(token, match_node) => {
+                            let node = AstNode::MatchExpression(token.clone(), match_node);
+                            let typed_node = self.visit(node)?;
+
+                            let mut typ = typed_node.get_type();
+                            while let Type::Option(inner) = typ { typ = *inner };
+
+                            match typ {
+                                Type::Unit => {
+                                    if let TypedAstNode::MatchExpression(token, mut typed_match_node) = typed_node {
+                                        // Explicitly set the underlying node's type to Unit, in case
+                                        // it had been Unit? (eg. an if-expr missing an else branch)
+                                        typed_match_node.typ = Type::Unit;
+                                        Ok(TypedAstNode::MatchStatement(token, typed_match_node))
                                     } else { unreachable!() }
                                 }
                                 _ => Ok(typed_node)
@@ -890,7 +994,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             })
         }?;
         if typ.is_unknown(&self.referencable_types) {
-            return Err(TypecheckerError::ForbiddenUnknownType { token: ident, node: typed_expr });
+            return Err(TypecheckerError::ForbiddenVariableType { token: ident, typ: Type::Unknown });
+        } else if typ.is_unit(&self.referencable_types) {
+            return Err(TypecheckerError::ForbiddenVariableType { token: ident, typ: Type::Unit });
         }
 
         self.add_binding(&name, &ident, &typ, is_mutable);
@@ -1536,14 +1642,34 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         Ok(TypedAstNode::IfExpression(token.clone(), node))
     }
 
-    fn visit_match_statement(&mut self, _token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
-        dbg!(node);
-        todo!()
+    fn visit_match_statement(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+        let node = self.visit_match_node(true, &token, node)?;
+        Ok(TypedAstNode::MatchStatement(token, node))
     }
 
-    fn visit_match_expression(&mut self, _token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
-        dbg!(node);
-        todo!()
+    fn visit_match_expression(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+        let mut node = self.visit_match_node(false, &token, node)?;
+
+        let mut typ = None;
+        for (_, _, ref mut block) in &mut node.branches {
+            if let Some(typ) = &typ {
+                let mut block_last = block.last_mut().expect("A case should have a non-empty body");
+                let block_typ = block_last.get_type();
+                if !self.are_types_equivalent(&mut block_last, &typ)? {
+                    return Err(TypecheckerError::MatchBranchMismatch {
+                        token: block_last.get_token().clone(),
+                        expected: typ.clone(),
+                        actual: block_typ,
+                    });
+                }
+            } else {
+                let block_typ = block.last().map(|n| n.get_type()).expect("A case should have a non-empty body");
+                typ = Some(block_typ)
+            }
+        }
+
+        node.typ = typ.unwrap();
+        Ok(TypedAstNode::MatchExpression(token, node))
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -2887,10 +3013,7 @@ mod tests {
                         Token::Plus(Position::new(1, 22)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(TypedAstNode::Identifier(
-                                ident_token!((1, 20), "a"),
-                                TypedIdentifierNode { typ: Type::Int, name: "a".to_string(), is_mutable: false, scope_depth: 1 },
-                            )),
+                            left: Box::new(identifier!((1, 20), "a", Type::Int, 1)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((1, 24), 1)),
                         })
@@ -2929,15 +3052,7 @@ mod tests {
                             scope_depth: 1,
                         },
                     ),
-                    TypedAstNode::Identifier(
-                        Token::Ident(Position::new(1, 29), "a".to_string()),
-                        TypedIdentifierNode {
-                            typ: Type::Array(Box::new(Type::Int)),
-                            name: "a".to_string(),
-                            is_mutable: false,
-                            scope_depth: 1,
-                        },
-                    )
+                    identifier!((1, 29), "a", Type::Array(Box::new(Type::Int)), 1)
                 ],
                 scope_depth: 0,
                 is_recursive: false,
@@ -3301,15 +3416,7 @@ mod tests {
           node\n\
         ");
 
-        let expected = TypedAstNode::Identifier(
-            ident_token!((6, 1), "node"),
-            TypedIdentifierNode {
-                typ: Type::Reference("Node".to_string(), vec![]),
-                name: "node".to_string(),
-                is_mutable: false,
-                scope_depth: 0,
-            },
-        );
+        let expected = identifier!((6, 1), "node", Type::Reference("Node".to_string(), vec![]), 0);
         assert_eq!(expected, typed_ast[2]);
         let expected_type = Type::Struct(StructType {
             name: "Node".to_string(),
@@ -3926,18 +4033,15 @@ mod tests {
                                     Token::Dot(Position::new(1, 45)),
                                     TypedAccessorNode {
                                         typ: Type::Reference("Color".to_string(), vec![]),
-                                        target: Box::new(TypedAstNode::Identifier(
-                                            ident_token!((1, 40), "Color"),
-                                            TypedIdentifierNode {
-                                                typ: Type::Type(
-                                                    "Color".to_string(),
-                                                    Box::new(Type::Reference("Color".to_string(), vec![])),
-                                                    true
-                                                ),
-                                                name: "Color".to_string(),
-                                                is_mutable: false,
-                                                scope_depth: 0,
-                                            },
+                                        target: Box::new(identifier!(
+                                            (1, 40),
+                                            "Color",
+                                            Type::Type(
+                                                "Color".to_string(),
+                                                Box::new(Type::Reference("Color".to_string(), vec![])),
+                                                true,
+                                            ),
+                                            0
                                         )),
                                         field_idx: 0,
                                         field_name: "Red".to_string(),
@@ -4078,7 +4182,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((6, 11), "hex"),
-            target_type: Type::Reference("Color".to_string(), vec![])
+            target_type: Type::Reference("Color".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 
@@ -4095,8 +4199,8 @@ mod tests {
             target_type: Type::Type(
                 "Color".to_string(),
                 Box::new(Type::Reference("Color".to_string(), vec![])),
-                true
-            )
+                true,
+            ),
         };
         assert_eq!(expected, error);
 
@@ -4128,15 +4232,7 @@ mod tests {
                     scope_depth: 0,
                 },
             ),
-            TypedAstNode::Identifier(
-                ident_token!((2, 1), "abc"),
-                TypedIdentifierNode {
-                    typ: Type::Int,
-                    name: "abc".to_string(),
-                    is_mutable: false,
-                    scope_depth: 0,
-                },
-            )
+            identifier!((2, 1), "abc", Type::Int, 0)
         ];
         assert_eq!(expected, typed_ast);
         Ok(())
@@ -4176,15 +4272,7 @@ mod tests {
                 TypedAssignmentNode {
                     kind: AssignmentTargetKind::Identifier,
                     typ: Type::Int,
-                    target: Box::new(TypedAstNode::Identifier(
-                        ident_token!((2, 1), "abc"),
-                        TypedIdentifierNode {
-                            typ: Type::Int,
-                            name: "abc".to_string(),
-                            is_mutable: true,
-                            scope_depth: 0,
-                        },
-                    )),
+                    target: Box::new(identifier_mut!((2, 1), "abc", Type::Int, 0)),
                     expr: Box::new(int_literal!((2, 7), 456)),
                 },
             )
@@ -4205,15 +4293,7 @@ mod tests {
                     Token::LBrack(Position::new(2, 4), false),
                     TypedIndexingNode {
                         typ: Type::Option(Box::new(Type::Int)),
-                        target: Box::new(TypedAstNode::Identifier(
-                            ident_token!((2, 1), "abc"),
-                            TypedIdentifierNode {
-                                typ: Type::Array(Box::new(Type::Int)),
-                                name: "abc".to_string(),
-                                is_mutable: true,
-                                scope_depth: 0,
-                            },
-                        )),
+                        target: Box::new(identifier_mut!((2, 1), "abc", Type::Array(Box::new(Type::Int)), 0)),
                         index: IndexingMode::Index(Box::new(int_literal!((2, 5), 0))),
                     },
                 )),
@@ -4232,15 +4312,7 @@ mod tests {
                     Token::LBrack(Position::new(2, 4), false),
                     TypedIndexingNode {
                         typ: Type::Option(Box::new(Type::Int)),
-                        target: Box::new(TypedAstNode::Identifier(
-                            ident_token!((2, 1), "abc"),
-                            TypedIdentifierNode {
-                                typ: Type::Map(vec![("a".to_string(), Type::Int)], Some(Box::new(Type::Int))),
-                                name: "abc".to_string(),
-                                is_mutable: true,
-                                scope_depth: 0,
-                            },
-                        )),
+                        target: Box::new(identifier_mut!((2, 1), "abc", Type::Map(vec![("a".to_string(), Type::Int)], Some(Box::new(Type::Int))), 0)),
                         index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
                     },
                 )),
@@ -4268,15 +4340,7 @@ mod tests {
                     Token::Dot(Position::new(3, 2)),
                     TypedAccessorNode {
                         typ: Type::String,
-                        target: Box::new(TypedAstNode::Identifier(
-                            ident_token!((3, 1), "a"),
-                            TypedIdentifierNode {
-                                typ: Type::Reference("Person".to_string(), vec![]),
-                                name: "a".to_string(),
-                                is_mutable: false,
-                                scope_depth: 0,
-                            },
-                        )),
+                        target: Box::new(identifier!((3, 1), "a", Type::Reference("Person".to_string(), vec![]), 0)),
                         field_idx: 0,
                         field_name: "name".to_string(),
                         is_opt_safe: false,
@@ -4383,17 +4447,7 @@ mod tests {
             Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
                 typ: Type::Option(Box::new(Type::Int)),
-                target: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 1), "abc"),
-                        TypedIdentifierNode {
-                            typ: Type::Array(Box::new(Type::Int)),
-                            name: "abc".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
-                ),
+                target: Box::new(identifier!((2, 1), "abc", Type::Array(Box::new(Type::Int)), 0)),
                 index: IndexingMode::Index(Box::new(int_literal!((2, 5), 1))),
             },
         );
@@ -4404,29 +4458,9 @@ mod tests {
             Token::LBrack(Position::new(3, 4), false),
             TypedIndexingNode {
                 typ: Type::Array(Box::new(Type::Int)),
-                target: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((3, 1), "abc"),
-                        TypedIdentifierNode {
-                            typ: Type::Array(Box::new(Type::Int)),
-                            name: "abc".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
-                ),
+                target: Box::new(identifier!((3, 1), "abc", Type::Array(Box::new(Type::Int)), 0)),
                 index: IndexingMode::Range(
-                    Some(Box::new(
-                        TypedAstNode::Identifier(
-                            ident_token!((3, 5), "idx"),
-                            TypedIdentifierNode {
-                                typ: Type::Int,
-                                name: "idx".to_string(),
-                                is_mutable: false,
-                                scope_depth: 0,
-                            },
-                        )
-                    )),
+                    Some(Box::new(identifier!((3, 5), "idx", Type::Int, 0))),
                     None,
                 ),
             },
@@ -4447,17 +4481,7 @@ mod tests {
                             TypedBinaryNode {
                                 typ: Type::Int,
                                 op: BinaryOp::Mul,
-                                left: Box::new(
-                                    TypedAstNode::Identifier(
-                                        ident_token!((2, 8), "idx"),
-                                        TypedIdentifierNode {
-                                            typ: Type::Int,
-                                            name: "idx".to_string(),
-                                            is_mutable: false,
-                                            scope_depth: 0,
-                                        },
-                                    )
-                                ),
+                                left: Box::new(identifier!((2, 8), "idx", Type::Int, 0)),
                                 right: Box::new(int_literal!((2, 14), 2)),
                             },
                         ),
@@ -4472,17 +4496,14 @@ mod tests {
             Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
                 typ: Type::Option(Box::new(Type::Int)),
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "map"),
-                    TypedIdentifierNode {
-                        typ: Type::Map(
-                            vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
-                            Some(Box::new(Type::Int)),
-                        ),
-                        name: "map".to_string(),
-                        scope_depth: 0,
-                        is_mutable: false,
-                    },
+                target: Box::new(identifier!(
+                    (2, 1),
+                    "map",
+                    Type::Map(
+                        vec![("a".to_string(), Type::Int), ("b".to_string(), Type::Int)],
+                        Some(Box::new(Type::Int)),
+                    ),
+                    0
                 )),
                 index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
             },
@@ -4629,17 +4650,7 @@ mod tests {
             Token::If(Position::new(2, 1)),
             TypedIfNode {
                 typ: Type::Unit,
-                condition: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 4), "i"),
-                        TypedIdentifierNode {
-                            typ: Type::Option(Box::new(Type::Int)),
-                            name: "i".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
-                ),
+                condition: Box::new(identifier!((2, 4), "i", Type::Option(Box::new(Type::Int)), 0)),
                 condition_binding: None,
                 if_block: vec![int_literal!((2, 6), 1)],
                 else_block: Some(vec![int_literal!((2, 13), 2)]),
@@ -4660,28 +4671,10 @@ mod tests {
             Token::If(Position::new(2, 1)),
             TypedIfNode {
                 typ: Type::Unit,
-                condition: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 4), "i"),
-                        TypedIdentifierNode {
-                            typ: Type::Option(Box::new(Type::Int)),
-                            name: "i".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
-                ),
+                condition: Box::new(identifier!((2, 4), "i", Type::Option(Box::new(Type::Int)), 0)),
                 condition_binding: Some(ident_token!((2, 7), "i")),
                 if_block: vec![
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 10), "i"),
-                        TypedIdentifierNode {
-                            typ: Type::Int,
-                            name: "i".to_string(),
-                            is_mutable: false,
-                            scope_depth: 1,
-                        },
-                    )
+                    identifier!((2, 10), "i", Type::Int, 1)
                 ],
                 else_block: Some(vec![int_literal!((2, 17), 2)]),
             },
@@ -4696,15 +4689,7 @@ mod tests {
                 condition: Box::new(bool_literal!((1, 4), true)),
                 condition_binding: Some(ident_token!((1, 10), "v")),
                 if_block: vec![
-                    TypedAstNode::Identifier(
-                        ident_token!((1, 13), "v"),
-                        TypedIdentifierNode {
-                            typ: Type::Bool,
-                            name: "v".to_string(),
-                            is_mutable: false,
-                            scope_depth: 1,
-                        },
-                    )
+                    identifier!((1, 13), "v", Type::Bool, 1)
                 ],
                 else_block: Some(vec![bool_literal!((1, 20), false)]),
             },
@@ -4753,15 +4738,7 @@ mod tests {
                             scope_depth: 1,
                         },
                     ),
-                    TypedAstNode::Identifier(
-                        ident_token!((1, 28), "a"),
-                        TypedIdentifierNode {
-                            typ: Type::String,
-                            name: "a".to_string(),
-                            is_mutable: false,
-                            scope_depth: 1,
-                        },
-                    )
+                    identifier!((1, 28), "a", Type::String, 1)
                 ],
                 else_block: None,
             },
@@ -4801,29 +4778,9 @@ mod tests {
                         Token::Plus(Position::new(2, 30)),
                         TypedBinaryNode {
                             typ: Type::String,
-                            left: Box::new(
-                                TypedAstNode::Identifier(
-                                    ident_token!((2, 28), "a"),
-                                    TypedIdentifierNode {
-                                        typ: Type::String,
-                                        name: "a".to_string(),
-                                        is_mutable: false,
-                                        scope_depth: 0,
-                                    },
-                                )
-                            ),
+                            left: Box::new(identifier!((2, 28), "a", Type::String, 0)),
                             op: BinaryOp::Add,
-                            right: Box::new(
-                                TypedAstNode::Identifier(
-                                    ident_token!((2, 32), "b"),
-                                    TypedIdentifierNode {
-                                        typ: Type::String,
-                                        name: "b".to_string(),
-                                        is_mutable: false,
-                                        scope_depth: 1,
-                                    },
-                                )
-                            ),
+                            right: Box::new(identifier!((2, 32), "b", Type::String, 1)),
                         },
                     )
                 ],
@@ -4832,17 +4789,7 @@ mod tests {
                         Token::Plus(Position::new(2, 45)),
                         TypedBinaryNode {
                             typ: Type::String,
-                            left: Box::new(
-                                TypedAstNode::Identifier(
-                                    ident_token!((2, 43), "a"),
-                                    TypedIdentifierNode {
-                                        typ: Type::String,
-                                        name: "a".to_string(),
-                                        is_mutable: false,
-                                        scope_depth: 0,
-                                    },
-                                )
-                            ),
+                            left: Box::new(identifier!((2, 43), "a", Type::String, 0)),
                             op: BinaryOp::Add,
                             right: Box::new(string_literal!((2, 47), "!")),
                         },
@@ -4898,15 +4845,7 @@ mod tests {
                                 Token::LParen(Position::new(2, 18), false),
                                 TypedInvocationNode {
                                     typ: Type::Unit,
-                                    target: Box::new(TypedAstNode::Identifier(
-                                        ident_token!((2, 11), "println"),
-                                        TypedIdentifierNode {
-                                            typ: Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Any, false)], type_args: vec![], ret_type: Box::new(Type::Unit) }),
-                                            name: "println".to_string(),
-                                            scope_depth: 0,
-                                            is_mutable: false,
-                                        },
-                                    )),
+                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Any, false)], type_args: vec![], ret_type: Box::new(Type::Unit) }), 0)),
                                     args: vec![
                                         Some(string_literal!((2, 19), "hello"))
                                     ],
@@ -4992,15 +4931,9 @@ mod tests {
             Token::LParen(Position::new(2, 4), false),
             TypedInvocationNode {
                 typ: Type::Unit,
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "abc"),
-                    TypedIdentifierNode {
-                        typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit) }),
-                        name: "abc".to_string(),
-                        is_mutable: false,
-                        scope_depth: 0,
-                    },
-                )),
+                target: Box::new(
+                    identifier!((2, 1), "abc", Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit) }), 0)
+                ),
                 args: vec![],
             },
         );
@@ -5016,18 +4949,15 @@ mod tests {
             Token::LParen(Position::new(2, 4), false),
             TypedInvocationNode {
                 typ: Type::String,
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "abc"),
-                    TypedIdentifierNode {
-                        typ: Type::Fn(FnType {
-                            arg_types: vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
-                            type_args: vec![],
-                            ret_type: Box::new(Type::String),
-                        }),
-                        name: "abc".to_string(),
-                        is_mutable: false,
-                        scope_depth: 0,
-                    },
+                target: Box::new(identifier!(
+                    (2, 1),
+                    "abc",
+                    Type::Fn(FnType {
+                        arg_types: vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
+                        type_args: vec![],
+                        ret_type: Box::new(Type::String),
+                    }),
+                    0
                 )),
                 args: vec![
                     Some(int_literal!((2, 5), 1)),
@@ -5057,15 +4987,7 @@ mod tests {
             TypedInstantiationNode {
                 typ: Type::Reference("Person".to_string(), vec![]),
                 target: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 1), "Person"),
-                        TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
-                            name: "Person".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
+                    identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)
                 ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken"))
@@ -5092,15 +5014,7 @@ mod tests {
             TypedInstantiationNode {
                 typ: Type::Reference("Person".to_string(), vec![]),
                 target: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 1), "Person"),
-                        TypedIdentifierNode {
-                            typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
-                            name: "Person".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
+                    identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)
                 ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken")),
@@ -5324,15 +5238,7 @@ mod tests {
                         Token::Plus(Position::new(3, 3)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(TypedAstNode::Identifier(
-                                ident_token!((3, 1), "a"),
-                                TypedIdentifierNode {
-                                    typ: Type::Int,
-                                    name: "a".to_string(),
-                                    is_mutable: false,
-                                    scope_depth: 1,
-                                },
-                            )),
+                            left: Box::new(identifier!((3, 1), "a", Type::Int, 1)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
@@ -5385,15 +5291,7 @@ mod tests {
                 condition: Box::new(bool_literal!((1, 7), true)),
                 condition_binding: Some(ident_token!((1, 13), "v")),
                 body: vec![
-                    TypedAstNode::Identifier(
-                        ident_token!((1, 18), "v"),
-                        TypedIdentifierNode {
-                            typ: Type::Bool,
-                            name: "v".to_string(),
-                            is_mutable: false,
-                            scope_depth: 2,
-                        },
-                    )
+                    identifier!((1, 18), "v", Type::Bool, 2)
                 ],
             },
         );
@@ -5407,27 +5305,11 @@ mod tests {
             Token::While(Position::new(2, 1)),
             TypedWhileLoopNode {
                 condition: Box::new(
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 7), "item"),
-                        TypedIdentifierNode {
-                            typ: Type::Option(Box::new(Type::Int)),
-                            name: "item".to_string(),
-                            is_mutable: false,
-                            scope_depth: 0,
-                        },
-                    )
+                    identifier!((2, 7), "item", Type::Option(Box::new(Type::Int)), 0)
                 ),
                 condition_binding: Some(ident_token!((2, 13), "item")),
                 body: vec![
-                    TypedAstNode::Identifier(
-                        ident_token!((2, 21), "item"),
-                        TypedIdentifierNode {
-                            typ: Type::Int,
-                            name: "item".to_string(),
-                            is_mutable: false,
-                            scope_depth: 2,
-                        },
-                    )
+                    identifier!((2, 21), "item", Type::Int, 2)
                 ],
             },
         );
@@ -5472,29 +5354,13 @@ mod tests {
             TypedForLoopNode {
                 iteratee: ident_token!((2, 5), "a"),
                 index_ident: None,
-                iterator: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 10), "arr"),
-                    TypedIdentifierNode {
-                        typ: Type::Array(Box::new(Type::Int)),
-                        name: "arr".to_string(),
-                        is_mutable: false,
-                        scope_depth: 0,
-                    },
-                )),
+                iterator: Box::new(identifier!((2, 10), "arr", Type::Array(Box::new(Type::Int)), 0)),
                 body: vec![
                     TypedAstNode::Binary(
                         Token::Plus(Position::new(3, 3)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(TypedAstNode::Identifier(
-                                ident_token!((3, 1), "a"),
-                                TypedIdentifierNode {
-                                    typ: Type::Int,
-                                    name: "a".to_string(),
-                                    is_mutable: false,
-                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                },
-                            )),
+                            left: Box::new(identifier!((3, 1), "a", Type::Int, 2)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
@@ -5510,39 +5376,15 @@ mod tests {
             TypedForLoopNode {
                 iteratee: ident_token!((2, 5), "a"),
                 index_ident: Some(ident_token!((2, 8), "i")),
-                iterator: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 13), "arr"),
-                    TypedIdentifierNode {
-                        typ: Type::Array(Box::new(Type::Int)),
-                        name: "arr".to_string(),
-                        is_mutable: false,
-                        scope_depth: 0,
-                    },
-                )),
+                iterator: Box::new(identifier!((2, 13), "arr", Type::Array(Box::new(Type::Int)), 0)),
                 body: vec![
                     TypedAstNode::Binary(
                         Token::Plus(Position::new(3, 3)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(TypedAstNode::Identifier(
-                                ident_token!((3, 1), "a"),
-                                TypedIdentifierNode {
-                                    typ: Type::Int,
-                                    name: "a".to_string(),
-                                    is_mutable: false,
-                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                },
-                            )),
+                            left: Box::new(identifier!((3, 1), "a", Type::Int, 2)),
                             op: BinaryOp::Add,
-                            right: Box::new(TypedAstNode::Identifier(
-                                ident_token!((3, 5), "i"),
-                                TypedIdentifierNode {
-                                    typ: Type::Int,
-                                    name: "i".to_string(),
-                                    is_mutable: false,
-                                    scope_depth: 2, // Depth is 2 because of intrinsic wrapper scope
-                                },
-                            )),
+                            right: Box::new(identifier!((3, 5), "i", Type::Int, 2)),
                         },
                     )
                 ],
@@ -5574,15 +5416,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::String,
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((3, 1), "p"),
-                    TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string(), vec![]),
-                        name: "p".to_string(),
-                        scope_depth: 0,
-                        is_mutable: false,
-                    },
-                )),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
                 field_name: "name".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -5608,15 +5442,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::Int,
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((3, 1), "p"),
-                    TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string(), vec![]),
-                        name: "p".to_string(),
-                        scope_depth: 0,
-                        is_mutable: false,
-                    },
-                )),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
                 field_name: "age".to_string(),
                 field_idx: 1,
                 is_opt_safe: false,
@@ -5687,15 +5513,7 @@ mod tests {
             Token::Dot(Position::new(2, 7)),
             TypedAccessorNode {
                 typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }),
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "Person"),
-                    TypedIdentifierNode {
-                        typ: Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false),
-                        name: "Person".to_string(),
-                        scope_depth: 0,
-                        is_mutable: false,
-                    },
-                )),
+                target: Box::new(identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)),
                 field_name: "getName".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -5729,15 +5547,7 @@ mod tests {
                     Token::Dot(Position::new(3, 2)),
                     TypedAccessorNode {
                         typ: Type::Option(Box::new(Type::String)),
-                        target: Box::new(TypedAstNode::Identifier(
-                            ident_token!((3, 1), "p"),
-                            TypedIdentifierNode {
-                                typ: Type::Reference("Person".to_string(), vec![]),
-                                name: "p".to_string(),
-                                scope_depth: 0,
-                                is_mutable: false,
-                            },
-                        )),
+                        target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
                         field_name: "name".to_string(),
                         field_idx: 0,
                         is_opt_safe: false,
@@ -5768,15 +5578,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::String,
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((3, 1), "p"),
-                    TypedIdentifierNode {
-                        typ: Type::Reference("Person".to_string(), vec![]),
-                        name: "p".to_string(),
-                        scope_depth: 0,
-                        is_mutable: false,
-                    },
-                )),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
                 field_name: "name".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -5942,24 +5744,8 @@ mod tests {
                                     TypedBinaryNode {
                                         typ: Type::Int,
                                         op: BinaryOp::Add,
-                                        left: Box::new(TypedAstNode::Identifier(
-                                            ident_token!((2, 6), "x"),
-                                            TypedIdentifierNode {
-                                                typ: Type::Int,
-                                                name: "x".to_string(),
-                                                scope_depth: 1,
-                                                is_mutable: false,
-                                            },
-                                        )),
-                                        right: Box::new(TypedAstNode::Identifier(
-                                            ident_token!((2, 10), "y"),
-                                            TypedIdentifierNode {
-                                                typ: Type::Int,
-                                                name: "y".to_string(),
-                                                scope_depth: 2,
-                                                is_mutable: false,
-                                            },
-                                        )),
+                                        left: Box::new(identifier!((2, 6), "x", Type::Int, 1)),
+                                        right: Box::new(identifier!((2, 10), "y", Type::Int, 2)),
                                     },
                                 )
                             ]),
@@ -5996,15 +5782,7 @@ mod tests {
             TypedAssignmentNode {
                 kind: AssignmentTargetKind::Identifier,
                 typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }),
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "fn"),
-                    TypedIdentifierNode {
-                        typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }),
-                        name: "fn".to_string(),
-                        is_mutable: true,
-                        scope_depth: 0,
-                    },
-                )),
+                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }), 0)),
                 expr: Box::new(TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 8)),
                     TypedLambdaNode {
@@ -6013,15 +5791,7 @@ mod tests {
                             (ident_token!((2, 6), "a"), Type::String, None)
                         ],
                         typed_body: Some(vec![
-                            TypedAstNode::Identifier(
-                                ident_token!((2, 11), "a"),
-                                TypedIdentifierNode {
-                                    typ: Type::String,
-                                    name: "a".to_string(),
-                                    is_mutable: false,
-                                    scope_depth: 1,
-                                },
-                            )
+                            identifier!((2, 11), "a", Type::String, 1)
                         ]),
                         orig_node: None,
                     },
@@ -6039,15 +5809,7 @@ mod tests {
             TypedAssignmentNode {
                 kind: AssignmentTargetKind::Identifier,
                 typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }),
-                target: Box::new(TypedAstNode::Identifier(
-                    ident_token!((2, 1), "fn"),
-                    TypedIdentifierNode {
-                        typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }),
-                        name: "fn".to_string(),
-                        is_mutable: true,
-                        scope_depth: 0,
-                    },
-                )),
+                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String) }), 0)),
                 expr: Box::new(TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 19)),
                     TypedLambdaNode {
@@ -6127,5 +5889,191 @@ mod tests {
             actual: Type::String,
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_match_statements() -> TestResult {
+        // Verify branches for Int? type
+        let typed_ast = typecheck("\
+          val i = [1, 2][2]\n\
+          match i {\n\
+            Int i => i\n\
+            None => 0\n\
+          }
+        ")?;
+        let expected = TypedAstNode::MatchStatement(
+            Token::Match(Position::new(2, 1)),
+            TypedMatchNode {
+                typ: Type::Unit,
+                target: Box::new(identifier!((2, 7), "i", Type::Option(Box::new(Type::Int)), 0)),
+                branches: vec![
+                    (Type::Int, Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
+                    (Type::Unknown, None, vec![int_literal!((4, 9), 0)])
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        // Verify branches for (Int | String)? type
+        let typed_ast = typecheck("\
+          val i: (Int | String)? = [1, 2][2]\n\
+          match i {\n\
+            Int i => i\n\
+            _ v => v\n\
+          }
+        ")?;
+        let expected = TypedAstNode::MatchStatement(
+            Token::Match(Position::new(2, 1)),
+            TypedMatchNode {
+                typ: Type::Unit,
+                target: Box::new(
+                    identifier!((2, 7), "i", Type::Option(Box::new(Type::Union(vec![Type::Int, Type::String]))), 0)
+                ),
+                branches: vec![
+                    (Type::Int, Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
+                    (
+                        Type::Union(vec![Type::String, Type::Unknown]),
+                        Some("v".to_string()),
+                        vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)]
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[1]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_match_expressions() -> TestResult {
+        let typed_ast = typecheck("\
+          val i = [1, 2][2]\n\
+          val j = match i {\n\
+            Int i => i\n\
+            None => {\n\
+              println(\"Got nothing!\")\n\
+              0\n\
+            }\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((9, 1), "j", Type::Int, 0);
+        assert_eq!(expected, typed_ast[2]);
+
+        let typed_ast = typecheck("\
+          val i: String | Int = 123\n\
+          val j = match i {\n\
+            Int i => i\n\
+            String s => s.length\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((6, 1), "j", Type::Int, 0);
+        assert_eq!(expected, typed_ast[2]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_match_statements_errors() {
+        // Verify branches for (Int | String)? type
+        let err = typecheck("\
+          val i: (Int | String)? = [1, 2][2]\n\
+          match i {\n\
+            Int i => i\n\
+            None => 0\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
+        assert_eq!(expected, err);
+
+        // Verify branches for (Int? | String?) type
+        let err = typecheck("\
+          val i: Int? | String? = [1, 2][2]\n\
+          match i {\n\
+            Int i => i\n\
+            None => 0\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          val i = 0\n\
+          match i {\n\
+            _ i => i\n\
+            Int => 0\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableMatchCase {
+            token: ident_token!((4, 1), "Int"),
+            typ: None,
+            is_unreachable_none: false,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          val i = 0\n\
+          match i {\n\
+            Int i => i\n\
+            String => 0\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableMatchCase {
+            token: ident_token!((4, 1), "String"),
+            typ: Some(Type::String),
+            is_unreachable_none: false,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          val i = 0\n\
+          match i {\n\
+            _ i => i\n\
+            _ x => x\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::DuplicateMatchCase { token: ident_token!((4, 1), "_") };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          val i = 0\n\
+          match i {\n\
+            BogusType i => i\n\
+            _ x => x\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownType { type_ident: ident_token!((3, 1), "BogusType") };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_match_expressions_errors() {
+        let err = typecheck("\
+          val i = [1, 2][2]\n\
+          val j = match i {\n\
+            Int i => i\n\
+            None => false\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::MatchBranchMismatch {
+            token: Token::Bool(Position::new(4, 9), false),
+            expected: Type::Int,
+            actual: Type::Bool,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          val i = [1, 2][2]\n\
+          val j = match i {\n\
+            Int i => println(\"\")\n\
+            None => println(\"\")\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::ForbiddenVariableType {
+            token: ident_token!((2, 5), "j"),
+            typ: Type::Unit,
+        };
+        assert_eq!(expected, err);
     }
 }
