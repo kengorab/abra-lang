@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode};
 use crate::vm::prelude::Prelude;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind};
@@ -1534,6 +1534,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         node.typ = typ.clone();
 
         Ok(TypedAstNode::IfExpression(token.clone(), node))
+    }
+
+    fn visit_match_statement(&mut self, _token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+        dbg!(node);
+        todo!()
+    }
+
+    fn visit_match_expression(&mut self, _token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+        dbg!(node);
+        todo!()
     }
 
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
