@@ -1,19 +1,17 @@
 use crate::typechecker::types::{Type, FnType};
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::Value;
 use crate::vm::vm::VM;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
-use std::sync::Arc;
-use std::cell::RefCell;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return None//Value::Nil.
-pub type NativeAbraFn = fn(&Option<Arc<RefCell<Obj>>>, Vec<Value>, &mut VM) -> Option<Value>;
+pub type NativeAbraFn = fn(Option<Value>, Vec<Value>, &mut VM) -> Option<Value>;
 
 #[derive(Clone)]
 pub struct NativeFn {
     pub name: &'static str,
-    pub receiver: Option<Arc<RefCell<Obj>>>,
+    pub receiver: Option<Box<Value>>,
     pub native_fn: NativeAbraFn,
     pub has_return: bool,
 }
@@ -39,7 +37,7 @@ impl PartialOrd for NativeFn {
 impl NativeFn {
     pub fn invoke(&self, args: Vec<Value>, vm_ref: &mut VM) -> Option<Value> {
         let func = self.native_fn;
-        func(&self.receiver, args, vm_ref)
+        func(self.receiver.as_ref().map(|v| *v.clone()), args, vm_ref)
     }
 }
 
@@ -103,14 +101,14 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
     native_fns
 }
 
-fn println(_receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
     let val = args.first().unwrap();
     let print_fn = vm.ctx.print;
     print_fn(&format!("{}", val.to_string()));
     None
 }
 
-fn range(_receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+fn range(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
     let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
         panic!("range requires an Int as first argument")
     };
@@ -150,7 +148,7 @@ mod test {
         let mut vm = make_vm();
 
         // Test w/ increment of 1
-        let arr = range(&None, vec![Value::Int(0), Value::Int(5), Value::Int(1)], &mut vm);
+        let arr = range(None, vec![Value::Int(0), Value::Int(5), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(1),
@@ -161,7 +159,7 @@ mod test {
         assert_eq!(expected, arr);
 
         // Test w/ increment of 2
-        let arr = range(&None, vec![Value::Int(0), Value::Int(5), Value::Int(2)], &mut vm);
+        let arr = range(None, vec![Value::Int(0), Value::Int(5), Value::Int(2)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(2),
@@ -175,17 +173,17 @@ mod test {
         let mut vm = make_vm();
 
         // Test w/ increment larger than range
-        let arr = range(&&None, vec![Value::Int(0), Value::Int(5), Value::Int(5)], &mut vm);
+        let arr = range(None, vec![Value::Int(0), Value::Int(5), Value::Int(5)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 1)
-        let arr = range(&None, vec![Value::Int(0), Value::Int(1), Value::Int(1)], &mut vm);
+        let arr = range(None, vec![Value::Int(0), Value::Int(1), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![Value::Int(0)]));
         assert_eq!(expected, arr);
 
         // Test w/ [0, 0) -> Empty array
-        let arr = range(&None, vec![Value::Int(0), Value::Int(0), Value::Int(1)], &mut vm);
+        let arr = range(None, vec![Value::Int(0), Value::Int(0), Value::Int(1)], &mut vm);
         let expected = Some(Value::new_array_obj(vec![]));
         assert_eq!(expected, arr);
     }

@@ -30,10 +30,8 @@ fn main() {
         use crate::builtins::native_fns::NativeFn;
         use crate::builtins::native_types::NativeType;
         use crate::typechecker::types::{Type, FnType};
-        use crate::vm::value::{Obj, Value};
+        use crate::vm::value::Value;
         use crate::vm::vm::VM;
-        use std::sync::Arc;
-        use std::cell::RefCell;
     };
 
     write_rust_file(&builtins_dir_path, imports_code, rust_code);
@@ -43,6 +41,7 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
     let repr = match typ {
         Type::Bool => "Bool".to_string(),
         Type::Int => "Int".to_string(),
+        Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
         Type::Reference(ref_name, _) => ref_name.replace("Native", ""),
@@ -78,13 +77,6 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
 fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     let StructType { name: type_name, fields, methods, .. } = typ;
 
-    let obj_type_name = match type_name.as_str() {
-        "NativeString" => "StringObj",
-        "NativeArray" => "ArrayObj",
-        _ => todo!()
-    };
-    let obj_type_name_ident = format_ident!("{}", obj_type_name);
-
     let type_name_ident = format_ident!("{}", type_name);
     let trait_name_ident = format_ident!("{}MethodsAndFields", type_name);
 
@@ -96,7 +88,7 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     for (field_name, field_type, _) in fields {
         let field_method_name_ident = format_ident!("field_{}", field_name);
         trait_field_methods_code.push(quote! {
-            fn #field_method_name_ident(obj: &Arc<RefCell<Obj>>) -> Value;
+            fn #field_method_name_ident(obj: Box<Value>) -> Value;
         });
 
         let field_type_code = generate_code_for_type(&field_type);
@@ -117,7 +109,7 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     for (method_name, method_type) in methods {
         let method_method_name_ident = format_ident!("method_{}", method_name.to_snake_case());
         trait_method_methods_code.push(quote! {
-            fn #method_method_name_ident(receiver: &Option<Arc<RefCell<Obj>>>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+            fn #method_method_name_ident(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
         });
 
         let FnType { type_args, arg_types, ret_type } = if let Type::Fn(t) = method_type { t } else { unreachable!() };
@@ -126,7 +118,7 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
         get_method_value_code.push(quote! {
             #field_idx => Value::NativeFn(NativeFn {
                 name: #method_name,
-                receiver: Some(obj.clone()),
+                receiver: Some(obj),
                 native_fn: Self::#method_method_name_ident,
                 has_return: #has_return,
             })
@@ -173,15 +165,10 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
                 }
             }
 
-            fn get_field_value(obj: &Arc<RefCell<Obj>>, field_idx: usize) -> Value {
-                match &*obj.borrow() {
-                    Obj::#obj_type_name_ident(_) => {
-                        match field_idx {
-                            #(#get_field_value_code,)*
-                            #(#get_method_value_code,)*
-                            _ => unreachable!()
-                        }
-                    }
+            fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
+                match field_idx {
+                    #(#get_field_value_code,)*
+                    #(#get_method_value_code,)*
                     _ => unreachable!()
                 }
             }

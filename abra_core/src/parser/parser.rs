@@ -53,12 +53,8 @@ impl Parser {
         self.context.pop();
     }
 
-    fn advance(&mut self) -> Option<Token> {
-        self.tokens.next()
-    }
-
     fn expect_next(&mut self) -> Result<Token, ParseError> {
-        self.advance().ok_or(ParseError::UnexpectedEof)
+        self.tokens.next().ok_or(ParseError::UnexpectedEof)
     }
 
     fn expect_next_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
