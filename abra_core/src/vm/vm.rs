@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeString, NativeType, NativeArray};
+use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue};
@@ -566,13 +566,27 @@ impl VM {
                     let field_idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Obj(obj) => match &*obj.borrow() {
-                            Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
-                            Obj::EnumVariant(inst) => inst.methods[field_idx].clone(),
-                            Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
-                            Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
-                            _ => unreachable!()
+                        Value::Obj(ref obj) => {
+                            let mut is_str = false;
+                            let mut is_arr = false;
+                            let mut v = Value::Nil;
+                            match &*obj.borrow() {
+                                Obj::InstanceObj(inst) => v = inst.fields[field_idx].clone(),
+                                Obj::EnumVariant(inst) => v = inst.methods[field_idx].clone(),
+                                Obj::StringObj { .. } => is_str = true,
+                                Obj::ArrayObj { .. } => is_arr = true,
+                                Obj::MapObj(_) => unimplemented!()
+                            };
+                            if is_str {
+                                NativeString::get_field_value(Box::new(inst), field_idx)
+                            } else if is_arr {
+                                NativeArray::get_field_value(Box::new(inst), field_idx)
+                            } else {
+                                v
+                            }
                         }
+                        Value::Float(_) => NativeFloat::get_field_value(Box::new(inst), field_idx),
+                        Value::Int(_) => NativeInt::get_field_value(Box::new(inst), field_idx),
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[field_idx].clone();
                             Value::Fn(field_value)

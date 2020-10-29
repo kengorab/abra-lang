@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
+use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode};
@@ -1938,6 +1938,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 (field_data, generics)
             }
             Type::String => (NativeString::get_field_or_method(&field_name), HashMap::new()),
+            Type::Float => (NativeFloat::get_field_or_method(&field_name), HashMap::new()),
+            Type::Int => (NativeInt::get_field_or_method(&field_name), HashMap::new()),
             Type::Type(_, typ, _) => match self.resolve_ref_type(&*typ) {
                 Type::Struct(StructType { static_fields, .. }) => {
                     let field_data = static_fields.iter().enumerate()
