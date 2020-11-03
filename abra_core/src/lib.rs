@@ -1,5 +1,3 @@
-#![feature(vec_remove_item)]
-
 extern crate permutate;
 extern crate strum;
 #[macro_use]

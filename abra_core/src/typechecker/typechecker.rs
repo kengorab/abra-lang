@@ -360,7 +360,8 @@ impl Typechecker {
 
                     let t = if let Token::None(_) = &ident {
                         if possibilities.contains(&Type::Unknown) {
-                            possibilities.remove_item(&Type::Unknown);
+                            let idx = possibilities.iter().position(|t| t == &Type::Unknown).unwrap();
+                            possibilities.remove(idx);
                             Type::Unknown
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
@@ -369,7 +370,8 @@ impl Typechecker {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
                         let typ = self.type_from_type_ident(&type_ident)?;
                         if possibilities.contains(&typ) {
-                            possibilities.remove_item(&typ);
+                            let idx = possibilities.iter().position(|t| t == &typ).unwrap();
+                            possibilities.remove(idx);
                             typ
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
