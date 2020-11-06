@@ -1,7 +1,34 @@
-match "asdf" {
-  Int i => "int"
-  A.String => "string"
-  _ => {
-    "catchall block"
+//enum Color {
+//  Red
+//  Green
+//  Blue
+//}
+//
+//val c = Color.Red
+
+//val arr = [1, 2]
+//val v = match arr[3] {
+//  Int i => i
+//  None => 0
+//}
+
+//val t: (String | Int)? = ""
+//val x = match t {
+//  //Int i => i
+//  //String s => t
+//  _ v => match v {
+//    None => 0
+//    Int i => i
+//    String s => s.length
+//  }
+//}
+
+val x = if true {
+  val i = 0
+  match i {
+    Int i => println(""+i)
   }
+} else {
+  println("false")
 }
+//println(x)

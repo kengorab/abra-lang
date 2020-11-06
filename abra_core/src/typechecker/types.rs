@@ -233,6 +233,21 @@ impl Type {
         }
     }
 
+    pub fn is_unit(&self, referencable_types: &HashMap<String, Type>) -> bool {
+        match self {
+            Type::Union(type_opts) => type_opts.iter().any(|typ| typ.is_unit(referencable_types)),
+            Type::Array(inner_type) |
+            Type::Option(inner_type) => inner_type.is_unit(referencable_types),
+            Type::Reference(name, _) => {
+                if let Some(referenced_type) = referencable_types.get(name) {
+                    referenced_type.is_unit(referencable_types)
+                } else { false }
+            }
+            Type::Unit => true,
+            _ => false
+        }
+    }
+
     pub fn extract_unbound_generics(&self) -> Vec<String> {
         match self {
             Type::Generic(name) => vec![name.clone()],

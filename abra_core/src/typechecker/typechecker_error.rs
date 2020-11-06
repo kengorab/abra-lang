@@ -2,7 +2,6 @@ use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::parser::ast::BinaryOp;
-use crate::typechecker::typed_ast::TypedAstNode;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
@@ -45,9 +44,14 @@ pub enum TypecheckerError {
     InvalidSelfParam { token: Token },
     MissingRequiredTypeAnnotation { token: Token },
     InvalidTypeDeclDepth { token: Token },
-    ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
+    ForbiddenVariableType { token: Token, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
+    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool },
+    DuplicateMatchCase { token: Token },
+    NonExhaustiveMatch { token: Token },
+    EmptyMatchBlock { token: Token },
+    MatchBranchMismatch { token: Token, expected: Type, actual: Type },
 }
 
 impl TypecheckerError {
@@ -86,9 +90,14 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
-            TypecheckerError::ForbiddenUnknownType { token, .. } => token,
+            TypecheckerError::ForbiddenVariableType { token, .. } => token,
             TypecheckerError::InvalidInstantiation { token, .. } => token,
             TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
+            TypecheckerError::UnreachableMatchCase { token, .. } => token,
+            TypecheckerError::DuplicateMatchCase { token, .. } => token,
+            TypecheckerError::NonExhaustiveMatch { token } => token,
+            TypecheckerError::EmptyMatchBlock { token } => token,
+            TypecheckerError::MatchBranchMismatch { token, .. } => token,
         }
     }
 }
@@ -473,12 +482,20 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::ForbiddenUnknownType { .. } => {
-                format!(
-                    "Could not determine type: ({}:{})\n{}\n\
-                    Please use an explicit type annotation to denote the type",
-                    pos.line, pos.col, cursor_line
-                )
+            TypecheckerError::ForbiddenVariableType { typ, .. } => {
+                match typ {
+                    Type::Unknown => format!(
+                        "Could not determine type: ({}:{})\n{}\n\
+                        Please use an explicit type annotation to denote the type",
+                        pos.line, pos.col, cursor_line
+                    ),
+                    Type::Unit => format!(
+                        "Forbidden type for variable: ({}:{})\n{}\n\
+                        Variables cannot be of type {}",
+                        pos.line, pos.col, cursor_line, type_repr(&Type::Unit)
+                    ),
+                    _ => unreachable!()
+                }
             }
             TypecheckerError::InvalidInstantiation { typ, .. } => {
                 format!(
@@ -494,6 +511,43 @@ impl DisplayError for TypecheckerError {
                         "Provide {} type argument{} to match type {}",
                         expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
                     )
+                )
+            }
+            TypecheckerError::UnreachableMatchCase { typ, is_unreachable_none, .. } => {
+                format!(
+                    "Unreachable match case: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    if *is_unreachable_none {
+                        "Value cannot possibly be None".to_string()
+                    } else if let Some(typ) = typ {
+                        format!("Value cannot possibly be of type {}", type_repr(typ))
+                    } else {
+                        "All possible cases have already been handled".to_string()
+                    }
+                )
+            }
+            TypecheckerError::DuplicateMatchCase { .. } => {
+                format!("Duplicate match case: ({}:{})\n{}", pos.line, pos.col, cursor_line)
+            }
+            TypecheckerError::NonExhaustiveMatch { .. } => {
+                format!(
+                    "Non-exhaustive match: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    "Please ensure each possible case is handled, or use the wildcard (_)"
+                )
+            }
+            TypecheckerError::EmptyMatchBlock { .. } => {
+                format!(
+                    "Empty block for match case: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    "Each case in a match expression must result in a value"
+                )
+            }
+            TypecheckerError::MatchBranchMismatch { expected, actual, .. } => {
+                format!(
+                    "Type mismatch among the match-expression branches: ({}:{})\n{}\n\
+                    The type {} does not match with the type {} of the other branches",
+                    pos.line, pos.col, cursor_line, type_repr(actual), type_repr(expected)
                 )
             }
         }

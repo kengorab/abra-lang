@@ -734,9 +734,13 @@ impl Parser {
         let mut idents = Vec::new();
 
         let match_type = loop {
-            let ident_tok = self.expect_next_token(TokenType::Ident)?;
-            let is_wildcard = if let Token::Ident(_, ident) = &ident_tok { ident == "_" } else { unreachable!() };
-            idents.push(ident_tok);
+            let tok = self.expect_next()?;
+            let is_wildcard = match &tok {
+                Token::Ident(_, ident) => ident == "_",
+                Token::None(_) => false,
+                _ => return Err(ParseError::ExpectedToken(TokenType::Ident, tok))
+            };
+            idents.push(tok);
 
             match self.peek() {
                 Some(Token::Arrow(_)) |
