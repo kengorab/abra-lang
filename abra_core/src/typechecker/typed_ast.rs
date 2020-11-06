@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -278,5 +278,5 @@ pub struct TypedAccessorNode {
 pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub branches: Vec<(/* match_type: */ Type, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>)>,
+    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>)>,
 }

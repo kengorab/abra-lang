@@ -1550,4 +1550,32 @@ mod tests {
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_match_expressions_and_statements() {
+        let input = r#"
+          var r = 0
+          val s: (String | Int)? = "woo"
+          match s {
+            None => r = 0
+            _ s => r = 1
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val s: (String | Int)? = "woo"
+          val r = match s {
+            None => 0
+            _ s => 1
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+    }
 }

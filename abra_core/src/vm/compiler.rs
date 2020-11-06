@@ -1,6 +1,6 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
 use crate::typechecker::types::{Type, FnType};
@@ -109,6 +109,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::TypeDecl(_, _) |
         TypedAstNode::EnumDecl(_, _) |
         TypedAstNode::IfStatement(_, _) |
+        TypedAstNode::MatchStatement(_, _) |
         TypedAstNode::Break(_) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
         TypedAstNode::WhileLoop(_, _) => false,
@@ -541,6 +542,57 @@ impl Compiler {
         self.upvalues.truncate(self.upvalues.len() - fn_upvalues.len());
 
         Ok(FnValue { name: func_name.clone(), code, upvalues: fn_upvalues.clone(), receiver: None, has_return })
+    }
+
+    #[inline]
+    fn visit_block(&mut self, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
+        let block_len = block.len();
+        for (idx, node) in block.into_iter().enumerate() {
+            let line = node.get_token().get_position().line;
+            let is_last_line = idx == block_len - 1;
+
+            let should_pop = should_pop_after_node(&node);
+            let is_interrupt = match &node {
+                TypedAstNode::Break(_) => true,
+                _ => false
+            };
+            self.visit(node)?;
+
+            // If we're in a statement and we should pop, then pop
+            // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
+            if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
+                self.write_opcode(Opcode::Pop, line);
+            }
+
+            // In an interrupt (ie. a break within a loop) the local-popping and jumping bytecode
+            // will already have been emitted in `visit_break`; all that needs to happen here is
+            // for the compiler to no longer care about the locals in this current scope.
+            // We also break out of the loop, since it's unnecessary to compile further than a break.
+            if is_interrupt {
+                self.pop_scope_locals();
+                break;
+            }
+
+            // This is documented in #35
+            if is_last_line {
+                let mut pops = self.pop_scope_locals();
+
+                if !is_stmt {
+                    let first_local_idx = self.current_scope().first_local_idx;
+                    if let Some(idx) = first_local_idx {
+                        self.write_store_local_instr(idx, line);
+
+                        // Push an empty string into metadata since this isn't a "real" store
+                        self.metadata.stores.push("".to_string());
+                    }
+                    if pops.len() != 0 {
+                        pops.remove(0);
+                    }
+                }
+                self.write_pops(&pops, line);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1099,57 +1151,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_if_statement(&mut self, is_stmt: bool, token: Token, node: TypedIfNode) -> Result<(), ()> {
-        #[inline]
-        fn compile_block(compiler: &mut Compiler, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
-            let block_len = block.len();
-            for (idx, node) in block.into_iter().enumerate() {
-                let line = node.get_token().get_position().line;
-                let is_last_line = idx == block_len - 1;
-
-                let should_pop = should_pop_after_node(&node);
-                let is_interrupt = match &node {
-                    TypedAstNode::Break(_) => true,
-                    _ => false
-                };
-                compiler.visit(node)?;
-
-                // If we're in a statement and we should pop, then pop
-                // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
-                if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
-                    compiler.write_opcode(Opcode::Pop, line);
-                }
-
-                // In an interrupt (ie. a break within a loop) the local-popping and jumping bytecode
-                // will already have been emitted in `visit_break`; all that needs to happen here is
-                // for the compiler to no longer care about the locals in this current scope.
-                // We also break out of the loop, since it's unnecessary to compile further than a break.
-                if is_interrupt {
-                    compiler.pop_scope_locals();
-                    break;
-                }
-
-                // This is documented in #35
-                if is_last_line {
-                    let mut pops = compiler.pop_scope_locals();
-
-                    if !is_stmt {
-                        let first_local_idx = compiler.current_scope().first_local_idx;
-                        if let Some(idx) = first_local_idx {
-                            compiler.write_store_local_instr(idx, line);
-
-                            // Push an empty string into metadata since this isn't a "real" store
-                            compiler.metadata.stores.push("".to_string());
-                        }
-                        if pops.len() != 0 {
-                            pops.remove(0);
-                        }
-                    }
-                    compiler.write_pops(&pops, line);
-                }
-            }
-            Ok(())
-        }
-
         let line = token.get_position().line;
 
         let TypedIfNode { condition, condition_binding, if_block, else_block, .. } = node;
@@ -1179,7 +1180,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // to the else branch...
             self.push_local(Token::get_ident_name(ident), line, true);
         }
-        compile_block(self, if_block, is_stmt)?;
+        self.visit_block(if_block, is_stmt)?;
         self.pop_scope();
 
         // ...we need to pop that floating value off of the stack. Each block correctly cleans
@@ -1214,7 +1215,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
 
             self.push_scope(ScopeKind::If);
-            compile_block(self, else_block, is_stmt)?;
+            self.visit_block(else_block, is_stmt)?;
             self.pop_scope();
             let code = &mut self.code;
             let else_block_len = code.len().checked_sub(jump_offset_slot_idx)
@@ -1228,14 +1229,93 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.visit_if_statement(false, token, node)
     }
 
-    fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedMatchNode) -> Result<(), ()> {
-        println!("visit_match_statement");
-        dbg!(node);
-        todo!()
+    fn visit_match_statement(&mut self, is_stmt: bool, token: Token, node: TypedMatchNode) -> Result<(), ()> {
+        let TypedMatchNode { target, branches, .. } = node;
+
+        // Push intrinsic variable $_v
+        self.visit(*target)?;
+        self.push_local("$_v", token.get_position().line, true);
+
+        let mut end_match_jump_indexes = Vec::new();
+
+        for (branch_type, branch_type_ident, binding, block) in branches {
+            self.push_scope(ScopeKind::Block); // Create wrapper scope to hold invisible variables
+            match (branch_type, branch_type_ident) {
+                (Type::Unknown, _) => { // Handle `None => ...` case
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.write_opcode(Opcode::Nil, token.get_position().line);
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    self.write_opcode(Opcode::JumpIfF, token.get_position().line);
+                    self.write_byte(0, token.get_position().line); // <- Replaced after compiling block
+                    let next_case_jump_idx = self.code.len();
+
+                    if let Some(binding_name) = &binding {
+                        self.push_local(binding_name, token.get_position().line, true);
+                    } else {
+                        self.write_opcode(Opcode::Pop, token.get_position().line);
+                        self.locals.pop(); // Remove $_v from compiler's locals vector
+                    }
+
+                    self.visit_block(block, is_stmt)?;
+                    self.write_opcode(Opcode::Jump, token.get_position().line);
+                    self.write_byte(0, token.get_position().line); // <- Replaced after compiling else-block
+                    end_match_jump_indexes.push(self.code.len());
+
+                    let code = &mut self.code;
+                    let case_block_len = code.len().checked_sub(next_case_jump_idx)
+                        .expect("jump offset slot should be <= end of the case block");
+                    *code.get_mut(next_case_jump_idx - 1).unwrap() = case_block_len as u8;
+                }
+                (_, None) => { // Handle `_ => ...` case
+                    if let Some(binding_name) = &binding {
+                        self.push_local(binding_name, token.get_position().line, true);
+                    } else {
+                        self.write_opcode(Opcode::Pop, token.get_position().line);
+                        self.locals.pop(); // Remove $_v from compiler's locals vector
+                    }
+                    self.visit_block(block, is_stmt)?;
+                }
+                (_, Some(TypeIdentifier::Normal { .. })) => { // Handle `Int => ...` case
+                    // // self.write_opcode(Opcode::Dup, token.get_position().line);
+                    // // self.write_opcode(Opcode::T, token.get_position().line); // TODO: This is a placeholder
+                    // self.write_opcode(Opcode::JumpIfF, token.get_position().line);
+                    // self.write_byte(0, token.get_position().line); // <- Replaced after compiling if-block
+                    // let next_case_jump_idx = self.code.len();
+                    //
+                    // if let Some(binding_name) = &binding {
+                    //     self.push_local(binding_name, token.get_position().line, true);
+                    // } else {
+                    //     self.write_opcode(Opcode::Pop, token.get_position().line);
+                    //     self.locals.pop(); // Remove $_v from compiler's locals vector
+                    // }
+                    //
+                    // self.visit_block(block, is_stmt)?;
+                    // self.write_opcode(Opcode::Jump, token.get_position().line);
+                    // self.write_byte(0, token.get_position().line); // <- Replaced after compiling else-block
+                    // end_match_jump_indexes.push(self.code.len());
+                    //
+                    // let code = &mut self.code;
+                    // let case_block_len = code.len().checked_sub(next_case_jump_idx)
+                    //     .expect("jump offset slot should be <= end of the case block");
+                    // *code.get_mut(next_case_jump_idx - 1).unwrap() = case_block_len as u8;
+                    todo!()
+                }
+                _ => unimplemented!()
+            }
+            self.pop_scope();
+        }
+
+        for idx in end_match_jump_indexes {
+            let code = &mut self.code;
+            let match_len = code.len().checked_sub(idx)
+                .expect("jump offset slot should be <= end of all the match blocks");
+            *code.get_mut(idx - 1).unwrap() = match_len as u8;
+        }
+
+        Ok(())
     }
 
     fn visit_match_expression(&mut self, token: Token, node: TypedMatchNode) -> Result<(), ()> {
-        println!("visit_match_expression");
         self.visit_match_statement(false, token, node)
     }
 
@@ -3400,6 +3480,88 @@ mod tests {
                     has_return: false,
                 }),
                 Value::Str("abc".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_match_statement() {
+        let chunk = compile("\
+          val a: (String | Int)? = \"woo\"\n\
+          match a {\n\
+            None x => println(x)\n\
+            _ x => println(x)\n\
+          }
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
+                Opcode::MarkLocal as u8, 0, // $_v
+                Opcode::Dup as u8,
+                Opcode::Nil as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 10,
+                Opcode::MarkLocal as u8, 1, // x
+                Opcode::LLoad1 as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
+                Opcode::Jump as u8, 8,
+                Opcode::MarkLocal as u8, 1, // x
+                Opcode::LLoad1 as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                new_string_obj("woo"),
+                Value::Str("a".to_string()),
+                Value::NativeFn(get_native_fn("println")),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          val a: (String | Int)? = \"woo\"\n\
+          match a {\n\
+            None => println(4)\n\
+            _ x => println(x)\n\
+          }
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0,
+                Opcode::Constant as u8, 1,
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::GLoad as u8,
+                Opcode::MarkLocal as u8, 0, // $_v
+                Opcode::Dup as u8,
+                Opcode::Nil as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 8,
+                Opcode::Pop as u8,
+                Opcode::IConst4 as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Invoke as u8, 1,
+                Opcode::Jump as u8, 8,
+                Opcode::MarkLocal as u8, 0, // x
+                Opcode::LLoad0 as u8,
+                Opcode::Constant as u8, 2,
+                Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: vec![
+                new_string_obj("woo"),
+                Value::Str("a".to_string()),
+                Value::NativeFn(get_native_fn("println")),
             ],
         };
         assert_eq!(expected, chunk);
