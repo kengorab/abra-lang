@@ -1,6 +1,8 @@
-val s: (String | Int)? = "woo"
-val x = match s {
-  None => 0
-  _ s => 1
+func printNth(arr: Int[], n: Int) {
+  match arr[n] {
+    Int i => println(i)
+    None => println("None")
+  }
 }
-x
+
+printNth([1, 2, 3, 4], 7)

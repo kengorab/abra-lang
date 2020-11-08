@@ -2,7 +2,7 @@ use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
-use crate::vm::prelude::Prelude;
+use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
@@ -37,15 +37,16 @@ impl Scope {
     fn root_scope() -> Self {
         let mut scope = Scope::new(ScopeKind::Root);
 
-        let prelude = Prelude::new();
-        for (name, typ) in prelude.get_binding_types().into_iter() {
-            let token = Token::Ident(Position::new(0, 0), name.clone());
-            scope.bindings.insert(name, ScopeBinding(token, typ, false));
-        }
+        PRELUDE.with(|prelude| {
+            for (name, typ) in prelude.get_binding_types().into_iter() {
+                let token = Token::Ident(Position::new(0, 0), name.clone());
+                scope.bindings.insert(name, ScopeBinding(token, typ, false));
+            }
 
-        for (name, typ) in prelude.get_typedefs().into_iter() {
-            scope.types.insert(name, (typ, None));
-        }
+            for (name, typ) in prelude.get_typedefs().into_iter() {
+                scope.types.insert(name, (typ, None));
+            }
+        });
 
         scope
     }

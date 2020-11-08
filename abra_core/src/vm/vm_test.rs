@@ -7,13 +7,18 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
+    use crate::vm::prelude::PRELUDE_NUM_CONSTS;
+    use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
-    use crate::vm::opcode::Opcode;
     use std::collections::HashMap;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
+    }
+
+    fn with_prelude_const_offset(const_idx: u8) -> u8 {
+        PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
     }
 
     fn interpret(input: &str) -> Option<Value> {
@@ -662,7 +667,7 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, with_prelude_const_offset(3),
                 Opcode::LStore0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -1576,6 +1581,35 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(1);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Person { name: String }
+          enum AnimalKind { Dog, Cat }
+          type Animal { kind: AnimalKind }
+          val v: Person | Animal = Person(name: "Meg")
+          val r = match v {
+            Person p => p.name.length
+            Animal a => 0
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func len(v: (String | Int)?): Int {
+            match v {
+              Int i => (""+i).length
+              String s => s.length
+              _ => 0
+            }
+          }
+          len(12340 + 5)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(5);
         assert_eq!(expected, result);
     }
 }

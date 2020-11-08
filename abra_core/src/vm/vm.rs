@@ -105,6 +105,7 @@ impl VMContext {
 pub struct VM {
     pub ctx: VMContext,
     constants: Vec<Value>,
+    type_constant_indexes: HashMap<String, usize>,
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
@@ -119,9 +120,18 @@ impl VM {
         let Module { code, constants } = module;
         let root_frame = CallFrame { ip: 0, code, start_stack_idx: 0, name, upvalues: vec![], local_addrs: vec![] };
 
+        let type_constant_indexes = constants.iter().enumerate()
+            .filter_map(|(idx, a)|
+                if let Value::Type(TypeValue { name, .. }) = a {
+                    Some((name.clone(), idx))
+                } else { None }
+            )
+            .collect();
+
         VM {
             ctx,
             constants,
+            type_constant_indexes,
             call_stack: vec![root_frame],
             stack: Vec::new(),
             globals: HashMap::new(),
@@ -192,6 +202,14 @@ impl VM {
 
     fn read_instr(&mut self) -> Option<Opcode> {
         self.read_byte().map(|b| Opcode::from(&b))
+    }
+
+    fn load_constant(&mut self, const_idx: usize) -> Result<(), InterpretError> {
+        let val = self.constants.get(const_idx)
+            .ok_or(InterpretError::ConstIdxOutOfBounds)?
+            .clone();
+        self.push(val);
+        Ok(())
     }
 
     fn stack_slot_for_local(&mut self, local_idx: usize) -> usize {
@@ -358,6 +376,7 @@ impl VM {
             (Value::Int(a), Value::Float(b)) => (a as f64).partial_cmp(&b),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
+            (Value::Type(TypeValue { name: name1, .. }), Value::Type(TypeValue { name: name2, .. })) => name1.partial_cmp(&name2),
             (a @ _, b @ _) => a.partial_cmp(&b),
         };
 
@@ -471,10 +490,7 @@ impl VM {
             match instr {
                 Opcode::Constant => {
                     let const_idx = self.read_byte_expect()?;
-                    let val = self.constants.get(const_idx)
-                        .ok_or(InterpretError::ConstIdxOutOfBounds)?
-                        .clone();
-                    self.push(val)
+                    self.load_constant(const_idx)?;
                 }
                 Opcode::Nil => self.push(Value::Nil),
                 Opcode::IConst0 => self.push(Value::Int(0)),
@@ -568,7 +584,7 @@ impl VM {
                     let value = match inst {
                         Value::Obj(obj) => match &*obj.borrow() {
                             Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
-                            Obj::EnumVariant(inst) => inst.methods[field_idx].clone(),
+                            Obj::EnumVariantObj(inst) => inst.methods[field_idx].clone(),
                             Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
                             Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
                             _ => unreachable!()
@@ -587,7 +603,7 @@ impl VM {
                                     for (_, mut method_value) in methods {
                                         method_value.receiver = Some(instance_value.clone());
                                         match *instance_value.borrow_mut() {
-                                            Obj::EnumVariant(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
+                                            Obj::EnumVariantObj(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
                                             _ => unreachable!()
                                         }
                                     }
@@ -824,7 +840,7 @@ impl VM {
                         Value::Obj(obj) => {
                             let mut obj = (*obj).borrow_mut();
                             match *obj {
-                                Obj::EnumVariant(ref mut evv) => {
+                                Obj::EnumVariantObj(ref mut evv) => {
                                     let arity = evv.arity;
                                     let num_args = self.stack.len() - arity;
                                     let args = self.stack.split_off(num_args);
@@ -871,6 +887,28 @@ impl VM {
                         local_addrs.push(local_addr);
                     } else {
                         local_addrs[local_idx] = local_addr;
+                    }
+                }
+                Opcode::Typeof => {
+                    let v = self.pop_expect()?;
+                    match v {
+                        Value::Int(_) => self.load_constant(self.type_constant_indexes["Int"])?,
+                        Value::Float(_) => self.load_constant(self.type_constant_indexes["Float"])?,
+                        Value::Bool(_) => self.load_constant(self.type_constant_indexes["Bool"])?,
+                        Value::Obj(obj) => match &*obj.borrow() {
+                            Obj::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
+                            Obj::InstanceObj(inst) => self.push(*inst.typ.clone()),
+                            Obj::EnumVariantObj(_) |
+                            Obj::ArrayObj(_) |
+                            Obj::MapObj(_) => unimplemented!()
+                        }
+                        Value::Nil => self.push(Value::Nil),
+                        Value::Fn(_) |
+                        Value::Closure(_) |
+                        Value::NativeFn(_) |
+                        Value::Type(_) |
+                        Value::Enum(_) => unimplemented!(),
+                        Value::Str(_) => unreachable!("There should never be a value of type Str"),
                     }
                 }
                 Opcode::Return => {
