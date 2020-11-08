@@ -3,20 +3,33 @@ use crate::typechecker::types::Type;
 use crate::builtins::native_fns::native_fns;
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct PreludeBinding {
+    name: String,
     typ: Type,
     value: Value,
 }
 
+thread_local! {
+  pub static PRELUDE: Prelude = Prelude::new();
+  pub static PRELUDE_NUM_CONSTS: u8 = PRELUDE.with(|p| p.num_bindings()) as u8;
+  pub static PRELUDE_BINDINGS: Vec<(String, Value)> = PRELUDE.with(|p| p.get_bindings());
+  pub static PRELUDE_BINDING_VALUES: Vec<Value> = PRELUDE.with(|p| p.get_binding_values());
+}
+
+#[cfg(test)]
+pub static PRELUDE_PRINTLN_INDEX: u8 = 0;
+#[cfg(test)]
+pub static PRELUDE_INT_INDEX: u8 = 6;
+
 pub struct Prelude {
-    bindings: HashMap<String, PreludeBinding>,
+    bindings: Vec<PreludeBinding>,
     typedefs: HashMap<String, Type>,
 }
 
 impl Prelude {
-    pub fn new() -> Self {
-        let mut bindings = HashMap::new();
+    fn new() -> Self {
+        let mut bindings = Vec::new();
         let mut typedefs = HashMap::new();
 
         for (native_fn_desc, native_fn) in native_fns() {
@@ -25,11 +38,11 @@ impl Prelude {
             let name = native_fn_desc.name.to_string();
             let typ = native_fn_desc.get_fn_type();
 
-            bindings.insert(name, PreludeBinding { typ, value });
+            bindings.push(PreludeBinding { name, typ, value });
         }
 
         // Insert None
-        bindings.insert("None".to_string(), PreludeBinding { typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
+        bindings.push(PreludeBinding { name: "None".to_string(), typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
 
         let prelude_types = vec![
             ("Int", Type::Int),
@@ -40,6 +53,7 @@ impl Prelude {
         ];
         for (type_name, typ) in prelude_types {
             let binding = PreludeBinding {
+                name: type_name.to_string(),
                 typ: Type::Type(type_name.to_string(), Box::new(typ.clone()), false), // TODO: is_enum should not be hard-coded false
                 value: Value::Type(TypeValue {
                     name: type_name.to_string(),
@@ -47,7 +61,7 @@ impl Prelude {
                     static_fields: vec![],
                 }),
             };
-            bindings.insert(type_name.to_string(), binding);
+            bindings.push(binding);
 
             typedefs.insert(type_name.to_string(), typ);
         }
@@ -55,9 +69,25 @@ impl Prelude {
         Self { bindings, typedefs }
     }
 
+    pub fn get_bindings(&self) -> Vec<(String, Value)> {
+        self.bindings.iter()
+            .map(|PreludeBinding { name, value, .. }| (name.clone(), value.clone()))
+            .collect()
+    }
+
+    pub fn get_binding_values(&self) -> Vec<Value> {
+        self.bindings.iter()
+            .map(|PreludeBinding { value, .. }| value.clone())
+            .collect()
+    }
+
+    pub fn num_bindings(&self) -> usize {
+        self.bindings.len()
+    }
+
     pub fn get_binding_types(&self) -> HashMap<String, Type> {
         self.bindings.iter()
-            .map(|(name, binding)| (name.clone(), binding.typ.clone()))
+            .map(|binding| (binding.name.clone(), binding.typ.clone()))
             .collect()
     }
 
@@ -68,9 +98,7 @@ impl Prelude {
     }
 
     pub fn resolve_ident<S: AsRef<str>>(&self, ident: S) -> Option<Value> {
-        match self.bindings.get(ident.as_ref()) {
-            None => None,
-            Some(PreludeBinding { value, .. }) => Some(value.clone()),
-        }
+        self.bindings.iter()
+            .find_map(|b| if b.name == ident.as_ref() { Some(b.value.clone()) } else { None })
     }
 }

@@ -99,7 +99,9 @@ impl Type {
             }
             (t1, Union(ts)) => {
                 for t in ts {
-                    if t == t1 { return true; }
+                    if t1.is_equivalent_to(t, referencable_types) {
+                        return true;
+                    }
                 }
                 false
             }

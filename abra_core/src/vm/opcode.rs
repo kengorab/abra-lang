@@ -79,6 +79,7 @@ pub enum Opcode {
     PopN,
     MarkLocal,
     Dup,
+    Typeof,
     Return,
 }
 
@@ -163,7 +164,8 @@ impl From<&u8> for Opcode {
             75 => Opcode::PopN,
             76 => Opcode::MarkLocal,
             77 => Opcode::Dup,
-            78 => Opcode::Return,
+            78 => Opcode::Typeof,
+            79 => Opcode::Return,
             _ => unreachable!()
         }
     }

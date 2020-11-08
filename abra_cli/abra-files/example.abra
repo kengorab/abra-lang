@@ -1,34 +1,8 @@
-//enum Color {
-//  Red
-//  Green
-//  Blue
-//}
-//
-//val c = Color.Red
-
-//val arr = [1, 2]
-//val v = match arr[3] {
-//  Int i => i
-//  None => 0
-//}
-
-//val t: (String | Int)? = ""
-//val x = match t {
-//  //Int i => i
-//  //String s => t
-//  _ v => match v {
-//    None => 0
-//    Int i => i
-//    String s => s.length
-//  }
-//}
-
-val x = if true {
-  val i = 0
-  match i {
-    Int i => println(""+i)
+func printNth(arr: Int[], n: Int) {
+  match arr[n] {
+    Int i => println(i)
+    None => println("None")
   }
-} else {
-  println("false")
 }
-//println(x)
+
+printNth([1, 2, 3, 4], 7)

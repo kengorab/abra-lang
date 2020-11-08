@@ -2,7 +2,7 @@ use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
-use crate::vm::prelude::Prelude;
+use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
@@ -37,15 +37,16 @@ impl Scope {
     fn root_scope() -> Self {
         let mut scope = Scope::new(ScopeKind::Root);
 
-        let prelude = Prelude::new();
-        for (name, typ) in prelude.get_binding_types().into_iter() {
-            let token = Token::Ident(Position::new(0, 0), name.clone());
-            scope.bindings.insert(name, ScopeBinding(token, typ, false));
-        }
+        PRELUDE.with(|prelude| {
+            for (name, typ) in prelude.get_binding_types().into_iter() {
+                let token = Token::Ident(Position::new(0, 0), name.clone());
+                scope.bindings.insert(name, ScopeBinding(token, typ, false));
+            }
 
-        for (name, typ) in prelude.get_typedefs().into_iter() {
-            scope.types.insert(name, (typ, None));
-        }
+            for (name, typ) in prelude.get_typedefs().into_iter() {
+                scope.types.insert(name, (typ, None));
+            }
+        });
 
         scope
     }
@@ -346,13 +347,13 @@ impl Typechecker {
         let target = self.visit(*target)?;
         let target_type = self.resolve_ref_type(&target.get_type());
 
-        let mut possibilities = Self::flatten_match_case_types(target_type);//.into_iter().collect::<HashSet<_>>();
+        let mut possibilities = Self::flatten_match_case_types(target_type);
         let mut seen_wildcard = false;
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
             let MatchCase { match_type, case_binding } = case;
-            let (match_type, case_token) = match match_type {
+            let ((match_type, match_type_ident), case_token) = match match_type {
                 MatchCaseType::Ident(ident) => {
                     if seen_wildcard {
                         return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
@@ -362,7 +363,7 @@ impl Typechecker {
                         if possibilities.contains(&Type::Unknown) {
                             let idx = possibilities.iter().position(|t| t == &Type::Unknown).unwrap();
                             possibilities.remove(idx);
-                            Type::Unknown
+                            (Type::Unknown, None)
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
                         }
@@ -372,7 +373,7 @@ impl Typechecker {
                         if possibilities.contains(&typ) {
                             let idx = possibilities.iter().position(|t| t == &typ).unwrap();
                             possibilities.remove(idx);
-                            typ
+                            (typ, Some(type_ident))
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
                         }
@@ -388,9 +389,9 @@ impl Typechecker {
                     let t = if possibilities.is_empty() {
                         return Err(TypecheckerError::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
                     } else if possibilities.len() == 1 {
-                        possibilities.drain(..).next().unwrap()
+                        (possibilities.drain(..).next().unwrap(), None)
                     } else {
-                        Type::Union(possibilities.drain(..).collect())
+                        (Type::Union(possibilities.drain(..).collect()), None)
                     };
                     (t, token)
                 }
@@ -410,7 +411,7 @@ impl Typechecker {
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
-            typed_branches.push((match_type, case_binding_name, typed_block));
+            typed_branches.push((match_type, match_type_ident, case_binding_name, typed_block));
         }
         if !possibilities.is_empty() {
             return Err(TypecheckerError::NonExhaustiveMatch { token: match_token.clone() });
@@ -1653,7 +1654,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let mut node = self.visit_match_node(false, &token, node)?;
 
         let mut typ = None;
-        for (_, _, ref mut block) in &mut node.branches {
+        for (_, _, _, ref mut block) in &mut node.branches {
             if let Some(typ) = &typ {
                 let mut block_last = block.last_mut().expect("A case should have a non-empty body");
                 let block_typ = block_last.get_type();
@@ -5909,8 +5910,8 @@ mod tests {
                 typ: Type::Unit,
                 target: Box::new(identifier!((2, 7), "i", Type::Option(Box::new(Type::Int)), 0)),
                 branches: vec![
-                    (Type::Int, Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
-                    (Type::Unknown, None, vec![int_literal!((4, 9), 0)])
+                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
+                    (Type::Unknown, None, None, vec![int_literal!((4, 9), 0)])
                 ],
             },
         );
@@ -5932,9 +5933,10 @@ mod tests {
                     identifier!((2, 7), "i", Type::Option(Box::new(Type::Union(vec![Type::Int, Type::String]))), 0)
                 ),
                 branches: vec![
-                    (Type::Int, Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
+                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
                     (
                         Type::Union(vec![Type::String, Type::Unknown]),
+                        None,
                         Some("v".to_string()),
                         vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)]
                     )
