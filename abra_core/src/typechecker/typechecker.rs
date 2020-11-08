@@ -370,6 +370,9 @@ impl Typechecker {
                     } else {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
                         let typ = self.type_from_type_ident(&type_ident)?;
+                        if let Type::Generic(_) = &typ {
+                            return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()))
+                        }
                         if possibilities.contains(&typ) {
                             let idx = possibilities.iter().position(|t| t == &typ).unwrap();
                             possibilities.remove(idx);

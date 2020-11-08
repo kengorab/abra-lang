@@ -83,6 +83,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                 }
             }
             Error::TypecheckerError(typechecker_error) => match typechecker_error {
+                TypecheckerError::Unimplemented(token, message) => {
+                    let mut obj = serializer.serialize_map(Some(6))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "unimplemented")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("message", message)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
                 TypecheckerError::Mismatch { token, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;

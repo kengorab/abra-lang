@@ -11,6 +11,7 @@ pub enum InvalidAssignmentTargetReason {
 
 #[derive(Debug, PartialEq)]
 pub enum TypecheckerError {
+    Unimplemented(Token, String),
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidIfConditionType { token: Token, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
@@ -57,6 +58,7 @@ pub enum TypecheckerError {
 impl TypecheckerError {
     pub fn get_token(&self) -> &Token {
         match self {
+            TypecheckerError::Unimplemented(token, _) => token,
             TypecheckerError::Mismatch { token, .. } => token,
             TypecheckerError::InvalidIfConditionType { token, .. } => token,
             TypecheckerError::InvalidOperator { token, .. } => token,
@@ -208,6 +210,12 @@ impl DisplayError for TypecheckerError {
         let cursor_line = Self::get_underlined_line(lines, self.get_token());
 
         match self {
+            TypecheckerError::Unimplemented(_, message) => {
+                format!(
+                    "This feature is not yet implemented ({}:{}):\n{}\n{}",
+                    pos.line, pos.col, cursor_line, message
+                )
+            }
             TypecheckerError::Mismatch { expected, actual, .. } => {
                 let message = format!("{}Expected {}, got {}", indent, type_repr(expected), type_repr(actual));
 

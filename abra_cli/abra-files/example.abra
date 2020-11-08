@@ -1,6 +1,6 @@
-func printNth(arr: Int[], n: Int) {
+func printNth<T>(arr: T[], n: Int) {
   match arr[n] {
-    Int i => println(i)
+    T i => println(i)
     None => println("None")
   }
 }
