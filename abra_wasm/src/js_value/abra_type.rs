@@ -131,6 +131,14 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("methods", &methods)?;
                 obj.end()
             }
+            Type::EnumVariant(enum_type, variant, idx) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "EnumVariant")?;
+                obj.serialize_entry("enumType", &JsType(enum_type))?;
+                obj.serialize_entry("variant", variant)?;
+                obj.serialize_entry("index", idx)?;
+                obj.end()
+            }
             Type::Placeholder => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("kind", "Placeholder")?;

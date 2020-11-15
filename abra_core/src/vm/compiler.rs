@@ -1286,6 +1286,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
             if branch_type == Type::Unknown { // Handle `None => ...` case
                 self.write_opcode(Opcode::Dup, token.get_position().line);
                 self.write_opcode(Opcode::Nil, token.get_position().line);
+            } else if let Type::EnumVariant(_, _, variant_idx) = branch_type {
+                self.write_opcode(Opcode::Dup, token.get_position().line);
+                self.write_int_constant(variant_idx as u32, token.get_position().line);
             } else if let Some(TypeIdentifier::Normal { ident, .. }) = branch_type_ident { // Handle `Int => ...` case
                 let type_name = Token::get_ident_name(&ident);
                 let type_const_idx = self.get_type_constant_index(&type_name);
@@ -3635,6 +3638,82 @@ mod tests {
                 }),
                 new_string_obj("woo"),
                 Value::Str("a".to_string()),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          enum Direction { Left, Right }\n\
+          val d = Direction.Left\n\
+          match d {\n\
+            Direction.Left => println(\"Left\")\n\
+            _ x => println(x)\n\
+          }
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(1),
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::GetField as u8, 0,
+                Opcode::Constant as u8, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(2),
+                Opcode::GLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::IConst0 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 9,
+                Opcode::Pop as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(3),
+                Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
+                Opcode::Invoke as u8, 1,
+                Opcode::Jump as u8, 8,
+                Opcode::MarkLocal as u8, 0, // x
+                Opcode::LLoad0 as u8,
+                Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
+                Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("Direction".to_string()),
+                Value::Enum(EnumValue {
+                    name: "Direction".to_string(),
+                    variants: vec![
+                        (
+                            "Left".to_string(),
+                            EnumVariantObj {
+                                enum_name: "Direction".to_string(),
+                                name: "Left".to_string(),
+                                idx: 0,
+                                methods: vec![],
+                                arity: 0,
+                                values: None,
+                            }
+                        ),
+                        (
+                            "Right".to_string(),
+                            EnumVariantObj {
+                                enum_name: "Direction".to_string(),
+                                name: "Right".to_string(),
+                                idx: 1,
+                                methods: vec![],
+                                arity: 0,
+                                values: None,
+                            }
+                        )
+                    ],
+                    methods: vec![],
+                    static_fields: vec![],
+                }),
+                Value::Str("d".to_string()),
+                new_string_obj("Left")
             ]),
         };
         assert_eq!(expected, chunk);

@@ -377,6 +377,11 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
             (Value::Type(TypeValue { name: name1, .. }), Value::Type(TypeValue { name: name2, .. })) => name1.partial_cmp(&name2),
+            (Value::Obj(obj), Value::Int(b)) => {
+                if let Obj::EnumVariantObj(evv) = &*obj.borrow() {
+                    evv.idx.partial_cmp(&(b as usize))
+                } else { Some(Ordering::Less) }
+            }
             (a @ _, b @ _) => a.partial_cmp(&b),
         };
 

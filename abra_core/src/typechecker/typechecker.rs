@@ -335,6 +335,11 @@ impl Typechecker {
         match typ {
             Type::Union(opts) => opts.into_iter().flat_map(Self::flatten_match_case_types).collect(),
             Type::Option(t) => vec![Self::flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
+            Type::Enum(EnumType { variants, .. }) => {
+                variants.into_iter().enumerate()
+                    .map(|(idx, (name, enum_typ))| Type::EnumVariant(Box::new(enum_typ), name, idx))
+                    .collect()
+            }
             _ => vec![typ]
         }
     }
@@ -371,7 +376,7 @@ impl Typechecker {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
                         let typ = self.type_from_type_ident(&type_ident)?;
                         if let Type::Generic(_) = &typ {
-                            return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()))
+                            return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
                         }
                         if possibilities.contains(&typ) {
                             let idx = possibilities.iter().position(|t| t == &typ).unwrap();
@@ -383,7 +388,35 @@ impl Typechecker {
                     };
                     (t, ident)
                 }
-                MatchCaseType::Compound(_) => todo!(),
+                MatchCaseType::Compound(idents) => {
+                    let mut idents = idents.into_iter();
+                    let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
+                    let typ = self.type_from_type_ident(&type_ident)?;
+                    let enum_type = match self.resolve_ref_type(&typ) {
+                        Type::Enum(enum_type) => enum_type,
+                        _ => unreachable!("Unexpected non-enum compound type used as match condition")
+                    };
+                    let variants = enum_type.variants.into_iter().map(|(name, _)| name).collect::<Vec<_>>();
+
+                    let variant_ident = idents.next().expect("There should be at least 2 idents");
+                    let variant_name = Token::get_ident_name(&variant_ident);
+                    let variant_idx = variants.iter().position(|v| v == &variant_name);
+                    if variant_idx.is_none() {
+                        return Err(TypecheckerError::UnknownMember { token: variant_ident, target_type: typ });
+                    } else if let Some(token) = idents.next() {
+                        return Err(TypecheckerError::UnknownMember { token, target_type: typ });
+                    }
+                    let variant_idx = variant_idx.expect("An error is raised if it's None");
+
+                    let enum_variant_typ = Type::EnumVariant(Box::new(typ), variant_name, variant_idx);
+                    if possibilities.contains(&enum_variant_typ) {
+                        let idx = possibilities.iter().position(|t| t == &enum_variant_typ).unwrap();
+                        possibilities.remove(idx);
+                        ((enum_variant_typ, Some(type_ident)), variant_ident)
+                    } else {
+                        return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(enum_variant_typ), is_unreachable_none: false });
+                    }
+                }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
                         return Err(TypecheckerError::DuplicateMatchCase { token });
@@ -5948,6 +5981,53 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[1]);
 
+        // Verify branches for enum type
+        let typed_ast = typecheck("\
+          enum Direction { Left, Right, Up, Down }\n\
+          val d = Direction.Left\n\
+          match d {\n\
+            Direction.Left => 0\n\
+            Direction.Right => 1\n\
+            Direction.Up => 2\n\
+            Direction.Down => 3\n\
+          }
+        ")?;
+        let enum_ref_type = Type::Reference("Direction".to_string(), vec![]);
+        let expected = TypedAstNode::MatchStatement(
+            Token::Match(Position::new(3, 1)),
+            TypedMatchNode {
+                typ: Type::Unit,
+                target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
+                branches: vec![
+                    (
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Left".to_string(), 0),
+                        Some(TypeIdentifier::Normal { ident: ident_token!((4, 1), "Direction"), type_args: None }),
+                        None,
+                        vec![int_literal!((4, 19), 0)]
+                    ),
+                    (
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Right".to_string(), 1),
+                        Some(TypeIdentifier::Normal { ident: ident_token!((5, 1), "Direction"), type_args: None }),
+                        None,
+                        vec![int_literal!((5, 20), 1)]
+                    ),
+                    (
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Up".to_string(), 2),
+                        Some(TypeIdentifier::Normal { ident: ident_token!((6, 1), "Direction"), type_args: None }),
+                        None,
+                        vec![int_literal!((6, 17), 2)]
+                    ),
+                    (
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Down".to_string(), 3),
+                        Some(TypeIdentifier::Normal { ident: ident_token!((7, 1), "Direction"), type_args: None }),
+                        None,
+                        vec![int_literal!((7, 19), 3)]
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[2]);
+
         Ok(())
     }
 
@@ -6051,6 +6131,50 @@ mod tests {
           }
         ").unwrap_err();
         let expected = TypecheckerError::UnknownType { type_ident: ident_token!((3, 1), "BogusType") };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Direction { Left, Right, Up, Down }\n\
+          val d = Direction.Left\n\
+          match d {\n\
+            Direction.Sideways => 0
+            _ x => x\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((4, 11), "Sideways"),
+            target_type: Type::Reference("Direction".to_string(), vec![]),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Direction { Left, Right, Up, Down }\n\
+          val d = Direction.Left\n\
+          match d {\n\
+            Direction.Left.A => 0
+            _ x => x\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownMember {
+            token: ident_token!((4, 16), "A"),
+            target_type: Type::Reference("Direction".to_string(), vec![]),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Direction { Left, Right, Up, Down }\n\
+          val d = Direction.Left\n\
+          match d {\n\
+            Direction.Left => 0
+            Direction.Left => 1
+            _ x => x\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableMatchCase {
+            token: ident_token!((5, 23), "Left"),
+            typ: Some(Type::EnumVariant(Box::new(Type::Reference("Direction".to_string(), vec![])), "Left".to_string(), 0)),
+            is_unreachable_none: false,
+        };
         assert_eq!(expected, err);
     }
 

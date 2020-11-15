@@ -1,8 +1,8 @@
-func printNth<T>(arr: T[], n: Int) {
-  match arr[n] {
-    T i => println(i)
-    None => println("None")
-  }
-}
+enum Direction { Left, Right }
 
-printNth([1, 2, 3, 4], 7)
+val d = Direction.Left
+
+match d {
+  Direction.Left => println("Left")
+  Direction.Right => println("Right")
+}

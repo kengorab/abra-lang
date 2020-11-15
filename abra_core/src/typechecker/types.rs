@@ -18,6 +18,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
+    EnumVariant(/* ref: */ Box<Type>, /* variant_name: */ String, /* variant_idx: */ usize),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,

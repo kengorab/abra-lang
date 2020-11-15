@@ -157,9 +157,8 @@ fn type_repr(t: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, type_args_repr)
         }
-        Type::Enum(EnumType { name, .. }) => {
-            format!("{}", name)
-        }
+        Type::Enum(EnumType { name, .. }) => format!("{}", name),
+        Type::EnumVariant(enum_type, variant, _) => format!("{}.{}", type_repr(enum_type), variant),
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
