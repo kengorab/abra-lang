@@ -18,6 +18,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
+    EnumVariant(/* enum_type_ref: */ Box<Type>, /* variant_type: */ EnumVariantType, /* constructed: */ bool),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
@@ -44,9 +45,16 @@ pub struct StructType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct EnumType {
     pub name: String,
-    pub variants: Vec<(/* name: */ String, /* type: */ Type)>,
+    pub variants: Vec<EnumVariantType>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct EnumVariantType {
+    pub name: String,
+    pub variant_idx: usize,
+    pub arg_types: Option<Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>>,
 }
 
 impl Type {
@@ -146,6 +154,15 @@ impl Type {
             }
             (Enum(EnumType { name: name1, .. }), Enum(EnumType { name: name2, .. })) => {
                 name1 == name2
+            }
+            (EnumVariant(enum_type, variant, _), t @ Enum(_)) => {
+                if !enum_type.is_equivalent_to(t, referencable_types) {
+                    false
+                } else if let Enum(enum_type_target) = t {
+                    enum_type_target.variants.contains(variant)
+                } else {
+                    unreachable!()
+                }
             }
             // TODO (This should be unreachable right now anwyay...)
             (Map(_fields1, _), Map(_fields2, _)) => {

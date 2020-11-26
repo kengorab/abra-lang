@@ -53,6 +53,7 @@ pub enum TypecheckerError {
     NonExhaustiveMatch { token: Token },
     EmptyMatchBlock { token: Token },
     MatchBranchMismatch { token: Token, expected: Type, actual: Type },
+    InvalidUninitializedEnumVariant { token: Token },
 }
 
 impl TypecheckerError {
@@ -100,6 +101,7 @@ impl TypecheckerError {
             TypecheckerError::NonExhaustiveMatch { token } => token,
             TypecheckerError::EmptyMatchBlock { token } => token,
             TypecheckerError::MatchBranchMismatch { token, .. } => token,
+            TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
         }
     }
 }
@@ -157,9 +159,8 @@ fn type_repr(t: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, type_args_repr)
         }
-        Type::Enum(EnumType { name, .. }) => {
-            format!("{}", name)
-        }
+        Type::Enum(EnumType { name, .. }) => format!("{}", name),
+        Type::EnumVariant(enum_type, variant, _) => format!("{}.{}", type_repr(enum_type), variant.name),
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
@@ -556,6 +557,13 @@ impl DisplayError for TypecheckerError {
                     "Type mismatch among the match-expression branches: ({}:{})\n{}\n\
                     The type {} does not match with the type {} of the other branches",
                     pos.line, pos.col, cursor_line, type_repr(actual), type_repr(expected)
+                )
+            }
+            TypecheckerError::InvalidUninitializedEnumVariant { .. } => {
+                format!(
+                    "Invalid usage of enum variant: ({}:{})\n{}\n\
+                    This enum variant requires arguments",
+                    pos.line, pos.col, cursor_line
                 )
             }
         }
