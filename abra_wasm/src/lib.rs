@@ -181,8 +181,8 @@ impl Serialize for DisassembleResult {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
+    #[wasm_bindgen(js_name = __abra_func__println)]
+    fn println(s: &str);
 }
 
 #[wasm_bindgen(js_name = disassemble)]
@@ -214,7 +214,7 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 #[wasm_bindgen(js_name = runSync)]
 pub fn run(input: &str) -> JsValue {
     let ctx = VMContext {
-        print: |input| log(input)
+        print: |input| println(input)
     };
 
     let result = compile_and_run(input.to_string(), ctx);
@@ -226,7 +226,7 @@ pub fn run(input: &str) -> JsValue {
 #[wasm_bindgen(js_name = runAsync)]
 pub fn run_async(input: &str) -> js_sys::Promise {
     let ctx = VMContext {
-        print: |input| log(input)
+        print: |input| println(input)
     };
 
     let future = futures::future::ok(input.to_string())

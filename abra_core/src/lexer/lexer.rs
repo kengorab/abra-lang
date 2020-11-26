@@ -1,5 +1,5 @@
+use peekmore::{PeekMore, PeekMoreIterator};
 use std::str::Chars;
-use std::iter::Peekable;
 use crate::lexer::tokens::{Token, Position};
 use crate::lexer::lexer_error::LexerError;
 
@@ -19,14 +19,14 @@ pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
 }
 
 struct Lexer<'a> {
-    input: Peekable<Chars<'a>>,
+    input: PeekMoreIterator<Chars<'a>>,
     line: usize,
     col: usize,
 }
 
 impl<'a> Lexer<'a> {
     fn new(input: &'a String) -> Self {
-        let input = input.chars().peekable();
+        let input = input.chars().peekmore();
 
         Lexer {
             input,
@@ -98,13 +98,22 @@ impl<'a> Lexer<'a> {
                         chars.push(self.expect_next()?);
                         continue;
                     } else if ch == '.' {
-                        if is_float {
-                            let pos = Position::new(self.line, self.col + 1);
-                            return Err(LexerError::UnexpectedChar(pos, ch.to_string()));
+                        self.input.advance_cursor();
+
+                        if let Some(&ch) = self.input.peek() {
+                            self.input.reset_cursor();
+
+                            if ch.is_digit(10) && is_float {
+                                let pos = Position::new(self.line, self.col + 1);
+                                return Err(LexerError::UnexpectedChar(pos, ".".to_string()));
+                            } else if ch.is_digit(10) {
+                                is_float = true;
+                                chars.push(self.expect_next()?);
+                                continue;
+                            } else {
+                                break;
+                            }
                         }
-                        is_float = true;
-                        chars.push(self.expect_next()?);
-                        continue;
                     }
                 }
                 break;
@@ -355,25 +364,55 @@ mod tests {
             Token::Int(Position::new(2, 2), 456),
         ];
         assert_eq!(expected, tokens);
-    }
 
-    #[test]
-    fn test_tokenize_floats() {
-        let input = "1.23\n 0.456";
+        let input = "123.\n456.";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
-            Token::Float(Position::new(1, 1), 1.23),
-            Token::Float(Position::new(2, 2), 0.456),
+            Token::Int(Position::new(1, 1), 123),
+            Token::Dot(Position::new(1, 4)),
+            Token::Int(Position::new(2, 1), 456),
+            Token::Dot(Position::new(2, 4)),
+        ];
+        assert_eq!(expected, tokens);
+
+        let input = "1.a";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 1),
+            Token::Dot(Position::new(1, 2)),
+            Token::Ident(Position::new(1, 3), "a".to_string()),
         ];
         assert_eq!(expected, tokens);
     }
 
     #[test]
-    fn test_tokenize_floats_error() {
+    fn test_tokenize_floats() {
+        let input = "1.23\n0.456";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Float(Position::new(1, 1), 1.23),
+            Token::Float(Position::new(2, 1), 0.456),
+        ];
+        assert_eq!(expected, tokens);
+
         let input = "1..23";
-        let e = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 3), ".".to_string());
-        assert_eq!(expected, e);
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Int(Position::new(1, 1), 1),
+            Token::Dot(Position::new(1, 2)),
+            Token::Dot(Position::new(1, 3)),
+            Token::Int(Position::new(1, 4), 23),
+        ];
+        assert_eq!(expected, tokens);
+
+        let input = "1.3.a";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::Float(Position::new(1, 1), 1.3),
+            Token::Dot(Position::new(1, 4)),
+            Token::Ident(Position::new(1, 5), "a".to_string()),
+        ];
+        assert_eq!(expected, tokens);
     }
 
     #[test]

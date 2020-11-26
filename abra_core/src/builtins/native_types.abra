@@ -1,8 +1,22 @@
+type NativeFloat {
+  func floor(self): Int {}
+  func ceil(self): Int {}
+  func round(self): Int {}
+  func withPrecision(self, precision: Int): Float {}
+  func abs(self): Float {}
+}
+
+type NativeInt {
+  func abs(self): Int {}
+  func asBase(self, base: Int): String {}
+}
+
 type NativeString {
   length: Int
 
   func toLower(self): NativeString { self }
   func toUpper(self): NativeString { self }
+  func padLeft(self, totalSize: Int, padding: String = " "): NativeString { self }
 }
 
 type NativeArray<T> {
@@ -13,4 +27,5 @@ type NativeArray<T> {
   func map<U>(self, fn: (T) => U): U[] {}
   func filter(self, fn: (T) => Bool): T[] {}
   func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
+  func join(self, joiner: String = ""): String {}
 }

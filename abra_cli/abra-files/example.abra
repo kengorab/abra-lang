@@ -13,7 +13,7 @@ enum Color {
       Color.Red => "0xFF0000"
       Color.Green => "0x00FF00"
       Color.Blue => "0x0000FF"
-      Color.RGB c => "0x" + c.red + c.green + c.blue
+      Color.RGB c => "0x" + [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0")).join()
     }
   }
 }

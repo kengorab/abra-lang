@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeArray, NativeType, NativeString};
+use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
@@ -2125,7 +2125,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             zelf: &Typechecker,
             target_type: &Type,
             field_name: &String,
-            token: &Token
+            token: &Token,
         ) -> Result<(Option<(usize, Type)>, HashMap<String, Type>), TypecheckerError> {
             match zelf.resolve_ref_type(&target_type) {
                 Type::Struct(StructType { fields, methods, type_args, .. }) => {
@@ -2143,12 +2143,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         });
                     Ok((field_data, generics))
                 }
+                Type::String => Ok((NativeString::get_field_or_method(&field_name), HashMap::new())),
+                Type::Float => Ok((NativeFloat::get_field_or_method(&field_name), HashMap::new())),
+                Type::Int => Ok((NativeInt::get_field_or_method(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
                     let field_data = NativeArray::get_field_or_method(&field_name);
                     Ok((field_data, generics))
                 }
-                Type::String => Ok((NativeString::get_field_or_method(&field_name), HashMap::new())),
                 Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()

@@ -1334,12 +1334,15 @@ mod tests {
             func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
 
             func hex(self): String {
-              if self == Color.Red "0xFF0000"
-              else if self == Color.Green "0x00FF00"
-              else if self == Color.Blue "0x0000FF"
-              else if self == Color.white() "0xFFFFFF"
-              else if self == Color.black() "0x000000"
-              else "TODO: Implement pattern matching"
+              match self {
+                Color.Red => "0xff0000"
+                Color.Green => "0x00ff00"
+                Color.Blue => "0x0000ff"
+                Color.RGB c => {
+                  val hexes = [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0"))
+                  "0x" + hexes.join()
+                }
+              }
             }
           }
 
@@ -1354,12 +1357,12 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
-            new_string_obj("0xFF0000"),
-            new_string_obj("0x00FF00"),
-            new_string_obj("0x0000FF"),
+            new_string_obj("0xff0000"),
+            new_string_obj("0x00ff00"),
+            new_string_obj("0x0000ff"),
             new_string_obj("0x000000"),
-            new_string_obj("0xFFFFFF"),
-            new_string_obj("TODO: Implement pattern matching"),
+            new_string_obj("0xffffff"),
+            new_string_obj("0x808080"),
         ]);
         assert_eq!(expected, result);
     }
