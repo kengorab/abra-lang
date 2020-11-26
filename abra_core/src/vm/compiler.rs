@@ -3,7 +3,7 @@ use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
-use crate::typechecker::types::{Type, FnType};
+use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
 use crate::builtins::native_types::{NativeArray, NativeType};
@@ -1286,7 +1286,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             if branch_type == Type::Unknown { // Handle `None => ...` case
                 self.write_opcode(Opcode::Dup, token.get_position().line);
                 self.write_opcode(Opcode::Nil, token.get_position().line);
-            } else if let Type::EnumVariant(_, _, variant_idx) = branch_type {
+            } else if let Type::EnumVariant(_, EnumVariantType { variant_idx, .. }, _) = branch_type {
                 self.write_opcode(Opcode::Dup, token.get_position().line);
                 self.write_int_constant(variant_idx as u32, token.get_position().line);
             } else if let Some(TypeIdentifier::Normal { ident, .. }) = branch_type_ident { // Handle `Int => ...` case
@@ -1348,6 +1348,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let typ = target.get_type();
         let (arity, has_return) = match typ {
             Type::Fn(FnType { arg_types, ret_type, .. }) => (arg_types.len(), *ret_type != Type::Unit),
+            Type::EnumVariant(_, EnumVariantType { arg_types, .. }, _) => {
+                let arity = arg_types.as_ref().map(|ts| ts.len()).expect("Typechecking should have caught invocation of non-constructor enum variants");
+                (arity, true)
+            }
             _ => unreachable!() // This should have been caught during typechecking
         };
 
@@ -3644,7 +3648,7 @@ mod tests {
 
         let chunk = compile("\
           enum Direction { Left, Right }\n\
-          val d = Direction.Left\n\
+          val d: Direction = Direction.Left\n\
           match d {\n\
             Direction.Left => println(\"Left\")\n\
             _ x => println(x)\n\

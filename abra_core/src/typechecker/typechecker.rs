@@ -3,7 +3,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
 use crate::vm::prelude::PRELUDE;
-use crate::typechecker::types::{Type, StructType, FnType, EnumType};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use std::collections::{HashSet, HashMap};
@@ -335,9 +335,10 @@ impl Typechecker {
         match typ {
             Type::Union(opts) => opts.into_iter().flat_map(Self::flatten_match_case_types).collect(),
             Type::Option(t) => vec![Self::flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
-            Type::Enum(EnumType { variants, .. }) => {
-                variants.into_iter().enumerate()
-                    .map(|(idx, (name, enum_typ))| Type::EnumVariant(Box::new(enum_typ), name, idx))
+            Type::Enum(enum_type) => {
+                let typ = Type::Reference(enum_type.name, vec![]);
+                enum_type.variants.into_iter()
+                    .map(|evt| Type::EnumVariant(Box::new(typ.clone()), evt, true))
                     .collect()
             }
             _ => vec![typ]
@@ -396,7 +397,7 @@ impl Typechecker {
                         Type::Enum(enum_type) => enum_type,
                         _ => unreachable!("Unexpected non-enum compound type used as match condition")
                     };
-                    let variants = enum_type.variants.into_iter().map(|(name, _)| name).collect::<Vec<_>>();
+                    let variants = enum_type.variants.iter().map(|v| v.name.clone()).collect::<Vec<_>>();
 
                     let variant_ident = idents.next().expect("There should be at least 2 idents");
                     let variant_name = Token::get_ident_name(&variant_ident);
@@ -408,13 +409,25 @@ impl Typechecker {
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
-                    let enum_variant_typ = Type::EnumVariant(Box::new(typ), variant_name, variant_idx);
-                    if possibilities.contains(&enum_variant_typ) {
-                        let idx = possibilities.iter().position(|t| t == &enum_variant_typ).unwrap();
-                        possibilities.remove(idx);
-                        ((enum_variant_typ, Some(type_ident)), variant_ident)
-                    } else {
-                        return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(enum_variant_typ), is_unreachable_none: false });
+                    let idx = possibilities.iter().enumerate().find_map(|(idx, possibility)| {
+                        if let Type::EnumVariant(variant_enum_type, variant, _) = possibility {
+                            if let Type::Enum(variant_enum_type) = self.resolve_ref_type(&variant_enum_type) {
+                                if enum_type == variant_enum_type && variant_idx == variant.variant_idx {
+                                    return Some(idx);
+                                }
+                            }
+                        }
+                        None
+                    });
+                    match idx {
+                        Some(idx) => {
+                            let enum_variant_typ = possibilities.remove(idx);
+                            ((enum_variant_typ, Some(type_ident)), variant_ident)
+                        }
+                        None => {
+                            let enum_variant_typ = Type::EnumVariant(Box::new(typ), EnumVariantType { name: variant_name, variant_idx, arg_types: None }, true);
+                            return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(enum_variant_typ), is_unreachable_none: false });
+                        }
                     }
                 }
                 MatchCaseType::Wildcard(token) => {
@@ -1334,16 +1347,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut variant_names = HashMap::<String, Token>::new();
         let mut typed_variants = Vec::new();
-        for (name, args) in &variants {
+        for (variant_idx, (name, args)) in variants.iter().enumerate() {
             let variant_name = Token::get_ident_name(name).clone();
             if let Some(orig_ident) = variant_names.get(&variant_name) {
                 return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name.clone(), orig_is_field: false, orig_is_enum_variant: true });
             } else {
                 variant_names.insert(variant_name.clone(), name.clone());
             }
-            let enum_ret_type = self.cur_typedef.clone().unwrap();
             let variant_type = match args {
-                None => enum_ret_type,
+                None => EnumVariantType { name: variant_name, variant_idx, arg_types: None },
                 Some(args) => {
                     // Handle the case where a variant arg's default value is itself a variant - since
                     // we haven't finished typechecking variants yet, that will fail. This is a dirty hack
@@ -1352,20 +1364,22 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         .map(|(tok, ident, _)| (tok, ident, None))
                         .collect();
                     let faked_args = self.visit_fn_args(faked_args, false, false)?;
-                    Type::Fn(FnType {
-                        type_args: vec![],
-                        ret_type: Box::new(enum_ret_type),
-                        arg_types: faked_args.iter().zip(args.iter())
-                            .map(|((arg_name, arg_type, _), (_, _, default_value_node))| {
-                                let arg_name = Token::get_ident_name(arg_name).clone();
-                                // Since we forced the default_value_node to be None in `faked_args`, we need to
-                                // obtain the `is_some` status from the original arg. This is gross
-                                (arg_name, arg_type.clone(), default_value_node.is_some())
-                            }).collect(),
-                    })
+                    EnumVariantType {
+                        name: variant_name,
+                        variant_idx,
+                        arg_types: Some(
+                            faked_args.iter().zip(args.iter())
+                                .map(|((arg_name, arg_type, _), (_, _, default_value_node))| {
+                                    let arg_name = Token::get_ident_name(arg_name).clone();
+                                    // Since we forced the default_value_node to be None in `faked_args`, we need to
+                                    // obtain the `is_some` status from the original arg. This is gross
+                                    (arg_name, arg_type.clone(), default_value_node.is_some())
+                                }).collect()
+                        ),
+                    }
                 }
             };
-            typed_variants.push((variant_name, variant_type.clone()));
+            typed_variants.push(variant_type);
         }
 
         let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&new_enum_name) { typedef } else { unreachable!() };
@@ -1383,7 +1397,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // --------------------------------------------------------------------------------- \\
         // ----------------------- Begin Variant/Method Typechecking ----------------------- \\
         let mut variant_nodes = Vec::new();
-        for ((name, args), (_, variant_type)) in variants.into_iter().zip(typed_variants) {
+        for ((name, args), variant_type) in variants.into_iter().zip(typed_variants) {
             let variant_node = match args {
                 None => EnumVariantKind::Basic,
                 Some(args) => {
@@ -1391,6 +1405,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     EnumVariantKind::Constructor(args)
                 }
             };
+            let enum_type = self.cur_typedef.as_ref().unwrap().clone();
+            let variant_type = Type::EnumVariant(Box::new(enum_type), variant_type, false);
             variant_nodes.push((name, variant_type, variant_node));
         }
 
@@ -1831,7 +1847,21 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
 
         match self.resolve_ref_type(&target_type) {
-            Type::Fn(FnType { arg_types, type_args, ret_type }) => {
+            t @ Type::Fn(_) | t @ Type::EnumVariant(_, _, false) => {
+                let (arg_types, type_args, ret_type) = match t {
+                    Type::Fn(FnType { arg_types, type_args, ret_type }) => (arg_types, type_args, ret_type),
+                    Type::EnumVariant(enum_type, enum_variant_type, _) => {
+                        if let Some(arg_types) = &enum_variant_type.arg_types {
+                            let arg_types = arg_types.clone();
+                            let type_args = vec![];
+                            let ret_type = Box::new(Type::EnumVariant(enum_type, enum_variant_type, true));
+                            (arg_types, type_args, ret_type)
+                        } else {
+                            return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type });
+                        }
+                    }
+                    _ => unreachable!()
+                };
                 let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
                 if num_named != 0 && num_named != args.len() {
                     return Err(TypecheckerError::InvalidMixedParamType { token: target.get_token().clone() });
@@ -2091,58 +2121,118 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else { unreachable!("The `field` field on AccessorNode must be an AstNode::Identifier"); };
         let field_name = Token::get_ident_name(&field_ident).clone();
 
-        let (field_data, mut generics) = match self.resolve_ref_type(&target_type) {
-            Type::Struct(StructType { fields, methods, type_args, .. }) => {
-                let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
+        fn get_field_data(
+            zelf: &Typechecker,
+            target_type: &Type,
+            field_name: &String,
+            token: &Token
+        ) -> Result<(Option<(usize, Type)>, HashMap<String, Type>), TypecheckerError> {
+            match zelf.resolve_ref_type(&target_type) {
+                Type::Struct(StructType { fields, methods, type_args, .. }) => {
+                    let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
 
-                let num_fields = fields.len();
-                let field_data = fields.iter().enumerate()
-                    .find_map(|(idx, (name, typ, _))| {
-                        if &field_name == name { Some((idx, typ.clone())) } else { None }
-                    })
-                    .or_else(|| {
-                        methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                            if &field_name == name { Some((idx + num_fields, typ.clone())) } else { None }
+                    let num_fields = fields.len();
+                    let field_data = fields.iter().enumerate()
+                        .find_map(|(idx, (name, typ, _))| {
+                            if field_name == name { Some((idx, typ.clone())) } else { None }
                         })
-                    });
-                (field_data, generics)
-            }
-            Type::Array(inner_type) => {
-                let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                let field_data = NativeArray::get_field_or_method(&field_name);
-                (field_data, generics)
-            }
-            Type::String => (NativeString::get_field_or_method(&field_name), HashMap::new()),
-            Type::Type(_, typ, _) => match self.resolve_ref_type(&*typ) {
-                Type::Struct(StructType { static_fields, .. }) => {
-                    let field_data = static_fields.iter().enumerate()
-                        .find(|(_, (name, _, _))| &field_name == name)
-                        .map(|(idx, (_, typ, _))| (idx, typ.clone()));
-                    (field_data, HashMap::new())
-                }
-                Type::Enum(EnumType { variants, static_fields, .. }) => {
-                    let num_variants = variants.len();
-                    let field_data = variants.iter().enumerate()
-                        .find(|(_, (variant_name, _))| &field_name == variant_name)
-                        .map(|(idx, (_, typ))| (idx, typ.clone()))
                         .or_else(|| {
-                            static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
-                                if &field_name == name { Some((idx + num_variants, typ.clone())) } else { None }
+                            methods.iter().enumerate().find_map(|(idx, (name, typ))| {
+                                if field_name == name { Some((idx + num_fields, typ.clone())) } else { None }
                             })
                         });
-                    (field_data, HashMap::new())
+                    Ok((field_data, generics))
                 }
-                _ => unimplemented!()
-            }
-            Type::Enum(EnumType { methods, .. }) => {
-                let field_data = methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                    if &field_name == name { Some((idx, typ.clone())) } else { None }
-                });
-                (field_data, HashMap::new())
-            }
-            _ => (None, HashMap::new())
-        };
+                Type::Array(inner_type) => {
+                    let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
+                    let field_data = NativeArray::get_field_or_method(&field_name);
+                    Ok((field_data, generics))
+                }
+                Type::String => Ok((NativeString::get_field_or_method(&field_name), HashMap::new())),
+                Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
+                    Type::Struct(StructType { static_fields, .. }) => {
+                        let field_data = static_fields.iter().enumerate()
+                            .find(|(_, (name, _, _))| field_name == name)
+                            .map(|(idx, (_, typ, _))| (idx, typ.clone()));
+                        Ok((field_data, HashMap::new()))
+                    }
+                    Type::Enum(enum_type) => {
+                        let EnumType { name: enum_name, variants, static_fields, .. } = &enum_type;
+                        let num_variants = variants.len();
+                        let field_data = variants.iter().enumerate()
+                            .find(|(_, EnumVariantType { name, .. })| field_name == name)
+                            .map(|(idx, variant_type)| {
+                                let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
+                                (idx, Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false))
+                            })
+                            .or_else(|| {
+                                static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
+                                    if field_name == name { Some((idx + num_variants, typ.clone())) } else { None }
+                                })
+                            });
+                        Ok((field_data, HashMap::new()))
+                    }
+                    _ => unimplemented!()
+                }
+                Type::Enum(enum_type) => {
+                    let field_data = enum_type.methods.iter().enumerate().find_map(|(idx, (name, typ))| {
+                        if field_name == name { Some((idx, typ.clone())) } else { None }
+                    });
+                    Ok((field_data, HashMap::new()))
+                }
+                Type::EnumVariant(enum_type_ref, EnumVariantType { variant_idx, .. }, is_constructed) => {
+                    if let Type::Enum(enum_type) = zelf.resolve_ref_type(&*enum_type_ref) {
+                        let variant_type = &enum_type.variants[variant_idx];
+                        let field_data = if let Some(arg_types) = &variant_type.arg_types {
+                            if is_constructed {
+                                let num_methods = enum_type.methods.len();
+                                arg_types.iter().enumerate()
+                                    .find_map(|(idx, (arg_name, arg_type, _))| {
+                                        if field_name == arg_name { Some((idx + num_methods, arg_type.clone())) } else { None }
+                                    })
+                            } else {
+                                return Err(TypecheckerError::InvalidUninitializedEnumVariant { token: token.clone() });
+                            }
+                        } else { None };
+                        match field_data {
+                            Some(field_data) => Ok((Some(field_data), HashMap::new())),
+                            None => get_field_data(&zelf, &Type::Enum(enum_type), field_name, token)
+                        }
+                    } else { unreachable!("The enum_type_ref shouldn't be anything other than an Enum type") }
+                }
+                Type::Union(opts) => {
+                    let all_enums_or_variants = opts.iter().all(|o| match zelf.resolve_ref_type(o) {
+                        Type::Enum(_) | Type::EnumVariant(_, _, _) => true,
+                        _ => false
+                    });
+                    if !all_enums_or_variants {
+                        return Ok((None, HashMap::new()));
+                    }
 
+                    let enum_types = opts.iter().filter_map(|o| {
+                        match zelf.resolve_ref_type(o) {
+                            Type::Enum(enum_type) => Some(enum_type),
+                            Type::EnumVariant(enum_type, _, _) => match zelf.resolve_ref_type(&*enum_type) {
+                                Type::Enum(enum_type) => Some(enum_type),
+                                _ => unreachable!()
+                            }
+                            _ => None
+                        }
+                    }).collect::<Vec<_>>();
+                    let enum_types = enum_types.into_iter().collect::<HashSet<_>>();
+                    if enum_types.len() != 1 {
+                        Ok((None, HashMap::new()))
+                    } else {
+                        let enum_type = enum_types.into_iter().next().unwrap();
+                        let enum_type = Type::Enum(enum_type);
+                        get_field_data(&zelf, &enum_type, field_name, token)
+                    }
+                }
+                _ => Ok((None, HashMap::new()))
+            }
+        }
+
+        let (field_data, mut generics) = get_field_data(&self, &target_type, &field_name, &token)?;
         let (field_idx, mut typ) = match field_data {
             Some((field_idx, typ)) => {
                 if let Some(ident_type_args) = &ident_type_args {
@@ -3988,12 +4078,12 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 13), "Hot"),
-                        Type::Reference("Temp".to_string(), vec![]),
+                        Type::EnumVariant(Box::new(Type::Reference("Temp".to_string(), vec![])), EnumVariantType { name: "Hot".to_string(), variant_idx: 0, arg_types: None }, false),
                         EnumVariantKind::Basic
                     ),
                     (
                         ident_token!((1, 18), "Cold"),
-                        Type::Reference("Temp".to_string(), vec![]),
+                        Type::EnumVariant(Box::new(Type::Reference("Temp".to_string(), vec![])), EnumVariantType { name: "Cold".to_string(), variant_idx: 1, arg_types: None }, false),
                         EnumVariantKind::Basic
                     ),
                 ],
@@ -4013,22 +4103,22 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 18), "Radians"),
-                        Type::Fn(FnType {
-                            type_args: vec![],
-                            arg_types: vec![("rads".to_string(), Type::Float, false)],
-                            ret_type: Box::new(Type::Reference("AngleMode".to_string(), vec![])),
-                        }),
+                        Type::EnumVariant(
+                            Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                            EnumVariantType { name: "Radians".to_string(), variant_idx: 0, arg_types: Some(vec![("rads".to_string(), Type::Float, false)]) },
+                            false,
+                        ),
                         EnumVariantKind::Constructor(vec![
                             (ident_token!((1, 26), "rads"), Type::Float, None)
                         ])
                     ),
                     (
                         ident_token!((1, 40), "Degrees"),
-                        Type::Fn(FnType {
-                            type_args: vec![],
-                            arg_types: vec![("degs".to_string(), Type::Float, false)],
-                            ret_type: Box::new(Type::Reference("AngleMode".to_string(), vec![])),
-                        }),
+                        Type::EnumVariant(
+                            Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                            EnumVariantType { name: "Degrees".to_string(), variant_idx: 1, arg_types: Some(vec![("degs".to_string(), Type::Float, false)]) },
+                            false,
+                        ),
                         EnumVariantKind::Constructor(vec![
                             (ident_token!((1, 48), "degs"), Type::Float, None)
                         ])
@@ -4051,19 +4141,27 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 14), "Red"),
-                        Type::Reference("Color".to_string(), vec![]),
+                        Type::EnumVariant(
+                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                            EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
+                            false,
+                        ),
                         EnumVariantKind::Basic
                     ),
                     (
                         ident_token!((1, 19), "Darken"),
-                        Type::Fn(FnType {
-                            type_args: vec![],
-                            arg_types: vec![
-                                ("base".to_string(), Type::Reference("Color".to_string(), vec![]), true),
-                                ("amount".to_string(), Type::Float, true),
-                            ],
-                            ret_type: Box::new(Type::Reference("Color".to_string(), vec![])),
-                        }),
+                        Type::EnumVariant(
+                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                            EnumVariantType {
+                                name: "Darken".to_string(),
+                                variant_idx: 1,
+                                arg_types: Some(vec![
+                                    ("base".to_string(), Type::Reference("Color".to_string(), vec![]), true),
+                                    ("amount".to_string(), Type::Float, true),
+                                ]),
+                            },
+                            false,
+                        ),
                         EnumVariantKind::Constructor(vec![
                             (
                                 ident_token!((1, 26), "base"),
@@ -4071,7 +4169,11 @@ mod tests {
                                 Some(TypedAstNode::Accessor(
                                     Token::Dot(Position::new(1, 45)),
                                     TypedAccessorNode {
-                                        typ: Type::Reference("Color".to_string(), vec![]),
+                                        typ: Type::EnumVariant(
+                                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                                            EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
+                                            false,
+                                        ),
                                         target: Box::new(identifier!(
                                             (1, 40),
                                             "Color",
@@ -4221,7 +4323,11 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((6, 11), "hex"),
-            target_type: Type::Reference("Color".to_string(), vec![]),
+            target_type: Type::EnumVariant(
+                Box::new(Type::Reference("Color".to_string(), vec![])),
+                EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
+                false,
+            ),
         };
         assert_eq!(expected, error);
 
@@ -5984,7 +6090,7 @@ mod tests {
         // Verify branches for enum type
         let typed_ast = typecheck("\
           enum Direction { Left, Right, Up, Down }\n\
-          val d = Direction.Left\n\
+          val d: Direction = Direction.Left\n\
           match d {\n\
             Direction.Left => 0\n\
             Direction.Right => 1\n\
@@ -6000,25 +6106,25 @@ mod tests {
                 target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
                 branches: vec![
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Left".to_string(), 0),
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((4, 1), "Direction"), type_args: None }),
                         None,
                         vec![int_literal!((4, 19), 0)]
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Right".to_string(), 1),
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Right".to_string(), variant_idx: 1, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((5, 1), "Direction"), type_args: None }),
                         None,
                         vec![int_literal!((5, 20), 1)]
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Up".to_string(), 2),
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Up".to_string(), variant_idx: 2, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((6, 1), "Direction"), type_args: None }),
                         None,
                         vec![int_literal!((6, 17), 2)]
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), "Down".to_string(), 3),
+                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Down".to_string(), variant_idx: 3, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((7, 1), "Direction"), type_args: None }),
                         None,
                         vec![int_literal!((7, 19), 3)]
@@ -6172,7 +6278,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnreachableMatchCase {
             token: ident_token!((5, 23), "Left"),
-            typ: Some(Type::EnumVariant(Box::new(Type::Reference("Direction".to_string(), vec![])), "Left".to_string(), 0)),
+            typ: Some(Type::EnumVariant(Box::new(Type::Reference("Direction".to_string(), vec![])), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true)),
             is_unreachable_none: false,
         };
         assert_eq!(expected, err);

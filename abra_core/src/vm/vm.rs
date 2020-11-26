@@ -589,7 +589,17 @@ impl VM {
                     let value = match inst {
                         Value::Obj(obj) => match &*obj.borrow() {
                             Obj::InstanceObj(inst) => inst.fields[field_idx].clone(),
-                            Obj::EnumVariantObj(inst) => inst.methods[field_idx].clone(),
+                            Obj::EnumVariantObj(inst) => {
+                                let num_methods = inst.methods.len();
+                                if field_idx < num_methods {
+                                    inst.methods[field_idx].clone()
+                                } else if let Some(values) = &inst.values {
+                                    values[field_idx - num_methods].clone()
+                                } else {
+                                    // This _should_ be unreachable, but just in case
+                                    Value::Nil
+                                }
+                            },
                             Obj::StringObj { .. } => NativeString::get_field_value(&obj, field_idx),
                             Obj::ArrayObj { .. } => NativeArray::get_field_value(&obj, field_idx),
                             _ => unreachable!()
