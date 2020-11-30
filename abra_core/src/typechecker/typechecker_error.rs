@@ -54,6 +54,8 @@ pub enum TypecheckerError {
     EmptyMatchBlock { token: Token },
     MatchBranchMismatch { token: Token, expected: Type, actual: Type },
     InvalidUninitializedEnumVariant { token: Token },
+    InvalidDestructuring { token: Token, typ: Type },
+    InvalidDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
 }
 
 impl TypecheckerError {
@@ -102,6 +104,8 @@ impl TypecheckerError {
             TypecheckerError::EmptyMatchBlock { token } => token,
             TypecheckerError::MatchBranchMismatch { token, .. } => token,
             TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
+            TypecheckerError::InvalidDestructuring { token, .. } => token,
+            TypecheckerError::InvalidDestructuringArity { token, .. } => token,
         }
     }
 }
@@ -564,6 +568,21 @@ impl DisplayError for TypecheckerError {
                     "Invalid usage of enum variant: ({}:{})\n{}\n\
                     This enum variant requires arguments",
                     pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidDestructuring { typ, .. } => {
+                format!(
+                    "Invalid destructuring: ({}:{})\n{}\n\
+                    Cannot destructure an instance of type {}",
+                    pos.line, pos.col, cursor_line, type_repr(typ)
+                )
+            }
+            TypecheckerError::InvalidDestructuringArity { typ, expected, actual, .. } => {
+                format!(
+                    "Invalid destructuring pattern: ({}:{})\n{}\n\
+                    Instances of type {} have {} field{}, but the pattern attempts to extract {}",
+                    pos.line, pos.col, cursor_line,
+                    type_repr(typ), expected, if *expected == 1 { "" } else { "s" }, actual
                 )
             }
         }

@@ -331,10 +331,10 @@ impl Typechecker {
         Ok(TypedIfNode { typ: Type::Unit, condition, condition_binding, if_block, else_block })
     }
 
-    fn flatten_match_case_types(typ: Type) -> Vec<Type> {
-        match typ {
-            Type::Union(opts) => opts.into_iter().flat_map(Self::flatten_match_case_types).collect(),
-            Type::Option(t) => vec![Self::flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
+    fn flatten_match_case_types(&self, typ: Type) -> Vec<Type> {
+        match self.resolve_ref_type(&typ) {
+            Type::Union(opts) => opts.into_iter().flat_map(|t| self.flatten_match_case_types(t)).collect(),
+            Type::Option(t) => vec![self.flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
             Type::Enum(enum_type) => {
                 let typ = Type::Reference(enum_type.name, vec![]);
                 enum_type.variants.into_iter()
@@ -353,12 +353,12 @@ impl Typechecker {
         let target = self.visit(*target)?;
         let target_type = self.resolve_ref_type(&target.get_type());
 
-        let mut possibilities = Self::flatten_match_case_types(target_type);
+        let mut possibilities = self.flatten_match_case_types(target_type);
         let mut seen_wildcard = false;
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
-            let MatchCase { match_type, case_binding } = case;
+            let MatchCase { match_type, case_binding, args } = case;
             let ((match_type, match_type_ident), case_token) = match match_type {
                 MatchCaseType::Ident(ident) => {
                     if seen_wildcard {
@@ -453,6 +453,31 @@ impl Typechecker {
                 Some(ident_name)
             } else { None };
 
+            if let Some(destructured_args) = &args {
+                match &match_type {
+                    Type::EnumVariant(_, variant, _) => {
+                        match &variant.arg_types {
+                            Some(arg_types) => {
+                                if arg_types.len() != destructured_args.len() {
+                                    let token = if destructured_args.len() > arg_types.len() {
+                                        destructured_args[destructured_args.len() - arg_types.len()].clone()
+                                    } else {
+                                        destructured_args[destructured_args.len() - 1].clone()
+                                    };
+                                    return Err(TypecheckerError::InvalidDestructuringArity { token, typ: match_type.clone(), expected: arg_types.len(), actual: destructured_args.len() });
+                                }
+                                for ((_, arg_type, _), arg_tok) in arg_types.iter().zip(destructured_args.iter()) {
+                                    let arg_name = Token::get_ident_name(arg_tok);
+                                    scope.bindings.insert(arg_name, ScopeBinding(arg_tok.clone(), arg_type.clone(), false));
+                                }
+                            }
+                            None => return Err(TypecheckerError::InvalidDestructuring { token: case_token, typ: match_type.clone() })
+                        }
+                    }
+                    _ => return Err(TypecheckerError::InvalidDestructuring { token: case_token, typ: match_type.clone() })
+                };
+            }
+
             if block.is_empty() && !is_stmt {
                 return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
             }
@@ -460,7 +485,7 @@ impl Typechecker {
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
-            typed_branches.push((match_type, match_type_ident, case_binding_name, typed_block));
+            typed_branches.push((match_type, match_type_ident, case_binding_name, typed_block, args));
         }
         if !possibilities.is_empty() {
             return Err(TypecheckerError::NonExhaustiveMatch { token: match_token.clone() });
@@ -1706,7 +1731,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let mut node = self.visit_match_node(false, &token, node)?;
 
         let mut typ = None;
-        for (_, _, _, ref mut block) in &mut node.branches {
+        for (_, _, _, ref mut block, _) in &mut node.branches {
             if let Some(typ) = &typ {
                 let mut block_last = block.last_mut().expect("A case should have a non-empty body");
                 let block_typ = block_last.get_type();
@@ -6054,8 +6079,8 @@ mod tests {
                 typ: Type::Unit,
                 target: Box::new(identifier!((2, 7), "i", Type::Option(Box::new(Type::Int)), 0)),
                 branches: vec![
-                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
-                    (Type::Unknown, None, None, vec![int_literal!((4, 9), 0)])
+                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)], None),
+                    (Type::Unknown, None, None, vec![int_literal!((4, 9), 0)], None)
                 ],
             },
         );
@@ -6077,12 +6102,13 @@ mod tests {
                     identifier!((2, 7), "i", Type::Option(Box::new(Type::Union(vec![Type::Int, Type::String]))), 0)
                 ),
                 branches: vec![
-                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)]),
+                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)], None),
                     (
                         Type::Union(vec![Type::String, Type::Unknown]),
                         None,
                         Some("v".to_string()),
-                        vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)]
+                        vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)],
+                        None,
                     )
                 ],
             },
@@ -6111,30 +6137,43 @@ mod tests {
                         Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((4, 1), "Direction"), type_args: None }),
                         None,
-                        vec![int_literal!((4, 19), 0)]
+                        vec![int_literal!((4, 19), 0)],
+                        None,
                     ),
                     (
                         Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Right".to_string(), variant_idx: 1, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((5, 1), "Direction"), type_args: None }),
                         None,
-                        vec![int_literal!((5, 20), 1)]
+                        vec![int_literal!((5, 20), 1)],
+                        None,
                     ),
                     (
                         Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Up".to_string(), variant_idx: 2, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((6, 1), "Direction"), type_args: None }),
                         None,
-                        vec![int_literal!((6, 17), 2)]
+                        vec![int_literal!((6, 17), 2)],
+                        None,
                     ),
                     (
                         Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Down".to_string(), variant_idx: 3, arg_types: None }, true),
                         Some(TypeIdentifier::Normal { ident: ident_token!((7, 1), "Direction"), type_args: None }),
                         None,
-                        vec![int_literal!((7, 19), 3)]
+                        vec![int_literal!((7, 19), 3)],
+                        None,
                     )
                 ],
             },
         );
         assert_eq!(expected, typed_ast[2]);
+
+        let typed_ast = typecheck("\
+          enum Foo { Bar(baz: Int) }\n\
+          val f: Foo = Foo.Bar(baz: 24)\n\
+          val i: Int = match f {\n\
+            Foo.Bar(z) => z\n\
+          }
+        ");
+        assert!(typed_ast.is_ok());
 
         Ok(())
     }
@@ -6282,6 +6321,78 @@ mod tests {
             token: ident_token!((5, 23), "Left"),
             typ: Some(Type::EnumVariant(Box::new(Type::Reference("Direction".to_string(), vec![])), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true)),
             is_unreachable_none: false,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Foo { Bar(baz: Int) }\n\
+          val f: Foo = Foo.Bar(baz: 24)\n\
+          val i: Int = match f {\n\
+            Foo.Bar(z, x) => z\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidDestructuringArity {
+            token: ident_token!((4, 12), "x"),
+            typ: Type::EnumVariant(
+                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                EnumVariantType {
+                    name: "Bar".to_string(),
+                    variant_idx: 0,
+                    arg_types: Some(vec![
+                        ("baz".to_string(), Type::Int, false)
+                    ]),
+                },
+                true,
+            ),
+            expected: 1,
+            actual: 2,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Foo { Bar(baz: Int, qux: Int) }\n\
+          val f: Foo = Foo.Bar(baz: 6, qux: 24)\n\
+          val i: Int = match f {\n\
+            Foo.Bar(z) => z\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidDestructuringArity {
+            token: ident_token!((4, 9), "z"),
+            typ: Type::EnumVariant(
+                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                EnumVariantType {
+                    name: "Bar".to_string(),
+                    variant_idx: 0,
+                    arg_types: Some(vec![
+                        ("baz".to_string(), Type::Int, false),
+                        ("qux".to_string(), Type::Int, false),
+                    ]),
+                },
+                true,
+            ),
+            expected: 2,
+            actual: 1,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          enum Foo { Bar }\n\
+          val f: Foo = Foo.Bar\n\
+          val i: Int = match f {\n\
+            Foo.Bar(a, b) => 0\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidDestructuring {
+            token: ident_token!((4, 5), "Bar"),
+            typ: Type::EnumVariant(
+                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                EnumVariantType {
+                    name: "Bar".to_string(),
+                    variant_idx: 0,
+                    arg_types: None,
+                },
+                true,
+            ),
         };
         assert_eq!(expected, err);
     }

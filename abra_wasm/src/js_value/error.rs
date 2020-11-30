@@ -461,6 +461,24 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidDestructuring { token, typ } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidDestructuring")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("type", &JsType(typ))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidDestructuringArity { token, typ, expected, actual } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidDestructuring")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("type", &JsType(typ))?;
+                    obj.serialize_entry("expected", expected)?;
+                    obj.serialize_entry("actual", actual)?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {
