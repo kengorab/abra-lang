@@ -1,5 +1,5 @@
 use crate::typechecker::types::{Type, FnType};
-use crate::vm::value::Value;
+use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
@@ -81,8 +81,8 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
             receiver: None,
             native_fn: println,
             has_return: false,
-        }));
-
+        }
+    ));
     native_fns.push((
         NativeFnDesc {
             name: "range",
@@ -96,7 +96,23 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
             receiver: None,
             native_fn: range,
             has_return: true,
-        }));
+        }
+    ));
+    native_fns.push((
+        NativeFnDesc {
+            name: "readFile",
+            type_args: vec![],
+            args: vec![("path", Type::String)],
+            opt_args: vec![],
+            return_type: Type::Option(Box::new(Type::String)),
+        },
+        NativeFn {
+            name: "readFile",
+            receiver: None,
+            native_fn: read_file,
+            has_return: true,
+        }
+    ));
 
     native_fns
 }
@@ -130,6 +146,23 @@ fn range(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Val
     }
 
     Some(Value::new_array_obj(values))
+}
+
+fn read_file(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+    let file_name = args.into_iter().next().expect("readFile requires 1 argument");
+    let file_name = if let Value::Obj(obj) = file_name {
+        match &(*obj.borrow()) {
+            Obj::StringObj(s) => s.clone(),
+            _ => unreachable!()
+        }
+    } else {
+        panic!("readFile requires a String as first argument")
+    };
+
+    match std::fs::read_to_string(file_name) {
+        Ok(contents) => Some(Value::new_string_obj(contents)),
+        Err(_) => Some(Value::Nil)
+    }
 }
 
 #[cfg(test)]

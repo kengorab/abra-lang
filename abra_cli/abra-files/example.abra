@@ -1,25 +1,3 @@
-//val arr = [1, 2, 3]
-//val p = arr.push
-//p(4)
-//p(5)
-//arr
-
-//val fl = 6.24
-//val f = fl.floor
-//println(""+f())
-//println(""+f())
-//println(""+fl)
-
-//println("asdf".toUpper())
-//println(""+(1.23).floor())
-
-//val arr = [1, 2, 3]
-//arr.map(x => x + 2)
-
-//func asHexColor(r: Int, g: Int, b: Int): String {
-//  "0x" + [r, g, b].map(c => c.asBase(16).padLeft(2, "0")).join()
-//}
-//
-//asHexColor(127, 10, 1)
-
-1.23.3
+if readFile("./abra-files/example.abra") |contents| {
+  println(contents)
+}
