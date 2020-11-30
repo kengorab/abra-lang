@@ -1,7 +1,7 @@
 use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue};
+use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -122,9 +122,11 @@ impl VM {
 
         let type_constant_indexes = constants.iter().enumerate()
             .filter_map(|(idx, a)|
-                if let Value::Type(TypeValue { name, .. }) = a {
-                    Some((name.clone(), idx))
-                } else { None }
+                match a {
+                    Value::Type(TypeValue { name, .. }) |
+                    Value::Enum(EnumValue { name, .. }) => Some((name.clone(), idx)),
+                    _ => None
+                }
             )
             .collect();
 
@@ -654,6 +656,12 @@ impl VM {
                         Obj::InstanceObj(InstanceObj { ref mut fields, .. }) => {
                             fields[field_idx] = value.clone();
                         }
+                        Obj::EnumVariantObj(EnumVariantObj { ref mut values, .. }) => {
+                            match values {
+                                Some(values) => values[field_idx] = value.clone(),
+                                None => unreachable!()
+                            }
+                        }
                         _ => unimplemented!()
                     };
                     self.push(value);
@@ -927,9 +935,12 @@ impl VM {
                         Value::Obj(obj) => match &*obj.borrow() {
                             Obj::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
                             Obj::InstanceObj(inst) => self.push(*inst.typ.clone()),
-                            Obj::EnumVariantObj(_) |
-                            Obj::ArrayObj(_) |
-                            Obj::MapObj(_) => unimplemented!()
+                            Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
+                            o @ Obj::ArrayObj(_) |
+                            o @ Obj::MapObj(_) => {
+                                dbg!(o);
+                                unimplemented!()
+                            }
                         }
                         Value::Nil => self.push(Value::Nil),
                         Value::Fn(_) |

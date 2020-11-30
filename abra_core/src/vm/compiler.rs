@@ -1266,7 +1266,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let mut end_match_jump_indexes = Vec::new();
 
-        for (branch_type, branch_type_ident, binding, block) in branches {
+        for (branch_type, branch_type_ident, binding, block, args) in branches {
             self.push_scope(ScopeKind::Block);
 
             let is_wildcard_case = branch_type != Type::Unknown && branch_type_ident.is_none();
@@ -1306,11 +1306,24 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_byte(0, token.get_position().line); // <- Replaced after compiling block
             let next_case_jump_idx = self.code.len();
 
-            if let Some(binding_name) = &binding {
-                self.push_local(binding_name, token.get_position().line, true);
-            } else {
-                // Pop match target if it's not bound as a local
-                self.write_opcode(Opcode::Pop, token.get_position().line);
+            // Push a local representing the match target still left on the stack (from the previous DUP).
+            // If there is a name supplied in source to ascribe to that value we use it, otherwise use the intrinsic $match_target.
+            // This value will be inaccessible if there is no label for it in source, but is necessary either way
+            // to facilitate destructuring (if destructured_args are present in this match case).
+            let binding_name = binding.unwrap_or("$match_target".to_string());
+            self.push_local(&binding_name, token.get_position().line, true);
+            if let Some(destructured_args) = &args {
+                let depth = self.get_fn_depth();
+                for (idx, arg_tok) in destructured_args.iter().enumerate() {
+                    let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
+                    self.write_load_local_instr(slot, token.get_position().line);
+                    self.metadata.loads.push(binding_name.clone());
+
+                    self.write_opcode(Opcode::GetField, token.get_position().line);
+                    self.write_byte(idx as u8, token.get_position().line);
+                    let arg_name = Token::get_ident_name(arg_tok);
+                    self.push_local(arg_name, token.get_position().line, true);
+                }
             }
 
             self.visit_block(block, is_stmt)?;
@@ -3568,11 +3581,12 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 8,
-                Opcode::Pop as u8,
+                Opcode::JumpIfF as u8, 10,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::IConst4 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
                 Opcode::Jump as u8, 8,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
@@ -3672,11 +3686,12 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 9,
-                Opcode::Pop as u8,
+                Opcode::JumpIfF as u8, 11,
+                Opcode::MarkLocal as u8, 0,
                 Opcode::Constant as u8, with_prelude_const_offset(3),
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
+                Opcode::Pop as u8,
                 Opcode::Jump as u8, 8,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
@@ -3718,6 +3733,72 @@ mod tests {
                 }),
                 Value::Str("d".to_string()),
                 new_string_obj("Left")
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          enum Foo { Bar(baz: Int) }\n\
+          val f: Foo = Foo.Bar(baz: 24)\n\
+          match f {\n\
+            Foo.Bar(baz) => println(baz)
+          }
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(1),
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Nil as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(2),
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::GetField as u8, 0,
+                Opcode::Invoke as u8, 1,
+                Opcode::Constant as u8, with_prelude_const_offset(3),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(3),
+                Opcode::GLoad as u8,
+                Opcode::Dup as u8,
+                Opcode::IConst0 as u8,
+                Opcode::Eq as u8,
+                Opcode::JumpIfF as u8, 16,
+                Opcode::MarkLocal as u8, 0, // $match_target
+                Opcode::LLoad0 as u8,
+                Opcode::GetField as u8, 0,
+                Opcode::MarkLocal as u8, 1, // baz
+                Opcode::LLoad1 as u8,
+                Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
+                Opcode::Invoke as u8, 1,
+                Opcode::PopN as u8, 2,
+                Opcode::Jump as u8, 0,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("Foo".to_string()),
+                Value::Enum(EnumValue {
+                    name: "Foo".to_string(),
+                    variants: vec![
+                        (
+                            "Bar".to_string(),
+                            EnumVariantObj {
+                                enum_name: "Foo".to_string(),
+                                name: "Bar".to_string(),
+                                idx: 0,
+                                methods: vec![],
+                                arity: 1,
+                                values: None,
+                            }
+                        ),
+                    ],
+                    methods: vec![],
+                    static_fields: vec![],
+                }),
+                Value::Int(24),
+                Value::Str("f".to_string()),
             ]),
         };
         assert_eq!(expected, chunk);

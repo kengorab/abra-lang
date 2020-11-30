@@ -1368,6 +1368,25 @@ mod tests {
     }
 
     #[test]
+    fn interpret_match_destructuring_enum() {
+        let input = r#"
+          enum Foo { Bar(baz: Int, qux: Int) }
+
+          val f: Foo = Foo.Bar(baz: 6, qux: 24)
+          match f {
+            Foo.Bar(baz, qux) bar => {
+              bar.baz = qux
+              bar.qux = baz
+            }
+          }
+          "" + f
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Foo.Bar(24, 6)");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_linked_list_kinda() {
         // Verify self-referential types, as well as the usage of static methods in default field values
         let input = "\
