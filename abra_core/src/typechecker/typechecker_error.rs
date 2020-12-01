@@ -2,7 +2,6 @@ use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
 use crate::parser::ast::BinaryOp;
-use crate::typechecker::typed_ast::TypedAstNode;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
@@ -12,6 +11,7 @@ pub enum InvalidAssignmentTargetReason {
 
 #[derive(Debug, PartialEq)]
 pub enum TypecheckerError {
+    Unimplemented(Token, String),
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidIfConditionType { token: Token, actual: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
@@ -45,14 +45,23 @@ pub enum TypecheckerError {
     InvalidSelfParam { token: Token },
     MissingRequiredTypeAnnotation { token: Token },
     InvalidTypeDeclDepth { token: Token },
-    ForbiddenUnknownType { token: Token, node: Option<TypedAstNode> },
+    ForbiddenVariableType { token: Token, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
+    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool },
+    DuplicateMatchCase { token: Token },
+    NonExhaustiveMatch { token: Token },
+    EmptyMatchBlock { token: Token },
+    MatchBranchMismatch { token: Token, expected: Type, actual: Type },
+    InvalidUninitializedEnumVariant { token: Token },
+    InvalidDestructuring { token: Token, typ: Type },
+    InvalidDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
 }
 
 impl TypecheckerError {
     pub fn get_token(&self) -> &Token {
         match self {
+            TypecheckerError::Unimplemented(token, _) => token,
             TypecheckerError::Mismatch { token, .. } => token,
             TypecheckerError::InvalidIfConditionType { token, .. } => token,
             TypecheckerError::InvalidOperator { token, .. } => token,
@@ -86,9 +95,17 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::MissingRequiredTypeAnnotation { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
-            TypecheckerError::ForbiddenUnknownType { token, .. } => token,
+            TypecheckerError::ForbiddenVariableType { token, .. } => token,
             TypecheckerError::InvalidInstantiation { token, .. } => token,
             TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
+            TypecheckerError::UnreachableMatchCase { token, .. } => token,
+            TypecheckerError::DuplicateMatchCase { token, .. } => token,
+            TypecheckerError::NonExhaustiveMatch { token } => token,
+            TypecheckerError::EmptyMatchBlock { token } => token,
+            TypecheckerError::MatchBranchMismatch { token, .. } => token,
+            TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
+            TypecheckerError::InvalidDestructuring { token, .. } => token,
+            TypecheckerError::InvalidDestructuringArity { token, .. } => token,
         }
     }
 }
@@ -146,9 +163,8 @@ fn type_repr(t: &Type) -> String {
                 .join(", ");
             format!("{}<{}>", name, type_args_repr)
         }
-        Type::Enum(EnumType { name, .. }) => {
-            format!("{}", name)
-        }
+        Type::Enum(EnumType { name, .. }) => format!("{}", name),
+        Type::EnumVariant(enum_type, variant, _) => format!("{}.{}", type_repr(enum_type), variant.name),
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
@@ -199,6 +215,12 @@ impl DisplayError for TypecheckerError {
         let cursor_line = Self::get_underlined_line(lines, self.get_token());
 
         match self {
+            TypecheckerError::Unimplemented(_, message) => {
+                format!(
+                    "This feature is not yet implemented ({}:{}):\n{}\n{}",
+                    pos.line, pos.col, cursor_line, message
+                )
+            }
             TypecheckerError::Mismatch { expected, actual, .. } => {
                 let message = format!("{}Expected {}, got {}", indent, type_repr(expected), type_repr(actual));
 
@@ -473,12 +495,20 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::ForbiddenUnknownType { .. } => {
-                format!(
-                    "Could not determine type: ({}:{})\n{}\n\
-                    Please use an explicit type annotation to denote the type",
-                    pos.line, pos.col, cursor_line
-                )
+            TypecheckerError::ForbiddenVariableType { typ, .. } => {
+                match typ {
+                    Type::Unknown => format!(
+                        "Could not determine type: ({}:{})\n{}\n\
+                        Please use an explicit type annotation to denote the type",
+                        pos.line, pos.col, cursor_line
+                    ),
+                    Type::Unit => format!(
+                        "Forbidden type for variable: ({}:{})\n{}\n\
+                        Variables cannot be of type {}",
+                        pos.line, pos.col, cursor_line, type_repr(&Type::Unit)
+                    ),
+                    _ => unreachable!()
+                }
             }
             TypecheckerError::InvalidInstantiation { typ, .. } => {
                 format!(
@@ -494,6 +524,65 @@ impl DisplayError for TypecheckerError {
                         "Provide {} type argument{} to match type {}",
                         expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
                     )
+                )
+            }
+            TypecheckerError::UnreachableMatchCase { typ, is_unreachable_none, .. } => {
+                format!(
+                    "Unreachable match case: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    if *is_unreachable_none {
+                        "Value cannot possibly be None".to_string()
+                    } else if let Some(typ) = typ {
+                        format!("Value cannot possibly be of type {}", type_repr(typ))
+                    } else {
+                        "All possible cases have already been handled".to_string()
+                    }
+                )
+            }
+            TypecheckerError::DuplicateMatchCase { .. } => {
+                format!("Duplicate match case: ({}:{})\n{}", pos.line, pos.col, cursor_line)
+            }
+            TypecheckerError::NonExhaustiveMatch { .. } => {
+                format!(
+                    "Non-exhaustive match: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    "Please ensure each possible case is handled, or use the wildcard (_)"
+                )
+            }
+            TypecheckerError::EmptyMatchBlock { .. } => {
+                format!(
+                    "Empty block for match case: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line,
+                    "Each case in a match expression must result in a value"
+                )
+            }
+            TypecheckerError::MatchBranchMismatch { expected, actual, .. } => {
+                format!(
+                    "Type mismatch among the match-expression branches: ({}:{})\n{}\n\
+                    The type {} does not match with the type {} of the other branches",
+                    pos.line, pos.col, cursor_line, type_repr(actual), type_repr(expected)
+                )
+            }
+            TypecheckerError::InvalidUninitializedEnumVariant { .. } => {
+                format!(
+                    "Invalid usage of enum variant: ({}:{})\n{}\n\
+                    This enum variant requires arguments",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidDestructuring { typ, .. } => {
+                format!(
+                    "Invalid destructuring: ({}:{})\n{}\n\
+                    Cannot destructure an instance of type {}",
+                    pos.line, pos.col, cursor_line, type_repr(typ)
+                )
+            }
+            TypecheckerError::InvalidDestructuringArity { typ, expected, actual, .. } => {
+                format!(
+                    "Invalid destructuring pattern: ({}:{})\n{}\n\
+                    Instances of type {} have {} field{}, but the pattern attempts to extract {}",
+                    pos.line, pos.col, cursor_line,
+                    type_repr(typ), expected, if *expected == 1 { "" } else { "s" }, actual
                 )
             }
         }

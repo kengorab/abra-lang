@@ -8,6 +8,32 @@ macro_rules! ident_token {
     );
 }
 
+macro_rules! identifier {
+    ($pos: expr, $i: expr, $t: expr, $s: expr) => (
+        match $pos {
+            (line, col) => {
+                TypedAstNode::Identifier(
+                    Token::Ident(Position::new(line, col), $i.to_string()),
+                    TypedIdentifierNode { typ: $t, name: $i.to_string(), is_mutable: false, scope_depth: $s },
+                )
+            }
+        }
+    );
+}
+
+macro_rules! identifier_mut {
+    ($pos: expr, $i: expr, $t: expr, $s: expr) => (
+        match $pos {
+            (line, col) => {
+                TypedAstNode::Identifier(
+                    Token::Ident(Position::new(line, col), $i.to_string()),
+                    TypedIdentifierNode { typ: $t, name: $i.to_string(), is_mutable: true, scope_depth: $s },
+                )
+            }
+        }
+    );
+}
+
 macro_rules! int_literal {
     ($pos: expr, $i: expr) => (
         match $pos {

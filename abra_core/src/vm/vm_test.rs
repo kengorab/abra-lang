@@ -7,13 +7,18 @@ mod tests {
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
+    use crate::vm::prelude::PRELUDE_NUM_CONSTS;
+    use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
-    use crate::vm::opcode::Opcode;
     use std::collections::HashMap;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
+    }
+
+    fn with_prelude_const_offset(const_idx: u8) -> u8 {
+        PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
     }
 
     fn interpret(input: &str) -> Option<Value> {
@@ -662,7 +667,7 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant as u8, 3,
+                Opcode::Constant as u8, with_prelude_const_offset(3),
                 Opcode::LStore0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -1329,12 +1334,15 @@ mod tests {
             func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
 
             func hex(self): String {
-              if self == Color.Red "0xFF0000"
-              else if self == Color.Green "0x00FF00"
-              else if self == Color.Blue "0x0000FF"
-              else if self == Color.white() "0xFFFFFF"
-              else if self == Color.black() "0x000000"
-              else "TODO: Implement pattern matching"
+              match self {
+                Color.Red => "0xff0000"
+                Color.Green => "0x00ff00"
+                Color.Blue => "0x0000ff"
+                Color.RGB c => {
+                  val hexes = [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0"))
+                  "0x" + hexes.join()
+                }
+              }
             }
           }
 
@@ -1349,13 +1357,32 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
-            new_string_obj("0xFF0000"),
-            new_string_obj("0x00FF00"),
-            new_string_obj("0x0000FF"),
+            new_string_obj("0xff0000"),
+            new_string_obj("0x00ff00"),
+            new_string_obj("0x0000ff"),
             new_string_obj("0x000000"),
-            new_string_obj("0xFFFFFF"),
-            new_string_obj("TODO: Implement pattern matching"),
+            new_string_obj("0xffffff"),
+            new_string_obj("0x808080"),
         ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_match_destructuring_enum() {
+        let input = r#"
+          enum Foo { Bar(baz: Int, qux: Int) }
+
+          val f: Foo = Foo.Bar(baz: 6, qux: 24)
+          match f {
+            Foo.Bar(baz, qux) bar => {
+              bar.baz = qux
+              bar.qux = baz
+            }
+          }
+          "" + f
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Foo.Bar(24, 6)");
         assert_eq!(expected, result);
     }
 
@@ -1548,6 +1575,63 @@ mod tests {
         ";
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_match_expressions_and_statements() {
+        let input = r#"
+          var r = 0
+          val s: (String | Int)? = "woo"
+          match s {
+            None => r = 0
+            _ s => r = 1
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val s: (String | Int)? = "woo"
+          val r = match s {
+            None => 0
+            _ s => 1
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Person { name: String }
+          enum AnimalKind { Dog, Cat }
+          type Animal { kind: AnimalKind }
+          val v: Person | Animal = Person(name: "Meg")
+          val r = match v {
+            Person p => p.name.length
+            Animal a => 0
+          }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func len(v: (String | Int)?): Int {
+            match v {
+              Int i => (""+i).length
+              String s => s.length
+              _ => 0
+            }
+          }
+          len(12340 + 5)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(5);
         assert_eq!(expected, result);
     }
 }

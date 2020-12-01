@@ -35,13 +35,13 @@ pub struct TypeValue {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct EnumValue {
     pub name: String,
-    pub variants: Vec<(String, EnumVariantValue)>,
+    pub variants: Vec<(String, EnumVariantObj)>,
     pub methods: Vec<(String, FnValue)>,
     pub static_fields: Vec<(String, FnValue)>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
-pub struct EnumVariantValue {
+pub struct EnumVariantObj {
     pub enum_name: String,
     pub name: String,
     pub idx: usize,
@@ -105,8 +105,8 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
-    pub fn new_enum_variant_obj(evv: EnumVariantValue) -> Value {
-        let inst = Obj::EnumVariant(evv);
+    pub fn new_enum_variant_obj(evv: EnumVariantObj) -> Value {
+        let inst = Obj::EnumVariantObj(evv);
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 }
@@ -144,7 +144,7 @@ pub enum Obj {
     ArrayObj(Vec<Value>),
     MapObj(HashMap<String, Value>),
     InstanceObj(InstanceObj),
-    EnumVariant(EnumVariantValue),
+    EnumVariantObj(EnumVariantObj),
 }
 
 impl Obj {
@@ -162,7 +162,7 @@ impl Obj {
                     _ => unreachable!("Shouldn't have instances of non-struct types")
                 }
             }
-            Obj::EnumVariant(EnumVariantValue { enum_name, name, values, .. }) => {
+            Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
                 match values {
                     None => format!("{}.{}", enum_name, name),
                     Some(values) => {
@@ -195,7 +195,7 @@ impl PartialOrd for Obj {
                     Some(Ordering::Equal)
                 }
             }
-            (Obj::EnumVariant(evv1), Obj::EnumVariant(evv2)) => {
+            (Obj::EnumVariantObj(evv1), Obj::EnumVariantObj(evv2)) => {
                 match evv1.idx.cmp(&evv2.idx) {
                     Ordering::Equal => {}
                     v @ _ => return Some(v)
