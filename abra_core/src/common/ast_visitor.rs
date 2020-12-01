@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -22,6 +22,8 @@ pub trait AstVisitor<V, E> {
             Indexing(tok, node) => self.visit_indexing(tok, node),
             IfStatement(tok, node) => self.visit_if_statement(tok, node),
             IfExpression(tok, node) => self.visit_if_expression(tok, node),
+            MatchStatement(tok, node) => self.visit_match_statement(tok, node),
+            MatchExpression(tok, node) => self.visit_match_expression(tok, node),
             Invocation(tok, node) => self.visit_invocation(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok) => self.visit_break(tok),
@@ -46,6 +48,8 @@ pub trait AstVisitor<V, E> {
     fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<V, E>;
     fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<V, E>;
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<V, E>;
+    fn visit_match_statement(&mut self, token: Token, node: MatchNode) -> Result<V, E>;
+    fn visit_match_expression(&mut self, token: Token, node: MatchNode) -> Result<V, E>;
     fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<V, E>;
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<V, E>;

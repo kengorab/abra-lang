@@ -83,6 +83,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                 }
             }
             Error::TypecheckerError(typechecker_error) => match typechecker_error {
+                TypecheckerError::Unimplemented(token, message) => {
+                    let mut obj = serializer.serialize_map(Some(6))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "unimplemented")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("message", message)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
                 TypecheckerError::Mismatch { token, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
@@ -375,10 +384,10 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::ForbiddenUnknownType { token, .. } => {
+                TypecheckerError::ForbiddenVariableType { token, .. } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "forbiddenUnknownType")?;
+                    obj.serialize_entry("subKind", "forbiddenVariableType")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
@@ -401,6 +410,73 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("expected", expected)?;
                     obj.serialize_entry("actual", actual)?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::UnreachableMatchCase { token, typ, is_unreachable_none } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "unreachableMatchCase")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    if let Some(typ) = typ {
+                        obj.serialize_entry("type", &JsType(typ))?;
+                    }
+                    obj.serialize_entry("isUnreachableNone", is_unreachable_none)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::DuplicateMatchCase { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateMatchCase")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::NonExhaustiveMatch { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "nonExhaustiveMatch")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::EmptyMatchBlock { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "emptyMatchBlock")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::MatchBranchMismatch { token, expected, actual } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "matchBranchMismatch")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("expected", &JsType(expected))?;
+                    obj.serialize_entry("actual", &JsType(actual))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidUninitializedEnumVariant { token } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidUninitializedEnumVariant")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidDestructuring { token, typ } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidDestructuring")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("type", &JsType(typ))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidDestructuringArity { token, typ, expected, actual } => {
+                    let mut obj = serializer.serialize_map(Some(3))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidDestructuring")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("type", &JsType(typ))?;
+                    obj.serialize_entry("expected", expected)?;
+                    obj.serialize_entry("actual", actual)?;
                     obj.end()
                 }
             }

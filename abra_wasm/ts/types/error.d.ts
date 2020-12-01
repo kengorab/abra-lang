@@ -100,9 +100,14 @@ export namespace Errors {
         | TypecheckerErrors.InvalidSelfParam
         | TypecheckerErrors.MissingRequiredTypeAnnotation
         | TypecheckerErrors.InvalidTypeDeclDepth
-        | TypecheckerErrors.ForbiddenUnknownType
+        | TypecheckerErrors.ForbiddenVariableType
         | TypecheckerErrors.InvalidInstantiation
         | TypecheckerErrors.InvalidTypeArgumentArity
+        | TypecheckerErrors.UnreachableMatchCase
+        | TypecheckerErrors.DuplicateMatchCase
+        | TypecheckerErrors.NonExhaustiveMatch
+        | TypecheckerErrors.EmptyMatchBlock
+        | TypecheckerErrors.MatchBranchMismatch
 
     export namespace TypecheckerErrors {
         interface Mismatch extends BaseError {
@@ -329,9 +334,9 @@ export namespace Errors {
             token: Token
         }
 
-        interface ForbiddenUnknownType extends BaseError {
+        interface ForbiddenVariableType extends BaseError {
             kind: 'typecheckerError',
-            subKind: 'forbiddenUnknownType',
+            subKind: 'forbiddenVariableType',
             token: Token
         }
 
@@ -349,6 +354,40 @@ export namespace Errors {
             actualType: Type,
             expected: number,
             actual: number
+        }
+
+        interface UnreachableMatchCase extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'unreachableMatchCase',
+            token: Token,
+            type?: Type,
+            isUnreachableNone: boolean
+        }
+
+        interface DuplicateMatchCase extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'duplicateMatchCase',
+            token: Token
+        }
+
+        interface NonExhaustiveMatch extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'nonExhaustiveMatch',
+            token: Token
+        }
+
+        interface EmptyMatchBlock extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'emptyMatchBlock',
+            token: Token
+        }
+
+        interface MatchBranchMismatch extends BaseError {
+            kind: 'typecheckerError',
+            subKind: 'matchBranchMismatch',
+            token: Token,
+            expected: Type,
+            actual: Type
         }
     }
 

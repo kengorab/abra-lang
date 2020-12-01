@@ -1,25 +1,64 @@
-//val arr = [1, 2, 3]
-//val p = arr.push
-//p(4)
-//p(5)
-//arr
+enum Shade {
+  Light
+  Dark
+}
 
-//val fl = 6.24
-//val f = fl.floor
-//println(""+f())
-//println(""+f())
-//println(""+fl)
+enum Color {
+  Red
+  RGB(r: Int, shade: Shade)
+}
 
-//println("asdf".toUpper())
-//println(""+(1.23).floor())
+val c: Color | Int = Color.RGB(r: 1, shade: Shade.Dark)
+//println(c)
+//match c {
+//  Color.RGB(r, g) x => {
+//    x.r = g
+//    x.g = r
+//  }
+//  _ => {}
+//}
+//println(c)
 
-//val arr = [1, 2, 3]
-//arr.map(x => x + 2)
+val s = match c {
+  Color.RGB(r, shade) => {
+    val s = match shade {
+      Shade.Dark s => "dark"
+      Shade.Light s => "light"
+    }
+    s + ", r: " + r
+  }
+  Int i => "int: " + i
+  Color.Red => "red"
+  //_ z => ""
+}
+println(s)
 
-//func asHexColor(r: Int, g: Int, b: Int): String {
-//  "0x" + [r, g, b].map(c => c.asBase(16).padLeft(2, "0")).join()
+
+//enum Color {
+//  Red
+//  Green
+//  Blue
+//  RGB(red: Int, green: Int, blue: Int)
+//
+//  func white(): Color = Color.RGB(red: 255, green: 255, blue: 255)
+//
+//  func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
+//
+//  func hex(self): String {
+//    match self {
+//      Color.Red => "0xFF0000",
+//      Color.Green => "0x00FF00",
+//      Color.Blue => "0x0000FF",
+//      Color.RGB c => "0x" + [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0")).join(),
+//    }
+//  }
 //}
 //
-//asHexColor(127, 10, 1)
-
-1.23.3
+//[
+//  Color.Red,
+//  Color.Green,
+//  Color.Blue,
+//  Color.black,
+//  Color.white,
+//  Color.RGB(red: 128, green: 128, blue: 128)
+//].map(c => c.hex())

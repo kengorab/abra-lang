@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -27,34 +27,38 @@ pub enum TypedAstNode {
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token),
     Accessor(Token, TypedAccessorNode),
+    MatchStatement(Token, TypedMatchNode),
+    MatchExpression(Token, TypedMatchNode),
     _Nil(Token),
 }
 
 impl TypedAstNode {
     pub fn get_token(&self) -> &Token {
         match self {
-            TypedAstNode::Literal(token, _) => token,
-            TypedAstNode::Unary(token, _) => token,
-            TypedAstNode::Binary(token, _) => token,
-            TypedAstNode::Grouped(token, _) => token,
-            TypedAstNode::Array(token, _) => token,
-            TypedAstNode::Map(token, _) => token,
-            TypedAstNode::Lambda(token, _) => token,
-            TypedAstNode::BindingDecl(token, _) => token,
-            TypedAstNode::FunctionDecl(token, _) => token,
-            TypedAstNode::TypeDecl(token, _) => token,
-            TypedAstNode::EnumDecl(token, _) => token,
-            TypedAstNode::Identifier(token, _) => token,
-            TypedAstNode::Assignment(token, _) => token,
-            TypedAstNode::Indexing(token, _) => token,
-            TypedAstNode::IfStatement(token, _) => token,
-            TypedAstNode::IfExpression(token, _) => token,
-            TypedAstNode::Invocation(token, _) => token,
-            TypedAstNode::Instantiation(token, _) => token,
-            TypedAstNode::ForLoop(token, _) => token,
-            TypedAstNode::WhileLoop(token, _) => token,
-            TypedAstNode::Break(token) => token,
-            TypedAstNode::Accessor(token, _) => token,
+            TypedAstNode::Literal(token, _) |
+            TypedAstNode::Unary(token, _) |
+            TypedAstNode::Binary(token, _) |
+            TypedAstNode::Grouped(token, _) |
+            TypedAstNode::Array(token, _) |
+            TypedAstNode::Map(token, _) |
+            TypedAstNode::Lambda(token, _) |
+            TypedAstNode::BindingDecl(token, _) |
+            TypedAstNode::FunctionDecl(token, _) |
+            TypedAstNode::TypeDecl(token, _) |
+            TypedAstNode::EnumDecl(token, _) |
+            TypedAstNode::Identifier(token, _) |
+            TypedAstNode::Assignment(token, _) |
+            TypedAstNode::Indexing(token, _) |
+            TypedAstNode::IfStatement(token, _) |
+            TypedAstNode::IfExpression(token, _) |
+            TypedAstNode::Invocation(token, _) |
+            TypedAstNode::Instantiation(token, _) |
+            TypedAstNode::ForLoop(token, _) |
+            TypedAstNode::WhileLoop(token, _) |
+            TypedAstNode::Break(token) |
+            TypedAstNode::Accessor(token, _) |
+            TypedAstNode::MatchStatement(token, _) |
+            TypedAstNode::MatchExpression(token, _) |
             TypedAstNode::_Nil(token) => token,
         }
     }
@@ -88,6 +92,8 @@ impl TypedAstNode {
             TypedAstNode::Invocation(_, node) => node.typ.clone(),
             TypedAstNode::Instantiation(_, node) => node.typ.clone(),
             TypedAstNode::Accessor(_, node) => node.typ.clone(),
+            TypedAstNode::MatchStatement(_, node) => node.typ.clone(),
+            TypedAstNode::MatchExpression(_, node) => node.typ.clone(),
             TypedAstNode::_Nil(_) => Type::Any,
         }
     }
@@ -266,4 +272,11 @@ pub struct TypedAccessorNode {
     pub field_name: String,
     pub field_idx: usize,
     pub is_opt_safe: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedMatchNode {
+    pub typ: Type,
+    pub target: Box<TypedAstNode>,
+    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<Token>>)>,
 }

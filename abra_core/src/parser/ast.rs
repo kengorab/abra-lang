@@ -23,6 +23,8 @@ pub enum AstNode {
     Break(Token),
     Accessor(Token, AccessorNode),
     Lambda(Token, LambdaNode),
+    MatchStatement(Token, MatchNode),
+    MatchExpression(Token, MatchNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -193,6 +195,26 @@ pub struct AccessorNode {
     // Must be an AstNode::Identifier
     pub field: Box<AstNode>,
     pub is_opt_safe: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MatchNode {
+    pub target: Box<AstNode>,
+    pub branches: Vec<(MatchCase, Vec<AstNode>)>
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MatchCase {
+    pub match_type: MatchCaseType,
+    pub case_binding: Option<Token>,
+    pub args: Option<Vec<Token>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MatchCaseType {
+    Ident(Token),
+    Compound(Vec<Token>),
+    Wildcard(Token)
 }
 
 #[derive(Clone, Debug, PartialEq)]

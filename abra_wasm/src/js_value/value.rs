@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantValue};
+use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -114,7 +114,7 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
-            Obj::EnumVariant(EnumVariantValue { enum_name, name, .. }) => {
+            Obj::EnumVariantObj(EnumVariantObj { enum_name, name, .. }) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "type")?;
                 obj.serialize_entry("enumName", &enum_name)?;
