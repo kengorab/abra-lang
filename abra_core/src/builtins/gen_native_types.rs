@@ -150,6 +150,14 @@ pub trait NativeStringMethodsAndFields {
     fn method_to_lower(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_to_upper(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_pad_left(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_trim(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_trim_start(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_trim_end(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_split(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_lines(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_chars(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_parse_int(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_parse_float(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeString {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -182,6 +190,70 @@ impl NativeType for NativeString {
                     ret_type: Box::new(Type::String),
                 }),
             )),
+            "trim" => Some((
+                4usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "trimStart" => Some((
+                5usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("pattern".to_string(), Type::String, true)],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "trimEnd" => Some((
+                6usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("pattern".to_string(), Type::String, true)],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "split" => Some((
+                7usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("splitter".to_string(), Type::String, false)],
+                    ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                }),
+            )),
+            "lines" => Some((
+                8usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                }),
+            )),
+            "chars" => Some((
+                9usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                }),
+            )),
+            "parseInt" => Some((
+                10usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("radix".to_string(), Type::Int, true)],
+                    ret_type: Box::new(Type::Option(Box::new(Type::Int))),
+                }),
+            )),
+            "parseFloat" => Some((
+                11usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Option(Box::new(Type::Float))),
+                }),
+            )),
             _ => None,
         }
     }
@@ -204,6 +276,54 @@ impl NativeType for NativeString {
                 name: "padLeft",
                 receiver: Some(obj),
                 native_fn: Self::method_pad_left,
+                has_return: true,
+            }),
+            4usize => Value::NativeFn(NativeFn {
+                name: "trim",
+                receiver: Some(obj),
+                native_fn: Self::method_trim,
+                has_return: true,
+            }),
+            5usize => Value::NativeFn(NativeFn {
+                name: "trimStart",
+                receiver: Some(obj),
+                native_fn: Self::method_trim_start,
+                has_return: true,
+            }),
+            6usize => Value::NativeFn(NativeFn {
+                name: "trimEnd",
+                receiver: Some(obj),
+                native_fn: Self::method_trim_end,
+                has_return: true,
+            }),
+            7usize => Value::NativeFn(NativeFn {
+                name: "split",
+                receiver: Some(obj),
+                native_fn: Self::method_split,
+                has_return: true,
+            }),
+            8usize => Value::NativeFn(NativeFn {
+                name: "lines",
+                receiver: Some(obj),
+                native_fn: Self::method_lines,
+                has_return: true,
+            }),
+            9usize => Value::NativeFn(NativeFn {
+                name: "chars",
+                receiver: Some(obj),
+                native_fn: Self::method_chars,
+                has_return: true,
+            }),
+            10usize => Value::NativeFn(NativeFn {
+                name: "parseInt",
+                receiver: Some(obj),
+                native_fn: Self::method_parse_int,
+                has_return: true,
+            }),
+            11usize => Value::NativeFn(NativeFn {
+                name: "parseFloat",
+                receiver: Some(obj),
+                native_fn: Self::method_parse_float,
                 has_return: true,
             }),
             _ => unreachable!(),

@@ -20,7 +20,7 @@ thread_local! {
 #[cfg(test)]
 pub static PRELUDE_PRINTLN_INDEX: u8 = 0;
 #[cfg(test)]
-pub static PRELUDE_INT_INDEX: u8 = 6;
+pub static PRELUDE_INT_INDEX: u8 = 7;
 
 pub struct Prelude {
     bindings: Vec<PreludeBinding>,

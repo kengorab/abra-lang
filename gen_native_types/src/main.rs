@@ -49,6 +49,10 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
             let inner_type_code = generate_code_for_type(inner_type);
             return quote! { Type::Array(Box::new(#inner_type_code)) };
         }
+        Type::Option(inner_type) => {
+            let inner_type_code = generate_code_for_type(inner_type);
+            return quote! { Type::Option(Box::new(#inner_type_code)) };
+        }
         Type::Generic(name) => {
             return quote! {
               Type::Generic(#name.to_string())

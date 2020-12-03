@@ -14,9 +14,17 @@ type NativeInt {
 type NativeString {
   length: Int
 
-  func toLower(self): NativeString { self }
-  func toUpper(self): NativeString { self }
-  func padLeft(self, totalSize: Int, padding: String = " "): NativeString { self }
+  func toLower(self): String {}
+  func toUpper(self): String {}
+  func padLeft(self, totalSize: Int, padding: String = " "): String {}
+  func trim(self): String {}
+  func trimStart(self, pattern: String = " "): String {}
+  func trimEnd(self, pattern: String = " "): String {}
+  func split(self, splitter: String): String[] {}
+  func lines(self): String[] {}
+  func chars(self): String[] {}
+  func parseInt(self, radix: Int = 10): Int? {}
+  func parseFloat(self): Float? {}
 }
 
 type NativeArray<T> {
