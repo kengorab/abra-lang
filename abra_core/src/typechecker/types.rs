@@ -164,6 +164,9 @@ impl Type {
                     unreachable!()
                 }
             }
+            (EnumVariant(enum_type1, _, _), EnumVariant(enum_type2, _, _)) => {
+                enum_type1.is_equivalent_to(enum_type2, referencable_types)
+            }
             // TODO (This should be unreachable right now anwyay...)
             (Map(_fields1, _), Map(_fields2, _)) => {
                 false
@@ -340,8 +343,6 @@ impl Type {
                 }
                 Type::Union(opts)
             }
-            // Type::Struct(_) => {},
-            // Type::Map(_, _) => {},
             t @ _ => t.clone(),
         }
     }
