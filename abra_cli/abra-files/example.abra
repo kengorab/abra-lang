@@ -1,3 +1,42 @@
-if readFile("./abra-files/example.abra") |contents| {
-  println(contents.lines())
+func grid(): Bool[][] {
+  //if readFile("./input.txt") |input| {
+  //  input.trim().lines().map(l => l.chars().map(ch => ch == "#"))
+  //} else {
+  //  None
+  //}
+  []
 }
+
+type Slope { dx: Int, dy: Int }
+
+func treesOnSlope(sl: Slope, map: Bool[][]): Int {
+  val width = map[0]?.length ?: 0
+  val height = map.length
+
+  var x = 0
+  var y = 0
+  var numTrees = 0
+
+  while y < height - 1 {
+    x = (x + sl.dx) % width
+    y += 1
+
+    if (map[y]) |row| {
+    //  if row[x] {
+    //    numTrees += 1
+    //  }
+    }
+  }
+
+  numTrees
+}
+
+func part1(): Int {
+  val slope = Slope(dx: 3, dy: 1)
+  if (grid()) |grid| {
+    treesOnSlope(slope, grid)
+  } else {
+    0
+  }
+}
+println(part1())

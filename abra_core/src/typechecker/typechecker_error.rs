@@ -210,8 +210,6 @@ fn op_repr(op: &BinaryOp) -> String {
 impl DisplayError for TypecheckerError {
     fn message_for_error(&self, lines: &Vec<&str>) -> String {
         let pos = self.get_token().get_position();
-        let indent = Self::indent();
-
         let cursor_line = Self::get_underlined_line(lines, self.get_token());
 
         match self {
@@ -222,28 +220,34 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::Mismatch { expected, actual, .. } => {
-                let message = format!("{}Expected {}, got {}", indent, type_repr(expected), type_repr(actual));
-
-                format!("Type mismatch ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
+                format!(
+                    "Type mismatch ({}:{})\n{}\n\
+                    Expected {}, got {}",
+                    pos.line, pos.col, cursor_line,
+                    type_repr(expected), type_repr(actual)
+                )
             }
             TypecheckerError::InvalidIfConditionType { actual, .. } => {
-                dbg!(actual);
-                unreachable!()
+                format!(
+                    "Invalid type for condition ({}:{})\n{}\n\
+                    Conditions must be an Option or Bool, got {}",
+                    pos.line, pos.col, cursor_line, type_repr(actual)
+                )
             }
             TypecheckerError::InvalidOperator { op, ltype, rtype, .. } => {
-                let message = format!(
-                    "{}No operator exists to satisfy {} {} {}",
-                    indent, type_repr(ltype), op_repr(op), type_repr(rtype)
-                );
-
-                format!("Invalid operator ({}:{})\n{}\n{}", pos.line, pos.col, cursor_line, message)
+                format!(
+                    "Invalid operator ({}:{})\n{}\n\
+                    No operator exists to satisfy {} {} {}",
+                    pos.line, pos.col, cursor_line,
+                    type_repr(ltype), op_repr(op), type_repr(rtype)
+                )
             }
             TypecheckerError::MissingRequiredAssignment { ident } => {
                 let ident = Token::get_ident_name(&ident);
-                let message = format!("'val' bindings must be initialized");
                 format!(
-                    "Expected assignment for variable '{}' ({}:{})\n{}\n{}",
-                    ident, pos.line, pos.col, cursor_line, message
+                    "Expected assignment for variable '{}' ({}:{})\n{}\n\
+                    'val' bindings must be initialized",
+                    ident, pos.line, pos.col, cursor_line
                 )
             }
             TypecheckerError::DuplicateBinding { ident, orig_ident } => {
@@ -303,7 +307,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
                 format!(
-                    "Unknown identifier '{}' ({}:{})\n{}\nNo binding with that name is visible in current scope",
+                    "Unknown identifier '{}' ({}:{})\n{}\n\
+                    No binding with that name is visible in current scope",
                     ident, pos.line, pos.col, cursor_line
                 )
             }
@@ -607,13 +612,10 @@ mod tests {
 Type mismatch (1:5)
   |  1 + 4.4
          ^^^
-  Expected Int, got Float"
+Expected Int, got Float"
         );
         assert_eq!(expected, err.get_message(&src));
-    }
 
-    #[test]
-    fn test_mismatch_error_with_ortype() {
         let src = "1 + 4.4".to_string();
         let token = Token::Float(Position::new(1, 5), 4.4);
         let err = TypecheckerError::Mismatch { token, expected: Type::Union(vec![Type::Int, Type::Float]), actual: Type::Int };
@@ -622,7 +624,7 @@ Type mismatch (1:5)
 Type mismatch (1:5)
   |  1 + 4.4
          ^^^
-  Expected Int | Float, got Int"
+Expected Int | Float, got Int"
         );
         assert_eq!(expected, err.get_message(&src));
     }
@@ -637,7 +639,7 @@ Type mismatch (1:5)
 Invalid operator (1:3)
   |  1 - \"some string\"
        ^
-  No operator exists to satisfy Int - String"
+No operator exists to satisfy Int - String"
         );
         assert_eq!(expected, err.get_message(&src));
     }

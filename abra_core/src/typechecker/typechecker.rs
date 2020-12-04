@@ -1179,13 +1179,17 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 match body.last_mut() {
                     None => body_type,
                     Some(mut node) => {
+                        let node_type_unknown = node.get_type().is_unknown(&self.referencable_types);
+
                         if !self.are_types_equivalent(&mut node, &typ)? {
                             let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
                             return Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ });
                         } else if typ.has_unbound_generic() {
                             typ
-                        } else {
+                        } else if node_type_unknown {
                             node.get_type()
+                        } else {
+                            typ
                         }
                     }
                 }
@@ -3232,6 +3236,24 @@ mod tests {
         let (typechecker, _) = typecheck_get_typechecker("func abc(a: Int): Bool = a == 1\nval def = abc");
         let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("def").unwrap();
         assert_eq!(&Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Bool) }), typ);
+
+        let (typechecker, _) = typecheck_get_typechecker("func abc(): Bool[] = []");
+        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc").unwrap();
+        let expected_type = Type::Fn(FnType {
+            arg_types: vec![],
+            type_args: vec![],
+            ret_type: Box::new(Type::Array(Box::new(Type::Bool))),
+        });
+        assert_eq!(&expected_type, typ);
+
+        let (typechecker, _) = typecheck_get_typechecker("func abc(): Bool[]? = None");
+        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc").unwrap();
+        let expected_type = Type::Fn(FnType {
+            arg_types: vec![],
+            type_args: vec![],
+            ret_type: Box::new(Type::Option(Box::new(Type::Array(Box::new(Type::Bool))))),
+        });
+        assert_eq!(&expected_type, typ);
 
         Ok(())
     }
