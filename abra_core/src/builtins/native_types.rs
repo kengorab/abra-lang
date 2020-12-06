@@ -406,6 +406,175 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
             }
         } else { unreachable!() }
     }
+
+    fn method_contains(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("Array::contains requires 1 argument");
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let v = array.contains(&item);
+                    Some(Value::Bool(v))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_find(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::find requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut iter = array.iter();
+                    let return_value = loop {
+                        match iter.next() {
+                            None => break Value::Nil,
+                            Some(value) => {
+                                let args = vec![value.clone()];
+                                let ret_val = vm.invoke_fn(args, callback.clone())
+                                    .unwrap_or(Some(Value::Nil))
+                                    .unwrap_or(Value::Nil);
+                                match ret_val {
+                                    Value::Bool(false) | Value::Nil => continue,
+                                    _ => break value.clone()
+                                }
+                            }
+                        }
+                    };
+                    Some(return_value)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_any(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::any requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut iter = array.iter();
+                    let return_value = loop {
+                        match iter.next() {
+                            None => break Value::Bool(false),
+                            Some(value) => {
+                                let args = vec![value.clone()];
+                                let ret_val = vm.invoke_fn(args, callback.clone())
+                                    .unwrap_or(Some(Value::Nil))
+                                    .unwrap_or(Value::Nil);
+                                match ret_val {
+                                    Value::Bool(false) | Value::Nil => continue,
+                                    _ => break Value::Bool(true)
+                                }
+                            }
+                        }
+                    };
+                    Some(return_value)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_all(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::all requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut iter = array.iter();
+                    let return_value = loop {
+                        match iter.next() {
+                            None => break Value::Bool(true),
+                            Some(value) => {
+                                let args = vec![value.clone()];
+                                let ret_val = vm.invoke_fn(args, callback.clone())
+                                    .unwrap_or(Some(Value::Nil))
+                                    .unwrap_or(Value::Nil);
+                                match ret_val {
+                                    Value::Bool(false) | Value::Nil => break Value::Bool(false),
+                                    _ => continue
+                                }
+                            }
+                        }
+                    };
+                    Some(return_value)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_none(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::none requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut iter = array.iter();
+                    let return_value = loop {
+                        match iter.next() {
+                            None => break Value::Bool(true),
+                            Some(value) => {
+                                let args = vec![value.clone()];
+                                let ret_val = vm.invoke_fn(args, callback.clone())
+                                    .unwrap_or(Some(Value::Nil))
+                                    .unwrap_or(Value::Nil);
+                                match ret_val {
+                                    Value::Bool(false) | Value::Nil => continue,
+                                    _ => break Value::Bool(false)
+                                }
+                            }
+                        }
+                    };
+                    Some(return_value)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_sort_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+
+        let callback = args.next().expect("Array::sortBy requires 2 arguments");
+
+        let reverse = args.next().expect("Array::sortBy requires 2 arguments");
+        let reverse = if let Value::Bool(b) = reverse { b } else { false };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow_mut()) {
+                Obj::ArrayObj( array) => {
+                    let mut sort_values = array.iter().enumerate().map(|(idx, item)| {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+                        (v, idx)
+                    }).collect::<Vec<_>>();
+                    sort_values.sort_by(|v1, v2| {
+                        match (&v1.0, &v2.0) {
+                            (Value::Int(i1), Value::Int(i2)) => {
+                                if reverse {
+                                    i2.cmp(&i1)
+                                } else {
+                                    i1.cmp(&i2)
+                                }
+                            },
+                            _ => unreachable!()
+                        }
+                    });
+                    let items = sort_values.iter()
+                        .map(|(_, idx)| array[*idx].clone())
+                        .collect();
+                    Some(Value::new_array_obj(items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
 }
 
 #[cfg(test)]
@@ -769,6 +938,125 @@ mod test {
 
         let result = interpret("[\"a\", \"b\", \"c\"].join(\", \")");
         let expected = new_string_obj("a, b, c");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_contains() {
+        let result = interpret("[1, 2, 3, 4, 5].contains(5)");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3, 4].contains(6)");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_find() {
+        let result = interpret("[1, 2, 3].find(x => x >= 2)");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[[1, 2], [3, 4]].find(p => p[0])");
+        let expected = array![Value::Int(1), Value::Int(2)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2)");
+        let expected = array![Value::Int(3), Value::Int(4)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3].find(x => x >= 4)");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_any() {
+        let result = interpret("[1, 2, 3, 4, 5].any(x => x > 4)");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3, 4, 5].any(x => x < 0)");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[[1, 2], [3, 4]].any(p => if p[0] |f| f >= 2)");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_all() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].all(w => w.length > 0)");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\", \"bc\", \"def\"].all(w => w.length < 3)");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"1\", \"2\", \"24\"].all(w => w.parseInt())");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\"].all(w => w.parseInt())");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_none() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].none(w => w.length > 0)");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\", \"bc\", \"def\"].none(w => w.length < 0)");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"1\", \"2\", \"24\"].none(w => w.parseInt())");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\", \"b\"].none(w => w.parseInt())");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_sort_by() {
+        let result = interpret(r#"
+          type Person { name: String }
+          val people = [
+            Person(name: "Ken"),
+            Person(name: "Meghan"),
+            Person(name: "Brian"),
+            Person(name: "Kelsey"),
+          ]
+          people.sortBy(p => p.name.length).map(p => p.name)
+        "#);
+        let expected = array![
+          new_string_obj("Ken"),
+          new_string_obj("Brian"),
+          new_string_obj("Meghan"),
+          new_string_obj("Kelsey")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          [1, 8, 3, 6, 1, 11, 5839, 6].sortBy(fn: i => i, reverse: true)
+        ");
+        let expected = array![
+            Value::Int(5839),
+            Value::Int(11),
+            Value::Int(8),
+            Value::Int(6),
+            Value::Int(6),
+            Value::Int(3),
+            Value::Int(1),
+            Value::Int(1)
+        ];
         assert_eq!(Some(expected), result);
     }
 

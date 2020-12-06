@@ -36,4 +36,20 @@ type NativeArray<T> {
   func filter(self, fn: (T) => Bool): T[] {}
   func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
   func join(self, joiner: String = ""): String {}
+  func contains(self, item: T): Bool {}
+  func find<U>(self, fn: (T) => (Bool | U?)): T? {}
+  func any<U>(self, fn: (T) => (Bool | U?)): Bool {}
+  func all<U>(self, fn: (T) => (Bool | U?)): Bool {}
+  func none<U>(self, fn: (T) => (Bool | U?)): Bool {}
+  func sortBy(self, fn: (T) => Int, reverse: Bool = false): T[] {}
 }
+
+//type Set<T> {
+//  size: Int
+//
+//  func contains(self, item: T): Bool {}
+//  func insert(self, item: T): Unit {}
+//  func remove(self, item: T): Unit {}
+//  func intersection(self, other: Set<T>): Set<T> {}
+//  func difference(self, other: Set<T>): Set<T> {}
+//}

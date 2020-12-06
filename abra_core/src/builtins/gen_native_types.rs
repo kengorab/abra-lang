@@ -339,6 +339,12 @@ pub trait NativeArrayMethodsAndFields {
     fn method_filter(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_reduce(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_join(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_contains(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_find(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_any(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_all(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_none(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_sort_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -438,6 +444,129 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::String),
                 }),
             )),
+            "contains" => Some((
+                7usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "find" => Some((
+                8usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "any" => Some((
+                9usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "all" => Some((
+                10usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "none" => Some((
+                11usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "sortBy" => Some((
+                12usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![(
+                                    "_".to_string(),
+                                    Type::Generic("T".to_string()),
+                                    false,
+                                )],
+                                ret_type: Box::new(Type::Int),
+                            }),
+                            false,
+                        ),
+                        ("reverse".to_string(), Type::Bool, true),
+                    ],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
             _ => None,
         }
     }
@@ -478,6 +607,42 @@ impl NativeType for NativeArray {
                 name: "join",
                 receiver: Some(obj),
                 native_fn: Self::method_join,
+                has_return: true,
+            }),
+            7usize => Value::NativeFn(NativeFn {
+                name: "contains",
+                receiver: Some(obj),
+                native_fn: Self::method_contains,
+                has_return: true,
+            }),
+            8usize => Value::NativeFn(NativeFn {
+                name: "find",
+                receiver: Some(obj),
+                native_fn: Self::method_find,
+                has_return: true,
+            }),
+            9usize => Value::NativeFn(NativeFn {
+                name: "any",
+                receiver: Some(obj),
+                native_fn: Self::method_any,
+                has_return: true,
+            }),
+            10usize => Value::NativeFn(NativeFn {
+                name: "all",
+                receiver: Some(obj),
+                native_fn: Self::method_all,
+                has_return: true,
+            }),
+            11usize => Value::NativeFn(NativeFn {
+                name: "none",
+                receiver: Some(obj),
+                native_fn: Self::method_none,
+                has_return: true,
+            }),
+            12usize => Value::NativeFn(NativeFn {
+                name: "sortBy",
+                receiver: Some(obj),
+                native_fn: Self::method_sort_by,
                 has_return: true,
             }),
             _ => unreachable!(),

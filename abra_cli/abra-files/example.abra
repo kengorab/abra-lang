@@ -1,11 +1,10 @@
-enum Shade {
-  Light
-  Dark
-}
+val pairs = [[1, 2], [3, 4], [5, 6]]
+println(pairs.find(p => if p[0] |f| f >= 3))
 
-func invert(shade: Shade): Shade {
-  match shade {
-    Shade.Dark => Shade.Light
-    Shade.Light => Shade.Dark
-  }
-}
+val nums = [5, 1, 2, 4, 3]
+println(nums.find(n => n > 4))
+println(nums.none(n => n < 0))
+println(nums.sortBy(fn: x => {
+  println("Called for: " + x)
+  x
+}, reverse: true))
