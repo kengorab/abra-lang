@@ -682,7 +682,7 @@ impl NativeType for NativeArray {
                         false,
                     )],
                     ret_type: Box::new(Type::Map(
-                        Box::new(Type::Generic("T".to_string())),
+                        Box::new(Type::Generic("U".to_string())),
                         Box::new(Type::Int),
                     )),
                 }),

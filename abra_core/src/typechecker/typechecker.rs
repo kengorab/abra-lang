@@ -257,6 +257,17 @@ impl Typechecker {
                     array_node.typ = Type::Array(inner_type.clone());
                     array_node.typ.clone()
                 }
+                (TypedAstNode::Map(_, ref mut map_node), Type::Map(ref key_type, ref value_type)) => {
+                    // TODO: Punting on non-String key types in map literals
+
+                    for (_, ref mut v) in &mut map_node.items {
+                        if !self.are_types_equivalent(v, value_type)? {
+                            return Ok(false);
+                        }
+                    }
+                    map_node.typ = Type::Map(key_type.clone(), value_type.clone());
+                    map_node.typ.clone()
+                }
                 (node, _) => self.resolve_ref_type(&node.get_type())
             }
         } else {

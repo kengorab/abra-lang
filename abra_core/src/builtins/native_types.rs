@@ -756,12 +756,12 @@ impl NativeMapMethodsAndFields for NativeMap {
     }
 
     fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let key = obj_as_string!(args.into_iter().next());
+        let key = args.into_iter().next().expect("Map::containsKey requires 1 argument");
 
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::MapObj(map) => {
-                    Some(Value::Bool(map.contains_key(&Value::new_string_obj(key))))
+                    Some(Value::Bool(map.contains_key(&key)))
                 }
                 _ => unreachable!()
             }
@@ -1277,6 +1277,188 @@ mod test {
     }
 
     #[test]
+    fn test_array_dedupe() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].dedupe()");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          type Person { name: String }\
+          [Person(name: \"Ken\"), Person(name: \"Meg\"), Person(name: \"Ken\")]\
+            .dedupe()\
+            .map(p => p.name)\
+        ");
+        let expected = array![
+            new_string_obj("Ken"),
+            new_string_obj("Meg")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_dedupe_by() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].dedupeBy(w => w.length)");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\", \"bc\", \"def\", \"ghi\"].dedupeBy(w => w.length)");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_partition() {
+        let result = interpret("\
+          val m = [1, 2, 3, 4, 5].partition(n => n.isEven())\n\
+          [m[true], m[false]]
+        ");
+        let expected = array![
+            array![Value::Int(2), Value::Int(4)],
+            array![Value::Int(1), Value::Int(3), Value::Int(5)]
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m = [[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0])\n\
+          [m[1], m[2], m[3]]
+        ");
+        let expected = array![
+            array![
+                array![Value::Int(1), Value::Int(1)],
+                array![Value::Int(1), Value::Int(2)]
+            ],
+            array![
+                array![Value::Int(2), Value::Int(1)],
+                array![Value::Int(2), Value::Int(2)]
+            ],
+            array![
+                array![Value::Int(3), Value::Int(1)],
+                array![Value::Int(3), Value::Int(2)]
+            ]
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_tally() {
+        let result = interpret("\
+          val t = [1, 2, 3, 4, 3, 2, 1, 2, 1].tally()\n\
+          [t[1], t[2], t[3], t[4]]
+        ");
+        let expected = array![
+            Value::Int(3),
+            Value::Int(3),
+            Value::Int(2),
+            Value::Int(1)
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_tally_by() {
+        let result = interpret("\
+          type Person { name: String }\
+          val t = [Person(name: \"Ken\"), Person(name: \"Meg\")].tallyBy(p => p.name.length)\n\
+          t[3]
+        ");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_keys() {
+        let result = interpret("{}.keys()");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.keys()");
+        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
+        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+
+        let result = interpret("\
+          val m: Map<Int[], Int> = {}\
+          m[[1, 2]] = 2\
+          m[[1, 2, 3]] = 3\
+          m.keys()
+        ");
+        let expected1 = array![
+            array![Value::Int(1), Value::Int(2)],
+            array![Value::Int(1), Value::Int(2), Value::Int(3)]
+        ];
+        let expected2 = array![
+            array![Value::Int(1), Value::Int(2)],
+            array![Value::Int(1), Value::Int(2), Value::Int(3)]
+        ];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+
+        let result = interpret("{ a: 123, b: true }.keys()");
+        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
+        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+    }
+
+    #[test]
+    fn test_map_values() {
+        let result = interpret("{}.values()");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.values()");
+        let expected1 = array![Value::Int(123), Value::Bool(true)];
+        let expected2 = array![Value::Bool(true), Value::Int(123)];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+    }
+
+    #[test]
+    fn test_map_contains_key() {
+        let result = interpret("{}.containsKey(\"asdf\")");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 24 }.containsKey(\"a\")");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m: Map<Int[], String> = {}\
+          m[[1, 2, 3]] = \"hello\"\
+          m.containsKey([1, 2, 3])\
+        ");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_map_values() {
+        let result = interpret("\
+          val m = { a: 1, b: 2 }.mapValues((_, v) => v + 1)\n\
+          [m[\"a\"], m[\"b\"]]
+        ");
+        let expected = array![Value::Int(2), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m = { a: 1, b: 2 }.mapValues((k, v) => k + v)\n\
+          [m[\"a\"], m[\"b\"]]
+        ");
+        let expected = array![new_string_obj("a1"), new_string_obj("b2")];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
     fn test_float_floor() {
         let result = interpret("6.24.floor()");
         let expected = Value::Int(6);
@@ -1363,7 +1545,7 @@ mod test {
     }
 
     #[test]
-    fn test_as_base() {
+    fn test_int_as_base() {
         let result = interpret("6.asBase(0)");
         let expected = new_string_obj("6");
         assert_eq!(Some(expected), result);
@@ -1394,6 +1576,44 @@ mod test {
 
         let result = interpret("24032.asBase(36)");
         let expected = new_string_obj("ijk");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_int_is_even() {
+        let result = interpret("0.isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("6.isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("(-6).isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("5.isEven()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_int_is_odd() {
+        let result = interpret("0.isOdd()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("6.isOdd()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("(-1).isOdd()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("1.isOdd()");
+        let expected = Value::Bool(true);
         assert_eq!(Some(expected), result);
     }
 }

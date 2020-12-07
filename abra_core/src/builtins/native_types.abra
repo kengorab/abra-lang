@@ -48,7 +48,7 @@ type NativeArray<T> {
   func dedupeBy<U>(self, fn: (T) => U): T[] {}
   func partition<U>(self, fn: (T) => U): Map<U, T[]> {}
   func tally(self): Map<T, Int> {}
-  func tallyBy<U>(self, fn: (T) => U): Map<T, Int> {}
+  func tallyBy<U>(self, fn: (T) => U): Map<U, Int> {}
 }
 
 type NativeMap<K, V> {
