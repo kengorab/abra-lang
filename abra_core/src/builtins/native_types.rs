@@ -1399,8 +1399,8 @@ mod test {
             array![Value::Int(1), Value::Int(2), Value::Int(3)]
         ];
         let expected2 = array![
-            array![Value::Int(1), Value::Int(2)],
-            array![Value::Int(1), Value::Int(2), Value::Int(3)]
+            array![Value::Int(1), Value::Int(2), Value::Int(3)],
+            array![Value::Int(1), Value::Int(2)]
         ];
         assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
 
