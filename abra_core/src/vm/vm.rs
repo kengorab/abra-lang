@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt};
+use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt, NativeMap};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -69,7 +69,7 @@ pub enum InterpretError {
     StackOverflow,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct Upvalue {
     pub slot_idx: usize,
     pub is_closed: bool,
@@ -592,6 +592,7 @@ impl VM {
                         Value::Obj(ref obj) => {
                             let mut is_str = false;
                             let mut is_arr = false;
+                            let mut is_map = false;
                             let mut v = Value::Nil;
                             match &*obj.borrow() {
                                 Obj::InstanceObj(inst) => v = inst.fields[field_idx].clone(),
@@ -608,12 +609,14 @@ impl VM {
                                 }
                                 Obj::StringObj { .. } => is_str = true,
                                 Obj::ArrayObj { .. } => is_arr = true,
-                                Obj::MapObj(_) => unimplemented!()
+                                Obj::MapObj(_) => is_map = true,
                             };
                             if is_str {
                                 NativeString::get_field_value(Box::new(inst), field_idx)
                             } else if is_arr {
                                 NativeArray::get_field_value(Box::new(inst), field_idx)
+                            } else if is_map {
+                                NativeMap::get_field_value(Box::new(inst), field_idx)
                             } else {
                                 v
                             }
@@ -672,16 +675,12 @@ impl VM {
                     for _ in 0..size {
                         let value = self.pop_expect()?;
                         let key = pop_expect_string!(self)?;
-                        items.insert(key, value);
+                        items.insert(Value::new_string_obj(key), value);
                     }
                     self.push(Value::new_map_obj(items));
                 }
                 Opcode::MapLoad => {
-                    let key = pop_expect_obj!(self)?;
-                    let key = match &*key.borrow() {
-                        Obj::StringObj(key) => key.clone(),
-                        _ => unreachable!()
-                    };
+                    let key = self.pop_expect()?;
                     let obj = pop_expect_obj!(self)?;
                     let val = match &*obj.borrow() {
                         Obj::MapObj(value) => match value.get(&key) {
@@ -694,11 +693,7 @@ impl VM {
                 }
                 Opcode::MapStore => {
                     let value = self.pop_expect()?;
-                    let idx = pop_expect_obj!(self)?;
-                    let idx = match &*idx.borrow() {
-                        Obj::StringObj(idx) => idx.clone(),
-                        _ => unreachable!()
-                    };
+                    let idx = self.pop_expect()?;
 
                     let obj = pop_expect_obj!(self)?;
                     match *obj.borrow_mut() {

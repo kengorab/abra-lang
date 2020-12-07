@@ -103,6 +103,8 @@ pub struct NativeInt;
 pub trait NativeIntMethodsAndFields {
     fn method_abs(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_as_base(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_is_even(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_is_odd(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeInt {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -123,6 +125,22 @@ impl NativeType for NativeInt {
                     ret_type: Box::new(Type::String),
                 }),
             )),
+            "isEven" => Some((
+                2usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "isOdd" => Some((
+                3usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
             _ => None,
         }
     }
@@ -138,6 +156,18 @@ impl NativeType for NativeInt {
                 name: "asBase",
                 receiver: Some(obj),
                 native_fn: Self::method_as_base,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
+                name: "isEven",
+                receiver: Some(obj),
+                native_fn: Self::method_is_even,
+                has_return: true,
+            }),
+            3usize => Value::NativeFn(NativeFn {
+                name: "isOdd",
+                receiver: Some(obj),
+                native_fn: Self::method_is_odd,
                 has_return: true,
             }),
             _ => unreachable!(),
@@ -345,6 +375,11 @@ pub trait NativeArrayMethodsAndFields {
     fn method_all(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_none(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_sort_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_dedupe(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_dedupe_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_partition(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_tally(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_tally_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -567,6 +602,91 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
                 }),
             )),
+            "dedupe" => Some((
+                13usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "dedupeBy" => Some((
+                14usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Generic("U".to_string())),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "partition" => Some((
+                15usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Generic("U".to_string())),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Map(
+                        Box::new(Type::Generic("U".to_string())),
+                        Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    )),
+                }),
+            )),
+            "tally" => Some((
+                16usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Map(
+                        Box::new(Type::Generic("T".to_string())),
+                        Box::new(Type::Int),
+                    )),
+                }),
+            )),
+            "tallyBy" => Some((
+                17usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Generic("U".to_string())),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Map(
+                        Box::new(Type::Generic("T".to_string())),
+                        Box::new(Type::Int),
+                    )),
+                }),
+            )),
             _ => None,
         }
     }
@@ -643,6 +763,129 @@ impl NativeType for NativeArray {
                 name: "sortBy",
                 receiver: Some(obj),
                 native_fn: Self::method_sort_by,
+                has_return: true,
+            }),
+            13usize => Value::NativeFn(NativeFn {
+                name: "dedupe",
+                receiver: Some(obj),
+                native_fn: Self::method_dedupe,
+                has_return: true,
+            }),
+            14usize => Value::NativeFn(NativeFn {
+                name: "dedupeBy",
+                receiver: Some(obj),
+                native_fn: Self::method_dedupe_by,
+                has_return: true,
+            }),
+            15usize => Value::NativeFn(NativeFn {
+                name: "partition",
+                receiver: Some(obj),
+                native_fn: Self::method_partition,
+                has_return: true,
+            }),
+            16usize => Value::NativeFn(NativeFn {
+                name: "tally",
+                receiver: Some(obj),
+                native_fn: Self::method_tally,
+                has_return: true,
+            }),
+            17usize => Value::NativeFn(NativeFn {
+                name: "tallyBy",
+                receiver: Some(obj),
+                native_fn: Self::method_tally_by,
+                has_return: true,
+            }),
+            _ => unreachable!(),
+        }
+    }
+}
+pub struct NativeMap;
+pub trait NativeMapMethodsAndFields {
+    fn field_size(obj: Box<Value>) -> Value;
+    fn method_keys(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM)
+        -> Option<Value>;
+    fn method_map_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+}
+impl NativeType for NativeMap {
+    fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
+        match name {
+            "size" => Some((0usize, Type::Int)),
+            "keys" => Some((
+                1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("K".to_string())))),
+                }),
+            )),
+            "values" => Some((
+                2usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("V".to_string())))),
+                }),
+            )),
+            "containsKey" => Some((
+                3usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("key".to_string(), Type::Generic("K".to_string()), false)],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "mapValues" => Some((
+                4usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![
+                                ("_".to_string(), Type::Generic("K".to_string()), false),
+                                ("_".to_string(), Type::Generic("V".to_string()), false),
+                            ],
+                            ret_type: Box::new(Type::Generic("U".to_string())),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Map(
+                        Box::new(Type::Generic("K".to_string())),
+                        Box::new(Type::Generic("U".to_string())),
+                    )),
+                }),
+            )),
+            _ => None,
+        }
+    }
+    fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
+        match field_idx {
+            0usize => Self::field_size(obj),
+            1usize => Value::NativeFn(NativeFn {
+                name: "keys",
+                receiver: Some(obj),
+                native_fn: Self::method_keys,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
+                name: "values",
+                receiver: Some(obj),
+                native_fn: Self::method_values,
+                has_return: true,
+            }),
+            3usize => Value::NativeFn(NativeFn {
+                name: "containsKey",
+                receiver: Some(obj),
+                native_fn: Self::method_contains_key,
+                has_return: true,
+            }),
+            4usize => Value::NativeFn(NativeFn {
+                name: "mapValues",
+                receiver: Some(obj),
+                native_fn: Self::method_map_values,
                 has_return: true,
             }),
             _ => unreachable!(),

@@ -53,7 +53,7 @@ impl Serialize for RunResultValue {
                 Obj::MapObj(value) => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {
-                        obj.serialize_entry(key, &RunResultValue(Some(val.clone()))).unwrap();
+                        obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
                     });
                     obj.end()
                 }

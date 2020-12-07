@@ -1,7 +1,8 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields};
+use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields, NativeMapMethodsAndFields};
 use crate::vm::vm::VM;
+use std::collections::{HashSet, HashMap};
 
 macro_rules! obj_as_string {
     ($obj:expr) => {
@@ -57,6 +58,18 @@ impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt 
             let str_val = digits.into_iter().rev().collect::<String>();
             Some(Value::new_string_obj(str_val))
         } else { unimplemented!() }
+    }
+
+    fn method_is_even(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Int(i) = receiver.unwrap() {
+            Some(Value::Bool(i % 2 == 0))
+        } else { unreachable!() }
+    }
+
+    fn method_is_odd(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Int(i) = receiver.unwrap() {
+            Some(Value::Bool(i % 2 != 0))
+        } else { unreachable!() }
     }
 }
 
@@ -546,7 +559,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow_mut()) {
-                Obj::ArrayObj( array) => {
+                Obj::ArrayObj(array) => {
                     let mut sort_values = array.iter().enumerate().map(|(idx, item)| {
                         let args = vec![item.clone()];
                         let v = vm.invoke_fn(args, callback.clone())
@@ -562,7 +575,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                                 } else {
                                     i1.cmp(&i2)
                                 }
-                            },
+                            }
                             _ => unreachable!()
                         }
                     });
@@ -570,6 +583,209 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                         .map(|(_, idx)| array[*idx].clone())
                         .collect();
                     Some(Value::new_array_obj(items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_dedupe(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut new_array_items = vec![];
+                    let mut seen = HashSet::new();
+
+                    for item in array {
+                        if seen.contains(item) {
+                            continue;
+                        }
+                        seen.insert(item);
+                        new_array_items.push(item.clone())
+                    }
+
+                    Some(Value::new_array_obj(new_array_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_dedupe_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::dedupeBy requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut new_array_items = vec![];
+                    let mut seen = HashSet::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        if seen.contains(&v) {
+                            continue;
+                        }
+                        seen.insert(v);
+                        new_array_items.push(item.clone())
+                    }
+
+                    Some(Value::new_array_obj(new_array_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_partition(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::partition requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        map.entry(v).or_insert(vec![]).push(item.clone());
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::new_array_obj(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_tally(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        *map.entry(item.clone()).or_insert(0) += 1;
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::Int(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_tally_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::partition requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        *map.entry(v).or_insert(0) += 1;
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::Int(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+}
+
+pub type NativeMap = crate::builtins::gen_native_types::NativeMap;
+
+impl NativeMapMethodsAndFields for NativeMap {
+    fn field_size(obj: Box<Value>) -> Value {
+        if let Value::Obj(obj) = *obj {
+            match &*(obj.borrow()) {
+                Obj::MapObj(value) => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_keys(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let keys = map.keys()
+                        .map(|k| k.clone())
+                        .collect::<Vec<_>>();
+                    Some(Value::new_array_obj(keys))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_values(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let values = map.values()
+                        .map(|v| v.clone())
+                        .collect::<Vec<_>>();
+                    Some(Value::new_array_obj(values))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let key = obj_as_string!(args.into_iter().next());
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    Some(Value::Bool(map.contains_key(&Value::new_string_obj(key))))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_map_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Map::mapValues requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let mut new_map = HashMap::new();
+
+                    for (k, v) in map {
+                        let args = vec![k.clone(), v.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        new_map.insert(k.clone(), v);
+                    }
+
+                    Some(Value::new_map_obj(new_map))
                 }
                 _ => unreachable!()
             }

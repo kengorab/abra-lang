@@ -9,6 +9,8 @@ type NativeFloat {
 type NativeInt {
   func abs(self): Int {}
   func asBase(self, base: Int): String {}
+  func isEven(self): Bool {}
+  func isOdd(self): Bool {}
 }
 
 type NativeString {
@@ -42,14 +44,18 @@ type NativeArray<T> {
   func all<U>(self, fn: (T) => (Bool | U?)): Bool {}
   func none<U>(self, fn: (T) => (Bool | U?)): Bool {}
   func sortBy(self, fn: (T) => Int, reverse: Bool = false): T[] {}
+  func dedupe(self): T[] {}
+  func dedupeBy<U>(self, fn: (T) => U): T[] {}
+  func partition<U>(self, fn: (T) => U): Map<U, T[]> {}
+  func tally(self): Map<T, Int> {}
+  func tallyBy<U>(self, fn: (T) => U): Map<T, Int> {}
 }
 
-//type Set<T> {
-//  size: Int
-//
-//  func contains(self, item: T): Bool {}
-//  func insert(self, item: T): Unit {}
-//  func remove(self, item: T): Unit {}
-//  func intersection(self, other: Set<T>): Set<T> {}
-//  func difference(self, other: Set<T>): Set<T> {}
-//}
+type NativeMap<K, V> {
+  size: Int
+
+  func keys(self): K[] {}
+  func values(self): V[] {}
+  func containsKey(self, key: K): Bool {}
+  func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {}
+}

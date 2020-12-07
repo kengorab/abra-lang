@@ -22,6 +22,8 @@ impl Debug for NativeFn {
     }
 }
 
+impl Eq for NativeFn {}
+
 impl PartialEq for NativeFn {
     fn eq(&self, other: &Self) -> bool {
         self.name.eq(other.name)

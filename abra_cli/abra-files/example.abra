@@ -1,10 +1,57 @@
-val pairs = [[1, 2], [3, 4], [5, 6]]
-println(pairs.find(p => if p[0] |f| f >= 3))
+//val m = {
+//  a: 1,
+//  b: 2,
+//  c: 3
+//}
+//
+//println(m)
+//m["d"] = 4
+//println(m)
+//
+//for k, v in m {
+//  println(k + ": " + v)
+//}
 
-val nums = [5, 1, 2, 4, 3]
-println(nums.find(n => n > 4))
-println(nums.none(n => n < 0))
-println(nums.sortBy(fn: x => {
-  println("Called for: " + x)
-  x
-}, reverse: true))
+//func abc<T>(item: T) {
+//  { a: item, c: item }
+//}
+//println(abc("hello").values())
+
+//type Thing<T> { t: T }
+//var th: Thing
+
+//enum Foo { Bar, Baz }
+//var f: Foo<Int>
+
+//val arr: Array<String> = [1, 2, 3]
+//println(arr)
+
+//val map: Map<String, Int> = {}
+val map = { a: "a", b: 456 }
+map["a"] = 123
+map["123"] = "b"
+//match map["a"] {
+//  None => println("huh?")
+//  Int i => println("number: " + i)
+//  String s => println("string: " + s)
+//}
+//map.mapValues((_, v) => v + "!")
+
+//val nums = [1, 2, 3, 4, 5, 6, 7].partition(i => i.isEven())
+//println(nums[true])
+//println(nums[false])
+
+val nums = [1, 2, 3, 6, 5, 4, 3, 2, 1]
+println(nums.tallyBy(n => n > 3))
+
+//type Person { name: String }
+//val people = [
+//  Person(name: "Brian"),
+//  Person(name: "Kelsey"),
+//  Person(name: "Kelsey"),
+//  Person(name: "Meg"),
+//  Person(name: "Meg"),
+//  Person(name: "Ken"),
+//  Person(name: "Ken"),
+//]
+//people.dedupeBy(p => p.name.length).map(p => p.name)
