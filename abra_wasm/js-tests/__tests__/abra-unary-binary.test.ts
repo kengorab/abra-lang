@@ -22,8 +22,8 @@ describe('unary & binary expressions', () => {
         expect(runSync('3.14 +"hello"')).toEqual('3.14hello');
         expect(runSync('"hello" + true')).toEqual('hellotrue');
         expect(runSync('false + "world"')).toEqual('falseworld');
-        expect(runSync('[1, 2, 3] + "world"')).toEqual('1,2,3world');
-        expect(runSync('"hello" + [" ", "world"]')).toEqual('hello ,world');
+        expect(runSync('[1, 2, 3] + "world"')).toEqual('[1, 2, 3]world');
+        expect(runSync('"hello" + [" ", "world"]')).toEqual('hello[" ", "world"]');
     });
 
     test('comparisons', () => {
