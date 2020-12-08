@@ -2,7 +2,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
@@ -797,6 +797,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
         Ok(())
     }
 
+    fn visit_tuple(&mut self, token: Token, node: TypedTupleNode) -> Result<(), ()> {
+        let num_items = node.items.len();
+        for item in node.items {
+            self.visit(item)?;
+        }
+
+        let line = token.get_position().line;
+
+        self.write_opcode(Opcode::TupleMk, line);
+        self.write_byte(num_items as u8, line);
+        Ok(())
+    }
+
     fn visit_map(&mut self, token: Token, node: TypedMapNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
@@ -1088,6 +1101,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
                 let opcode = match typ {
                     Type::Array(_) => Opcode::ArrStore,
+                    Type::Tuple(_) => Opcode::TupleStore,
                     Type::Map(_, _) => Opcode::MapStore,
                     _ => unreachable!()
                 };
@@ -1147,18 +1161,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         let TypedIndexingNode { target, index, .. } = node;
-        let is_map_target = if let Type::Map(_, _) = &target.get_type() { true } else { false };
 
+        let opcode = match &target.get_type() {
+            Type::Map(_, _) => Opcode::MapLoad,
+            Type::Array(_) | Type::String => Opcode::ArrLoad,
+            Type::Tuple(_) => Opcode::TupleLoad,
+            _ => unreachable!()
+        };
         self.visit(*target)?;
 
         match index {
             IndexingMode::Index(idx) => {
                 self.visit(*idx)?;
-                if is_map_target {
-                    self.write_opcode(Opcode::MapLoad, line);
-                } else {
-                    self.write_opcode(Opcode::ArrLoad, line);
-                }
+                self.write_opcode(opcode, line);
             }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
@@ -2500,6 +2515,27 @@ mod tests {
             ]),
         };
         assert_eq!(expected, chunk);
+
+        let chunk = compile("val a = (1, 2)\na[0] = 0");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::TupleMk as u8, 2,
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("a".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
     }
 
     #[test]
@@ -2630,6 +2666,21 @@ mod tests {
                 Value::Str("b".to_string()),
                 new_string_obj("a"),
             ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("(1, true, 3)[2]");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::T as u8,
+                Opcode::IConst3 as u8,
+                Opcode::TupleMk as u8, 3,
+                Opcode::IConst2 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![]),
         };
         assert_eq!(expected, chunk);
     }

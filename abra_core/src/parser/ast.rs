@@ -222,6 +222,7 @@ pub enum MatchCaseType {
 pub enum TypeIdentifier {
     Normal { ident: Token, type_args: Option<Vec<TypeIdentifier>> },
     Array { inner: Box<TypeIdentifier> },
+    Tuple { types: Vec<TypeIdentifier> },
     Option { inner: Box<TypeIdentifier> },
     Union { left: Box<TypeIdentifier>, right: Box<TypeIdentifier> },
     Func {
@@ -235,6 +236,7 @@ impl TypeIdentifier {
         match self {
             TypeIdentifier::Normal { ident, .. } => ident.clone(),
             TypeIdentifier::Array { inner } => inner.get_ident(),
+            TypeIdentifier::Tuple { types } => types.iter().next().unwrap().get_ident(),
             TypeIdentifier::Option { inner } => inner.get_ident(),
             TypeIdentifier::Union { left, .. } => left.get_ident(),
             TypeIdentifier::Func { ret, .. } => ret.get_ident()

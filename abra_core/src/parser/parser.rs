@@ -250,11 +250,13 @@ impl Parser {
                 } else {
                     types.into_iter().next().unwrap()
                 }
-            } else {
+            } else if let Some(Token::Arrow(_)) = self.peek() {
                 expect_next_token!(TokenType::Arrow);
 
                 let ret_type = self.parse_type_identifier(consume)?;
                 TypeIdentifier::Func { args: types, ret: Box::new(ret_type) }
+            } else {
+                TypeIdentifier::Tuple { types }
             }
         } else {
             let ident = match expect_next_token!(TokenType::Ident) {
@@ -1956,6 +1958,35 @@ mod tests {
                         type_args: None,
                     })
                 })
+            })
+        };
+        assert_eq!(expected, type_ident);
+
+        // Tuple types
+        let type_ident = parse_type_identifier("(Int, Int)");
+        let expected = TypeIdentifier::Tuple {
+            types: vec![
+                TypeIdentifier::Normal { ident: ident_token!((1, 2), "Int"), type_args: None },
+                TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int"), type_args: None },
+            ]
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("(Int, (Bool, Int), String[])?");
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Tuple {
+                types: vec![
+                    TypeIdentifier::Normal { ident: ident_token!((1, 2), "Int"), type_args: None },
+                    TypeIdentifier::Tuple {
+                        types: vec![
+                            TypeIdentifier::Normal { ident: ident_token!((1, 8), "Bool"), type_args: None },
+                            TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int"), type_args: None },
+                        ]
+                    },
+                    TypeIdentifier::Array {
+                        inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 20), "String"), type_args: None })
+                    }
+                ]
             })
         };
         assert_eq!(expected, type_ident);

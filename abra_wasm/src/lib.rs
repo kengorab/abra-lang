@@ -43,7 +43,7 @@ impl Serialize for RunResultValue {
             Value::Str(val) => serializer.serialize_str(val),
             Value::Obj(obj) => match &*obj.borrow() {
                 Obj::StringObj(value) => serializer.serialize_str(value),
-                Obj::ArrayObj(value) => {
+                Obj::ArrayObj(value) | Obj::TupleObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();

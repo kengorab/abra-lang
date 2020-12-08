@@ -804,6 +804,7 @@ pub trait NativeMapMethodsAndFields {
     fn field_size(obj: Box<Value>) -> Value;
     fn method_keys(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_entries(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM)
         -> Option<Value>;
     fn method_map_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -828,8 +829,19 @@ impl NativeType for NativeMap {
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("V".to_string())))),
                 }),
             )),
-            "containsKey" => Some((
+            "entries" => Some((
                 3usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Tuple(vec![
+                        Type::Generic("K".to_string()),
+                        Type::Generic("V".to_string()),
+                    ])))),
+                }),
+            )),
+            "containsKey" => Some((
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("key".to_string(), Type::Generic("K".to_string()), false)],
@@ -837,7 +849,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "mapValues" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -877,12 +889,18 @@ impl NativeType for NativeMap {
                 has_return: true,
             }),
             3usize => Value::NativeFn(NativeFn {
+                name: "entries",
+                receiver: Some(obj),
+                native_fn: Self::method_entries,
+                has_return: true,
+            }),
+            4usize => Value::NativeFn(NativeFn {
                 name: "containsKey",
                 receiver: Some(obj),
                 native_fn: Self::method_contains_key,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "mapValues",
                 receiver: Some(obj),
                 native_fn: Self::method_map_values,

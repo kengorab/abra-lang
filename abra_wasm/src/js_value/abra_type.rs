@@ -53,6 +53,13 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
+            Type::Tuple(types) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Tuple")?;
+                let types: Vec<JsType> = types.iter().map(|t| JsType(t)).collect();
+                obj.serialize_entry("types", &types)?;
+                obj.end()
+            }
             Type::Map(key_type, value_type) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Map")?;

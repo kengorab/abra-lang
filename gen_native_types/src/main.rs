@@ -69,6 +69,12 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
               Type::Union(vec![#(#types),*])
             };
         }
+        Type::Tuple(types) => {
+            let types = types.iter().map(|t| generate_code_for_type(t)).collect::<Vec<_>>();
+            return quote! {
+              Type::Tuple(vec![#(#types),*])
+            };
+        }
         Type::Fn(FnType { type_args, arg_types, ret_type }) => {
             let arg_types_code = arg_types.into_iter().map(|(name, typ, is_optional)| {
                 let arg_type_code = generate_code_for_type(typ);

@@ -56,6 +56,10 @@ type NativeMap<K, V> {
 
   func keys(self): K[] {}
   func values(self): V[] {}
+  func entries(self): (K, V)[] {}
   func containsKey(self, key: K): Bool {}
   func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {}
+  //func filter<U>(self, fn: (K, V) => (Bool | U?)): Map<K, V> {}
+  //func merge(self, other: Map<K, V>): Map<K, V> {}
+  //func mergePairs(self, pairs: (K, V)[]): Map<K, V> {}
 }

@@ -97,6 +97,13 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }
+            Obj::TupleObj(value) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "tupleObj")?;
+                let value: Vec<JsWrappedValue> = value.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("value", &value)?;
+                obj.end()
+            }
             Obj::MapObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "mapObj")?;

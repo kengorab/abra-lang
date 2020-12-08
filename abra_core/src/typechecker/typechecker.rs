@@ -4,7 +4,7 @@ use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -1600,9 +1600,19 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                 let typed_target = self.visit_indexing(tok.clone(), node)?;
                 let (index_target_type, kind) = match &typed_target {
-                    TypedAstNode::Indexing(_, TypedIndexingNode { target, .. }) => {
+                    TypedAstNode::Indexing(_, TypedIndexingNode { target, index, .. }) => {
                         match target.get_type() {
                             Type::Array(inner_type) => (*inner_type, AssignmentTargetKind::ArrayIndex),
+                            Type::Tuple(types) => {
+                                let idx = match index {
+                                    IndexingMode::Index(i) => match **i {
+                                        TypedAstNode::Literal(_, TypedLiteralNode::IntLiteral(i)) => i,
+                                        _ => unreachable!("The error should already be handled in visit_indexing")
+                                    }
+                                    _ => unreachable!("The error should already be handled in visit_indexing")
+                                };
+                                (types[idx as usize].clone(), AssignmentTargetKind::ArrayIndex)
+                            },
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
                                 return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
@@ -1655,12 +1665,34 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let target = self.visit(*target)?;
         let target_type = target.get_type();
 
+        if let Type::Tuple(types) = &target_type {
+            return if let IndexingMode::Index(idx) = index {
+                let idx = self.visit(*idx)?;
+                let index = match &idx {
+                    TypedAstNode::Literal(_, TypedLiteralNode::IntLiteral(idx)) => idx,
+                    _ => return Err(TypecheckerError::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: true, index: -1 })
+                };
+                if *index < 0 || *index > ((types.len() - 1) as i64) {
+                    Err(TypecheckerError::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: false, index: *index })
+                } else {
+                    Ok(TypedAstNode::Indexing(token, TypedIndexingNode {
+                        typ: types[*index as usize].clone(),
+                        target: Box::new(target),
+                        index: IndexingMode::Index(Box::new(idx)),
+                    }))
+                }
+            } else {
+                Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type, index_mode: index })
+            };
+        }
+
         let typ = match (target_type.clone(), &index) {
             (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
             (Type::Array(inner_type), IndexingMode::Range(_, _)) => Ok(Type::Array(inner_type)),
             (Type::String, _) => Ok(Type::String),
             (Type::Map(_, value_type), IndexingMode::Index(_)) => Ok(Type::Option(value_type)),
-            (typ, _) => Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type: typ })
+            (Type::Tuple(_), IndexingMode::Index(_)) => unreachable!("It should have been handled above"),
+            (typ, index_mode) => Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type: typ, index_mode: index_mode.clone() })
         }?;
 
         let index = match index {
@@ -2386,9 +2418,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<TypedAstNode, TypecheckerError> {
-        dbg!(token);
-        dbg!(nodes);
-        todo!()
+        let items = nodes.into_iter()
+            .map(|n| { self.visit(n) })
+            .collect::<Result<Vec<_>, _>>()?;
+        let types = items.iter().map(|i| i.get_type()).collect();
+        let node = TypedTupleNode { typ: Type::Tuple(types), items };
+        Ok(TypedAstNode::Tuple(token, node))
     }
 }
 
@@ -2999,6 +3034,49 @@ mod tests {
         assert_eq!(expected_type, typed_ast[0].get_type());
 
         // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]], which should be (Int | Float)[][]
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_tuple() -> TestResult {
+        let typed_ast = typecheck("(1, \"hello\")")?;
+        let expected_type = Type::Tuple(vec![Type::Int, Type::String]);
+        assert_eq!(expected_type, typed_ast[0].get_type());
+
+        let typed_ast = typecheck("(1, (\"hello\", \"world\"), 3)")?;
+        let expected_type = Type::Tuple(vec![
+            Type::Int,
+            Type::Tuple(vec![Type::String, Type::String]),
+            Type::Int,
+        ]);
+        assert_eq!(expected_type, typed_ast[0].get_type());
+
+        let res = typecheck("val t: (Int, Int, String) = (1, 2, \"three\")");
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_tuple_generics() -> TestResult {
+        let typed_ast = typecheck("\
+          func abc<T>(t: T): (T, T[]) = (t, [t])\
+          abc(1)
+        ")?;
+        let expected_type = Type::Tuple(vec![Type::Int, Type::Array(Box::new(Type::Int))]);
+        assert_eq!(expected_type, typed_ast[1].get_type());
+
+        let typed_ast = typecheck("\
+          func abc<T, U, V>(t: T, u: U, v: V): (T, U, V) = (t, u, v)\
+          abc(1, \"2\", [3])
+        ")?;
+        let expected_type = Type::Tuple(vec![
+            Type::Int,
+            Type::String,
+            Type::Array(Box::new(Type::Int))
+        ]);
+        assert_eq!(expected_type, typed_ast[1].get_type());
 
         Ok(())
     }
@@ -4564,6 +4642,9 @@ mod tests {
         let res = typecheck("var abc = {a: 2, b: true}\nabc[\"c\"] = 3");
         assert!(res.is_ok());
 
+        let res = typecheck("val abc = (2, true)\nabc[1] = false");
+        assert!(res.is_ok());
+
         Ok(())
     }
 
@@ -4769,6 +4850,23 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[1]);
 
+        let typed_ast = typecheck("(1, 2)[0]")?;
+        let expected = TypedAstNode::Indexing(
+            Token::LBrack(Position::new(1, 7), false),
+            TypedIndexingNode {
+                typ: Type::Int,
+                target: Box::new(TypedAstNode::Tuple(
+                    Token::LParen(Position::new(1, 1), false),
+                    TypedTupleNode {
+                        typ: Type::Tuple(vec![Type::Int, Type::Int]),
+                        items: vec![int_literal!((1, 2), 1), int_literal!((1, 5), 2)],
+                    },
+                )),
+                index: IndexingMode::Index(Box::new(int_literal!((1, 8), 0))),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
         Ok(())
     }
 
@@ -4810,6 +4908,12 @@ mod tests {
         let expected = TypecheckerError::InvalidIndexingTarget {
             token: Token::LBrack(Position::new(1, 4), false),
             target_type: Type::Int,
+            index_mode: IndexingMode::Index(Box::new(
+                AstNode::Literal(
+                    Token::Int(Position::new(1, 5), 0),
+                    AstLiteralNode::IntLiteral(0),
+                )
+            )),
         };
         assert_eq!(expected, err);
 
@@ -4834,6 +4938,24 @@ mod tests {
             token: Token::Int(Position::new(1, 19), 123),
             selector_type: Type::Int,
             target_type: Type::Map(Box::new(Type::String), Box::new(Type::Union(vec![Type::Bool, Type::Int]))),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("(1, 2)[2]").unwrap_err();
+        let expected = TypecheckerError::InvalidTupleIndexingSelector {
+            token: Token::Int(Position::new(1, 8), 2),
+            types: vec![Type::Int, Type::Int],
+            non_constant: false,
+            index: 2,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("(1, 2)[0 + 1]").unwrap_err();
+        let expected = TypecheckerError::InvalidTupleIndexingSelector {
+            token: Token::Plus(Position::new(1, 10)),
+            types: vec![Type::Int, Type::Int],
+            non_constant: true,
+            index: -1,
         };
         assert_eq!(expected, err);
     }
