@@ -115,7 +115,6 @@ fn type_repr(t: &Type) -> String {
     #[inline]
     fn wrap_type_repr(t: &Type) -> String {
         let wrap = if let Type::Fn(_) = t { true } else { false };
-
         if wrap {
             format!("({})", type_repr(t))
         } else {
@@ -137,15 +136,8 @@ fn type_repr(t: &Type) -> String {
             format!("{}", type_opts.join(" | "))
         }
         Type::Array(typ) => format!("{}[]", wrap_type_repr(typ)),
-        Type::Map(fields, _) => {
-            if fields.is_empty() {
-                format!("{{}}")
-            } else {
-                let pairs = fields.iter()
-                    .map(|(name, typ)| format!("{}: {}", name, type_repr(typ)))
-                    .collect::<Vec<String>>().join(", ");
-                format!("{{ {} }}", pairs)
-            }
+        Type::Map(key_type, value_type) => {
+            format!("Map<{}, {}>", type_repr(key_type), type_repr(value_type))
         }
         Type::Option(typ) => format!("{}?", wrap_type_repr(typ)),
         Type::Fn(FnType { arg_types, ret_type, .. }) => {
@@ -420,15 +412,11 @@ impl DisplayError for TypecheckerError {
                 )
             }
             TypecheckerError::InvalidIndexingTarget { target_type, .. } => {
-                let first_line = format!(
-                    "Unsupported indexing operation: ({}:{})\n{}",
-                    pos.line, pos.col, cursor_line
-                );
-                let second_line = match target_type {
-                    Type::Map(_, _) => format!("Cannot index into maps whose values are not all the same type"),
-                    typ @ _ => format!("Type {} is not indexable", type_repr(typ))
-                };
-                format!("{}\n{}", first_line, second_line)
+                format!(
+                    "Unsupported indexing operation: ({}:{})\n{}\n\
+                    Type {} is not indexable",
+                    pos.line, pos.col, cursor_line, type_repr(target_type)
+                )
             }
             TypecheckerError::InvalidIndexingSelector { target_type, selector_type, .. } => {
                 format!(
@@ -523,12 +511,14 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::InvalidTypeArgumentArity { actual_type, actual, expected, .. } => {
                 format!(
-                    "Expected {} type argument{}, but {} {} provided: ({}:{})\n{}\n{}",
+                    "Expected {} type argument{}, but {} {} provided: ({}:{})\n{}{}",
                     expected, if *expected == 1 { "" } else { "s" }, actual, if *actual == 1 { "was" } else { "were" }, pos.line, pos.col, cursor_line,
-                    format!(
-                        "Provide {} type argument{} to match type {}",
-                        expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
-                    )
+                    if *expected > 0 {
+                        format!(
+                            "\nProvide {} type argument{} to match type {}",
+                            expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
+                        )
+                    } else { "".to_string() }
                 )
             }
             TypecheckerError::UnreachableMatchCase { typ, is_unreachable_none, .. } => {
@@ -950,25 +940,6 @@ Required parameters must all be listed before any optional parameters"
 
     #[test]
     fn test_invalid_indexing_target() {
-        // Testing non-homogeneous maps
-        let src = "val m = { a: \"hello\", b: 3 }\nm[\"a\"]".to_string();
-        let err = TypecheckerError::InvalidIndexingTarget {
-            token: Token::LBrack(Position::new(2, 2), false),
-            target_type: Type::Map(
-                vec![("a".to_string(), Type::String), ("b".to_string(), Type::Int)],
-                None,
-            ),
-        };
-
-        let expected = format!("\
-Unsupported indexing operation: (2:2)
-  |  m[\"a\"]
-      ^
-Cannot index into maps whose values are not all the same type"
-        );
-        assert_eq!(expected, err.get_message(&src));
-
-        // Testing other types
         let src = "123[1]".to_string();
         let err = TypecheckerError::InvalidIndexingTarget {
             token: Token::LBrack(Position::new(1, 4), false),

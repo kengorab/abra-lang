@@ -1,3 +1,7 @@
+use itertools::Itertools;
+use std::hash::{Hash, Hasher};
+use crate::builtins::native_fns::NativeFn;
+use crate::common::util::integer_decode;
 use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
@@ -5,9 +9,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::sync::Arc;
-use crate::builtins::native_fns::NativeFn;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
 pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
@@ -16,7 +19,20 @@ pub struct FnValue {
     pub has_return: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+impl Hash for FnValue {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.name.hash(hasher);
+        self.code.hash(hasher);
+        self.upvalues.hash(hasher);
+        if let Some(receiver) = &self.receiver {
+            (&*receiver.borrow()).hash(hasher);
+        }
+        self.has_return.hash(hasher);
+        hasher.finish();
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
 pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
@@ -25,14 +41,14 @@ pub struct ClosureValue {
     pub has_return: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct TypeValue {
     pub name: String,
     pub methods: Vec<(String, FnValue)>,
     pub static_fields: Vec<(String, FnValue)>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct EnumValue {
     pub name: String,
     pub variants: Vec<(String, EnumVariantObj)>,
@@ -40,7 +56,7 @@ pub struct EnumValue {
     pub static_fields: Vec<(String, FnValue)>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct EnumVariantObj {
     pub enum_name: String,
     pub name: String,
@@ -95,7 +111,7 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(arr)))
     }
 
-    pub fn new_map_obj(items: HashMap<String, Value>) -> Value {
+    pub fn new_map_obj(items: HashMap<Value, Value>) -> Value {
         let map = Obj::MapObj(items);
         Value::Obj(Arc::new(RefCell::new(map)))
     }
@@ -132,17 +148,65 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+impl Hash for Value {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        match self {
+            Value::Int(i) => i.hash(hasher),
+            Value::Float(f) => integer_decode(*f).hash(hasher),
+            Value::Bool(b) => b.hash(hasher),
+            Value::Str(s) => s.hash(hasher),
+            Value::Obj(o) => (&*o.borrow()).hash(hasher),
+            Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => {
+                name.hash(hasher);
+                code.hash(hasher);
+                upvalues.hash(hasher);
+                if let Some(obj) = receiver {
+                    let obj = &*obj.borrow();
+                    obj.hash(hasher);
+                }
+                has_return.hash(hasher);
+            }
+            Value::Closure(ClosureValue { name, code, captures, receiver, has_return }) => {
+                name.hash(hasher);
+                code.hash(hasher);
+                for capture in captures {
+                    let uv = &*capture.borrow();
+                    uv.hash(hasher);
+                }
+                if let Some(obj) = receiver {
+                    let obj = &*obj.borrow();
+                    obj.hash(hasher);
+                }
+                has_return.hash(hasher);
+            }
+            Value::NativeFn(NativeFn { name, receiver, has_return, .. }) => {
+                name.hash(hasher);
+                if let Some(receiver) = receiver {
+                    receiver.hash(hasher);
+                }
+                has_return.hash(hasher);
+            }
+            Value::Type(tv) => tv.hash(hasher),
+            Value::Enum(ev) => ev.hash(hasher),
+            Value::Nil => 0.hash(hasher)
+        }
+        hasher.finish();
+    }
+}
+
+impl Eq for Value {}
+
+#[derive(Debug, Clone, Hash, Eq, PartialOrd, PartialEq)]
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Obj {
     StringObj(String),
     ArrayObj(Vec<Value>),
-    MapObj(HashMap<String, Value>),
+    MapObj(HashMap<Value, Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
 }
@@ -153,9 +217,25 @@ impl Obj {
         match self {
             Obj::StringObj(value) => value.clone(),
             Obj::ArrayObj(value) => {
-                value.iter().map(|v| v.to_string()).collect::<Vec<String>>().join(",")
+                let items = value.iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("[{}]", items)
             }
-            Obj::MapObj(_) => "<map>".to_string(),
+            Obj::MapObj(map) => {
+                let fields = map.iter()
+                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .collect::<Vec<_>>();
+                let one_liner = format!(
+                    "{{ {} }}",
+                    fields.iter().join(", ")
+                );
+                if one_liner.len() <= 80 {
+                    return one_liner;
+                }
+                format!("{{\n  {}\n}}", fields.join(",\n  "))
+            }
             Obj::InstanceObj(inst) => {
                 match &*inst.typ {
                     Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
@@ -219,5 +299,23 @@ impl PartialOrd for Obj {
             }
             (_, _) => None
         }
+    }
+}
+
+impl Hash for Obj {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        match self {
+            Obj::StringObj(s) => s.hash(hasher),
+            Obj::ArrayObj(a) => a.hash(hasher),
+            Obj::MapObj(m) => {
+                for (k, v) in m {
+                    k.hash(hasher);
+                    v.hash(hasher);
+                }
+            }
+            Obj::InstanceObj(i) => i.hash(hasher),
+            Obj::EnumVariantObj(ev) => ev.hash(hasher),
+        }
+        hasher.finish();
     }
 }

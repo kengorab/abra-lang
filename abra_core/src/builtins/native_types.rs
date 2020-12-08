@@ -1,7 +1,8 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields};
+use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields, NativeMapMethodsAndFields};
 use crate::vm::vm::VM;
+use std::collections::{HashSet, HashMap};
 
 macro_rules! obj_as_string {
     ($obj:expr) => {
@@ -57,6 +58,18 @@ impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt 
             let str_val = digits.into_iter().rev().collect::<String>();
             Some(Value::new_string_obj(str_val))
         } else { unimplemented!() }
+    }
+
+    fn method_is_even(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Int(i) = receiver.unwrap() {
+            Some(Value::Bool(i % 2 == 0))
+        } else { unreachable!() }
+    }
+
+    fn method_is_odd(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Int(i) = receiver.unwrap() {
+            Some(Value::Bool(i % 2 != 0))
+        } else { unreachable!() }
     }
 }
 
@@ -546,7 +559,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow_mut()) {
-                Obj::ArrayObj( array) => {
+                Obj::ArrayObj(array) => {
                     let mut sort_values = array.iter().enumerate().map(|(idx, item)| {
                         let args = vec![item.clone()];
                         let v = vm.invoke_fn(args, callback.clone())
@@ -562,7 +575,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                                 } else {
                                     i1.cmp(&i2)
                                 }
-                            },
+                            }
                             _ => unreachable!()
                         }
                     });
@@ -570,6 +583,209 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                         .map(|(_, idx)| array[*idx].clone())
                         .collect();
                     Some(Value::new_array_obj(items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_dedupe(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut new_array_items = vec![];
+                    let mut seen = HashSet::new();
+
+                    for item in array {
+                        if seen.contains(item) {
+                            continue;
+                        }
+                        seen.insert(item);
+                        new_array_items.push(item.clone())
+                    }
+
+                    Some(Value::new_array_obj(new_array_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_dedupe_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::dedupeBy requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut new_array_items = vec![];
+                    let mut seen = HashSet::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        if seen.contains(&v) {
+                            continue;
+                        }
+                        seen.insert(v);
+                        new_array_items.push(item.clone())
+                    }
+
+                    Some(Value::new_array_obj(new_array_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_partition(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::partition requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        map.entry(v).or_insert(vec![]).push(item.clone());
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::new_array_obj(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_tally(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        *map.entry(item.clone()).or_insert(0) += 1;
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::Int(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_tally_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::partition requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut map = HashMap::new();
+
+                    for item in array {
+                        let args = vec![item.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        *map.entry(v).or_insert(0) += 1;
+                    }
+
+                    let map = map.into_iter()
+                        .map(|(k, v)| (k, Value::Int(v)))
+                        .collect();
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+}
+
+pub type NativeMap = crate::builtins::gen_native_types::NativeMap;
+
+impl NativeMapMethodsAndFields for NativeMap {
+    fn field_size(obj: Box<Value>) -> Value {
+        if let Value::Obj(obj) = *obj {
+            match &*(obj.borrow()) {
+                Obj::MapObj(value) => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_keys(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let keys = map.keys()
+                        .map(|k| k.clone())
+                        .collect::<Vec<_>>();
+                    Some(Value::new_array_obj(keys))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_values(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let values = map.values()
+                        .map(|v| v.clone())
+                        .collect::<Vec<_>>();
+                    Some(Value::new_array_obj(values))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let key = args.into_iter().next().expect("Map::containsKey requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    Some(Value::Bool(map.contains_key(&key)))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_map_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Map::mapValues requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let mut new_map = HashMap::new();
+
+                    for (k, v) in map {
+                        let args = vec![k.clone(), v.clone()];
+                        let v = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+
+                        new_map.insert(k.clone(), v);
+                    }
+
+                    Some(Value::new_map_obj(new_map))
                 }
                 _ => unreachable!()
             }
@@ -1061,6 +1277,188 @@ mod test {
     }
 
     #[test]
+    fn test_array_dedupe() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].dedupe()");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          type Person { name: String }\
+          [Person(name: \"Ken\"), Person(name: \"Meg\"), Person(name: \"Ken\")]\
+            .dedupe()\
+            .map(p => p.name)\
+        ");
+        let expected = array![
+            new_string_obj("Ken"),
+            new_string_obj("Meg")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_dedupe_by() {
+        let result = interpret("[\"a\", \"bc\", \"def\"].dedupeBy(w => w.length)");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[\"a\", \"bc\", \"def\", \"ghi\"].dedupeBy(w => w.length)");
+        let expected = array![
+            new_string_obj("a"),
+            new_string_obj("bc"),
+            new_string_obj("def")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_partition() {
+        let result = interpret("\
+          val m = [1, 2, 3, 4, 5].partition(n => n.isEven())\n\
+          [m[true], m[false]]
+        ");
+        let expected = array![
+            array![Value::Int(2), Value::Int(4)],
+            array![Value::Int(1), Value::Int(3), Value::Int(5)]
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m = [[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0])\n\
+          [m[1], m[2], m[3]]
+        ");
+        let expected = array![
+            array![
+                array![Value::Int(1), Value::Int(1)],
+                array![Value::Int(1), Value::Int(2)]
+            ],
+            array![
+                array![Value::Int(2), Value::Int(1)],
+                array![Value::Int(2), Value::Int(2)]
+            ],
+            array![
+                array![Value::Int(3), Value::Int(1)],
+                array![Value::Int(3), Value::Int(2)]
+            ]
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_tally() {
+        let result = interpret("\
+          val t = [1, 2, 3, 4, 3, 2, 1, 2, 1].tally()\n\
+          [t[1], t[2], t[3], t[4]]
+        ");
+        let expected = array![
+            Value::Int(3),
+            Value::Int(3),
+            Value::Int(2),
+            Value::Int(1)
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_tally_by() {
+        let result = interpret("\
+          type Person { name: String }\
+          val t = [Person(name: \"Ken\"), Person(name: \"Meg\")].tallyBy(p => p.name.length)\n\
+          t[3]
+        ");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_keys() {
+        let result = interpret("{}.keys()");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.keys()");
+        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
+        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+
+        let result = interpret("\
+          val m: Map<Int[], Int> = {}\
+          m[[1, 2]] = 2\
+          m[[1, 2, 3]] = 3\
+          m.keys()
+        ");
+        let expected1 = array![
+            array![Value::Int(1), Value::Int(2)],
+            array![Value::Int(1), Value::Int(2), Value::Int(3)]
+        ];
+        let expected2 = array![
+            array![Value::Int(1), Value::Int(2), Value::Int(3)],
+            array![Value::Int(1), Value::Int(2)]
+        ];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+
+        let result = interpret("{ a: 123, b: true }.keys()");
+        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
+        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+    }
+
+    #[test]
+    fn test_map_values() {
+        let result = interpret("{}.values()");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.values()");
+        let expected1 = array![Value::Int(123), Value::Bool(true)];
+        let expected2 = array![Value::Bool(true), Value::Int(123)];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+    }
+
+    #[test]
+    fn test_map_contains_key() {
+        let result = interpret("{}.containsKey(\"asdf\")");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 24 }.containsKey(\"a\")");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m: Map<Int[], String> = {}\
+          m[[1, 2, 3]] = \"hello\"\
+          m.containsKey([1, 2, 3])\
+        ");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_map_values() {
+        let result = interpret("\
+          val m = { a: 1, b: 2 }.mapValues((_, v) => v + 1)\n\
+          [m[\"a\"], m[\"b\"]]
+        ");
+        let expected = array![Value::Int(2), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val m = { a: 1, b: 2 }.mapValues((k, v) => k + v)\n\
+          [m[\"a\"], m[\"b\"]]
+        ");
+        let expected = array![new_string_obj("a1"), new_string_obj("b2")];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
     fn test_float_floor() {
         let result = interpret("6.24.floor()");
         let expected = Value::Int(6);
@@ -1147,7 +1545,7 @@ mod test {
     }
 
     #[test]
-    fn test_as_base() {
+    fn test_int_as_base() {
         let result = interpret("6.asBase(0)");
         let expected = new_string_obj("6");
         assert_eq!(Some(expected), result);
@@ -1178,6 +1576,44 @@ mod test {
 
         let result = interpret("24032.asBase(36)");
         let expected = new_string_obj("ijk");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_int_is_even() {
+        let result = interpret("0.isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("6.isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("(-6).isEven()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("5.isEven()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_int_is_odd() {
+        let result = interpret("0.isOdd()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("6.isOdd()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("(-1).isOdd()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("1.isOdd()");
+        let expected = Value::Bool(true);
         assert_eq!(Some(expected), result);
     }
 }

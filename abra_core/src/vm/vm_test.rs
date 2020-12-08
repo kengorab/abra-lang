@@ -256,11 +256,11 @@ mod tests {
     }
 
     #[inline]
-    fn sorted_map_obj_values(value: Value) -> Vec<(String, Value)> {
+    fn sorted_map_obj_values(value: Value) -> Vec<(Value, Value)> {
         if let Value::Obj(obj) = value {
             match &*obj.borrow() {
                 Obj::MapObj(value) => {
-                    let mut pairs = value.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(String, Value)>>();
+                    let mut pairs = value.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(Value, Value)>>();
                     pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
                     pairs
                 }
@@ -276,21 +276,21 @@ mod tests {
         let result = interpret("{ a: 1, b: \"hello\", c: true }").unwrap();
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
-            ("a".to_string(), Value::Int(1)),
-            ("b".to_string(), new_string_obj("hello")),
-            ("c".to_string(), Value::Bool(true)),
+            (new_string_obj("a"), Value::Int(1)),
+            (new_string_obj("b"), new_string_obj("hello")),
+            (new_string_obj("c"), Value::Bool(true)),
         ];
         assert_eq!(expected_pairs, result_pairs);
 
         let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
-            ("a".to_string(), Value::new_map_obj({
+            (new_string_obj("a"), Value::new_map_obj({
                 let mut items = HashMap::new();
-                items.insert("b".to_string(), new_string_obj("hello"));
+                items.insert(new_string_obj("b"), new_string_obj("hello"));
                 items
             })),
-            ("c".to_string(), Value::new_array_obj(vec![Value::Int(1), Value::Int(2)])),
+            (new_string_obj("c"), Value::new_array_obj(vec![Value::Int(1), Value::Int(2)])),
         ];
         assert_eq!(expected_pairs, result_pairs);
     }

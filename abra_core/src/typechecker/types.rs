@@ -12,7 +12,7 @@ pub enum Type {
     String,
     Bool,
     Array(Box<Type>),
-    Map(/* fields: */ Vec<(String, Type)>, /* homogeneous_type: */ Option<Box<Type>>),
+    Map(/* key_type: */ Box<Type>, /* value_type: */ Box<Type>),
     Option(Box<Type>),
     Fn(FnType),
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
@@ -167,34 +167,11 @@ impl Type {
             (EnumVariant(enum_type1, _, _), EnumVariant(enum_type2, _, _)) => {
                 enum_type1.is_equivalent_to(enum_type2, referencable_types)
             }
-            // TODO (This should be unreachable right now anwyay...)
-            (Map(_fields1, _), Map(_fields2, _)) => {
-                false
-            }
-            // TODO
-            (Struct(StructType { name: _name, .. }), Map(_fields2, _)) => {
-                false
-            }
-            // TODO
-            (Map(provided_fields, _), Struct(StructType { fields: required_fields, .. })) => {
-                let provided_fields = provided_fields.iter()
-                    .map(|(name, typ)| (name.clone(), typ.clone()))
-                    .collect::<HashMap<_, _>>();
-                for (req_name, req_type, has_default_value) in required_fields {
-                    if *has_default_value { continue; }
-
-                    match provided_fields.get(req_name) {
-                        None => return false,
-                        Some(provided_type) => {
-                            if !provided_type.is_equivalent_to(req_type, referencable_types) {
-                                return false;
-                            } else {
-                                continue;
-                            }
-                        }
-                    }
+            (Map(k_type_1, v_type_1), Map(k_type_2, v_type_2)) => {
+                if !k_type_1.is_equivalent_to(&k_type_2, referencable_types) {
+                    return false;
                 }
-                true
+                v_type_1.is_equivalent_to(&v_type_2, referencable_types)
             }
             // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"])
             (_, Any) => true,
@@ -224,10 +201,18 @@ impl Type {
                         .collect();
                     Some(Type::Struct(StructType { type_args, ..struct_type }))
                 }
-                Type::Enum(enum_type) => {
-                    Some(Type::Enum(enum_type))
+                Type::Enum(enum_type) => Some(Type::Enum(enum_type)),
+                Type::Array(_) => {
+                    let inner_type = type_args.iter().next().unwrap_or(&Type::Unknown).clone();
+                    Some(Type::Array(Box::new(inner_type)))
                 }
-                _ => unreachable!("Nothing other than StructTypes should be referencable")
+                Type::Map(_, _) => {
+                    let mut type_args = type_args.iter();
+                    let key_type = type_args.next().unwrap_or(&Type::Unknown).clone();
+                    let value_type = type_args.next().unwrap_or(&Type::Unknown).clone();
+                    Some(Type::Map(Box::new(key_type), Box::new(value_type)))
+                }
+                _ => unimplemented!()
             }
         } else { None }
     }
@@ -237,6 +222,7 @@ impl Type {
             Type::Union(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
             Type::Array(inner_type) |
             Type::Option(inner_type) => inner_type.is_unknown(referencable_types),
+            Type::Map(key_type, value_type) => key_type.is_unknown(referencable_types) || value_type.is_unknown(referencable_types),
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
                 let has_unknown_arg = arg_types.iter().any(|(_, typ, _)| typ.is_unknown(referencable_types));
                 if has_unknown_arg {
@@ -280,6 +266,12 @@ impl Type {
             }
             Type::Array(inner_type) |
             Type::Option(inner_type) => inner_type.extract_unbound_generics(),
+            Type::Map(key_type, value_type) => {
+                vec![
+                    key_type.extract_unbound_generics(),
+                    value_type.extract_unbound_generics(),
+                ].concat()
+            }
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
                 arg_types.iter()
                     .map(|(_, typ, _)| typ)
@@ -305,6 +297,11 @@ impl Type {
         match typ {
             Type::Generic(name) => available_generics.get(name).unwrap_or(typ).clone(),
             Type::Array(inner_type) => Type::Array(Box::new(Type::substitute_generics(inner_type, available_generics))),
+            Type::Map(key_type, value_type) => {
+                let key_type = Box::new(Type::substitute_generics(key_type, available_generics));
+                let value_type = Box::new(Type::substitute_generics(value_type, available_generics));
+                Type::Map(key_type, value_type)
+            }
             Type::Option(inner_type) => Type::Option(Box::new(Type::substitute_generics(inner_type, available_generics))),
             Type::Fn(FnType { arg_types, type_args, ret_type }) => {
                 let arg_types = arg_types.iter()
@@ -375,6 +372,15 @@ impl Type {
             }
             (Type::Option(target_inner), Type::Option(inner)) => Self::try_fit_generics(inner, target_inner),
             (Type::Array(target_inner), Type::Array(inner)) => Self::try_fit_generics(inner, target_inner),
+            (Type::Map(target_key_type, target_value_type), Type::Map(key_type, value_type)) => {
+                let key_generics = Self::try_fit_generics(key_type, target_key_type);
+                let value_generics = Self::try_fit_generics(value_type, target_value_type);
+                let generics = vec![
+                    key_generics.unwrap_or(vec![]),
+                    value_generics.unwrap_or(vec![])
+                ].concat();
+                if generics.is_empty() { None } else { Some(generics) }
+            }
             (Type::Union(target_opts), t) => {
                 let (generics, target_opts) = target_opts.into_iter().map(Type::clone)
                     .partition::<Vec<Type>, _>(|t| if let Type::Generic(_) = t { true } else { false });

@@ -50,6 +50,9 @@ impl Prelude {
             ("Bool", Type::Bool),
             ("String", Type::String),
             ("Unit", Type::Unit),
+            ("Any", Type::Any),
+            ("Array", Type::Reference("Array".to_string(), vec![])),
+            ("Map", Type::Reference("Map".to_string(), vec![])),
         ];
         for (type_name, typ) in prelude_types {
             let binding = PreludeBinding {

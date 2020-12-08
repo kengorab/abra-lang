@@ -19,13 +19,13 @@ pub struct Local {
     is_closed: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
 pub enum UpvalueCaptureKind {
     Local { local_idx: usize },
     Upvalue { upvalue_idx: usize },
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
 pub struct Upvalue {
     pub capture_kind: UpvalueCaptureKind,
     depth: usize,

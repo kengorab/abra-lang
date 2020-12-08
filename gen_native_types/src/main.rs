@@ -49,6 +49,11 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
             let inner_type_code = generate_code_for_type(inner_type);
             return quote! { Type::Array(Box::new(#inner_type_code)) };
         }
+        Type::Map(key_type, value_type) => {
+            let key_type_code = generate_code_for_type(key_type);
+            let value_type_code = generate_code_for_type(value_type);
+            return quote! { Type::Map(Box::new(#key_type_code), Box::new(#value_type_code)) };
+        }
         Type::Option(inner_type) => {
             let inner_type_code = generate_code_for_type(inner_type);
             return quote! { Type::Option(Box::new(#inner_type_code)) };
