@@ -2384,6 +2384,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         Ok(typed_node)
     }
+
+    fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<TypedAstNode, TypecheckerError> {
+        dbg!(token);
+        dbg!(nodes);
+        todo!()
+    }
 }
 
 #[cfg(test)]

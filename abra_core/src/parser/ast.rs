@@ -25,6 +25,7 @@ pub enum AstNode {
     Lambda(Token, LambdaNode),
     MatchStatement(Token, MatchNode),
     MatchExpression(Token, MatchNode),
+    Tuple(Token, Vec<AstNode>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
