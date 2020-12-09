@@ -45,7 +45,7 @@ pub struct ClosureValue {
 pub struct TypeValue {
     pub name: String,
     pub methods: Vec<(String, FnValue)>,
-    pub static_fields: Vec<(String, FnValue)>,
+    pub static_fields: Vec<(String, Value)>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
@@ -53,7 +53,7 @@ pub struct EnumValue {
     pub name: String,
     pub variants: Vec<(String, EnumVariantObj)>,
     pub methods: Vec<(String, FnValue)>,
-    pub static_fields: Vec<(String, FnValue)>,
+    pub static_fields: Vec<(String, Value)>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]

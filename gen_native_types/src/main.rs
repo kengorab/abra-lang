@@ -83,7 +83,7 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
             let ret_type_code = generate_code_for_type(ret_type);
             return quote! {
                 Type::Fn(FnType {
-                    type_args: vec![#(#type_args),*],
+                    type_args: vec![#(#type_args.to_string()),*],
                     arg_types: vec![#(#arg_types_code),*],
                     ret_type: Box::new(#ret_type_code)
                 })
@@ -96,7 +96,7 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
 }
 
 fn generate_code_for_typedef(typ: StructType) -> TokenStream {
-    let StructType { name: type_name, fields, methods, .. } = typ;
+    let StructType { name: type_name, fields, methods, static_fields, .. } = typ;
 
     let type_name_ident = format_ident!("{}", type_name);
     let trait_name_ident = format_ident!("{}MethodsAndFields", type_name);
@@ -133,9 +133,9 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             fn #method_method_name_ident(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
         });
 
-        let FnType { type_args, arg_types, ret_type } = if let Type::Fn(t) = method_type { t } else { unreachable!() };
+        let FnType { ret_type, .. } = if let Type::Fn(t) = &method_type { t } else { unreachable!() };
 
-        let has_return = *ret_type != Type::Unit;
+        let has_return = **ret_type != Type::Unit;
         get_method_value_code.push(quote! {
             #field_idx => Value::NativeFn(NativeFn {
                 name: #method_name,
@@ -145,23 +145,39 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             })
         });
 
-        let mut all_arg_types_code = Vec::new();
-        for (arg_name, arg_type, is_opt) in arg_types {
-            let arg_type_code = generate_code_for_type(&arg_type);
-            all_arg_types_code.push(quote! {
-                (#arg_name.to_string(), #arg_type_code, #is_opt)
-            })
-        }
-        let ret_type_code = generate_code_for_type(&ret_type);
-        let method_type_code = quote! {
-            Type::Fn(FnType {
-                type_args: vec![#(#type_args.to_string()),*],
-                arg_types: vec![#(#all_arg_types_code),*],
-                ret_type: Box::new(#ret_type_code)
-            })
-        };
+        let method_type_code = generate_code_for_type(&method_type);
         native_type_fields_and_methods_code.push(quote! {
             #method_name => Some((#field_idx, #method_type_code))
+        });
+
+        field_idx += 1;
+    }
+
+    field_idx = 0;
+    let mut trait_static_field_methods_code = Vec::new();
+    let mut get_static_method_value_code = Vec::new();
+    let mut native_type_static_fields_and_methods_code = Vec::new();
+    for (name, typ, _) in static_fields {
+        let FnType { ret_type, .. } = if let Type::Fn(t) = &typ { t } else { unimplemented!("Only implemented for static methods at the moment") };
+
+        let static_method_name_ident = format_ident!("static_method_{}", name.to_snake_case());
+        trait_static_field_methods_code.push(quote! {
+            fn #static_method_name_ident(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+        });
+
+        let has_return = **ret_type != Type::Unit;
+        get_static_method_value_code.push(quote! {
+            (#name.to_string(), Value::NativeFn(NativeFn {
+                name: #name,
+                receiver: None,
+                native_fn: Self::#static_method_name_ident,
+                has_return: #has_return,
+            }))
+        });
+
+        let static_method_type_code = generate_code_for_type(&typ);
+        native_type_static_fields_and_methods_code.push(quote! {
+            #name => Some((#field_idx, #static_method_type_code))
         });
 
         field_idx += 1;
@@ -170,11 +186,42 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     // For some reason I keep getting a warning on the for-loop above, which goes away when this line is here. Weird
     let _ = 0;
 
+    let get_static_field_value_code = if get_static_method_value_code.is_empty() {
+        let msg = format!("{} has no static values", type_name.replace("Native", ""));
+        quote! {
+            fn get_static_field_values() -> Vec<(String, Value)> {
+                unreachable!(#msg)
+            }
+        }
+    } else {
+        quote! {
+            fn get_static_field_values() -> Vec<(String, Value)> {
+                vec![#(#get_static_method_value_code,)*]
+            }
+        }
+    };
+
+    let get_static_field_or_method_code = if native_type_static_fields_and_methods_code.is_empty() {
+        quote! {
+            fn get_static_field_or_method(_name: &str) -> Option<(usize, Type)> { None }
+        }
+    } else {
+        quote! {
+            fn get_static_field_or_method(name: &str) -> Option<(usize, Type)> {
+                match name {
+                    #(#native_type_static_fields_and_methods_code,)*
+                    _ => None
+                }
+            }
+        }
+    };
+
     quote! {
         pub struct #type_name_ident;
 
         pub trait #trait_name_ident {
             #(#trait_field_methods_code)*
+            #(#trait_static_field_methods_code)*
             #(#trait_method_methods_code)*
         }
 
@@ -186,6 +233,8 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
                 }
             }
 
+            #get_static_field_or_method_code
+
             fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
                 match field_idx {
                     #(#get_field_value_code,)*
@@ -193,6 +242,8 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
                     _ => unreachable!()
                 }
             }
+
+            #get_static_field_value_code
         }
     }
 }

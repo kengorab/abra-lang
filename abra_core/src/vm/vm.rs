@@ -626,12 +626,12 @@ impl VM {
                         Value::Int(_) => NativeInt::get_field_value(Box::new(inst), field_idx),
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[field_idx].clone();
-                            Value::Fn(field_value)
+                            field_value
                         }
                         Value::Enum(EnumValue { variants, static_fields, methods, .. }) => {
                             if field_idx >= variants.len() {
                                 let (_, field_value) = static_fields[field_idx - variants.len()].clone();
-                                Value::Fn(field_value)
+                                field_value
                             } else {
                                 let (_, variant_value) = variants[field_idx].clone();
                                 let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {

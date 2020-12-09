@@ -2270,6 +2270,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             });
                         Ok((field_data, HashMap::new()))
                     }
+                    Type::Array(_) => {
+                        let field_data = NativeArray::get_static_field_or_method(&field_name);
+                        Ok((field_data, HashMap::new()))
+                    }
+                    Type::Map(_, _) => {
+                        let field_data = NativeMap::get_static_field_or_method(&field_name);
+                        Ok((field_data, HashMap::new()))
+                    }
                     _ => unimplemented!()
                 }
                 Type::Enum(enum_type) => {
