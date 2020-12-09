@@ -1,6 +1,6 @@
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, Obj};
-use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields, NativeMapMethodsAndFields};
+use crate::builtins::gen_native_types::{NativeStringMethodsAndFields, NativeArrayMethodsAndFields, NativeFloatMethodsAndFields, NativeIntMethodsAndFields, NativeMapMethodsAndFields, NativeSetMethodsAndFields};
 use crate::vm::vm::VM;
 use std::collections::{HashSet, HashMap};
 
@@ -467,6 +467,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
     fn method_contains(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         let item = args.into_iter().next().expect("Array::contains requires 1 argument");
+
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::ArrayObj(array) => {
@@ -758,6 +759,195 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
             }
         } else { unreachable!() }
     }
+
+    fn method_as_set(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let set = array.into_iter().map(|v| v.clone()).collect();
+                    Some(Value::new_set_obj(set))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+}
+
+pub type NativeSet = crate::builtins::gen_native_types::NativeSet;
+
+impl NativeSetMethodsAndFields for NativeSet {
+    fn field_size(obj: Box<Value>) -> Value {
+        if let Value::Obj(obj) = *obj {
+            match &*(obj.borrow()) {
+                Obj::SetObj(value) => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_is_empty(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => Some(Value::Bool(set.is_empty())),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_contains(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("Set::contains requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => Some(Value::Bool(set.contains(&item))),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_map(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Set::map requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *obj.borrow() {
+                Obj::SetObj(ref set) => {
+                    let mut new_items = Vec::new();
+
+                    for value in set {
+                        let args = vec![value.clone()];
+                        let new_value = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+                        new_items.push(new_value);
+                    }
+
+                    Some(Value::new_array_obj(new_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_filter(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Set::filter requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let mut new_items = HashSet::new();
+
+                    for value in set {
+                        let args = vec![value.clone()];
+                        let new_value = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Bool(false)))
+                            .unwrap_or(Value::Bool(false));
+                        if let Value::Bool(true) = new_value {
+                            new_items.insert(value.clone());
+                        }
+                    }
+
+                    Some(Value::new_set_obj(new_items))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_reduce(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let initial_value = args.next().expect("Set::reduce requires 2 arguments");
+        let callback = args.next().expect("Set::reduce requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let mut accumulator = initial_value;
+
+                    for value in set {
+                        let args = vec![accumulator, value.clone()];
+                        let new_value = vm.invoke_fn(args, callback.clone())
+                            .unwrap_or(Some(Value::Nil))
+                            .unwrap_or(Value::Nil);
+                        accumulator = new_value;
+                    }
+
+                    Some(accumulator)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_as_array(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    Some(Value::new_array_obj(set.into_iter().map(|v| v.clone()).collect()))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_union(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let other = args.into_iter().next().expect("Set::union requires 1 argument");
+        let other = if let Value::Obj(obj) = other {
+            match &(*obj.borrow()) {
+                Obj::SetObj(s) => s.clone(),
+                _ => unreachable!()
+            }
+        } else { unreachable!() };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let new_set = set.union(&other).map(|v| v.clone()).collect();
+                    Some(Value::new_set_obj(new_set))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_difference(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let other = args.into_iter().next().expect("Set::difference requires 1 argument");
+        let other = if let Value::Obj(obj) = other {
+            match &(*obj.borrow()) {
+                Obj::SetObj(s) => s.clone(),
+                _ => unreachable!()
+            }
+        } else { unreachable!() };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let new_set = set.difference(&other).map(|v| v.clone()).collect();
+                    Some(Value::new_set_obj(new_set))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_intersection(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let other = args.into_iter().next().expect("Set::intersection requires 1 argument");
+        let other = if let Value::Obj(obj) = other {
+            match &(*obj.borrow()) {
+                Obj::SetObj(s) => s.clone(),
+                _ => unreachable!()
+            }
+        } else { unreachable!() };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let new_set = set.intersection(&other).map(|v| v.clone()).collect();
+                    Some(Value::new_set_obj(new_set))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
 }
 
 pub type NativeMap = crate::builtins::gen_native_types::NativeMap;
@@ -814,8 +1004,8 @@ impl NativeMapMethodsAndFields for NativeMap {
                 Obj::MapObj(map) => {
                     let keys = map.keys()
                         .map(|k| k.clone())
-                        .collect::<Vec<_>>();
-                    Some(Value::new_array_obj(keys))
+                        .collect();
+                    Some(Value::new_set_obj(keys))
                 }
                 _ => unreachable!()
             }
@@ -828,8 +1018,8 @@ impl NativeMapMethodsAndFields for NativeMap {
                 Obj::MapObj(map) => {
                     let values = map.values()
                         .map(|v| v.clone())
-                        .collect::<Vec<_>>();
-                    Some(Value::new_array_obj(values))
+                        .collect();
+                    Some(Value::new_set_obj(values))
                 }
                 _ => unreachable!()
             }
@@ -840,8 +1030,8 @@ impl NativeMapMethodsAndFields for NativeMap {
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::MapObj(map) => {
-                    let values = map.iter().map(|(k, v)| Value::new_tuple_obj(vec![k.clone(), v.clone()])).collect();
-                    Some(Value::new_array_obj(values))
+                    let entries = map.iter().map(|(k, v)| Value::new_tuple_obj(vec![k.clone(), v.clone()])).collect();
+                    Some(Value::new_set_obj(entries))
                 }
                 _ => unreachable!()
             }
@@ -902,6 +1092,16 @@ mod test {
 
     macro_rules! array {
         ($($i:expr),*) => { Value::new_array_obj(vec![$($i),*]) };
+    }
+
+    macro_rules! set {
+        ($($i:expr),*) => { Value::new_set_obj(vec![$($i),*].into_iter().collect()) };
+    }
+
+    macro_rules! map {
+        ($($k:expr => $v:expr),*) => {
+            Value::new_map_obj(vec![$(($k, $v)),+].into_iter().collect())
+        };
     }
 
     macro_rules! tuple {
@@ -1462,49 +1662,44 @@ mod test {
 
     #[test]
     fn test_array_partition() {
-        let result = interpret("\
-          val m = [1, 2, 3, 4, 5].partition(n => n.isEven())\n\
-          [m[true], m[false]]
-        ");
-        let expected = array![
-            array![Value::Int(2), Value::Int(4)],
-            array![Value::Int(1), Value::Int(3), Value::Int(5)]
-        ];
+        let result = interpret("[1, 2, 3, 4, 5].partition(n => n.isEven())");
+        let expected = map! {
+            Value::Bool(true) => array![Value::Int(2), Value::Int(4)],
+            Value::Bool(false) => array![Value::Int(1), Value::Int(3), Value::Int(5)]
+        };
         assert_eq!(Some(expected), result);
 
-        let result = interpret("\
-          val m = [[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0])\n\
-          [m[1], m[2], m[3]]
-        ");
-        let expected = array![
-            array![
+        let result = interpret(
+            "[[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0])"
+        );
+        let expected = map! {
+             Value::Int(1) => array![
                 array![Value::Int(1), Value::Int(1)],
                 array![Value::Int(1), Value::Int(2)]
             ],
-            array![
+            Value::Int(2) => array![
                 array![Value::Int(2), Value::Int(1)],
                 array![Value::Int(2), Value::Int(2)]
             ],
-            array![
+            Value::Int(3) => array![
                 array![Value::Int(3), Value::Int(1)],
                 array![Value::Int(3), Value::Int(2)]
             ]
-        ];
+        };
         assert_eq!(Some(expected), result);
     }
 
     #[test]
     fn test_array_tally() {
-        let result = interpret("\
-          val t = [1, 2, 3, 4, 3, 2, 1, 2, 1].tally()\n\
-          [t[1], t[2], t[3], t[4]]
-        ");
-        let expected = array![
-            Value::Int(3),
-            Value::Int(3),
-            Value::Int(2),
-            Value::Int(1)
-        ];
+        let result = interpret(
+            "[1, 2, 3, 4, 3, 2, 1, 2, 1].tally()"
+        );
+        let expected = map! {
+            Value::Int(1) => Value::Int(3),
+            Value::Int(2) => Value::Int(3),
+            Value::Int(3) => Value::Int(2),
+            Value::Int(4) => Value::Int(1)
+        };
         assert_eq!(Some(expected), result);
     }
 
@@ -1512,10 +1707,148 @@ mod test {
     fn test_array_tally_by() {
         let result = interpret("\
           type Person { name: String }\
-          val t = [Person(name: \"Ken\"), Person(name: \"Meg\")].tallyBy(p => p.name.length)\n\
-          t[3]
+          [Person(name: \"Ken\"), Person(name: \"Meg\")].tallyBy(p => p.name.length)
         ");
-        let expected = Value::Int(2);
+        let expected = map! {
+            Value::Int(3) => Value::Int(2)
+        };
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_as_set() {
+        let result = interpret("\
+          [1, 2, 3, 4, 3, 2, 1, 2, 1].asSet()\n\
+        ");
+        let expected = set![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_size() {
+        let result = interpret("#{}.size");
+        let expected = Value::Int(0);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{0, 1, 2, \"3\"}.size");
+        let expected = Value::Int(4);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{0, 1, 2, 1, 0}.size");
+        let expected = Value::Int(3);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_is_empty() {
+        let result = interpret("#{}.isEmpty()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1, 2, \"3\"}.isEmpty()");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_contains() {
+        let result = interpret("#{}.contains(\"a\")");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{\"a\", \"b\"}.contains(\"a\")");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          type Person { name: String }\n\
+          #{Person(name: \"Ken\"), Person(name: \"Ken\")}.contains(Person(name: \"Ken\"))\
+        ");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_map() {
+        let result = interpret("#{\"a\", \"b\"}.map(w => w.length)");
+        let expected = array![Value::Int(1), Value::Int(1)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_filter() {
+        let result = interpret("#{1, 2, 3, 4, 5}.filter(n => n.isEven())");
+        let expected = set![Value::Int(2), Value::Int(4)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_reduce() {
+        let result = interpret("#{1, 2, 3, 4, 5}.reduce(0, (acc, n) => acc + n)");
+        let expected = Value::Int(15);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_as_array() {
+        let result = interpret("#{3, 4, 5}.asArray()");
+        let expecteds = vec![
+            Some(array![Value::Int(3), Value::Int(4), Value::Int(5)]),
+            Some(array![Value::Int(3), Value::Int(5), Value::Int(4)]),
+            Some(array![Value::Int(4), Value::Int(3), Value::Int(5)]),
+            Some(array![Value::Int(4), Value::Int(5), Value::Int(3)]),
+            Some(array![Value::Int(5), Value::Int(4), Value::Int(3)]),
+            Some(array![Value::Int(5), Value::Int(3), Value::Int(4)]),
+        ];
+        assert!(expecteds.contains(&result)); // Sets' order isn't guaranteed :(
+    }
+
+    #[test]
+    fn test_set_union() {
+        let result = interpret("#{}.union(#{})");
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1}.union(#{1, 2})");
+        let expected = set![Value::Int(1), Value::Int(2)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\
+          val s1 = #{1, 3, 5}
+          val s2 = #{2, 4,}
+          s1.union(s2)
+        ");
+        let expected = set![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4), Value::Int(5)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_difference() {
+        let result = interpret("#{}.difference(#{})");
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1}.difference(#{1, 2})");
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1, 2}.difference(#{2})");
+        let expected = set![Value::Int(1)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_intersection() {
+        let result = interpret("#{1, 2, 3}.intersection(#{})");
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1, 2}.intersection(#{3, 4})");
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{1}.intersection(#{1, 2})");
+        let expected = set![Value::Int(1)];
         assert_eq!(Some(expected), result);
     }
 
@@ -1537,11 +1870,9 @@ mod test {
         assert_eq!(result, Some(expected));
 
         let result = interpret("Map.fromPairs([(\"a\", 123), (\"b\", 456)])");
-        let expected = {
-            let mut m = HashMap::new();
-            m.insert(new_string_obj("a"), Value::Int(123));
-            m.insert(new_string_obj("b"), Value::Int(456));
-            Value::new_map_obj(m)
+        let expected = map! {
+            new_string_obj("a") => Value::Int(123),
+            new_string_obj("b") => Value::Int(456)
         };
         assert_eq!(result, Some(expected));
     }
@@ -1560,13 +1891,12 @@ mod test {
     #[test]
     fn test_map_keys() {
         let result = interpret("{}.keys()");
-        let expected = array![];
+        let expected = set![];
         assert_eq!(Some(expected), result);
 
         let result = interpret("{ a: 123, b: true }.keys()");
-        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
-        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
-        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+        let expected = set![new_string_obj("a"), new_string_obj("b")];
+        assert_eq!(Some(expected), result);
 
         let result = interpret("\
           val m: Map<Int[], Int> = {}\
@@ -1574,50 +1904,40 @@ mod test {
           m[[1, 2, 3]] = 3\
           m.keys()
         ");
-        let expected1 = array![
+        let expected = set![
             array![Value::Int(1), Value::Int(2)],
             array![Value::Int(1), Value::Int(2), Value::Int(3)]
         ];
-        let expected2 = array![
-            array![Value::Int(1), Value::Int(2), Value::Int(3)],
-            array![Value::Int(1), Value::Int(2)]
-        ];
-        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+        assert_eq!(Some(expected), result);
 
         let result = interpret("{ a: 123, b: true }.keys()");
-        let expected1 = array![new_string_obj("a"), new_string_obj("b")];
-        let expected2 = array![new_string_obj("b"), new_string_obj("a")];
-        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+        let expected = set![new_string_obj("a"), new_string_obj("b")];
+        assert_eq!(Some(expected), result);
     }
 
     #[test]
     fn test_map_values() {
         let result = interpret("{}.values()");
-        let expected = array![];
+        let expected = set![];
         assert_eq!(Some(expected), result);
 
         let result = interpret("{ a: 123, b: true }.values()");
-        let expected1 = array![Value::Int(123), Value::Bool(true)];
-        let expected2 = array![Value::Bool(true), Value::Int(123)];
-        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+        let expected = set![Value::Int(123), Value::Bool(true)];
+        assert_eq!(Some(expected), result);
     }
 
     #[test]
     fn test_map_entries() {
         let result = interpret("{}.entries()");
-        let expected = array![];
+        let expected = set![];
         assert_eq!(Some(expected), result);
 
         let result = interpret("{ a: 123, b: true }.entries()");
-        let expected1 = array![
+        let expected = set![
             tuple!(new_string_obj("a"), Value::Int(123)),
             tuple!(new_string_obj("b"), Value::Bool(true))
         ];
-        let expected2 = array![
-            tuple!(new_string_obj("b"), Value::Bool(true)),
-            tuple!(new_string_obj("a"), Value::Int(123))
-        ];
-        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+        assert_eq!(Some(expected), result);
     }
 
     #[test]
@@ -1641,18 +1961,22 @@ mod test {
 
     #[test]
     fn test_map_map_values() {
-        let result = interpret("\
-          val m = { a: 1, b: 2 }.mapValues((_, v) => v + 1)\n\
-          [m[\"a\"], m[\"b\"]]
-        ");
-        let expected = array![Value::Int(2), Value::Int(3)];
+        let result = interpret(
+            "{ a: 1, b: 2 }.mapValues((_, v) => v + 1)"
+        );
+        let expected = map! {
+            new_string_obj("a") => Value::Int(2),
+            new_string_obj("b") => Value::Int(3)
+        };
         assert_eq!(Some(expected), result);
 
-        let result = interpret("\
-          val m = { a: 1, b: 2 }.mapValues((k, v) => k + v)\n\
-          [m[\"a\"], m[\"b\"]]
-        ");
-        let expected = array![new_string_obj("a1"), new_string_obj("b2")];
+        let result = interpret(
+            "{ a: 1, b: 2 }.mapValues((k, v) => k + v)"
+        );
+        let expected = map! {
+            new_string_obj("a") => new_string_obj("a1"),
+            new_string_obj("b") => new_string_obj("b2")
+        };
         assert_eq!(Some(expected), result);
     }
 

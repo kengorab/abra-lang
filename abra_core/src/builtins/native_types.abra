@@ -53,6 +53,7 @@ type NativeArray<T> {
   func partition<U>(self, fn: (T) => U): Map<U, T[]> {}
   func tally(self): Map<T, Int> {}
   func tallyBy<U>(self, fn: (T) => U): Map<U, Int> {}
+  func asSet(self): Set<T> {}
 }
 
 type NativeMap<K, V> {
@@ -61,9 +62,23 @@ type NativeMap<K, V> {
   func fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2> {}
 
   func isEmpty(self): Bool {}
-  func keys(self): K[] {}
-  func values(self): V[] {}
-  func entries(self): (K, V)[] {}
+  func keys(self): Set<K> {}
+  func values(self): Set<V> {}
+  func entries(self): Set<(K, V)> {}
   func containsKey(self, key: K): Bool {}
   func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {}
+}
+
+type NativeSet<T> {
+  size: Int
+
+  func isEmpty(self): Bool {}
+  func contains(self, value: T): Bool {}
+  func map<U>(self, fn: (T) => U): U[] {}
+  func filter(self, fn: (T) => Bool): Set<T> {}
+  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
+  func asArray(self): T[] {}
+  func union(self, other: Set<T>): Set<T> {}
+  func difference(self, other: Set<T>): Set<T> {}
+  func intersection(self, other: Set<T>): Set<T> {}
 }

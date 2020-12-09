@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt, NativeMap};
+use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -593,6 +593,7 @@ impl VM {
                             let mut is_str = false;
                             let mut is_arr = false;
                             let mut is_map = false;
+                            let mut is_set = false;
                             let mut v = Value::Nil;
                             match &*obj.borrow() {
                                 Obj::InstanceObj(inst) => v = inst.fields[field_idx].clone(),
@@ -610,6 +611,7 @@ impl VM {
                                 Obj::StringObj { .. } => is_str = true,
                                 Obj::ArrayObj { .. } => is_arr = true,
                                 Obj::MapObj(_) => is_map = true,
+                                Obj::SetObj(_) => is_set = true,
                                 _ => unreachable!()
                             };
                             if is_str {
@@ -618,6 +620,8 @@ impl VM {
                                 NativeArray::get_field_value(Box::new(inst), field_idx)
                             } else if is_map {
                                 NativeMap::get_field_value(Box::new(inst), field_idx)
+                            } else if is_set {
+                                NativeSet::get_field_value(Box::new(inst), field_idx)
                             } else {
                                 v
                             }
