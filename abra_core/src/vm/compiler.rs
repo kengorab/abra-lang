@@ -970,7 +970,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     method_node.body,
                     method_node.scope_depth,
                 )?;
-                compiled_static_fields.push((method_name, method));
+                compiled_static_fields.push((method_name, Value::Fn(method)));
             }
         }
 
@@ -1051,7 +1051,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     method_node.body,
                     method_node.scope_depth,
                 )?;
-                compiled_static_fields.push((method_name, method));
+                compiled_static_fields.push((method_name, Value::Fn(method)));
             }
         }
 

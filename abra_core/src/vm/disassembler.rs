@@ -27,7 +27,15 @@ struct Disassembler {
 }
 
 impl Disassembler {
-    fn disassemble_bytecode(&mut self, name: String, code: Vec<u8>) -> Vec<String> {
+    fn disassemble_bytecode(&mut self, name: String, code: Vec<u8>, is_native: bool) -> Vec<String> {
+        let mut output = Vec::<String>::new();
+        output.push(format!("\n{}:\n", name).to_string());
+
+        if is_native {
+            output.push("  <native>".to_string());
+            return output;
+        }
+
         let mut labels: HashMap<usize, String> = HashMap::new();
 
         let mut slot_idx: i16 = -1;
@@ -123,9 +131,6 @@ impl Disassembler {
             disassembled.push((line, slot_idx - slot_idx_orig));
         }
 
-        let mut output = Vec::<String>::new();
-        output.push(format!("\n{}:\n", name).to_string());
-
         let mut offset = 0;
         for (line, num_bytes) in disassembled.into_iter() {
             if let Some(label) = labels.get(&offset) {
@@ -143,7 +148,7 @@ impl Disassembler {
 
         let main_name = "entrypoint $main".to_string();
 
-        let mut disassembled = self.disassemble_bytecode(main_name, self.module.code.clone());
+        let mut disassembled = self.disassemble_bytecode(main_name, self.module.code.clone(), false);
         output.append(&mut disassembled);
 
         let constants = self.module.constants.clone();
@@ -151,7 +156,7 @@ impl Disassembler {
             match val {
                 Value::Fn(FnValue { name, code, .. }) => {
                     let name = format!("fn {}", name.clone());
-                    let values = (name, code.clone());
+                    let values = (name, code.clone(), false);
                     Some(vec![values])
                 },
                 Value::Type(TypeValue { name, methods, static_fields }) |
@@ -160,11 +165,15 @@ impl Disassembler {
 
                     for (_, fn_value) in methods {
                         let method_name = format!("fn {}#{}", name, fn_value.name);
-                        values.push((method_name, fn_value.code.clone()))
+                        values.push((method_name, fn_value.code.clone(), false))
                     }
-                    for (_, fn_value) in static_fields {
-                        let static_method_name = format!("fn {}::{}", name, fn_value.name);
-                        values.push((static_method_name, fn_value.code.clone()))
+                    for (fn_name, value) in static_fields {
+                        let static_method_name = format!("fn {}::{}", name, fn_name);
+                        match value {
+                            Value::Fn(FnValue { code, .. }) => values.push((static_method_name, code.clone(), false)),
+                            Value::NativeFn(_) => values.push((static_method_name, vec![], true)),
+                            _ => unreachable!()
+                        }
                     }
 
                     Some(values)
@@ -172,8 +181,8 @@ impl Disassembler {
                 _ => None,
             }
         }).flatten();
-        for (name, code) in iter {
-            let mut disassembled = self.disassemble_bytecode(name, code);
+        for (name, code, is_native) in iter {
+            let mut disassembled = self.disassemble_bytecode(name, code, is_native);
             output.append(&mut disassembled);
         }
 

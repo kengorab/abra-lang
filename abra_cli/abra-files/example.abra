@@ -1,12 +1,5 @@
-func fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2> {
-  val map: Map<T1, T2> = {}
+val alphabet = "abcdefghijklmnopqrstuvwxyz"
 
-  for p in pairs {
-    map[p[0]] = p[1]
-  }
+val pairs = Array.fill(alphabet.length, ("a", 123))
 
-  map
-}
-
-val pairs = [("b", 456), ("a", 123)]
-fromPairs(pairs)
+Map.fromPairs(pairs)

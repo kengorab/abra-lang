@@ -16,7 +16,9 @@ macro_rules! obj_as_string {
 
 pub trait NativeType {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)>;
+    fn get_static_field_or_method(name: &str) -> Option<(usize, Type)>;
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value;
+    fn get_static_field_values() -> Vec<(String, Value)>;
 
     fn get_field_idx(field_name: &str) -> usize {
         match Self::get_field_or_method(field_name) {
@@ -281,6 +283,49 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         if let Value::Obj(obj) = *obj {
             match &*(obj.borrow()) {
                 Obj::ArrayObj(value) => Value::Int(value.len() as i64),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn static_method_fill(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let amount = args.next().expect("Array::fill requires 2 arguments");
+        let amount = if let Value::Int(i) = amount { i } else { unreachable!() };
+
+        let filler = args.next().expect("Array::fill requires 2 arguments");
+
+        let mut values = Vec::with_capacity(amount as usize);
+        for _ in 0..(amount as usize) {
+            values.push(filler.clone());
+        }
+
+        Some(Value::new_array_obj(values))
+    }
+
+    fn static_method_fill_by(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let amount = args.next().expect("Array::fillBy requires 2 arguments");
+        let amount = if let Value::Int(i) = amount { i } else { unreachable!() };
+
+        let filler_fn = args.next().expect("Array::fillBy requires 2 arguments");
+
+        let mut values = Vec::with_capacity(amount as usize);
+        for i in 0..(amount as usize) {
+            let args = vec![Value::Int(i as i64)];
+            let value = vm.invoke_fn(args, filler_fn.clone())
+                .unwrap_or(Some(Value::Nil))
+                .unwrap_or(Value::Nil);
+            values.push(value);
+        }
+
+        Some(Value::new_array_obj(values))
+    }
+
+    fn method_is_empty(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(value) => Some(Value::Bool(value.is_empty())),
                 _ => unreachable!()
             }
         } else { unreachable!() }
@@ -727,6 +772,42 @@ impl NativeMapMethodsAndFields for NativeMap {
         } else { unreachable!() }
     }
 
+    fn static_method_from_pairs(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let pairs_array = args.into_iter().next().expect("Map::fromPairs requires 1 argument");
+        if let Value::Obj(obj) = pairs_array {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(items) => {
+                    let mut map = HashMap::new();
+
+                    for item in items {
+                        if let Value::Obj(obj) = item {
+                            match &*(obj.borrow()) {
+                                Obj::TupleObj(items) => {
+                                    let key = items[0].clone();
+                                    let val = items[1].clone();
+                                    map.insert(key, val);
+                                }
+                                _ => unreachable!()
+                            }
+                        } else { unreachable!() }
+                    }
+
+                    Some(Value::new_map_obj(map))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_is_empty(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(value) => Some(Value::Bool(value.is_empty())),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_keys(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
@@ -813,6 +894,7 @@ mod test {
     use crate::vm::compiler::compile;
     use crate::vm::value::Value;
     use crate::vm::vm::{VM, VMContext};
+    use std::collections::HashMap;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
@@ -1032,9 +1114,53 @@ mod test {
     }
 
     #[test]
-    fn test_array_length() {
+    fn test_array_field_length() {
         let result = interpret("[1, 2, 3, 4, 5].length");
         let expected = Value::Int(5);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_static_fill() {
+        let result = interpret("Array.fill(0, 123)");
+        let expected = int_array!();
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("Array.fill(5, 12)");
+        let expected = int_array!(12, 12, 12, 12, 12);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("Array.fill(6, \"24\")");
+        let expected = string_array!("24", "24", "24", "24", "24", "24");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_static_fill_by() {
+        let result = interpret("Array.fillBy(0, i => i + 1)");
+        let expected = int_array!();
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("Array.fillBy(5, i => i + 1)");
+        let expected = int_array!(1, 2, 3, 4, 5);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          func fib(n: Int): Int = if n <= 1 1 else fib(n - 1) + fib(n - 2)
+          Array.fillBy(6, fib)
+        "#);
+        let expected = int_array!(1, 1, 2, 3, 5, 8);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_is_empty() {
+        let result = interpret("[].isEmpty()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3].isEmpty()");
+        let expected = Value::Bool(false);
         assert_eq!(Some(expected), result);
     }
 
@@ -1390,6 +1516,44 @@ mod test {
           t[3]
         ");
         let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_field_size() {
+        let result = interpret("{}.size");
+        let expected = Value::Int(0);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.size");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_static_from_pairs() {
+        let result = interpret("Map.fromPairs([])");
+        let expected = Value::new_map_obj(HashMap::new());
+        assert_eq!(result, Some(expected));
+
+        let result = interpret("Map.fromPairs([(\"a\", 123), (\"b\", 456)])");
+        let expected = {
+            let mut m = HashMap::new();
+            m.insert(new_string_obj("a"), Value::Int(123));
+            m.insert(new_string_obj("b"), Value::Int(456));
+            Value::new_map_obj(m)
+        };
+        assert_eq!(result, Some(expected));
+    }
+
+    #[test]
+    fn test_map_is_empty() {
+        let result = interpret("{}.isEmpty()");
+        let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.isEmpty()");
+        let expected = Value::Bool(false);
         assert_eq!(Some(expected), result);
     }
 

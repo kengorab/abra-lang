@@ -2,6 +2,7 @@ use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
 use crate::builtins::native_fns::native_fns;
 use std::collections::HashMap;
+use crate::builtins::native_types::{NativeMap, NativeType, NativeArray};
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {
@@ -45,23 +46,23 @@ impl Prelude {
         bindings.push(PreludeBinding { name: "None".to_string(), typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
 
         let prelude_types = vec![
-            ("Int", Type::Int),
-            ("Float", Type::Float),
-            ("Bool", Type::Bool),
-            ("String", Type::String),
-            ("Unit", Type::Unit),
-            ("Any", Type::Any),
-            ("Array", Type::Reference("Array".to_string(), vec![])),
-            ("Map", Type::Reference("Map".to_string(), vec![])),
+            ("Int", Type::Int, None),
+            ("Float", Type::Float, None),
+            ("Bool", Type::Bool, None),
+            ("String", Type::String, None),
+            ("Unit", Type::Unit, None),
+            ("Any", Type::Any, None),
+            ("Array", Type::Reference("Array".to_string(), vec![]), Some(NativeArray::get_static_field_values())),
+            ("Map", Type::Reference("Map".to_string(), vec![]), Some(NativeMap::get_static_field_values())),
         ];
-        for (type_name, typ) in prelude_types {
+        for (type_name, typ, static_fields) in prelude_types {
             let binding = PreludeBinding {
                 name: type_name.to_string(),
                 typ: Type::Type(type_name.to_string(), Box::new(typ.clone()), false), // TODO: is_enum should not be hard-coded false
                 value: Value::Type(TypeValue {
                     name: type_name.to_string(),
                     methods: vec![],
-                    static_fields: vec![],
+                    static_fields: static_fields.unwrap_or(vec![]),
                 }),
             };
             bindings.push(binding);

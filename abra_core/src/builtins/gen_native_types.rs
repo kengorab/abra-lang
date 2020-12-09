@@ -63,6 +63,9 @@ impl NativeType for NativeFloat {
             _ => None,
         }
     }
+    fn get_static_field_or_method(_name: &str) -> Option<(usize, Type)> {
+        None
+    }
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Value::NativeFn(NativeFn {
@@ -97,6 +100,9 @@ impl NativeType for NativeFloat {
             }),
             _ => unreachable!(),
         }
+    }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        unreachable!("Float has no static values")
     }
 }
 pub struct NativeInt;
@@ -144,6 +150,9 @@ impl NativeType for NativeInt {
             _ => None,
         }
     }
+    fn get_static_field_or_method(_name: &str) -> Option<(usize, Type)> {
+        None
+    }
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Value::NativeFn(NativeFn {
@@ -172,6 +181,9 @@ impl NativeType for NativeInt {
             }),
             _ => unreachable!(),
         }
+    }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        unreachable!("Int has no static values")
     }
 }
 pub struct NativeString;
@@ -287,6 +299,9 @@ impl NativeType for NativeString {
             _ => None,
         }
     }
+    fn get_static_field_or_method(_name: &str) -> Option<(usize, Type)> {
+        None
+    }
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Self::field_length(obj),
@@ -359,10 +374,21 @@ impl NativeType for NativeString {
             _ => unreachable!(),
         }
     }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        unreachable!("String has no static values")
+    }
 }
 pub struct NativeArray;
 pub trait NativeArrayMethodsAndFields {
     fn field_length(obj: Box<Value>) -> Value;
+    fn static_method_fill(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM)
+        -> Option<Value>;
+    fn static_method_fill_by(
+        _receiver: Option<Value>,
+        args: Vec<Value>,
+        vm: &mut VM,
+    ) -> Option<Value>;
+    fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_push(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_concat(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_map(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -385,8 +411,16 @@ impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "length" => Some((0usize, Type::Int)),
-            "push" => Some((
+            "isEmpty" => Some((
                 1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "push" => Some((
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
@@ -394,7 +428,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "concat" => Some((
-                2usize,
+                3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -406,7 +440,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "map" => Some((
-                3usize,
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -426,7 +460,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "filter" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -446,7 +480,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "reduce" => Some((
-                5usize,
+                6usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![
@@ -472,7 +506,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "join" => Some((
-                6usize,
+                7usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("joiner".to_string(), Type::String, true)],
@@ -480,7 +514,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "contains" => Some((
-                7usize,
+                8usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
@@ -488,7 +522,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "find" => Some((
-                8usize,
+                9usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -511,29 +545,6 @@ impl NativeType for NativeArray {
                 }),
             )),
             "any" => Some((
-                9usize,
-                Type::Fn(FnType {
-                    type_args: vec!["U".to_string()],
-                    arg_types: vec![(
-                        "fn".to_string(),
-                        Type::Fn(FnType {
-                            type_args: vec![],
-                            arg_types: vec![(
-                                "_".to_string(),
-                                Type::Generic("T".to_string()),
-                                false,
-                            )],
-                            ret_type: Box::new(Type::Union(vec![
-                                Type::Bool,
-                                Type::Option(Box::new(Type::Generic("U".to_string()))),
-                            ])),
-                        }),
-                        false,
-                    )],
-                    ret_type: Box::new(Type::Bool),
-                }),
-            )),
-            "all" => Some((
                 10usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
@@ -556,7 +567,7 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
-            "none" => Some((
+            "all" => Some((
                 11usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
@@ -579,8 +590,31 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
-            "sortBy" => Some((
+            "none" => Some((
                 12usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "sortBy" => Some((
+                13usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -603,7 +637,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "dedupe" => Some((
-                13usize,
+                14usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -611,7 +645,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "dedupeBy" => Some((
-                14usize,
+                15usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -631,7 +665,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "partition" => Some((
-                15usize,
+                16usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -654,7 +688,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "tally" => Some((
-                16usize,
+                17usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -665,7 +699,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "tallyBy" => Some((
-                17usize,
+                18usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -690,106 +724,147 @@ impl NativeType for NativeArray {
             _ => None,
         }
     }
+    fn get_static_field_or_method(name: &str) -> Option<(usize, Type)> {
+        match name {
+            "fill" => Some((
+                0usize,
+                Type::Fn(FnType {
+                    type_args: vec!["T1".to_string()],
+                    arg_types: vec![
+                        ("amount".to_string(), Type::Int, false),
+                        ("value".to_string(), Type::Generic("T1".to_string()), false),
+                    ],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T1".to_string())))),
+                }),
+            )),
+            "fillBy" => Some((
+                1usize,
+                Type::Fn(FnType {
+                    type_args: vec!["T1".to_string()],
+                    arg_types: vec![
+                        ("amount".to_string(), Type::Int, false),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![("_".to_string(), Type::Int, false)],
+                                ret_type: Box::new(Type::Generic("T1".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T1".to_string())))),
+                }),
+            )),
+            _ => None,
+        }
+    }
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Self::field_length(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "isEmpty",
+                receiver: Some(obj),
+                native_fn: Self::method_is_empty,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "push",
                 receiver: Some(obj),
                 native_fn: Self::method_push,
                 has_return: false,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "concat",
                 receiver: Some(obj),
                 native_fn: Self::method_concat,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "map",
                 receiver: Some(obj),
                 native_fn: Self::method_map,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "filter",
                 receiver: Some(obj),
                 native_fn: Self::method_filter,
                 has_return: true,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "reduce",
                 receiver: Some(obj),
                 native_fn: Self::method_reduce,
                 has_return: true,
             }),
-            6usize => Value::NativeFn(NativeFn {
+            7usize => Value::NativeFn(NativeFn {
                 name: "join",
                 receiver: Some(obj),
                 native_fn: Self::method_join,
                 has_return: true,
             }),
-            7usize => Value::NativeFn(NativeFn {
+            8usize => Value::NativeFn(NativeFn {
                 name: "contains",
                 receiver: Some(obj),
                 native_fn: Self::method_contains,
                 has_return: true,
             }),
-            8usize => Value::NativeFn(NativeFn {
+            9usize => Value::NativeFn(NativeFn {
                 name: "find",
                 receiver: Some(obj),
                 native_fn: Self::method_find,
                 has_return: true,
             }),
-            9usize => Value::NativeFn(NativeFn {
+            10usize => Value::NativeFn(NativeFn {
                 name: "any",
                 receiver: Some(obj),
                 native_fn: Self::method_any,
                 has_return: true,
             }),
-            10usize => Value::NativeFn(NativeFn {
+            11usize => Value::NativeFn(NativeFn {
                 name: "all",
                 receiver: Some(obj),
                 native_fn: Self::method_all,
                 has_return: true,
             }),
-            11usize => Value::NativeFn(NativeFn {
+            12usize => Value::NativeFn(NativeFn {
                 name: "none",
                 receiver: Some(obj),
                 native_fn: Self::method_none,
                 has_return: true,
             }),
-            12usize => Value::NativeFn(NativeFn {
+            13usize => Value::NativeFn(NativeFn {
                 name: "sortBy",
                 receiver: Some(obj),
                 native_fn: Self::method_sort_by,
                 has_return: true,
             }),
-            13usize => Value::NativeFn(NativeFn {
+            14usize => Value::NativeFn(NativeFn {
                 name: "dedupe",
                 receiver: Some(obj),
                 native_fn: Self::method_dedupe,
                 has_return: true,
             }),
-            14usize => Value::NativeFn(NativeFn {
+            15usize => Value::NativeFn(NativeFn {
                 name: "dedupeBy",
                 receiver: Some(obj),
                 native_fn: Self::method_dedupe_by,
                 has_return: true,
             }),
-            15usize => Value::NativeFn(NativeFn {
+            16usize => Value::NativeFn(NativeFn {
                 name: "partition",
                 receiver: Some(obj),
                 native_fn: Self::method_partition,
                 has_return: true,
             }),
-            16usize => Value::NativeFn(NativeFn {
+            17usize => Value::NativeFn(NativeFn {
                 name: "tally",
                 receiver: Some(obj),
                 native_fn: Self::method_tally,
                 has_return: true,
             }),
-            17usize => Value::NativeFn(NativeFn {
+            18usize => Value::NativeFn(NativeFn {
                 name: "tallyBy",
                 receiver: Some(obj),
                 native_fn: Self::method_tally_by,
@@ -798,10 +873,38 @@ impl NativeType for NativeArray {
             _ => unreachable!(),
         }
     }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        vec![
+            (
+                "fill".to_string(),
+                Value::NativeFn(NativeFn {
+                    name: "fill",
+                    receiver: None,
+                    native_fn: Self::static_method_fill,
+                    has_return: true,
+                }),
+            ),
+            (
+                "fillBy".to_string(),
+                Value::NativeFn(NativeFn {
+                    name: "fillBy",
+                    receiver: None,
+                    native_fn: Self::static_method_fill_by,
+                    has_return: true,
+                }),
+            ),
+        ]
+    }
 }
 pub struct NativeMap;
 pub trait NativeMapMethodsAndFields {
     fn field_size(obj: Box<Value>) -> Value;
+    fn static_method_from_pairs(
+        _receiver: Option<Value>,
+        args: Vec<Value>,
+        vm: &mut VM,
+    ) -> Option<Value>;
+    fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_keys(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_entries(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -813,8 +916,16 @@ impl NativeType for NativeMap {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "size" => Some((0usize, Type::Int)),
-            "keys" => Some((
+            "isEmpty" => Some((
                 1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "keys" => Some((
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -822,7 +933,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "values" => Some((
-                2usize,
+                3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -830,7 +941,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "entries" => Some((
-                3usize,
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -841,7 +952,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "containsKey" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("key".to_string(), Type::Generic("K".to_string()), false)],
@@ -849,7 +960,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "mapValues" => Some((
-                5usize,
+                6usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -873,34 +984,63 @@ impl NativeType for NativeMap {
             _ => None,
         }
     }
+    fn get_static_field_or_method(name: &str) -> Option<(usize, Type)> {
+        match name {
+            "fromPairs" => Some((
+                0usize,
+                Type::Fn(FnType {
+                    type_args: vec!["T1".to_string(), "T2".to_string()],
+                    arg_types: vec![(
+                        "pairs".to_string(),
+                        Type::Array(Box::new(Type::Tuple(vec![
+                            Type::Generic("T1".to_string()),
+                            Type::Generic("T2".to_string()),
+                        ]))),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Map(
+                        Box::new(Type::Generic("T1".to_string())),
+                        Box::new(Type::Generic("T2".to_string())),
+                    )),
+                }),
+            )),
+            _ => None,
+        }
+    }
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Self::field_size(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "isEmpty",
+                receiver: Some(obj),
+                native_fn: Self::method_is_empty,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "keys",
                 receiver: Some(obj),
                 native_fn: Self::method_keys,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "values",
                 receiver: Some(obj),
                 native_fn: Self::method_values,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "entries",
                 receiver: Some(obj),
                 native_fn: Self::method_entries,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "containsKey",
                 receiver: Some(obj),
                 native_fn: Self::method_contains_key,
                 has_return: true,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "mapValues",
                 receiver: Some(obj),
                 native_fn: Self::method_map_values,
@@ -908,5 +1048,16 @@ impl NativeType for NativeMap {
             }),
             _ => unreachable!(),
         }
+    }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        vec![(
+            "fromPairs".to_string(),
+            Value::NativeFn(NativeFn {
+                name: "fromPairs",
+                receiver: None,
+                native_fn: Self::static_method_from_pairs,
+                has_return: true,
+            }),
+        )]
     }
 }
