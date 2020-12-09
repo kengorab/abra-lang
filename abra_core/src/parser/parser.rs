@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -135,6 +135,7 @@ impl Parser {
             Token::LParen(_, _) => Some(Box::new(Parser::parse_grouped)),
             Token::LBrack(_, _) => Some(Box::new(Parser::parse_array)),
             Token::LBrace(_) => Some(Box::new(Parser::parse_map_literal)),
+            Token::LBraceHash(_) => Some(Box::new(Parser::parse_set_literal)),
             Token::Ident(_, _) |
             Token::Self_(_) |
             Token::None(_) => Some(Box::new(Parser::parse_ident)),
@@ -1069,7 +1070,7 @@ impl Parser {
 
     fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
         let mut item_expected = true;
-        let mut items: Vec<Box<AstNode>> = vec![];
+        let mut items = vec![];
         loop {
             let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
             if let Token::RBrack(_) = token {
@@ -1083,7 +1084,7 @@ impl Parser {
             }
 
             let expr = self.parse_expr()?;
-            items.push(Box::new(expr));
+            items.push(expr);
 
             let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
             if let Token::Comma(_) = token {
@@ -1123,7 +1124,37 @@ impl Parser {
                 item_expected = false;
             }
         }
+
         Ok(AstNode::Map(token, MapNode { items }))
+    }
+
+    fn parse_set_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
+        let mut item_expected = true;
+        let mut items = vec![];
+        loop {
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::RBrace(_) = token {
+                self.expect_next()?; // Consume '}' before ending loop
+                break;
+            } else if !item_expected {
+                return match self.peek() {
+                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    None => Err(ParseError::UnexpectedEof)
+                };
+            }
+
+            let expr = self.parse_expr()?;
+            items.push(expr);
+
+            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            if let Token::Comma(_) = token {
+                self.expect_next()?; // Consume comma
+            } else {
+                item_expected = false;
+            }
+        }
+
+        Ok(AstNode::Set(token, SetNode { items }))
     }
 
     fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -1673,10 +1704,10 @@ mod tests {
             Token::LBrack(Position::new(1, 1), false),
             ArrayNode {
                 items: vec![
-                    Box::new(int_literal!((1, 2), 1)),
-                    Box::new(bool_literal!((1, 5), true)),
-                    Box::new(string_literal!((1, 11), "a")),
-                    Box::new(float_literal!((1, 16), 3.14))
+                    int_literal!((1, 2), 1),
+                    bool_literal!((1, 5), true),
+                    string_literal!((1, 11), "a"),
+                    float_literal!((1, 16), 3.14),
                 ]
             },
         );
@@ -1690,24 +1721,24 @@ mod tests {
             Token::LBrack(Position::new(1, 1), false),
             ArrayNode {
                 items: vec![
-                    Box::new(AstNode::Array(
+                    AstNode::Array(
                         Token::LBrack(Position::new(1, 2), false),
                         ArrayNode {
                             items: vec![
-                                Box::new(int_literal!((1, 3), 1)),
-                                Box::new(int_literal!((1, 6), 2)),
+                                int_literal!((1, 3), 1),
+                                int_literal!((1, 6), 2),
                             ]
                         },
-                    )),
-                    Box::new(AstNode::Array(
+                    ),
+                    AstNode::Array(
                         Token::LBrack(Position::new(1, 10), false),
                         ArrayNode {
                             items: vec![
-                                Box::new(int_literal!((1, 11), 3)),
-                                Box::new(int_literal!((1, 14), 4)),
+                                int_literal!((1, 11), 3),
+                                int_literal!((1, 14), 4),
                             ]
                         },
-                    ))
+                    )
                 ]
             },
         );
@@ -1791,6 +1822,50 @@ mod tests {
         let error = parse("{ 123: true }").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 3), 123));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_set_empty() -> TestResult {
+        let ast = parse("#{}")?;
+        let expected = AstNode::Set(Token::LBraceHash(Position::new(1, 1)), SetNode { items: vec![] });
+        Ok(assert_eq!(expected, ast[0]))
+    }
+
+    #[test]
+    fn parse_set_with_items() -> TestResult {
+        let ast = parse("#{1, 2, 3}")?;
+        let expected = AstNode::Set(
+            Token::LBraceHash(Position::new(1, 1)),
+            SetNode { items: vec![int_literal!((1, 3), 1), int_literal!((1, 6), 2), int_literal!((1, 9), 3)] }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("#{1, 2, 3, }")?; // Test with trailing comma
+        assert_eq!(expected, ast[0]); // Test with same expectation
+
+        let ast = parse("#{#{1, 2}, #{3, 4}}")?;
+        let expected = AstNode::Set(
+            Token::LBraceHash(Position::new(1, 1)),
+            SetNode {
+                items: vec![
+                    AstNode::Set(
+                        Token::LBraceHash(Position::new(1, 3)),
+                        SetNode {
+                            items: vec![int_literal!((1, 5), 1), int_literal!((1, 8), 2)]
+                        }
+                    ),
+                    AstNode::Set(
+                        Token::LBraceHash(Position::new(1, 12)),
+                        SetNode {
+                            items: vec![int_literal!((1, 14), 3), int_literal!((1, 17), 4)]
+                        }
+                    )
+                ]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 
     #[test]
@@ -2898,8 +2973,8 @@ mod tests {
                                 Token::LBrack(Position::new(1, 1), false),
                                 ArrayNode {
                                     items: vec![
-                                        Box::new(identifier!((1, 2), "a")),
-                                        Box::new(identifier!((1, 5), "b")),
+                                        identifier!((1, 2), "a"),
+                                        identifier!((1, 5), "b"),
                                     ],
                                 },
                             )
@@ -2934,9 +3009,7 @@ mod tests {
             AstNode::Array(
                 Token::LBrack(Position::new(4, 1), true),
                 ArrayNode {
-                    items: vec![
-                        Box::new(identifier!((4, 2), "a")),
-                    ]
+                    items: vec![identifier!((4, 2), "a")]
                 },
             ),
             AstNode::Invocation(Token::LParen(Position { line: 5, col: 8 }, false), InvocationNode {
@@ -2948,9 +3021,7 @@ mod tests {
             AstNode::Array(
                 Token::LBrack(Position::new(6, 1), true),
                 ArrayNode {
-                    items: vec![
-                        Box::new(identifier!((6, 2), "a")),
-                    ]
+                    items: vec![identifier!((6, 2), "a")]
                 },
             )
         ];
@@ -3466,8 +3537,8 @@ mod tests {
                 Token::LBrack(Position::new(1, 1), false),
                 ArrayNode {
                     items: vec![
-                        Box::new(identifier!((1, 2), "a")),
-                        Box::new(identifier!((1, 5), "b")),
+                        identifier!((1, 2), "a"),
+                        identifier!((1, 5), "b"),
                     ]
                 },
             ),
@@ -3607,8 +3678,8 @@ mod tests {
                     Token::LBrack(Position::new(1, 10), false),
                     ArrayNode {
                         items: vec![
-                            Box::new(int_literal!((1, 11), 0)),
-                            Box::new(int_literal!((1, 14), 1))
+                            int_literal!((1, 11), 0),
+                            int_literal!((1, 14), 1),
                         ]
                     },
                 )),
@@ -3627,8 +3698,8 @@ mod tests {
                     Token::LBrack(Position::new(1, 13), false),
                     ArrayNode {
                         items: vec![
-                            Box::new(int_literal!((1, 14), 0)),
-                            Box::new(int_literal!((1, 17), 1))
+                            int_literal!((1, 14), 0),
+                            int_literal!((1, 17), 1),
                         ]
                     },
                 )),

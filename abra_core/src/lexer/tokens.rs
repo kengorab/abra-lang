@@ -84,6 +84,7 @@ pub enum Token {
     #[strum(to_string = "]", serialize = "RBrack")] RBrack(Position),
     #[strum(to_string = "{", serialize = "LBrace")] LBrace(Position),
     #[strum(to_string = "}", serialize = "RBrace")] RBrace(Position),
+    #[strum(to_string = "#{", serialize = "LBraceHash")] LBraceHash(Position),
     #[strum(to_string = "|", serialize = "Pipe")] Pipe(Position),
     #[strum(to_string = ":", serialize = "Colon")] Colon(Position),
     #[strum(to_string = ",", serialize = "Comma")] Comma(Position),
@@ -149,6 +150,7 @@ impl Token {
             Token::RBrack(pos) |
             Token::LBrace(pos) |
             Token::RBrace(pos) |
+            Token::LBraceHash(pos) |
             Token::Pipe(pos) |
             Token::Colon(pos) |
             Token::Comma(pos) |
@@ -215,6 +217,7 @@ impl Token {
             Token::RBrack(pos) => Range::with_length(pos, 0),
             Token::LBrace(pos) => Range::with_length(pos, 0),
             Token::RBrace(pos) => Range::with_length(pos, 0),
+            Token::LBraceHash(pos) => Range::with_length(pos, 1),
             Token::Pipe(pos) => Range::with_length(pos, 0),
             Token::Colon(pos) => Range::with_length(pos, 0),
             Token::Comma(pos) => Range::with_length(pos, 0),
