@@ -50,6 +50,13 @@ impl Serialize for RunResultValue {
                     });
                     arr.end()
                 }
+                Obj::SetObj(value) => {
+                    let mut arr = serializer.serialize_seq(Some((*value).len()))?;
+                    value.into_iter().for_each(|val| {
+                        arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                    });
+                    arr.end()
+                }
                 Obj::MapObj(value) => {
                     let mut obj = serializer.serialize_map(Some((*value).len()))?;
                     value.into_iter().for_each(|(key, val)| {

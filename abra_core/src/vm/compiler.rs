@@ -2,7 +2,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
@@ -787,7 +787,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<(), ()> {
         let num_items = node.items.len();
         for arr_item in node.items {
-            self.visit(*arr_item)?;
+            self.visit(arr_item)?;
         }
 
         let line = token.get_position().line;
@@ -821,6 +821,19 @@ impl TypedAstVisitor<(), ()> for Compiler {
         }
 
         self.write_opcode(Opcode::MapMk, line);
+        self.write_byte(num_items as u8, line);
+        Ok(())
+    }
+
+    fn visit_set(&mut self, token: Token, node: TypedSetNode) -> Result<(), ()> {
+        let num_items = node.items.len();
+        for arr_item in node.items {
+            self.visit(arr_item)?;
+        }
+
+        let line = token.get_position().line;
+
+        self.write_opcode(Opcode::SetMk, line);
         self.write_byte(num_items as u8, line);
         Ok(())
     }
@@ -1951,7 +1964,7 @@ mod tests {
     }
 
     #[test]
-    fn compile_array_primitives() {
+    fn compile_array_literal() {
         let chunk = compile("[1, 2]");
         let expected = Module {
             code: vec![
@@ -1998,6 +2011,38 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![Value::Int(5)]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_set_literal() {
+        let chunk = compile("#{1, 2}");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::SetMk as u8, 2,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("#{\"a\", \"b\", \"c\"}");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, with_prelude_const_offset(0),
+                Opcode::Constant as u8, with_prelude_const_offset(1),
+                Opcode::Constant as u8, with_prelude_const_offset(2),
+                Opcode::SetMk as u8, 3,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                new_string_obj("a"),
+                new_string_obj("b"),
+                new_string_obj("c"),
+            ]),
         };
         assert_eq!(expected, chunk);
     }

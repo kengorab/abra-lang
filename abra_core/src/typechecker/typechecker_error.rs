@@ -143,6 +143,9 @@ fn type_repr(t: &Type) -> String {
             let types = types.iter().map(|t| type_repr(t)).join(", ");
             format!("({})", types)
         }
+        Type::Set(typ) => {
+            format!("Set<{}>", type_repr(typ))
+        }
         Type::Map(key_type, value_type) => {
             format!("Map<{}, {}>", type_repr(key_type), type_repr(value_type))
         }

@@ -715,6 +715,15 @@ impl VM {
                         self.push(Value::new_tuple_obj(arr_items.into()));
                     }
                 }
+                Opcode::SetMk => {
+                    let size = self.read_byte_expect()?;
+                    let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
+                    for _ in 0..size {
+                        arr_items.push_front(self.pop_expect()?);
+                    }
+                    let set_items = arr_items.into_iter().collect();
+                    self.push(Value::new_set_obj(set_items));
+                }
                 Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
                     let obj = pop_expect_obj!(self)?;
@@ -938,6 +947,7 @@ impl VM {
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
                             o @ Obj::ArrayObj(_) |
                             o @ Obj::MapObj(_) |
+                            o @ Obj::SetObj(_) |
                             o @ Obj::TupleObj(_) => {
                                 dbg!(o);
                                 unimplemented!()

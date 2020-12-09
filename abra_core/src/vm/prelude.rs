@@ -54,6 +54,7 @@ impl Prelude {
             ("Any", Type::Any, None),
             ("Array", Type::Reference("Array".to_string(), vec![]), Some(NativeArray::get_static_field_values())),
             ("Map", Type::Reference("Map".to_string(), vec![]), Some(NativeMap::get_static_field_values())),
+            ("Set", Type::Reference("Set".to_string(), vec![]), None),
         ];
         for (type_name, typ, static_fields) in prelude_types {
             let binding = PreludeBinding {

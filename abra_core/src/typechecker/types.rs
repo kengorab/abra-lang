@@ -2,7 +2,7 @@ use crate::parser::ast::TypeIdentifier;
 use crate::lexer::tokens::Token;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub enum Type {
     Unit,
     Any,
@@ -13,6 +13,7 @@ pub enum Type {
     Bool,
     Array(Box<Type>),
     Tuple(Vec<Type>),
+    Set(Box<Type>),
     Map(/* key_type: */ Box<Type>, /* value_type: */ Box<Type>),
     Option(Box<Type>),
     Fn(FnType),
@@ -25,6 +26,47 @@ pub enum Type {
     Placeholder,
     Generic(/* name: */ String),
     Reference(/* name: */ String, /* type_args: */ Vec<Type>),
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self, &other) {
+            (Type::Union(ts1), Type::Union(ts2)) => {
+                let ts1 = ts1.iter().collect::<HashSet<_>>();
+                let ts2 = ts2.iter().collect::<HashSet<_>>();
+                ts1.eq(&ts2)
+            }
+            (Type::Option(inner1), Type::Option(inner2)) |
+            (Type::Array(inner1), Type::Array(inner2)) |
+            (Type::Set(inner1), Type::Set(inner2)) => inner1.eq(&inner2),
+            (Type::Tuple(inners1), Type::Tuple(inners2)) => inners1.eq(inners2),
+            (Type::Map(kt1, vt1), Type::Map(kt2, vt2)) => {
+                kt1.eq(&kt2) && vt1.eq(&vt2)
+            }
+            (Type::Fn(ft1), Type::Fn(ft2)) => ft1.eq(&ft2),
+            (Type::Type(n1, t1, e1), Type::Type(n2, t2, e2)) => {
+                n1.eq(n2) && t1.eq(&t2) && e1 == e2
+            }
+            (Type::Struct(st1), Type::Struct(st2)) => st1.eq(&st2),
+            (Type::Enum(et1), Type::Enum(et2)) => et1.eq(&et2),
+            (Type::EnumVariant(et1, vt1, c1), Type::EnumVariant(et2, vt2, c2)) => {
+                et1.eq(&et2) && vt1.eq(&vt2) && c1 == c2
+            }
+            (Type::Generic(n1), Type::Generic(n2)) => n1.eq(n2),
+            (Type::Reference(n1, g1), Type::Reference(n2, g2)) => {
+                n1.eq(n2) && g1.eq(g2)
+            }
+            (Type::Unit, Type::Unit) |
+            (Type::Any, Type::Any) |
+            (Type::Int, Type::Int) |
+            (Type::Float, Type::Float) |
+            (Type::String, Type::String) |
+            (Type::Bool, Type::Bool) |
+            (Type::Unknown, Type::Unknown) |
+            (Type::Placeholder, Type::Placeholder) => true,
+            (_, _) => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -69,6 +111,7 @@ impl Type {
             (String, String) | (Bool, Bool) | (Any, Any) => true,
             // For Array / Option types, compare inner type
             (Array(t1), Array(t2)) => t1.is_equivalent_to(t2, referencable_types),
+            (Set(t1), Set(t2)) => t1.is_equivalent_to(t2, referencable_types),
             (Tuple(ts1), Tuple(ts2)) => {
                 if ts1.len() != ts2.len() {
                     false
@@ -214,6 +257,10 @@ impl Type {
                     let inner_type = type_args.iter().next().unwrap_or(&Type::Unknown).clone();
                     Some(Type::Array(Box::new(inner_type)))
                 }
+                Type::Set(_) => {
+                    let inner_type = type_args.iter().next().unwrap_or(&Type::Unknown).clone();
+                    Some(Type::Set(Box::new(inner_type)))
+                }
                 Type::Map(_, _) => {
                     let mut type_args = type_args.iter();
                     let key_type = type_args.next().unwrap_or(&Type::Unknown).clone();
@@ -230,6 +277,7 @@ impl Type {
             Type::Union(type_opts) |
             Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
             Type::Array(inner_type) |
+            Type::Set(inner_type) |
             Type::Option(inner_type) => inner_type.is_unknown(referencable_types),
             Type::Map(key_type, value_type) => key_type.is_unknown(referencable_types) || value_type.is_unknown(referencable_types),
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
@@ -255,6 +303,7 @@ impl Type {
             Type::Union(type_opts) |
             Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unit(referencable_types)),
             Type::Array(inner_type) |
+            Type::Set(inner_type) |
             Type::Option(inner_type) => inner_type.is_unit(referencable_types),
             Type::Reference(name, _) => {
                 if let Some(referenced_type) = referencable_types.get(name) {
@@ -276,6 +325,7 @@ impl Type {
                     .collect()
             }
             Type::Array(inner_type) |
+            Type::Set(inner_type) |
             Type::Option(inner_type) => inner_type.extract_unbound_generics(),
             Type::Map(key_type, value_type) => {
                 vec![
@@ -308,6 +358,7 @@ impl Type {
         match typ {
             Type::Generic(name) => available_generics.get(name).unwrap_or(typ).clone(),
             Type::Array(inner_type) => Type::Array(Box::new(Type::substitute_generics(inner_type, available_generics))),
+            Type::Set(inner_type) => Type::Set(Box::new(Type::substitute_generics(inner_type, available_generics))),
             Type::Map(key_type, value_type) => {
                 let key_type = Box::new(Type::substitute_generics(key_type, available_generics));
                 let value_type = Box::new(Type::substitute_generics(value_type, available_generics));
@@ -387,6 +438,7 @@ impl Type {
             }
             (Type::Option(target_inner), Type::Option(inner)) => Self::try_fit_generics(inner, target_inner),
             (Type::Array(target_inner), Type::Array(inner)) => Self::try_fit_generics(inner, target_inner),
+            (Type::Set(target_inner), Type::Set(inner)) => Self::try_fit_generics(inner, target_inner),
             (Type::Tuple(target_types), Type::Tuple(types)) => {
                 if target_types.len() != types.len() {
                     None
@@ -397,7 +449,7 @@ impl Type {
                         .concat();
                     if generics.is_empty() { None } else { Some(generics) }
                 }
-            },
+            }
             (Type::Map(target_key_type, target_value_type), Type::Map(key_type, value_type)) => {
                 let key_generics = Self::try_fit_generics(key_type, target_key_type);
                 let value_generics = Self::try_fit_generics(value_type, target_value_type);

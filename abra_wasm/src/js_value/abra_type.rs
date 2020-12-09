@@ -67,6 +67,12 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("valueType", &JsType(value_type))?;
                 obj.end()
             }
+            Type::Set(inner_type) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "Set")?;
+                obj.serialize_entry("innerType", &JsType(inner_type))?;
+                obj.end()
+            }
             Type::Option(inner_type) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "Option")?;

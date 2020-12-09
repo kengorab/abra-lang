@@ -11,6 +11,7 @@ pub enum TypedAstNode {
     Grouped(Token, TypedGroupedNode),
     Array(Token, TypedArrayNode),
     Map(Token, TypedMapNode),
+    Set(Token, TypedSetNode),
     Tuple(Token, TypedTupleNode),
     Lambda(Token, TypedLambdaNode),
     BindingDecl(Token, TypedBindingDeclNode),
@@ -42,6 +43,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(token, _) |
             TypedAstNode::Array(token, _) |
             TypedAstNode::Map(token, _) |
+            TypedAstNode::Set(token, _) |
             TypedAstNode::Tuple(token, _) |
             TypedAstNode::Lambda(token, _) |
             TypedAstNode::BindingDecl(token, _) |
@@ -78,6 +80,7 @@ impl TypedAstNode {
             TypedAstNode::Grouped(_, node) => node.typ.clone(),
             TypedAstNode::Array(_, node) => node.typ.clone(),
             TypedAstNode::Map(_, node) => node.typ.clone(),
+            TypedAstNode::Set(_, node) => node.typ.clone(),
             TypedAstNode::Tuple(_, node) => node.typ.clone(),
             TypedAstNode::Lambda(_, node) => node.typ.clone(),
             TypedAstNode::FunctionDecl(_, _) |
@@ -134,13 +137,19 @@ pub struct TypedGroupedNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedArrayNode {
     pub typ: Type,
-    pub items: Vec<Box<TypedAstNode>>,
+    pub items: Vec<TypedAstNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedMapNode {
     pub typ: Type,
     pub items: Vec<(Token, TypedAstNode)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedSetNode {
+    pub typ: Type,
+    pub items: Vec<TypedAstNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
