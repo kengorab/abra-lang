@@ -755,6 +755,18 @@ impl NativeMapMethodsAndFields for NativeMap {
         } else { unreachable!() }
     }
 
+    fn method_entries(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let values = map.iter().map(|(k, v)| Value::new_tuple_obj(vec![k.clone(), v.clone()])).collect();
+                    Some(Value::new_array_obj(values))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         let key = args.into_iter().next().expect("Map::containsKey requires 1 argument");
 
@@ -808,6 +820,10 @@ mod test {
 
     macro_rules! array {
         ($($i:expr),*) => { Value::new_array_obj(vec![$($i),*]) };
+    }
+
+    macro_rules! tuple {
+        ($($i:expr),*) => { Value::new_tuple_obj(vec![$($i),*]) };
     }
 
     macro_rules! int_array {
@@ -1419,6 +1435,24 @@ mod test {
         let result = interpret("{ a: 123, b: true }.values()");
         let expected1 = array![Value::Int(123), Value::Bool(true)];
         let expected2 = array![Value::Bool(true), Value::Int(123)];
+        assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
+    }
+
+    #[test]
+    fn test_map_entries() {
+        let result = interpret("{}.entries()");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, b: true }.entries()");
+        let expected1 = array![
+            tuple!(new_string_obj("a"), Value::Int(123)),
+            tuple!(new_string_obj("b"), Value::Bool(true))
+        ];
+        let expected2 = array![
+            tuple!(new_string_obj("b"), Value::Bool(true)),
+            tuple!(new_string_obj("a"), Value::Int(123))
+        ];
         assert!(result == Some(expected1) || result == Some(expected2)); // Maps don't yet preserve insertion order
     }
 

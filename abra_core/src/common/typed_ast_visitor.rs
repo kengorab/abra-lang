@@ -1,5 +1,5 @@
 use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedTupleNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
 
 pub trait TypedAstVisitor<V, E> {
@@ -10,6 +10,7 @@ pub trait TypedAstVisitor<V, E> {
             Binary(tok, node) => self.visit_binary(tok, node),
             Grouped(tok, node) => self.visit_grouped(tok, node),
             Array(tok, node) => self.visit_array(tok, node),
+            Tuple(tok, node) => self.visit_tuple(tok, node),
             Map(tok, node) => self.visit_map(tok, node),
             Lambda(tok, node) => self.visit_lambda(tok, node),
             BindingDecl(tok, node) => self.visit_binding_decl(tok, node),
@@ -38,6 +39,7 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_binary(&mut self, token: Token, node: TypedBinaryNode) -> Result<V, E>;
     fn visit_grouped(&mut self, token: Token, node: TypedGroupedNode) -> Result<V, E>;
     fn visit_array(&mut self, token: Token, node: TypedArrayNode) -> Result<V, E>;
+    fn visit_tuple(&mut self, token: Token, node: TypedTupleNode) -> Result<V, E>;
     fn visit_map(&mut self, token: Token, node: TypedMapNode) -> Result<V, E>;
     fn visit_lambda(&mut self, token: Token, node: TypedLambdaNode) -> Result<V, E>;
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<V, E>;

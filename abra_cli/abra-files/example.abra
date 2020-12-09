@@ -1,3 +1,12 @@
-val m: Map<Int[], String> = {}
-m[[1, 2, 3]] = "hello"
-m.containsKey([1, 2, 3])
+func fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2> {
+  val map: Map<T1, T2> = {}
+
+  for p in pairs {
+    map[p[0]] = p[1]
+  }
+
+  map
+}
+
+val pairs = [("b", 456), ("a", 123)]
+fromPairs(pairs)

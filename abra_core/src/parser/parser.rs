@@ -250,11 +250,13 @@ impl Parser {
                 } else {
                     types.into_iter().next().unwrap()
                 }
-            } else {
+            } else if let Some(Token::Arrow(_)) = self.peek() {
                 expect_next_token!(TokenType::Arrow);
 
                 let ret_type = self.parse_type_identifier(consume)?;
                 TypeIdentifier::Func { args: types, ret: Box::new(ret_type) }
+            } else {
+                TypeIdentifier::Tuple { types }
             }
         } else {
             let ident = match expect_next_token!(TokenType::Ident) {
@@ -845,29 +847,62 @@ impl Parser {
             }
         }
 
-        // If the next token is an identifier, followed by any of the tokens which would suggest
-        // an args list, we're parsing a lambda.
+        // If the next token is an ident, we need to determine if we're parsing a tuple or a lambda.
         if let Token::Ident(_, _) = self.expect_peek()? {
             self.tokens.advance_cursor();
-            match self.expect_peek()? {
-                // A ':' (indicating a coming TypeIdentifier), a ',' (indicating a next arg name), or
-                // an '=' (indicating a default value expression) is a valid next token for a lambda.
-                Token::Colon(_) | Token::Comma(_) | Token::Assign(_) => {
+
+            // We do this by advancing the token cursor as long as we see [<ident>,]*. If at any point,
+            // we see something other than an ident after a comma, we bail immediately.
+            let mut only_saw_idents_and_commas = true;
+            while let Token::Comma(_) = self.expect_peek()? {
+                self.tokens.advance_cursor(); // Skip over ','
+                if let Token::Ident(_, _) = self.expect_peek()? {
+                    self.tokens.advance_cursor(); // Skip over ident
+                } else {
+                    only_saw_idents_and_commas = false;
+                    break;
+                }
+            }
+
+            // If up until now, we only saw idents and commas, continue onward. Now, we look for clues
+            // that we're parsing a lambda. A `:` indicates a type identifier, and an `=` indicates a
+            // default value for a parameter; if we see these, we know right away that we're parsing a
+            // lambda. If we see a `)` _followed by a `=>`_, then we also know we're parsing a lambda.
+            // Otherwise, reset the cursor to the beginning and parse a tuple.
+            if only_saw_idents_and_commas {
+                let is_lambda = match self.expect_peek()? {
+                    Token::Colon(_) | Token::Assign(_) => true,
+                    Token::RParen(_) => {
+                        self.tokens.advance_cursor(); // Skip over ')'
+                        if let Some(Token::Arrow(_)) = self.peek() { true } else { false }
+                    }
+                    _ => false
+                };
+                self.tokens.reset_cursor();
+
+                if is_lambda {
                     let ident_tok = self.expect_next_token(TokenType::Ident)?;
                     let args = self.parse_func_args(Some(&ident_tok), true)?;
                     let arrow_tok = self.expect_next_token(TokenType::Arrow)?;
                     let body = self.parse_expr_or_block()?;
                     return Ok(AstNode::Lambda(arrow_tok, LambdaNode { args, body }));
                 }
-                // Anything else means we should rewind the peeked-ahead cursor so we can continue
-                // to parse the grouped expr as normal.
-                _ => {
-                    self.tokens.reset_cursor();
-                }
+            } else {
+                self.tokens.reset_cursor();
             }
         }
 
         let expr = self.parse_expr()?;
+
+        if let Token::Comma(_) = self.expect_peek()? {
+            let mut tuple_items = vec![expr];
+            while let Token::Comma(_) = self.expect_peek()? {
+                self.expect_next()?; // Consume ','
+                tuple_items.push(self.parse_expr()?);
+            }
+            self.expect_next_token(TokenType::RParen)?;
+            return Ok(AstNode::Tuple(token, tuple_items));
+        }
 
         // If the next token is ')', we've finished parsing the grouped expression. We have an infix
         // parser for the '=>' token which expects either an identifier or a grouped expr.
@@ -1927,6 +1962,35 @@ mod tests {
         };
         assert_eq!(expected, type_ident);
 
+        // Tuple types
+        let type_ident = parse_type_identifier("(Int, Int)");
+        let expected = TypeIdentifier::Tuple {
+            types: vec![
+                TypeIdentifier::Normal { ident: ident_token!((1, 2), "Int"), type_args: None },
+                TypeIdentifier::Normal { ident: ident_token!((1, 7), "Int"), type_args: None },
+            ]
+        };
+        assert_eq!(expected, type_ident);
+
+        let type_ident = parse_type_identifier("(Int, (Bool, Int), String[])?");
+        let expected = TypeIdentifier::Option {
+            inner: Box::new(TypeIdentifier::Tuple {
+                types: vec![
+                    TypeIdentifier::Normal { ident: ident_token!((1, 2), "Int"), type_args: None },
+                    TypeIdentifier::Tuple {
+                        types: vec![
+                            TypeIdentifier::Normal { ident: ident_token!((1, 8), "Bool"), type_args: None },
+                            TypeIdentifier::Normal { ident: ident_token!((1, 14), "Int"), type_args: None },
+                        ]
+                    },
+                    TypeIdentifier::Array {
+                        inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 20), "String"), type_args: None })
+                    }
+                ]
+            })
+        };
+        assert_eq!(expected, type_ident);
+
         // Function types
         let type_ident = parse_type_identifier("() => Int");
         let expected = TypeIdentifier::Func {
@@ -2391,6 +2455,62 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         Ok(())
+    }
+
+    #[test]
+    fn parse_tuple() -> TestResult {
+        let ast = parse("(a, b)")?;
+        let expected = AstNode::Tuple(
+            Token::LParen(Position::new(1, 1), false),
+            vec![identifier!((1, 2), "a"), identifier!((1, 5), "b")],
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(a, 1)")?;
+        let expected = AstNode::Tuple(
+            Token::LParen(Position::new(1, 1), false),
+            vec![identifier!((1, 2), "a"), int_literal!((1, 5), 1)],
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("(1, a, \"abc\")")?;
+        let expected = AstNode::Tuple(
+            Token::LParen(Position::new(1, 1), false),
+            vec![int_literal!((1, 2), 1), identifier!((1, 5), "a"), string_literal!((1, 8), "abc")],
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("((1, a), \"abc\")")?;
+        let expected = AstNode::Tuple(
+            Token::LParen(Position::new(1, 1), false),
+            vec![
+                AstNode::Tuple(
+                    Token::LParen(Position::new(1, 2), false),
+                    vec![
+                        int_literal!((1, 3), 1),
+                        identifier!((1, 6), "a"),
+                    ]),
+                string_literal!((1, 10), "abc")
+            ],
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_tuple_errors() {
+        let error = parse("(a, b: Int)").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("(a, b = 1)").unwrap_err();
+        let expected = ParseError::UnexpectedEof;
+        assert_eq!(expected, error);
+
+        let error = parse("(1, b: Int)").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::RParen, Token::Colon(Position::new(1, 6)));
+        assert_eq!(expected, error);
     }
 
     #[test]
@@ -3660,7 +3780,7 @@ mod tests {
                             args: Some(vec![
                                 ident_token!((4, 5), "a"),
                                 ident_token!((4, 8), "b"),
-                            ])
+                            ]),
                         },
                         vec![identifier!((4, 18), "a")]
                     ),
@@ -3670,7 +3790,7 @@ mod tests {
                             case_binding: None,
                             args: Some(vec![
                                 ident_token!((5, 7), "a"),
-                            ])
+                            ]),
                         },
                         vec![identifier!((5, 13), "a")]
                     ),

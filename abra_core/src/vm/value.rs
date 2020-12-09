@@ -111,6 +111,11 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(arr)))
     }
 
+    pub fn new_tuple_obj(values: Vec<Value>) -> Value {
+        let arr = Obj::TupleObj(values);
+        Value::Obj(Arc::new(RefCell::new(arr)))
+    }
+
     pub fn new_map_obj(items: HashMap<Value, Value>) -> Value {
         let map = Obj::MapObj(items);
         Value::Obj(Arc::new(RefCell::new(map)))
@@ -206,6 +211,7 @@ pub struct InstanceObj {
 pub enum Obj {
     StringObj(String),
     ArrayObj(Vec<Value>),
+    TupleObj(Vec<Value>),
     MapObj(HashMap<Value, Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
@@ -222,6 +228,13 @@ impl Obj {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("[{}]", items)
+            }
+            Obj::TupleObj(value) => {
+                let items = value.iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("({})", items)
             }
             Obj::MapObj(map) => {
                 let fields = map.iter()
@@ -259,7 +272,8 @@ impl PartialOrd for Obj {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Obj::StringObj(v1), Obj::StringObj(v2)) => Some(v1.cmp(v2)),
-            (Obj::ArrayObj(v1), Obj::ArrayObj(v2)) => {
+            (Obj::ArrayObj(v1), Obj::ArrayObj(v2)) |
+            (Obj::TupleObj(v1), Obj::TupleObj(v2)) => {
                 if v1.len() < v2.len() {
                     Some(Ordering::Less)
                 } else if v1.len() > v2.len() {
@@ -306,7 +320,8 @@ impl Hash for Obj {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         match self {
             Obj::StringObj(s) => s.hash(hasher),
-            Obj::ArrayObj(a) => a.hash(hasher),
+            Obj::ArrayObj(a) |
+            Obj::TupleObj(a) => a.hash(hasher),
             Obj::MapObj(m) => {
                 for (k, v) in m {
                     k.hash(hasher);

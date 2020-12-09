@@ -299,7 +299,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidIndexingTarget { token, target_type } => {
+                TypecheckerError::InvalidIndexingTarget { token, target_type, .. } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidIndexingTarget")?;
@@ -315,6 +315,18 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.serialize_entry("selectorType", &JsType(selector_type))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidTupleIndexingSelector { token, types, non_constant, index } => {
+                    let mut obj = serializer.serialize_map(Some(6))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidTupleIndexingSelector")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    let types: Vec<JsType> = types.iter().map(|t| JsType(t)).collect();
+                    obj.serialize_entry("type", &types)?;
+                    obj.serialize_entry("nonConstant", &non_constant)?;
+                    obj.serialize_entry("index", &index)?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

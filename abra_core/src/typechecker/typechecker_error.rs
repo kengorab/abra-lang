@@ -1,7 +1,8 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
-use crate::parser::ast::BinaryOp;
+use crate::parser::ast::{BinaryOp, IndexingMode, AstNode};
+use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
@@ -35,8 +36,9 @@ pub enum TypecheckerError {
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
     InvalidRequiredArgPosition(Token),
-    InvalidIndexingTarget { token: Token, target_type: Type },
+    InvalidIndexingTarget { token: Token, target_type: Type, index_mode: IndexingMode<AstNode> },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
+    InvalidTupleIndexingSelector { token: Token, types: Vec<Type>, non_constant: bool, index: i64 },
     UnknownMember { token: Token, target_type: Type },
     MissingRequiredParams { token: Token, missing_params: Vec<String> },
     InvalidMixedParamType { token: Token },
@@ -87,6 +89,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidRequiredArgPosition(token) => token,
             TypecheckerError::InvalidIndexingTarget { token, .. } => token,
             TypecheckerError::InvalidIndexingSelector { token, .. } => token,
+            TypecheckerError::InvalidTupleIndexingSelector { token, .. } => token,
             TypecheckerError::UnknownMember { token, .. } => token,
             TypecheckerError::MissingRequiredParams { token, .. } => token,
             TypecheckerError::InvalidMixedParamType { token } => token,
@@ -136,6 +139,10 @@ fn type_repr(t: &Type) -> String {
             format!("{}", type_opts.join(" | "))
         }
         Type::Array(typ) => format!("{}[]", wrap_type_repr(typ)),
+        Type::Tuple(types) => {
+            let types = types.iter().map(|t| type_repr(t)).join(", ");
+            format!("({})", types)
+        }
         Type::Map(key_type, value_type) => {
             format!("Map<{}, {}>", type_repr(key_type), type_repr(value_type))
         }
@@ -411,11 +418,12 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::InvalidIndexingTarget { target_type, .. } => {
+            TypecheckerError::InvalidIndexingTarget { target_type, index_mode, .. } => {
+                let context = if let IndexingMode::Range(_, _) = index_mode { " as a range" } else { "" };
                 format!(
                     "Unsupported indexing operation: ({}:{})\n{}\n\
-                    Type {} is not indexable",
-                    pos.line, pos.col, cursor_line, type_repr(target_type)
+                    Type {} is not indexable{}",
+                    pos.line, pos.col, cursor_line, type_repr(target_type), context
                 )
             }
             TypecheckerError::InvalidIndexingSelector { target_type, selector_type, .. } => {
@@ -423,6 +431,21 @@ impl DisplayError for TypecheckerError {
                     "Invalid type for indexing operator argument: ({}:{})\n{}\n\
                     Cannot index into a target of type {}, using a selector of type {}",
                     pos.line, pos.col, cursor_line, type_repr(target_type), type_repr(selector_type)
+                )
+            }
+            TypecheckerError::InvalidTupleIndexingSelector { types, non_constant, index, .. } => {
+                let message = if *non_constant {
+                    "\nIndex values for tuples must be constant integers".to_string()
+                } else if *index != -1 {
+                    format!(
+                        "\nNo value at index {} for tuple {}",
+                        index, type_repr(&Type::Tuple(types.clone()))
+                    )
+                } else { "".to_string() };
+
+                format!(
+                    "Unsupported indexing into tuple: ({}:{})\n{}{}",
+                    pos.line, pos.col, cursor_line, message
                 )
             }
             TypecheckerError::UnknownMember { token, target_type } => {
@@ -590,7 +613,7 @@ mod tests {
     use crate::lexer::tokens::{Token, Position};
     use crate::typechecker::types::{Type, StructType};
     use crate::common::display_error::DisplayError;
-    use crate::parser::ast::BinaryOp;
+    use crate::parser::ast::{BinaryOp, AstNode, AstLiteralNode, IndexingMode};
 
     #[test]
     fn test_mismatch_error() {
@@ -944,6 +967,12 @@ Required parameters must all be listed before any optional parameters"
         let err = TypecheckerError::InvalidIndexingTarget {
             token: Token::LBrack(Position::new(1, 4), false),
             target_type: Type::Int,
+            index_mode: IndexingMode::Index(Box::new(
+                AstNode::Literal(
+                    Token::Int(Position::new(1, 5), 1),
+                    AstLiteralNode::IntLiteral(1),
+                )
+            )),
         };
 
         let expected = format!("\
@@ -951,6 +980,34 @@ Unsupported indexing operation: (1:4)
   |  123[1]
         ^
 Type Int is not indexable"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "123[1:2]".to_string();
+        let err = TypecheckerError::InvalidIndexingTarget {
+            token: Token::LBrack(Position::new(1, 4), false),
+            target_type: Type::Int,
+            index_mode: IndexingMode::Range(
+                Some(Box::new(
+                    AstNode::Literal(
+                        Token::Int(Position::new(1, 5), 1),
+                        AstLiteralNode::IntLiteral(1),
+                    )
+                )),
+                Some(Box::new(
+                    AstNode::Literal(
+                        Token::Int(Position::new(1, 7), 2),
+                        AstLiteralNode::IntLiteral(2),
+                    )
+                )),
+            ),
+        };
+
+        let expected = format!("\
+Unsupported indexing operation: (1:4)
+  |  123[1:2]
+        ^
+Type Int is not indexable as a range"
         );
         assert_eq!(expected, err.get_message(&src));
     }

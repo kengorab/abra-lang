@@ -610,6 +610,7 @@ impl VM {
                                 Obj::StringObj { .. } => is_str = true,
                                 Obj::ArrayObj { .. } => is_arr = true,
                                 Obj::MapObj(_) => is_map = true,
+                                _ => unreachable!()
                             };
                             if is_str {
                                 NativeString::get_field_value(Box::new(inst), field_idx)
@@ -702,46 +703,50 @@ impl VM {
                     };
                     self.push(Value::Obj(obj));
                 }
-                Opcode::ArrMk => {
+                o @ Opcode::ArrMk | o @ Opcode::TupleMk => {
                     let size = self.read_byte_expect()?;
                     let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
                     for _ in 0..size {
                         arr_items.push_front(self.pop_expect()?);
                     }
-                    self.push(Value::new_array_obj(arr_items.into()));
+                    if let Opcode::ArrMk = o {
+                        self.push(Value::new_array_obj(arr_items.into()));
+                    } else {
+                        self.push(Value::new_tuple_obj(arr_items.into()));
+                    }
                 }
-                Opcode::ArrLoad => {
+                Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
                     let obj = pop_expect_obj!(self)?;
                     let value = match &*obj.borrow() {
-                        Obj::StringObj(value) => {
-                            let len = value.len() as i64;
+                        Obj::StringObj(values) => {
+                            let len = values.len() as i64;
                             let idx = if idx < 0 { idx + len } else { idx };
 
-                            match (*value).chars().nth(idx as usize) {
+                            match (*values).chars().nth(idx as usize) {
                                 Some(ch) => Value::new_string_obj(ch.to_string()),
                                 None => Value::Nil
                             }
                         }
-                        Obj::ArrayObj(value) => {
-                            let len = value.len() as i64;
+                        Obj::ArrayObj(values) | Obj::TupleObj(values) => {
+                            let len = values.len() as i64;
                             if idx < -len || idx >= len {
                                 Value::Nil
                             } else {
                                 let idx = if idx < 0 { idx + len } else { idx };
-                                value[idx as usize].clone()
+                                values[idx as usize].clone()
                             }
                         }
                         _ => unreachable!()
                     };
                     self.push(value);
                 }
-                Opcode::ArrStore => {
+                Opcode::ArrStore | Opcode::TupleStore => {
                     let value = self.pop_expect()?;
                     let idx = pop_expect_int!(self)? as usize;
                     let obj = pop_expect_obj!(self)?;
                     match *obj.borrow_mut() {
-                        Obj::ArrayObj(ref mut values) => {
+                        Obj::ArrayObj(ref mut values) | Obj::TupleObj(ref mut values) => {
                             if values.len() < idx {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
@@ -932,7 +937,8 @@ impl VM {
                             Obj::InstanceObj(inst) => self.push(*inst.typ.clone()),
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
                             o @ Obj::ArrayObj(_) |
-                            o @ Obj::MapObj(_) => {
+                            o @ Obj::MapObj(_) |
+                            o @ Obj::TupleObj(_) => {
                                 dbg!(o);
                                 unimplemented!()
                             }
