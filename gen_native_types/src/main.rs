@@ -166,14 +166,6 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
         });
 
         let has_return = **ret_type != Type::Unit;
-        // get_static_method_value_code.push(quote! {
-        //     #field_idx => Value::NativeFn(NativeFn {
-        //         name: #name,
-        //         receiver: None,
-        //         native_fn: Self::#static_method_name_ident,
-        //         has_return: #has_return,
-        //     })
-        // });
         get_static_method_value_code.push(quote! {
             (#name.to_string(), Value::NativeFn(NativeFn {
                 name: #name,
@@ -242,12 +234,6 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             }
 
             #get_static_field_or_method_code
-            // fn get_static_field_or_method(name: &str) -> Option<(usize, Type)> {
-            //     match name {
-            //         #(#native_type_static_fields_and_methods_code,)*
-            //         _ => None
-            //     }
-            // }
 
             fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
                 match field_idx {
@@ -258,12 +244,6 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             }
 
             #get_static_field_value_code
-            // fn get_static_field_value(obj: Box<Value>, field_idx: usize) -> Value {
-            //     match field_idx {
-            //         #(#get_static_method_value_code,)*
-            //         _ => unreachable!()
-            //     }
-            // }
         }
     }
 }
