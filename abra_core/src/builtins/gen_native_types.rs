@@ -102,7 +102,7 @@ impl NativeType for NativeFloat {
         }
     }
     fn get_static_field_values() -> Vec<(String, Value)> {
-        unreachable!("Float has no static values")
+        vec![]
     }
 }
 pub struct NativeInt;
@@ -183,7 +183,7 @@ impl NativeType for NativeInt {
         }
     }
     fn get_static_field_values() -> Vec<(String, Value)> {
-        unreachable!("Int has no static values")
+        vec![]
     }
 }
 pub struct NativeString;
@@ -375,7 +375,7 @@ impl NativeType for NativeString {
         }
     }
     fn get_static_field_values() -> Vec<(String, Value)> {
-        unreachable!("String has no static values")
+        vec![]
     }
 }
 pub struct NativeArray;
@@ -406,6 +406,7 @@ pub trait NativeArrayMethodsAndFields {
     fn method_partition(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_tally(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_tally_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_as_set(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -721,6 +722,14 @@ impl NativeType for NativeArray {
                     )),
                 }),
             )),
+            "asSet" => Some((
+                19usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
             _ => None,
         }
     }
@@ -870,6 +879,12 @@ impl NativeType for NativeArray {
                 native_fn: Self::method_tally_by,
                 has_return: true,
             }),
+            19usize => Value::NativeFn(NativeFn {
+                name: "asSet",
+                receiver: Some(obj),
+                native_fn: Self::method_as_set,
+                has_return: true,
+            }),
             _ => unreachable!(),
         }
     }
@@ -929,7 +944,7 @@ impl NativeType for NativeMap {
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
-                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("K".to_string())))),
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("K".to_string())))),
                 }),
             )),
             "values" => Some((
@@ -937,7 +952,7 @@ impl NativeType for NativeMap {
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
-                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("V".to_string())))),
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("V".to_string())))),
                 }),
             )),
             "entries" => Some((
@@ -945,7 +960,7 @@ impl NativeType for NativeMap {
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
-                    ret_type: Box::new(Type::Array(Box::new(Type::Tuple(vec![
+                    ret_type: Box::new(Type::Set(Box::new(Type::Tuple(vec![
                         Type::Generic("K".to_string()),
                         Type::Generic("V".to_string()),
                     ])))),
@@ -1059,5 +1074,219 @@ impl NativeType for NativeMap {
                 has_return: true,
             }),
         )]
+    }
+}
+pub struct NativeSet;
+pub trait NativeSetMethodsAndFields {
+    fn field_size(obj: Box<Value>) -> Value;
+    fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_contains(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_map(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_filter(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_reduce(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_as_array(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_union(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_difference(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_intersection(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM)
+        -> Option<Value>;
+}
+impl NativeType for NativeSet {
+    fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
+        match name {
+            "size" => Some((0usize, Type::Int)),
+            "isEmpty" => Some((
+                1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "contains" => Some((
+                2usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "map" => Some((
+                3usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Generic("U".to_string())),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("U".to_string())))),
+                }),
+            )),
+            "filter" => Some((
+                4usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Bool),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "reduce" => Some((
+                5usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![
+                        (
+                            "initialValue".to_string(),
+                            Type::Generic("U".to_string()),
+                            false,
+                        ),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![
+                                    ("_".to_string(), Type::Generic("U".to_string()), false),
+                                    ("_".to_string(), Type::Generic("T".to_string()), false),
+                                ],
+                                ret_type: Box::new(Type::Generic("U".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Generic("U".to_string())),
+                }),
+            )),
+            "asArray" => Some((
+                6usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "union" => Some((
+                7usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![(
+                        "other".to_string(),
+                        Type::Set(Box::new(Type::Generic("T".to_string()))),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "difference" => Some((
+                8usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![(
+                        "other".to_string(),
+                        Type::Set(Box::new(Type::Generic("T".to_string()))),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "intersection" => Some((
+                9usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![(
+                        "other".to_string(),
+                        Type::Set(Box::new(Type::Generic("T".to_string()))),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            _ => None,
+        }
+    }
+    fn get_static_field_or_method(_name: &str) -> Option<(usize, Type)> {
+        None
+    }
+    fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
+        match field_idx {
+            0usize => Self::field_size(obj),
+            1usize => Value::NativeFn(NativeFn {
+                name: "isEmpty",
+                receiver: Some(obj),
+                native_fn: Self::method_is_empty,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
+                name: "contains",
+                receiver: Some(obj),
+                native_fn: Self::method_contains,
+                has_return: true,
+            }),
+            3usize => Value::NativeFn(NativeFn {
+                name: "map",
+                receiver: Some(obj),
+                native_fn: Self::method_map,
+                has_return: true,
+            }),
+            4usize => Value::NativeFn(NativeFn {
+                name: "filter",
+                receiver: Some(obj),
+                native_fn: Self::method_filter,
+                has_return: true,
+            }),
+            5usize => Value::NativeFn(NativeFn {
+                name: "reduce",
+                receiver: Some(obj),
+                native_fn: Self::method_reduce,
+                has_return: true,
+            }),
+            6usize => Value::NativeFn(NativeFn {
+                name: "asArray",
+                receiver: Some(obj),
+                native_fn: Self::method_as_array,
+                has_return: true,
+            }),
+            7usize => Value::NativeFn(NativeFn {
+                name: "union",
+                receiver: Some(obj),
+                native_fn: Self::method_union,
+                has_return: true,
+            }),
+            8usize => Value::NativeFn(NativeFn {
+                name: "difference",
+                receiver: Some(obj),
+                native_fn: Self::method_difference,
+                has_return: true,
+            }),
+            9usize => Value::NativeFn(NativeFn {
+                name: "intersection",
+                receiver: Some(obj),
+                native_fn: Self::method_intersection,
+                has_return: true,
+            }),
+            _ => unreachable!(),
+        }
+    }
+    fn get_static_field_values() -> Vec<(String, Value)> {
+        vec![]
     }
 }

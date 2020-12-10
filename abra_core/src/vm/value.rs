@@ -6,7 +6,7 @@ use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -111,6 +111,11 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(arr)))
     }
 
+    pub fn new_set_obj(values: HashSet<Value>) -> Value {
+        let arr = Obj::SetObj(values);
+        Value::Obj(Arc::new(RefCell::new(arr)))
+    }
+
     pub fn new_tuple_obj(values: Vec<Value>) -> Value {
         let arr = Obj::TupleObj(values);
         Value::Obj(Arc::new(RefCell::new(arr)))
@@ -211,6 +216,7 @@ pub struct InstanceObj {
 pub enum Obj {
     StringObj(String),
     ArrayObj(Vec<Value>),
+    SetObj(HashSet<Value>),
     TupleObj(Vec<Value>),
     MapObj(HashMap<Value, Value>),
     InstanceObj(InstanceObj),
@@ -228,6 +234,13 @@ impl Obj {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("[{}]", items)
+            }
+            Obj::SetObj(value) => {
+                let items = value.iter()
+                    .map(|v| format!("{}", v))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("#{{{}}}", items)
             }
             Obj::TupleObj(value) => {
                 let items = value.iter()
@@ -289,6 +302,18 @@ impl PartialOrd for Obj {
                     Some(Ordering::Equal)
                 }
             }
+            (Obj::SetObj(s1), Obj::SetObj(s2)) =>{
+                if s1.len() < s2.len() {
+                    Some(Ordering::Less)
+                } else if s1.len() > s2.len() {
+                    Some(Ordering::Greater)
+                } else if s1.difference(&s2).count() == 0 {
+                    Some(Ordering::Equal)
+                } else {
+                    Some(Ordering::Less)
+                }
+
+            }
             (Obj::EnumVariantObj(evv1), Obj::EnumVariantObj(evv2)) => {
                 match evv1.idx.cmp(&evv2.idx) {
                     Ordering::Equal => {}
@@ -322,6 +347,11 @@ impl Hash for Obj {
             Obj::StringObj(s) => s.hash(hasher),
             Obj::ArrayObj(a) |
             Obj::TupleObj(a) => a.hash(hasher),
+            Obj::SetObj(s) => {
+                for item in s {
+                    item.hash(hasher);
+                }
+            }
             Obj::MapObj(m) => {
                 for (k, v) in m {
                     k.hash(hasher);

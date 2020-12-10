@@ -49,6 +49,10 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
             let inner_type_code = generate_code_for_type(inner_type);
             return quote! { Type::Array(Box::new(#inner_type_code)) };
         }
+        Type::Set(inner_type) => {
+            let inner_type_code = generate_code_for_type(inner_type);
+            return quote! { Type::Set(Box::new(#inner_type_code)) };
+        }
         Type::Map(key_type, value_type) => {
             let key_type_code = generate_code_for_type(key_type);
             let value_type_code = generate_code_for_type(value_type);
@@ -187,17 +191,12 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     let _ = 0;
 
     let get_static_field_value_code = if get_static_method_value_code.is_empty() {
-        let msg = format!("{} has no static values", type_name.replace("Native", ""));
         quote! {
-            fn get_static_field_values() -> Vec<(String, Value)> {
-                unreachable!(#msg)
-            }
+            fn get_static_field_values() -> Vec<(String, Value)> { vec![] }
         }
     } else {
         quote! {
-            fn get_static_field_values() -> Vec<(String, Value)> {
-                vec![#(#get_static_method_value_code,)*]
-            }
+            fn get_static_field_values() -> Vec<(String, Value)> { vec![#(#get_static_method_value_code,)*] }
         }
     };
 

@@ -1,10 +1,10 @@
-use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt, NativeMap};
+use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt, NativeMap, NativeSet};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -117,7 +117,7 @@ impl Typechecker {
                     let expected_type_args = match &self.referencable_types[name] {
                         Type::Struct(StructType { type_args, .. }) => type_args.len(),
                         Type::Enum(_) => 0,
-                        Type::Array(_) => {
+                        Type::Array(_) | Type::Set(_) => {
                             ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &self.referencable_types).unwrap());
                             1
                         }
@@ -256,6 +256,15 @@ impl Typechecker {
                     }
                     array_node.typ = Type::Array(inner_type.clone());
                     array_node.typ.clone()
+                }
+                (TypedAstNode::Set(_, ref mut set_node), Type::Set(ref inner_type)) => {
+                    for mut item in &mut set_node.items {
+                        if !self.are_types_equivalent(&mut item, inner_type)? {
+                            return Ok(false);
+                        }
+                    }
+                    set_node.typ = Type::Set(inner_type.clone());
+                    set_node.typ.clone()
                 }
                 (TypedAstNode::Map(_, ref mut map_node), Type::Map(ref key_type, ref value_type)) => {
                     // TODO: Punting on non-String key types in map literals
@@ -798,6 +807,7 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
     let mut referencable_types = HashMap::new();
     referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
+    referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
 
     let mut typechecker = Typechecker {
         cur_typedef: None,
@@ -985,7 +995,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
     fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<TypedAstNode, TypecheckerError> {
         let items: Result<Vec<TypedAstNode>, TypecheckerError> = node.items.into_iter()
-            .map(|n| self.visit(*n))
+            .map(|n| self.visit(n))
             .collect();
         let items = items?;
 
@@ -1001,10 +1011,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else {
             Type::Unknown
         };
-
-        let items = items.into_iter()
-            .map(Box::new)
-            .collect();
 
         Ok(TypedAstNode::Array(token.clone(), TypedArrayNode { typ: Type::Array(Box::new(typ)), items }))
     }
@@ -1043,6 +1049,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let key_type = Type::String;
         let typ = Type::Map(Box::new(key_type), Box::new(val_type));
         Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: fields }))
+    }
+
+    fn visit_set_literal(&mut self, token: Token, node: SetNode) -> Result<TypedAstNode, TypecheckerError> {
+        let items: Result<Vec<TypedAstNode>, TypecheckerError> = node.items.into_iter()
+            .map(|n| self.visit(n))
+            .collect();
+        let items = items?;
+
+        let item_types: HashSet<Type> = HashSet::from_iter(
+            items.iter().map(|node| node.get_type())
+        );
+        let typ = if item_types.len() == 1 {
+            item_types.into_iter()
+                .nth(0)
+                .expect("We know the size is 1")
+        } else if !item_types.is_empty() {
+            Type::Union(item_types.into_iter().collect())
+        } else {
+            Type::Unknown
+        };
+
+        Ok(TypedAstNode::Set(token.clone(), TypedSetNode { typ: Type::Set(Box::new(typ)), items }))
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -1612,7 +1640,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                     _ => unreachable!("The error should already be handled in visit_indexing")
                                 };
                                 (types[idx as usize].clone(), AssignmentTargetKind::ArrayIndex)
-                            },
+                            }
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
                                 return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
@@ -2237,6 +2265,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
                     let field_data = NativeArray::get_field_or_method(&field_name);
+                    Ok((field_data, generics))
+                }
+                Type::Set(inner_type) => {
+                    let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
+                    let field_data = NativeSet::get_field_or_method(&field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {
@@ -2987,50 +3020,49 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
 
+        // Verify explicit type annotations works
+        let res = typecheck("val a: Int[] = []");
+        assert!(res.is_ok());
+        let res = typecheck("val a: Array<Int> = []");
+        assert!(res.is_ok());
+
         Ok(())
     }
 
     #[test]
-    fn typecheck_array_homogeneous() -> TestResult {
+    fn typecheck_array_nonempty() -> TestResult {
         let typed_ast = typecheck("[1, 2, 3]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
                 typ: Type::Array(Box::new(Type::Int)),
                 items: vec![
-                    Box::new(int_literal!((1, 2), 1)),
-                    Box::new(int_literal!((1, 5), 2)),
-                    Box::new(int_literal!((1, 8), 3))
+                    int_literal!((1, 2), 1),
+                    int_literal!((1, 5), 2),
+                    int_literal!((1, 8), 3),
                 ],
             },
         );
         assert_eq!(expected, typed_ast[0]);
 
-        let typed_ast = typecheck("[\"a\", \"b\"]")?;
+        let typed_ast = typecheck("[\"a\", true]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
-                typ: Type::Array(Box::new(Type::String)),
+                typ: Type::Array(Box::new(Type::Union(vec![Type::String, Type::Bool]))),
                 items: vec![
-                    Box::new(string_literal!((1, 2), "a")),
-                    Box::new(string_literal!((1, 7), "b"))
+                    string_literal!((1, 2), "a"),
+                    bool_literal!((1, 7), true),
                 ],
             },
         );
         assert_eq!(expected, typed_ast[0]);
 
-        let typed_ast = typecheck("[true, false]")?;
-        let expected = TypedAstNode::Array(
-            Token::LBrack(Position::new(1, 1), false),
-            TypedArrayNode {
-                typ: Type::Array(Box::new(Type::Bool)),
-                items: vec![
-                    Box::new(bool_literal!((1, 2), true)),
-                    Box::new(bool_literal!((1, 8), false))
-                ],
-            },
-        );
-        assert_eq!(expected, typed_ast[0]);
+        // Verify explicit type annotations works
+        let res = typecheck("val a: Bool[] = [true, false]");
+        assert!(res.is_ok());
+        let res = typecheck("val a: Array<Bool> = [true]");
+        assert!(res.is_ok());
 
         Ok(())
     }
@@ -3042,6 +3074,71 @@ mod tests {
         assert_eq!(expected_type, typed_ast[0].get_type());
 
         // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]], which should be (Int | Float)[][]
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_set_empty() -> TestResult {
+        let typed_ast = typecheck("#{}")?;
+        let expected = TypedAstNode::Set(
+            Token::LBraceHash(Position::new(1, 1)),
+            TypedSetNode { typ: Type::Set(Box::new(Type::Unknown)), items: vec![] },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Verify explicit type annotations works
+        let res = typecheck("val a: Set<Int> = #{}");
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_set_nonempty() -> TestResult {
+        let typed_ast = typecheck("#{1, 2, 3}")?;
+        let expected = TypedAstNode::Set(
+            Token::LBraceHash(Position::new(1, 1)),
+            TypedSetNode {
+                typ: Type::Set(Box::new(Type::Int)),
+                items: vec![
+                    int_literal!((1, 3), 1),
+                    int_literal!((1, 6), 2),
+                    int_literal!((1, 9), 3),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("#{\"a\", 12}")?;
+        let expected = TypedAstNode::Set(
+            Token::LBraceHash(Position::new(1, 1)),
+            TypedSetNode {
+                typ: Type::Set(Box::new(Type::Union(vec![Type::String, Type::Int]))),
+                items: vec![
+                    string_literal!((1, 3), "a"),
+                    int_literal!((1, 8), 12),
+                ],
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        // Verify explicit type annotations works
+        let res = typecheck("val a: Set<Int> = #{1, 2, 3}");
+        assert!(res.is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_set_nested() -> TestResult {
+        let typed_ast = typecheck("#{#{1, 2}, #{3, 4}}")?;
+        let expected_type = Type::Set(Box::new(Type::Set(Box::new(Type::Int))));
+        assert_eq!(expected_type, typed_ast[0].get_type());
+
+        // Verify explicit type annotations works
+        let res = typecheck("val a: Set<Set<Int>> = #{#{1, 2}, #{3, 4}}");
+        assert!(res.is_ok());
 
         Ok(())
     }
@@ -3105,7 +3202,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_map() -> TestResult {
+    fn typecheck_map_nonempty() -> TestResult {
         let typed_ast = typecheck("{ a: 1, b: 2 }")?;
         let expected = TypedAstNode::Map(
             Token::LBrace(Position::new(1, 1)),
@@ -3326,8 +3423,8 @@ mod tests {
                                     TypedArrayNode {
                                         typ: Type::Array(Box::new(Type::Int)),
                                         items: vec![
-                                            Box::new(int_literal!((1, 23), 1)),
-                                            Box::new(int_literal!((1, 26), 2)),
+                                            int_literal!((1, 23), 1),
+                                            int_literal!((1, 26), 2),
                                         ],
                                     },
                                 )
@@ -3418,9 +3515,9 @@ mod tests {
                     TypedArrayNode {
                         typ: Type::Array(Box::new(Type::Int)),
                         items: vec![
-                            Box::new(int_literal!((1, 27), 1)),
-                            Box::new(int_literal!((1, 30), 2)),
-                            Box::new(int_literal!((1, 33), 3)),
+                            int_literal!((1, 27), 1),
+                            int_literal!((1, 30), 2),
+                            int_literal!((1, 33), 3),
                         ],
                     },
                 )
@@ -5648,8 +5745,8 @@ mod tests {
                                     TypedArrayNode {
                                         typ: Type::Array(Box::new(Type::Int)),
                                         items: vec![
-                                            Box::new(int_literal!((1, 8), 1)),
-                                            Box::new(int_literal!((1, 11), 2)),
+                                            int_literal!((1, 8), 1),
+                                            int_literal!((1, 11), 2),
                                         ],
                                     },
                                 )
@@ -5856,9 +5953,9 @@ mod tests {
                     TypedArrayNode {
                         typ: Type::Array(Box::new(Type::Int)),
                         items: vec![
-                            Box::new(int_literal!((1, 2), 1)),
-                            Box::new(int_literal!((1, 5), 2)),
-                            Box::new(int_literal!((1, 8), 3)),
+                            int_literal!((1, 2), 1),
+                            int_literal!((1, 5), 2),
+                            int_literal!((1, 8), 3),
                         ],
                     },
                 )),
