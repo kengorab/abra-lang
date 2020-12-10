@@ -2,7 +2,7 @@ use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
 use crate::builtins::native_fns::native_fns;
 use std::collections::HashMap;
-use crate::builtins::native_types::{NativeMap, NativeType, NativeArray};
+use crate::builtins::native_types::{NativeMap, NativeType, NativeArray, NativeSet};
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {
@@ -54,7 +54,7 @@ impl Prelude {
             ("Any", Type::Any, None),
             ("Array", Type::Reference("Array".to_string(), vec![]), Some(NativeArray::get_static_field_values())),
             ("Map", Type::Reference("Map".to_string(), vec![]), Some(NativeMap::get_static_field_values())),
-            ("Set", Type::Reference("Set".to_string(), vec![]), None),
+            ("Set", Type::Reference("Set".to_string(), vec![]), Some(NativeSet::get_static_field_values())),
         ];
         for (type_name, typ, static_fields) in prelude_types {
             let binding = PreludeBinding {

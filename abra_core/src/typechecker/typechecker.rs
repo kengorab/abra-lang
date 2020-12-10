@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt, NativeMap};
+use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt, NativeMap, NativeSet};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
@@ -1640,7 +1640,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                     _ => unreachable!("The error should already be handled in visit_indexing")
                                 };
                                 (types[idx as usize].clone(), AssignmentTargetKind::ArrayIndex)
-                            },
+                            }
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
                                 return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
@@ -2265,6 +2265,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
                     let field_data = NativeArray::get_field_or_method(&field_name);
+                    Ok((field_data, generics))
+                }
+                Type::Set(inner_type) => {
+                    let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
+                    let field_data = NativeSet::get_field_or_method(&field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {
