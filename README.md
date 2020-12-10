@@ -6,7 +6,7 @@ A small programming language, written in Rust
 This project is very much a work in progress: you can check the [documentation site](https://abra.kenrg.co) for more information
 
 ## Getting Started
-Download the latest `abra` binary from the [Releases](https://github.com/kengorab/abra-lang/releases) page.
+Download the latest `abra` binary from the [Releases](https://github.com/kengorab/abra-lang/releases/latest) page.
 You should then be able to run
 ```sh
 abra run my-file.abra
