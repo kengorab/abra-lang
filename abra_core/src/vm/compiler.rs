@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native_types::{NativeArray, NativeType};
+use crate::builtins::native_types::{NativeArray, NativeType, NativeSet, NativeMap};
 use crate::common::util::random_string;
 use crate::common::compiler_util::get_anon_name;
 use std::collections::HashMap;
@@ -1528,13 +1528,28 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         let TypedForLoopNode { iteratee, index_ident, iterator, body } = node;
+        let iterator_type = iterator.get_type();
 
-        // Push intrinsic variables $idx and $iter
+        // Push intrinsic variable $idx, to track position in $iter
         self.push_scope(ScopeKind::Loop); // Create wrapper scope to hold invisible variables
         self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
         self.push_local("$idx", line, true);
-        self.visit(*iterator)?; // Local 1 is the iterator
-        self.push_local("$iter", line, true);
+
+        // $iter = <iterator>.enumerate()
+        self.write_opcode(Opcode::Nil, line);
+        self.visit(*iterator)?;
+        let enumerate_method_idx = match iterator_type {
+            Type::Array(_) => NativeArray::get_field_idx("enumerate"),
+            Type::Set(_) => NativeSet::get_field_idx("enumerate"),
+            Type::Map(_, _) => NativeMap::get_field_idx("enumerate"),
+            _ => unreachable!("Should have been caught during typechecking")
+        };
+        self.write_opcode(Opcode::GetField, line);
+        self.metadata.field_gets.push("enumerate".to_string());
+        self.write_byte(enumerate_method_idx as u8, line);
+        self.write_opcode(Opcode::Invoke, line);
+        self.write_byte(0, line);
+        self.push_local("$iter", line, true); // Local 1 is the iterator
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
@@ -1562,16 +1577,23 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_byte(0, line); // <- Replaced after compiling loop body
         let cond_jump_offset_slot_idx = self.code.len();
 
-        // Insert iteratee (bound to $iter[$idx]) and index bindings (if indexer expected) into loop scope
+        // Insert iteratee and index bindings (if indexer expected) into loop scope
+        //   $iter[$idx] is a tuple, of (<iteratee>, <index>)
+        //   So, iteratee = $iter[$idx][0]
         self.push_scope(ScopeKind::Block);
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
+        self.write_opcode(Opcode::IConst0, line);
+        self.write_opcode(Opcode::TupleLoad, line);
         self.push_local(Token::get_ident_name(&iteratee), line, true);
         if let Some(ident) = index_ident {
-            let (_, slot) = self.resolve_local(&"$idx".to_string(), self.get_fn_depth()).unwrap();
-            self.write_load_local_instr(slot, line); // Load $idx
-            self.metadata.loads.push("$idx".to_string());
+            // If present, index = $iter[$idx][1]
+            load_intrinsic(self, "$iter", line);
+            load_intrinsic(self, "$idx", line);
+            self.write_opcode(Opcode::ArrLoad, line);
+            self.write_opcode(Opcode::IConst1, line);
+            self.write_opcode(Opcode::TupleLoad, line);
             self.push_local(Token::get_ident_name(&ident), line, true);
         }
         load_intrinsic(self, "$idx", line);
@@ -3466,8 +3488,8 @@ mod tests {
         let chunk = compile("\
           val msg = \"Row: \"\n\
           val arr = [1, 2]\n\
-          for a in arr {\n\
-            println(msg + a)\n\
+          for a, i in arr {\n\
+            println(msg + a + i)\n\
           }\
         ");
         let expected = Module {
@@ -3485,24 +3507,37 @@ mod tests {
                 Opcode::GStore as u8,
 
                 // val $idx = 0
-                // val $iter = arr
-                // if $idx < arrayLen($iter) {
+                // val $iter = arr.enumerate()
+                // if $idx < $iter.length {
                 Opcode::IConst0 as u8,
                 Opcode::MarkLocal as u8, 0,
+                Opcode::Nil as u8,
                 Opcode::Constant as u8, with_prelude_const_offset(2),
                 Opcode::GLoad as u8,
+                Opcode::GetField as u8, 2, // .length
+                Opcode::Invoke as u8, 0,
                 Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
                 Opcode::LLoad1 as u8,
                 Opcode::GetField as u8, 0,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 21,
+                Opcode::JumpIfF as u8, 33,
 
-                // a = $iter[$idx]
+                // a = $iter[$idx][0]
                 Opcode::LLoad1 as u8,
                 Opcode::LLoad0 as u8,
                 Opcode::ArrLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleLoad as u8,
                 Opcode::MarkLocal as u8, 2,
+
+                // i = $iter[$idx][1]
+                Opcode::LLoad1 as u8,
+                Opcode::LLoad0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::MarkLocal as u8, 3,
 
                 // $idx += 1
                 Opcode::LLoad0 as u8,
@@ -3510,16 +3545,18 @@ mod tests {
                 Opcode::IAdd as u8,
                 Opcode::LStore0 as u8,
 
-                // println(msg + a)
+                // println(msg + a + i)
                 // <recur>
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::GLoad as u8,
                 Opcode::LLoad2 as u8,
                 Opcode::StrConcat as u8,
+                Opcode::LLoad3 as u8,
+                Opcode::StrConcat as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 28,
+                Opcode::PopN as u8, 2,
+                Opcode::JumpB as u8, 40,
 
                 // Cleanup/end
                 Opcode::Pop as u8,

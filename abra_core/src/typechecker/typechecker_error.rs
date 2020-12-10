@@ -15,6 +15,7 @@ pub enum TypecheckerError {
     Unimplemented(Token, String),
     Mismatch { token: Token, expected: Type, actual: Type },
     InvalidIfConditionType { token: Token, actual: Type },
+    InvalidLoopTarget { token: Token, target_type: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
@@ -66,6 +67,7 @@ impl TypecheckerError {
             TypecheckerError::Unimplemented(token, _) => token,
             TypecheckerError::Mismatch { token, .. } => token,
             TypecheckerError::InvalidIfConditionType { token, .. } => token,
+            TypecheckerError::InvalidLoopTarget { token, ..} => token,
             TypecheckerError::InvalidOperator { token, .. } => token,
             TypecheckerError::MissingRequiredAssignment { ident } => ident,
             TypecheckerError::DuplicateBinding { ident, .. } => ident,
@@ -217,13 +219,13 @@ impl DisplayError for TypecheckerError {
         match self {
             TypecheckerError::Unimplemented(_, message) => {
                 format!(
-                    "This feature is not yet implemented ({}:{}):\n{}\n{}",
+                    "This feature is not yet implemented: ({}:{}):\n{}\n{}",
                     pos.line, pos.col, cursor_line, message
                 )
             }
             TypecheckerError::Mismatch { expected, actual, .. } => {
                 format!(
-                    "Type mismatch ({}:{})\n{}\n\
+                    "Type mismatch: ({}:{})\n{}\n\
                     Expected {}, got {}",
                     pos.line, pos.col, cursor_line,
                     type_repr(expected), type_repr(actual)
@@ -231,14 +233,21 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::InvalidIfConditionType { actual, .. } => {
                 format!(
-                    "Invalid type for condition ({}:{})\n{}\n\
+                    "Invalid type for condition: ({}:{})\n{}\n\
                     Conditions must be an Option or Bool, got {}",
+                    pos.line, pos.col, cursor_line, type_repr(actual)
+                )
+            }
+            TypecheckerError::InvalidLoopTarget { target_type: actual, ..} => {
+                format!(
+                    "Invalid type for for-loop target: ({}:{})\n{}\n\
+                    Type {} is not iterable",
                     pos.line, pos.col, cursor_line, type_repr(actual)
                 )
             }
             TypecheckerError::InvalidOperator { op, ltype, rtype, .. } => {
                 format!(
-                    "Invalid operator ({}:{})\n{}\n\
+                    "Invalid operator: ({}:{})\n{}\n\
                     No operator exists to satisfy {} {} {}",
                     pos.line, pos.col, cursor_line,
                     type_repr(ltype), op_repr(op), type_repr(rtype)
@@ -247,14 +256,14 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::MissingRequiredAssignment { ident } => {
                 let ident = Token::get_ident_name(&ident);
                 format!(
-                    "Expected assignment for variable '{}' ({}:{})\n{}\n\
+                    "Expected assignment for variable '{}': ({}:{})\n{}\n\
                     'val' bindings must be initialized",
                     ident, pos.line, pos.col, cursor_line
                 )
             }
             TypecheckerError::DuplicateBinding { ident, orig_ident } => {
                 let ident = Token::get_ident_name(&ident);
-                let first_msg = format!("Duplicate variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
@@ -264,7 +273,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field, orig_is_enum_variant } => {
                 let ident = Token::get_ident_name(&ident);
-                let first_msg = format!("Duplicate field '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Duplicate field '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
@@ -276,7 +285,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::DuplicateType { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
                 let ident = Token::get_ident_name(&ident);
-                let first_msg = format!("Duplicate type '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Duplicate type '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let second_msg = match orig_ident {
                     Some(orig_ident) => {
@@ -301,15 +310,21 @@ impl DisplayError for TypecheckerError {
                 format!("{}\n{}", first_msg, second_msg)
             }
             TypecheckerError::UnboundGeneric(_, type_arg_ident) => {
-                let first_msg = format!("Type argument '{}' is unbound ({}:{})\n{}", type_arg_ident, pos.line, pos.col, cursor_line);
-                let second_msg = format!("There is not enough information to determine a possible value for '{}'", type_arg_ident);
+                // let first_msg = format!("Type argument '{}' is unbound: ({}:{})\n{}", type_arg_ident, pos.line, pos.col, cursor_line);
+                // let second_msg = format!("There is not enough information to determine a possible value for '{}'", type_arg_ident);
+                //
+                // format!("{}\n{}", first_msg, second_msg)
 
-                format!("{}\n{}", first_msg, second_msg)
+                format!(
+                    "Type argument '{}' is unbound: ({}:{})\n{}\n\
+                    There is not enough information to determine a possible value for '{}'",
+                    type_arg_ident, pos.line, pos.col, cursor_line, type_arg_ident
+                )
             }
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
                 format!(
-                    "Unknown identifier '{}' ({}:{})\n{}\n\
+                    "Unknown identifier '{}': ({}:{})\n{}\n\
                     No binding with that name is visible in current scope",
                     ident, pos.line, pos.col, cursor_line
                 )
@@ -318,13 +333,13 @@ impl DisplayError for TypecheckerError {
                 // TODO: Use reason
                 let msg = "Left-hand side of assignment must be a valid identifier";
                 format!(
-                    "Cannot perform assignment ({}:{})\n{}\n{}",
+                    "Cannot perform assignment: ({}:{})\n{}\n{}",
                     pos.line, pos.col, cursor_line, msg
                 )
             }
             TypecheckerError::AssignmentToImmutable { orig_ident, token: _ } => {
                 let ident = Token::get_ident_name(&orig_ident);
-                let first_msg = format!("Cannot assign to variable '{}' ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Cannot assign to variable '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
 
                 let pos = orig_ident.get_position();
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
@@ -342,14 +357,14 @@ impl DisplayError for TypecheckerError {
 
                 let modifier = if *is_mutable { "mutable" } else { "immutable" };
                 format!(
-                    "Could not determine type of {} variable '{}' ({}:{})\n{}\n{}",
+                    "Could not determine type of {} variable '{}': ({}:{})\n{}\n{}",
                     modifier, ident, pos.line, pos.col, cursor_line, msg
                 )
             }
             TypecheckerError::UnknownType { type_ident } => {
                 let ident = Token::get_ident_name(type_ident);
                 format!(
-                    "Unknown type '{}' ({}:{})\n{}\nNo type with that name is visible in current scope",
+                    "Unknown type '{}': ({}:{})\n{}\nNo type with that name is visible in current scope",
                     ident, pos.line, pos.col, cursor_line
                 )
             }
@@ -385,8 +400,9 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnexpectedParamName { token } => {
                 let param_name = Token::get_ident_name(token);
                 format!(
-                    "Unexpected parameter name: ({}:{})\n{}\nThis function doesn't have a parameter called '{}'",
-                    pos.line, pos.col, cursor_line, param_name,
+                    "Unexpected parameter name '{}': ({}:{})\n{}\n\
+                    This function doesn't have a parameter called '{}'",
+                    param_name, pos.line, pos.col, cursor_line, param_name,
                 )
             }
             TypecheckerError::DuplicateParamName { .. } => {
@@ -625,7 +641,7 @@ mod tests {
         let err = TypecheckerError::Mismatch { token, expected: Type::Int, actual: Type::Float };
 
         let expected = format!("\
-Type mismatch (1:5)
+Type mismatch: (1:5)
   |  1 + 4.4
          ^^^
 Expected Int, got Float"
@@ -637,7 +653,7 @@ Expected Int, got Float"
         let err = TypecheckerError::Mismatch { token, expected: Type::Union(vec![Type::Int, Type::Float]), actual: Type::Int };
 
         let expected = format!("\
-Type mismatch (1:5)
+Type mismatch: (1:5)
   |  1 + 4.4
          ^^^
 Expected Int | Float, got Int"
@@ -652,7 +668,7 @@ Expected Int | Float, got Int"
         let err = TypecheckerError::InvalidOperator { token, op: BinaryOp::Sub, ltype: Type::Int, rtype: Type::String };
 
         let expected = format!("\
-Invalid operator (1:3)
+Invalid operator: (1:3)
   |  1 - \"some string\"
        ^
 No operator exists to satisfy Int - String"
@@ -668,7 +684,7 @@ No operator exists to satisfy Int - String"
         };
 
         let expected = format!("\
-Expected assignment for variable 'abc' (1:5)
+Expected assignment for variable 'abc': (1:5)
   |  val abc
          ^^^
 'val' bindings must be initialized"
@@ -685,7 +701,7 @@ Expected assignment for variable 'abc' (1:5)
         };
 
         let expected = format!("\
-Duplicate variable 'abc' (2:5)
+Duplicate variable 'abc': (2:5)
   |  val abc = 5
          ^^^
 Binding already declared in scope at (1:5)
@@ -705,7 +721,7 @@ Binding already declared in scope at (1:5)
         };
 
         let expected = format!("\
-Duplicate type 'Abc' (2:6)
+Duplicate type 'Abc': (2:6)
   |  type Abc {{ a: Int }}
           ^^^
 Type already declared in scope at (1:6)
@@ -722,7 +738,7 @@ Type already declared in scope at (1:6)
         };
 
         let expected = format!("\
-Duplicate type 'Int' (1:6)
+Duplicate type 'Int': (1:6)
   |  type Int {{}}
           ^^^
 'Int' already declared as built-in type"
@@ -738,7 +754,7 @@ Duplicate type 'Int' (1:6)
         };
 
         let expected = format!("\
-Unknown identifier 'abcd' (1:1)
+Unknown identifier 'abcd': (1:1)
   |  abcd
      ^^^^
 No binding with that name is visible in current scope"
@@ -755,7 +771,7 @@ No binding with that name is visible in current scope"
         };
 
         let expected = format!("\
-Could not determine type of mutable variable 'abcd' (1:5)
+Could not determine type of mutable variable 'abcd': (1:5)
   |  var abcd
          ^^^^
 Since it's a 'var', you can either provide an initial value or a type annotation"
@@ -769,7 +785,7 @@ Since it's a 'var', you can either provide an initial value or a type annotation
         };
 
         let expected = format!("\
-Could not determine type of immutable variable 'abcd' (1:5)
+Could not determine type of immutable variable 'abcd': (1:5)
   |  val abcd
          ^^^^
 Since it's a 'val', you must provide an initial value"
@@ -786,7 +802,7 @@ Since it's a 'val', you must provide an initial value"
         };
 
         let expected = format!("\
-Cannot perform assignment (1:6)
+Cannot perform assignment: (1:6)
   |  true = \"abc\"
           ^
 Left-hand side of assignment must be a valid identifier"
@@ -804,7 +820,7 @@ Left-hand side of assignment must be a valid identifier"
         };
 
         let expected = format!("\
-Cannot assign to variable 'abc' (3:5)
+Cannot assign to variable 'abc': (3:5)
   |  abc = 3
          ^
 The binding has been declared in scope as immutable at (1:5)
@@ -824,7 +840,7 @@ Use 'var' instead of 'val' to create a mutable binding"
         };
 
         let expected = format!("\
-Unknown type 'NonExistentType' (1:11)
+Unknown type 'NonExistentType': (1:11)
   |  val abcd: NonExistentType = 432
                ^^^^^^^^^^^^^^^
 No type with that name is visible in current scope"

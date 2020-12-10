@@ -105,9 +105,17 @@ impl<'a> Serialize for JsWrappedError<'a> {
                 TypecheckerError::InvalidIfConditionType { token, actual } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "mismatch")?;
+                    obj.serialize_entry("subKind", "invalidIfConditionType")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("actual", &JsType(actual))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidLoopTarget { target_type, .. } => {
+                    let mut obj = serializer.serialize_map(Some(2))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidLoopTarget")?;
+                    obj.serialize_entry("targetType", &JsType(target_type))?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
