@@ -331,6 +331,21 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         } else { unreachable!() }
     }
 
+    fn method_enumerate(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let tuples = array.iter().enumerate()
+                        .map(|(idx, value)| {
+                            Value::new_tuple_obj(vec![value.clone(), Value::Int(idx as i64)])
+                        }).collect();
+                    Some(Value::new_array_obj(tuples))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_push(receiver: Option<Value>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
         let item = args.into_iter().next().expect("Array::push requires 1 argument");
 
@@ -794,6 +809,21 @@ impl NativeSetMethodsAndFields for NativeSet {
         } else { unreachable!() }
     }
 
+    fn method_enumerate(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::SetObj(set) => {
+                    let tuples = set.iter().enumerate()
+                        .map(|(idx, value)| {
+                            Value::new_tuple_obj(vec![value.clone(), Value::Int(idx as i64)])
+                        }).collect();
+                    Some(Value::new_array_obj(tuples))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_contains(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         let item = args.into_iter().next().expect("Set::contains requires 1 argument");
 
@@ -993,6 +1023,21 @@ impl NativeMapMethodsAndFields for NativeMap {
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::MapObj(value) => Some(Value::Bool(value.is_empty())),
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_enumerate(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    let tuples = map.iter()
+                        .map(|(key, value)| {
+                            Value::new_tuple_obj(vec![key.clone(), value.clone()])
+                        }).collect();
+                    Some(Value::new_array_obj(tuples))
+                }
                 _ => unreachable!()
             }
         } else { unreachable!() }

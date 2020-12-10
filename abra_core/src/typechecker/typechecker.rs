@@ -2114,16 +2114,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
         let ForLoopNode { iteratee, index_ident, iterator, body } = node;
         let iterator = self.visit(*iterator)?;
-        let iteratee_type = match iterator.get_type() {
-            Type::Array(inner) => {
-                inner
-            }
-            actual @ _ => {
-                return Err(TypecheckerError::Mismatch {
-                    token: iterator.get_token().clone(),
-                    expected: Type::Array(Box::new(Type::Any)),
-                    actual,
-                });
+        let (iteratee_type, index_type) = match iterator.get_type() {
+            Type::Array(inner) |
+            Type::Set(inner) => (*inner, Type::Int),
+            Type::Map(key_type, val_type) => (*key_type, *val_type),
+            iterator_type @ _ => {
+                let token = iterator.get_token().clone();
+                return Err(TypecheckerError::InvalidLoopTarget { token, target_type: iterator_type });
             }
         };
         let iterator = Box::new(iterator);
@@ -2131,10 +2128,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where intrinsic variables $idx and $iter will be stored
         let mut scope = Scope::new(ScopeKind::Loop);
         let iteratee_name = Token::get_ident_name(&iteratee).clone();
-        scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), *iteratee_type, false));
+        scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), iteratee_type, false));
         if let Some(ident) = &index_ident {
             let ident_name = Token::get_ident_name(&ident).clone();
-            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), Type::Int, false));
+            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), index_type, false));
         }
         self.scopes.push(scope);
 
@@ -5871,18 +5868,70 @@ mod tests {
                 ],
             },
         );
-        Ok(assert_eq!(expected, ast[1]))
+        assert_eq!(expected, ast[1]);
+
+        let ast = typecheck("val set = #{1, 2, 3}\nfor a, i in set {\na + i }")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                iteratee: ident_token!((2, 5), "a"),
+                index_ident: Some(ident_token!((2, 8), "i")),
+                iterator: Box::new(identifier!((2, 13), "set", Type::Set(Box::new(Type::Int)), 0)),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(identifier!((3, 1), "a", Type::Int, 2)),
+                            op: BinaryOp::Add,
+                            right: Box::new(identifier!((3, 5), "i", Type::Int, 2)),
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[1]);
+
+        let ast = typecheck("val map = {a:1, b:2}\nfor k, v in map {\nk + v }")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                iteratee: ident_token!((2, 5), "k"),
+                index_ident: Some(ident_token!((2, 8), "v")),
+                iterator: Box::new(identifier!((2, 13), "map", Type::Map(Box::new(Type::String),Box::new(Type::Int)), 0)),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::String,
+                            left: Box::new(identifier!((3, 1), "k", Type::String, 2)),
+                            op: BinaryOp::Add,
+                            right: Box::new(identifier!((3, 5), "v", Type::Int, 2)),
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[1]);
+
+        Ok(())
     }
 
     #[test]
     fn typecheck_for_loop_error() {
         let error = typecheck("for a in 123 { a }").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::InvalidLoopTarget {
             token: Token::Int(Position::new(1, 10), 123),
-            expected: Type::Array(Box::new(Type::Any)),
-            actual: Type::Int,
+            target_type: Type::Int,
         };
-        assert_eq!(expected, error)
+        assert_eq!(expected, error);
+
+        let error = typecheck("for a in (1, 2) { a }").unwrap_err();
+        let expected = TypecheckerError::InvalidLoopTarget {
+            token: Token::LParen(Position::new(1, 10), false),
+            target_type: Type::Tuple(vec![Type::Int, Type::Int]),
+        };
+        assert_eq!(expected, error);
     }
 
     #[test]

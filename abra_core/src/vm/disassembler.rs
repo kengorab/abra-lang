@@ -63,7 +63,7 @@ impl Disassembler {
                 Opcode::Constant => {
                     let imm = imms[0].expect("Constant requires an immediate");
                     let constant = self.module.constants.get(*imm as usize)
-                        .expect("The constant at the index should exist");
+                        .expect(format!("The constant at index {} should exist", imm).as_str());
                     acc.push(format!("\t; {}", constant))
                 }
                 Opcode::JumpIfF | Opcode::Jump => {
