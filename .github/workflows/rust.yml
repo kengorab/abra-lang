@@ -16,10 +16,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-#     - name: Build
-#       run: cargo build --verbose
+    - name: Build
+      run: cargo build --verbose
 #     - name: Run rust tests
 #       run: cargo test --verbose
     - name: Run wasm tests
       run: |
-        which npm
+        cargo install wasm-pack --version 0.9.0 || echo "wasm-pack already installed"
+        cargo build
+        cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..
+        cargo test
+        cd abra_wasm/js-tests
+        npm install
+        npm test
+
