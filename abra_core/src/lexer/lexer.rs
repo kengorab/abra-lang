@@ -2,6 +2,7 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use std::str::Chars;
 use crate::lexer::tokens::{Token, Position};
 use crate::lexer::lexer_error::LexerError;
+use itertools::Itertools;
 
 pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
     let mut lexer = Lexer::new(input);
@@ -79,6 +80,35 @@ impl<'a> Lexer<'a> {
         saw_newline
     }
 
+    fn parse_unicode_escape(&mut self, start_pos: &Position) -> Result<char, LexerError> {
+        let mut chars = Vec::new();
+        for _ in 0..4 {
+            let esc_seq = format!("\\u{}", chars.iter().join(""));
+
+            let ch = self.expect_next().map_err(|_| {
+                LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
+            })?;
+            if !ch.is_digit(16) {
+                return Err(LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq, true));
+            }
+            chars.push(ch);
+        }
+
+        let esc_seq = format!("\\u{}", chars.iter().join(""));
+        let i = u32::from_str_radix(&chars.iter().join(""), 16).map_err(|_| {
+            LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
+        })?;
+
+        // Borrowed from the rust implementation of char::from_u32 (until it becomes stable): https://github.com/rust-lang/rust/blob/master/library/core/src/char/convert.rs#L203
+        let ch = if (i > u32::max_value()) || (i >= 0xD800 && i <= 0xDFFF) {
+            '�'
+        } else {
+            // SAFETY: checked that it's a legal unicode value
+            unsafe { std::mem::transmute(i) }
+        };
+        Ok(ch)
+    }
+
     fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
         let skipped_newline = self.skip_whitespace();
 
@@ -142,7 +172,24 @@ impl<'a> Lexer<'a> {
                         self.expect_next()?;
                         break;
                     } else if ch == '\\' {
-                        // TODO: Address escaped characters
+                        self.expect_next()?; // Consume '\'
+                        let pos = Position::new(self.line, self.col);
+                        let ch = match self.expect_next()? {
+                            'n' => '\n',
+                            '\\' => '\\',
+                            'r' => '\r',
+                            't' => '\t',
+                            '\'' => '\'',
+                            '"' => '"',
+                            'u' => self.parse_unicode_escape(&pos)?,
+                            ch @ _ => {
+                                let esc_seq = format!("\\{}", ch);
+                                return Err(LexerError::UnsupportedEscapeSequence(pos, esc_seq, false));
+                            }
+                        };
+
+                        chars.push(ch);
+                        continue;
                     }
 
                     chars.push(self.expect_next()?);
@@ -151,7 +198,7 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            let s: String = chars.into_iter().collect();
+            let s = chars.into_iter().collect();
             return Ok(Some(Token::String(pos, s)));
         }
 
@@ -547,6 +594,23 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_strings_escape_sequence() {
+        let input = "\"a\\nb\\tc\\\\nd\\'e\\\"f\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::String(Position::new(1, 1), "a\nb\tc\\nd'e\"f".to_string())
+        ];
+        assert_eq!(expected, tokens);
+
+        let input = "\"\\u007a\\u306e\\u77e7\\ud801\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = vec![
+            Token::String(Position::new(1, 1), "zの矧�".to_string())
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
     fn test_tokenize_strings_error() {
         let input = "\"";
         let tokens = tokenize(&input.to_string()).unwrap_err();
@@ -556,6 +620,21 @@ mod tests {
         let input = "\"\n\"";
         let tokens = tokenize(&input.to_string()).unwrap_err();
         let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        assert_eq!(expected, tokens);
+
+        let input = "\"\\z\"";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\z".to_string(), false);
+        assert_eq!(expected, tokens);
+
+        let input = "\"\\u38\"";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\u38".to_string(), true);
+        assert_eq!(expected, tokens);
+
+        let input = "\"\\u3xy8\"";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\u3".to_string(), true);
         assert_eq!(expected, tokens);
     }
 

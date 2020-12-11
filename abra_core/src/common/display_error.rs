@@ -1,4 +1,4 @@
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Token, Range, Position};
 
 pub const IND_AMT: usize = 2;
 
@@ -13,9 +13,12 @@ pub trait DisplayError {
 
     fn get_underlined_line(lines: &Vec<&str>, token: &Token) -> String {
         let pos = token.get_position();
-        let line = lines.get(pos.line - 1).expect("There should be a line");
-
         let range = token.get_range();
+        Self::get_underlined_line_no_token(lines, &pos, &range)
+    }
+
+    fn get_underlined_line_no_token(lines: &Vec<&str>, pos: &Position, range: &Range) -> String {
+        let line = lines.get(pos.line - 1).expect("There should be a line");
         let length = range.end.col - range.start.col + 1;
         let underline = Self::get_underline(2 * IND_AMT + pos.col, length);
         let indent = Self::indent();
