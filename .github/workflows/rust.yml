@@ -1,0 +1,36 @@
+name: Build & Test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - uses: jetli/wasm-pack-action@v0.3.0
+      with:
+        version: 'v0.9.0'
+    - name: Build rust
+      run: cargo build
+    - name: Run rust tests
+      run: cargo test --verbose
+    - name: Build & run wasm tests
+      run: |
+        cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..
+        cd abra_wasm/js-tests
+        npm install
+        npm test
