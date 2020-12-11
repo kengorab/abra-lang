@@ -1634,4 +1634,28 @@ mod tests {
         let expected = Value::Int(5);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    pub fn interpret_recursive_func_in_lambda() {
+        // This is an utterly pointless, super contrived example, but the main test case here is
+        // whether a non-root-scope function will be correctly recognized as recursive if its only
+        // usage is within a lambda
+        let input = r#"
+          func abc() {
+            func def(nums: Int[]): Int {
+              if nums[0] |n| {
+                n + nums[1:].reduce(0, (acc, i) => acc + def([i]))
+              } else {
+                0
+              }
+            }
+
+            def([1, 2, 3, 4])
+          }
+          abc()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(10);
+        assert_eq!(expected, result);
+    }
 }

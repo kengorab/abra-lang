@@ -112,7 +112,7 @@ pub struct VM {
     open_upvalues: HashMap<usize, Arc<RefCell<Upvalue>>>,
 }
 
-const STACK_LIMIT: usize = 64;
+const STACK_LIMIT: usize = 1024;
 
 impl VM {
     pub fn new(module: Module, ctx: VMContext) -> Self {

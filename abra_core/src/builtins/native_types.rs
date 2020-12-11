@@ -28,6 +28,17 @@ pub trait NativeType {
     }
 }
 
+fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
+    let res = vm.invoke_fn(args, fn_obj.clone());
+    match res {
+        Ok(v) => v.unwrap_or(Value::Nil),
+        Err(e) => {
+            eprintln!("Runtime error: {:?}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 pub type NativeInt = crate::builtins::gen_native_types::NativeInt;
 
 impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt {
@@ -312,10 +323,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
         let mut values = Vec::with_capacity(amount as usize);
         for i in 0..(amount as usize) {
-            let args = vec![Value::Int(i as i64)];
-            let value = vm.invoke_fn(args, filler_fn.clone())
-                .unwrap_or(Some(Value::Nil))
-                .unwrap_or(Value::Nil);
+            let value = invoke_fn(vm, &filler_fn, vec![Value::Int(i as i64)]);
             values.push(value);
         }
 
@@ -392,10 +400,8 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
                     for value in array {
                         let args = vec![value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-                        new_array_items.push(new_value);
+                        let value = invoke_fn(vm, &callback, args);
+                        new_array_items.push(value);
                     }
 
                     Some(Value::new_array_obj(new_array_items))
@@ -406,19 +412,17 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
     }
 
     fn method_filter(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::filter requires 1 argument");
+
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::ArrayObj(array) => {
-                    let callback = args.into_iter().next().expect("Array::filter requires 1 argument");
-
                     let mut new_array_items = Vec::new();
 
                     for value in array {
                         let args = vec![value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Bool(false)))
-                            .unwrap_or(Value::Bool(false));
-                        if let Value::Bool(true) = new_value {
+                        let ret_val = invoke_fn(vm, &callback, args);
+                        if let Value::Bool(true) = ret_val {
                             new_array_items.push(value.clone());
                         }
                     }
@@ -431,21 +435,18 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
     }
 
     fn method_reduce(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let initial_value = args.next().expect("Array::reduce requires 2 arguments");
+        let callback = args.next().expect("Array::reduce requires 2 arguments");
+
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::ArrayObj(array) => {
-                    let mut args = args.into_iter();
-                    let initial_value = args.next().expect("Array::reduce requires 2 arguments");
-                    let callback = args.next().expect("Array::reduce requires 2 arguments");
-
                     let mut accumulator = initial_value;
 
                     for value in array {
                         let args = vec![accumulator, value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-                        accumulator = new_value;
+                        accumulator = invoke_fn(vm, &callback, args);
                     }
 
                     Some(accumulator)
@@ -506,9 +507,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                             None => break Value::Nil,
                             Some(value) => {
                                 let args = vec![value.clone()];
-                                let ret_val = vm.invoke_fn(args, callback.clone())
-                                    .unwrap_or(Some(Value::Nil))
-                                    .unwrap_or(Value::Nil);
+                                let ret_val = invoke_fn(vm, &callback, args);
                                 match ret_val {
                                     Value::Bool(false) | Value::Nil => continue,
                                     _ => break value.clone()
@@ -535,10 +534,8 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                             None => break Value::Bool(false),
                             Some(value) => {
                                 let args = vec![value.clone()];
-                                let ret_val = vm.invoke_fn(args, callback.clone())
-                                    .unwrap_or(Some(Value::Nil))
-                                    .unwrap_or(Value::Nil);
-                                match ret_val {
+                                let value = invoke_fn(vm, &callback, args);
+                                match value {
                                     Value::Bool(false) | Value::Nil => continue,
                                     _ => break Value::Bool(true)
                                 }
@@ -564,10 +561,8 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                             None => break Value::Bool(true),
                             Some(value) => {
                                 let args = vec![value.clone()];
-                                let ret_val = vm.invoke_fn(args, callback.clone())
-                                    .unwrap_or(Some(Value::Nil))
-                                    .unwrap_or(Value::Nil);
-                                match ret_val {
+                                let value = invoke_fn(vm, &callback, args);
+                                match value {
                                     Value::Bool(false) | Value::Nil => break Value::Bool(false),
                                     _ => continue
                                 }
@@ -593,10 +588,8 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                             None => break Value::Bool(true),
                             Some(value) => {
                                 let args = vec![value.clone()];
-                                let ret_val = vm.invoke_fn(args, callback.clone())
-                                    .unwrap_or(Some(Value::Nil))
-                                    .unwrap_or(Value::Nil);
-                                match ret_val {
+                                let value = invoke_fn(vm, &callback, args);
+                                match value {
                                     Value::Bool(false) | Value::Nil => continue,
                                     _ => break Value::Bool(false)
                                 }
@@ -623,10 +616,8 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
                 Obj::ArrayObj(array) => {
                     let mut sort_values = array.iter().enumerate().map(|(idx, item)| {
                         let args = vec![item.clone()];
-                        let v = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-                        (v, idx)
+                        let value = invoke_fn(vm, &callback, args);
+                        (value, idx)
                     }).collect::<Vec<_>>();
                     sort_values.sort_by(|v1, v2| {
                         match (&v1.0, &v2.0) {
@@ -683,14 +674,12 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
                     for item in array {
                         let args = vec![item.clone()];
-                        let v = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
+                        let value = invoke_fn(vm, &callback, args);
 
-                        if seen.contains(&v) {
+                        if seen.contains(&value) {
                             continue;
                         }
-                        seen.insert(v);
+                        seen.insert(value);
                         new_array_items.push(item.clone())
                     }
 
@@ -711,11 +700,9 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
                     for item in array {
                         let args = vec![item.clone()];
-                        let v = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
+                        let value = invoke_fn(vm, &callback, args);
 
-                        map.entry(v).or_insert(vec![]).push(item.clone());
+                        map.entry(value).or_insert(vec![]).push(item.clone());
                     }
 
                     let map = map.into_iter()
@@ -758,11 +745,9 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
 
                     for item in array {
                         let args = vec![item.clone()];
-                        let v = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
+                        let value = invoke_fn(vm, &callback, args);
 
-                        *map.entry(v).or_insert(0) += 1;
+                        *map.entry(value).or_insert(0) += 1;
                     }
 
                     let map = map.into_iter()
@@ -845,10 +830,8 @@ impl NativeSetMethodsAndFields for NativeSet {
 
                     for value in set {
                         let args = vec![value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-                        new_items.push(new_value);
+                        let value = invoke_fn(vm, &callback, args);
+                        new_items.push(value);
                     }
 
                     Some(Value::new_array_obj(new_items))
@@ -868,10 +851,8 @@ impl NativeSetMethodsAndFields for NativeSet {
 
                     for value in set {
                         let args = vec![value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Bool(false)))
-                            .unwrap_or(Value::Bool(false));
-                        if let Value::Bool(true) = new_value {
+                        let ret_val = invoke_fn(vm, &callback, args);
+                        if let Value::Bool(true) = ret_val {
                             new_items.insert(value.clone());
                         }
                     }
@@ -895,10 +876,7 @@ impl NativeSetMethodsAndFields for NativeSet {
 
                     for value in set {
                         let args = vec![accumulator, value.clone()];
-                        let new_value = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-                        accumulator = new_value;
+                        accumulator = invoke_fn(vm, &callback, args);
                     }
 
                     Some(accumulator)
@@ -1106,11 +1084,8 @@ impl NativeMapMethodsAndFields for NativeMap {
 
                     for (k, v) in map {
                         let args = vec![k.clone(), v.clone()];
-                        let v = vm.invoke_fn(args, callback.clone())
-                            .unwrap_or(Some(Value::Nil))
-                            .unwrap_or(Value::Nil);
-
-                        new_map.insert(k.clone(), v);
+                        let value = invoke_fn(vm, &callback, args);
+                        new_map.insert(k.clone(), value);
                     }
 
                     Some(Value::new_map_obj(new_map))
