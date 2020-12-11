@@ -211,6 +211,7 @@ impl Typechecker {
                         }
                     }
 
+                    // We need to re-typecheck the lambda, so load in the original scopes from the lambda's context, and re-visit it
                     let (orig_node, orig_scopes) = lambda_node.orig_node.as_ref().unwrap().clone();
                     let mut scopes = orig_scopes;
                     std::mem::swap(&mut self.scopes, &mut scopes);
@@ -218,7 +219,27 @@ impl Typechecker {
                     let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some(retyped_args))?;
                     let lambda_type = retyped_lambda.get_type();
 
+                    // After re-typechecking, it _is_ possible that some of the scopes may have been modified, and those modifications
+                    // need to bubble up to the real `scopes`. One such example is a function whose recursive call is within a lambda:
+                    //   func abc() {
+                    //       func def(): Int { // <-- not recognized as recursive
+                    //           [1, 2, 3].map(_ => def()).length
+                    //       }
+                    //   }
                     std::mem::swap(&mut self.scopes, &mut scopes);
+                    for Scope { kind, .. } in scopes {
+                        if let ScopeKind::Function(tok, _, is_rec) = kind {
+                            for s in &mut self.scopes {
+                                match &mut s.kind {
+                                    ScopeKind::Function(tok_real, _, ref mut is_rec_real) if *tok_real == tok => {
+                                        *is_rec_real = is_rec;
+                                        break;
+                                    }
+                                    _ => continue
+                                }
+                            }
+                        }
+                    }
 
                     if let TypedAstNode::Lambda(_, retyped_lambda_node) = retyped_lambda {
                         *lambda_node = retyped_lambda_node;
