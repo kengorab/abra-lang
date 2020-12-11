@@ -81,6 +81,16 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&lexer_error.get_range()))?;
                     obj.end()
                 }
+                LexerError::UnsupportedEscapeSequence(pos, s, is_unicode) => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "lexerError")?;
+                    obj.serialize_entry("subKind", "unsupportedEscapeSequence")?;
+                    obj.serialize_entry("pos", &JsPosition(pos))?;
+                    obj.serialize_entry("string", s)?;
+                    obj.serialize_entry("isUnicode", is_unicode)?;
+                    obj.serialize_entry("range", &JsRange(&lexer_error.get_range()))?;
+                    obj.end()
+                }
             }
             Error::TypecheckerError(typechecker_error) => match typechecker_error {
                 TypecheckerError::Unimplemented(token, message) => {

@@ -1,5 +1,2 @@
-val map = { a: 123, b: true, c: "asdf" }
-
-for k, v in map {
-  println("num: " + k + ", idx: " + v)
-}
+val s = "a\u306e\u007"
+println(s)
