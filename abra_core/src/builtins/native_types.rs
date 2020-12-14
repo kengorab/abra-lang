@@ -1253,18 +1253,26 @@ mod test {
           new_string_obj("f")
         ];
         assert_eq!(Some(expected), result);
+
+        let result = interpret("\"a\\ns\\nd\\nf\".split(\"\\n\")");
+        let expected = array![
+          new_string_obj("a"),
+          new_string_obj("s"),
+          new_string_obj("d"),
+          new_string_obj("f")
+        ];
+        assert_eq!(Some(expected), result);
     }
 
     #[test]
     fn test_string_lines() {
-        // let result = interpret("\"asdf\\nqwer\\nzxcv\".lines()");
-        // let expected = array![
-        //   new_string_obj("asdf"),
-        //   new_string_obj("qwer"),
-        //   new_string_obj("zxcv")
-        // ];
-        // assert_eq!(Some(expected), result);
-        // TODO: Can't really test this until escape sequences are implemented...
+        let result = interpret("\"asdf\\nqwer\\nzxcv\".lines()");
+        let expected = array![
+          new_string_obj("asdf"),
+          new_string_obj("qwer"),
+          new_string_obj("zxcv")
+        ];
+        assert_eq!(Some(expected), result);
     }
 
     #[test]
