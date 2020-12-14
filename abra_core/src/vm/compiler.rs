@@ -48,7 +48,7 @@ pub struct Compiler {
     scopes: Vec<Scope>,
     locals: Vec<Local>,
     upvalues: Vec<Upvalue>,
-    interrupt_offset_slots: Vec<usize>,
+    interrupt_handles: Vec<JumpHandle>,
     metadata: Metadata,
 }
 
@@ -66,6 +66,13 @@ pub struct Metadata {
 pub struct Module {
     pub constants: Vec<Value>,
     pub code: Vec<u8>,
+}
+
+struct JumpHandle {
+    // If it's a jump-forward, this holds the index of the <imm> byte in the code that needs to be
+    // replaced when the handle is `closed`; if it's a jump-backwards, this holds the index of the byte
+    // in the code that the JumpB should jump back to
+    imm_slot_1: usize,
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
@@ -86,7 +93,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         scopes: vec![root_scope],
         locals: Vec::new(),
         upvalues: Vec::new(),
-        interrupt_offset_slots: Vec::new(),
+        interrupt_handles: Vec::new(),
         metadata,
     };
 
@@ -410,13 +417,40 @@ impl Compiler {
         self.scopes.last().expect("There should be at least 1 scope")
     }
 
+    fn begin_jump(&mut self, opcode: Opcode, line: usize) -> JumpHandle {
+        self.write_opcode(opcode, line);
+        self.write_byte(0, line);
+        let imm_slot_1 = self.code.len();
+        JumpHandle { imm_slot_1 }
+    }
+
+    fn begin_jump_back(&mut self) -> JumpHandle {
+        let imm_slot_1 = self.code.len();
+        JumpHandle { imm_slot_1 }
+    }
+
+    fn close_jump(&mut self, jump_holder: JumpHandle) {
+        let code = &mut self.code;
+        let jump_offset = code.len().checked_sub(jump_holder.imm_slot_1)
+            .expect("jump offset slot should be <= current position");
+        *code.get_mut(jump_holder.imm_slot_1 - 1).unwrap() = jump_offset as u8;
+    }
+
+    fn close_jump_back(&mut self, jump_holder: JumpHandle, line: usize) {
+        let jump_offset = self.code.len().checked_sub(jump_holder.imm_slot_1)
+            .expect("jump offset slot should be <= current position");
+        let jump_offset = jump_offset + 2; // Account for JumpB <imm>
+        self.write_opcode(Opcode::JumpB, line);
+        self.write_byte(jump_offset as u8, line);
+    }
+
     // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
     // not part of the TypedAstVisitor trait.
     fn visit_loop_body(
         &mut self,
         body: Vec<TypedAstNode>,
-        cond_slot_idx: usize, // The slot representing the start of the loop conditional
-        cond_jump_offset_slot_idx: usize, // The slot representing the end of the loop
+        loop_start_jump_handle: JumpHandle, // The handle representing the start of the loop conditional
+        loop_end_jump_handle: JumpHandle, // The handle representing the end of the loop
     ) -> Result<usize, ()> {
         let body_len = body.len();
         let mut last_line = 0;
@@ -451,30 +485,17 @@ impl Compiler {
             }
         }
 
-        // Calculate the number of bytes needed to jump back in order to evaluate the cond again
-        let offset_to_cond = self.code.len()
-            .checked_sub(cond_slot_idx)
-            .expect("conditional offset slot should be <= end of loop body");
-        let offset_to_cond = offset_to_cond + 2; // Account for JumpB <imm>
-        self.write_opcode(Opcode::JumpB, last_line);
-        self.write_byte(offset_to_cond as u8, last_line);
+        // Write the instrs needed to jump back in order to evaluate the cond again
+        self.close_jump_back(loop_start_jump_handle, last_line);
 
-        // Calculate the number of bytes needed to initially skip over body, if cond was false
-        let code = &mut self.code;
-        let body_len_bytes = code.len()
-            .checked_sub(cond_jump_offset_slot_idx)
-            .expect("jump offset slot should be <= end of loop body");
-        *code.get_mut(cond_jump_offset_slot_idx - 1).unwrap() = body_len_bytes as u8;
+        // Write the instrs needed to initially skip over body, if cond was false
+        self.close_jump(loop_end_jump_handle);
 
         // Fill in any break-jump slots that have been accrued during compilation of this loop
         // Note: for nested loops, break-jumps will break out of inner loop only
-        let interrupt_offset_slots = self.interrupt_offset_slots.drain(..).collect::<Vec<usize>>();
-        for slot_idx in interrupt_offset_slots {
-            let code = &mut self.code;
-            let break_jump_offset = code.len()
-                .checked_sub(slot_idx)
-                .expect("break jump offset slots should be <= end of loop body");
-            *code.get_mut(slot_idx - 1).unwrap() = break_jump_offset as u8;
+        let interrupt_handles = self.interrupt_handles.drain(..).collect::<Vec<_>>();
+        for handle in interrupt_handles {
+            self.close_jump(handle);
         }
         Ok(last_line)
     }
@@ -1226,9 +1247,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::Neq, line);
         }
 
-        self.write_opcode(Opcode::JumpIfF, line);
-        self.write_byte(0, line); // <- Replaced after compiling if-block
-        let jump_offset_slot_idx = self.code.len();
+        let if_block_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
 
         self.push_scope(ScopeKind::If);
         if let Some(ident) = &condition_binding {
@@ -1252,17 +1271,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
             Some(block) => Some(block),
             None => if condition_binding.is_some() { Some(vec![]) } else { None }
         };
-        if else_block.is_some() {
-            self.write_opcode(Opcode::Jump, line);
-            self.write_byte(0, line); // <- Replaced after compiling else-block
-        }
+        let else_block_jump_handle = if else_block.is_some() {
+            Some(self.begin_jump(Opcode::Jump, line))
+        } else { None };
 
-        let code = &mut self.code;
-        let if_block_len = code.len().checked_sub(jump_offset_slot_idx)
-            .expect("jump offset slot should be <= end of if-block");
-        *code.get_mut(jump_offset_slot_idx - 1).unwrap() = if_block_len as u8;
-
-        let jump_offset_slot_idx = code.len();
+        self.close_jump(if_block_jump_handle);
 
         if let Some(else_block) = else_block {
             // Pop the floating condition binding value off the stack, if present. See comment above
@@ -1275,10 +1288,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.push_scope(ScopeKind::If);
             self.visit_block(else_block, is_stmt)?;
             self.pop_scope();
-            let code = &mut self.code;
-            let else_block_len = code.len().checked_sub(jump_offset_slot_idx)
-                .expect("jump offset slot should be <= end of else-block");
-            *code.get_mut(jump_offset_slot_idx - 1).unwrap() = else_block_len as u8;
+
+            self.close_jump(else_block_jump_handle.expect("Should exist, from above"));
         }
         Ok(())
     }
@@ -1292,7 +1303,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.visit(*target)?;
 
-        let mut end_match_jump_indexes = Vec::new();
+        let mut end_match_jumps = Vec::new();
 
         for (branch_type, branch_type_ident, binding, block, args) in branches {
             self.push_scope(ScopeKind::Block);
@@ -1330,9 +1341,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
 
             self.write_opcode(Opcode::Eq, token.get_position().line);
-            self.write_opcode(Opcode::JumpIfF, token.get_position().line);
-            self.write_byte(0, token.get_position().line); // <- Replaced after compiling block
-            let next_case_jump_idx = self.code.len();
+            let next_case_jump_handle = self.begin_jump(Opcode::JumpIfF, token.get_position().line);
 
             // Push a local representing the match target still left on the stack (from the previous DUP).
             // If there is a name supplied in source to ascribe to that value we use it, otherwise use the intrinsic $match_target.
@@ -1356,23 +1365,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             self.visit_block(block, is_stmt)?;
 
-            self.write_opcode(Opcode::Jump, token.get_position().line);
-            self.write_byte(0, token.get_position().line); // <- Replaced after compiling else-block
-            end_match_jump_indexes.push(self.code.len());
+            let end_match_jump_handle = self.begin_jump(Opcode::Jump, token.get_position().line);
+            end_match_jumps.push(end_match_jump_handle);
 
-            let code = &mut self.code;
-            let case_block_len = code.len().checked_sub(next_case_jump_idx)
-                .expect("jump offset slot should be <= end of the case block");
-            *code.get_mut(next_case_jump_idx - 1).unwrap() = case_block_len as u8;
+            self.close_jump(next_case_jump_handle);
 
             self.pop_scope();
         }
 
-        for idx in end_match_jump_indexes {
-            let code = &mut self.code;
-            let match_len = code.len().checked_sub(idx)
-                .expect("jump offset slot should be <= end of all the match blocks");
-            *code.get_mut(idx - 1).unwrap() = match_len as u8;
+        for jump_holder in end_match_jumps {
+            self.close_jump(jump_holder);
         }
 
         Ok(())
@@ -1565,17 +1567,17 @@ impl TypedAstVisitor<(), ()> for Compiler {
             compiler.metadata.stores.push(name.to_string());
         }
 
+        // Place marker to point the JumpB to later, to jump to start of loop
+        let loop_start_jump_handle = self.begin_jump_back();
+
         // Essentially: if $idx >= $iter.length { break }
-        let cond_slot_idx = self.code.len();
         load_intrinsic(self, "$idx", line);
         load_intrinsic(self, "$iter", line);
         self.write_opcode(Opcode::GetField, line);
         self.metadata.field_gets.push("length".to_string());
         self.write_byte(NativeArray::get_field_idx("length") as u8, line);
         self.write_opcode(Opcode::LT, line);
-        self.write_opcode(Opcode::JumpIfF, line);
-        self.write_byte(0, line); // <- Replaced after compiling loop body
-        let cond_jump_offset_slot_idx = self.code.len();
+        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
 
         // Insert iteratee and index bindings (if indexer expected) into loop scope
         //   $iter[$idx] is a tuple, of (<iteratee>, <index>)
@@ -1601,7 +1603,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::IAdd, line);
         store_intrinsic(self, "$idx", line);
 
-        let last_line = self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
+        let last_line = self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         self.pop_scope();
         self.write_opcode(Opcode::Pop, last_line); // Pop $iter
@@ -1617,7 +1619,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = token.get_position().line;
 
         let TypedWhileLoopNode { condition, condition_binding, body } = node;
-        let cond_slot_idx = self.code.len();
+
+        // Place marker to point the JumpB to later, to jump to start of loop
+        let loop_start_jump_handle = self.begin_jump_back();
 
         self.push_scope(ScopeKind::Loop);
         let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
@@ -1642,11 +1646,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::Neq, line);
         }
 
-        self.write_opcode(Opcode::JumpIfF, line);
-        self.write_byte(0, line); // <- Replaced after compiling loop body
-        let cond_jump_offset_slot_idx = self.code.len();
+        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
 
-        self.visit_loop_body(body, cond_slot_idx, cond_jump_offset_slot_idx)?;
+        self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         if let Some(_) = condition_binding {
             // If there was a condition binding, we need to pop it off the stack
@@ -1678,10 +1680,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_pops(&locals_to_pop, line);
         self.locals.append(&mut locals_to_pop);
 
-        self.write_opcode(Opcode::Jump, line);
-        self.write_byte(0, line); // <- Replaced after compiling loop body (see visit_while_loop)
-        let offset_slot = self.code.len();
-        self.interrupt_offset_slots.push(offset_slot);
+        let interrupt_jump_handle = self.begin_jump(Opcode::Jump, line);
+        self.interrupt_handles.push(interrupt_jump_handle);
         Ok(())
     }
 }
