@@ -182,7 +182,6 @@ impl From<&u8> for Opcode {
 impl Opcode {
     pub fn num_expected_imms(&self) -> u8 {
         match self {
-            Opcode::Constant |
             Opcode::ArrMk |
             Opcode::TupleMk |
             Opcode::SetMk |
@@ -197,6 +196,7 @@ impl Opcode {
             Opcode::GetField |
             Opcode::Invoke |
             Opcode::SetField => 1,
+            Opcode::Constant |
             Opcode::Jump |
             Opcode::JumpIfF |
             Opcode::JumpB => 2,

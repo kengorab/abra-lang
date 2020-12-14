@@ -502,7 +502,7 @@ impl VM {
 
             match instr {
                 Opcode::Constant => {
-                    let const_idx = self.read_byte_expect()?;
+                    let const_idx = self.read_2_bytes_expect()? as usize;
                     self.load_constant(const_idx)?;
                 }
                 Opcode::Nil => self.push(Value::Nil),
