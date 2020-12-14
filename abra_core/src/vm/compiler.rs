@@ -69,10 +69,11 @@ pub struct Module {
 }
 
 struct JumpHandle {
-    // If it's a jump-forward, this holds the index of the <imm> byte in the code that needs to be
-    // replaced when the handle is `closed`; if it's a jump-backwards, this holds the index of the byte
-    // in the code that the JumpB should jump back to
-    imm_slot_1: usize,
+    // If it's a jump-forward, this holds the index of the _second_ <imm> byte in the code that
+    // needs to be replaced when the handle is `closed`; the _first_ <imm> byte is `imm_slot - 1`.
+    // If it's a jump-backwards, this holds the index of the byte in the code that the JumpB
+    // instruction should jump back to.
+    imm_slot: usize,
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
@@ -419,29 +420,45 @@ impl Compiler {
 
     fn begin_jump(&mut self, opcode: Opcode, line: usize) -> JumpHandle {
         self.write_opcode(opcode, line);
-        self.write_byte(0, line);
-        let imm_slot_1 = self.code.len();
-        JumpHandle { imm_slot_1 }
+        self.write_byte(0, line);  // <
+        self.write_byte(0, line);  // < These will be written to when the jump is closed
+        let imm_slot = self.code.len();
+        JumpHandle { imm_slot }
     }
 
     fn begin_jump_back(&mut self) -> JumpHandle {
-        let imm_slot_1 = self.code.len();
-        JumpHandle { imm_slot_1 }
+        let imm_slot = self.code.len();
+        JumpHandle { imm_slot }
+    }
+
+    fn jump_offset_bytes(&self, jump_offset: usize) -> (u8, u8) {
+        if jump_offset > (u16::max_value() as usize) {
+            unimplemented!("Jump offset exceeds maximum value")
+        }
+        let b1 = ((jump_offset >> 8) & 0xff) as u8;
+        let b2 = (jump_offset & 0xff) as u8;
+        (b1, b2)
     }
 
     fn close_jump(&mut self, jump_holder: JumpHandle) {
-        let code = &mut self.code;
-        let jump_offset = code.len().checked_sub(jump_holder.imm_slot_1)
+        let jump_offset = self.code.len()
+            .checked_sub(jump_holder.imm_slot)
             .expect("jump offset slot should be <= current position");
-        *code.get_mut(jump_holder.imm_slot_1 - 1).unwrap() = jump_offset as u8;
+        let (b1, b2) = self.jump_offset_bytes(jump_offset);
+        let code = &mut self.code;
+        *code.get_mut(jump_holder.imm_slot - 2).unwrap() = b1;
+        *code.get_mut(jump_holder.imm_slot - 1).unwrap() = b2;
     }
 
     fn close_jump_back(&mut self, jump_holder: JumpHandle, line: usize) {
-        let jump_offset = self.code.len().checked_sub(jump_holder.imm_slot_1)
+        let jump_offset = self.code.len()
+            .checked_sub(jump_holder.imm_slot)
             .expect("jump offset slot should be <= current position");
-        let jump_offset = jump_offset + 2; // Account for JumpB <imm>
+        let jump_offset = jump_offset + 3; // Account for JumpB <imm1> <imm2>
+        let (b1, b2) = self.jump_offset_bytes(jump_offset);
         self.write_opcode(Opcode::JumpB, line);
-        self.write_byte(jump_offset as u8, line);
+        self.write_byte(b1, line);
+        self.write_byte(b2, line);
     }
 
     // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
@@ -1903,13 +1920,13 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 3,
+                Opcode::JumpIfF as u8, 0, 4,
                 Opcode::T as u8,
-                Opcode::Jump as u8, 1,
+                Opcode::Jump as u8, 0, 1,
                 Opcode::F as u8,
-                Opcode::JumpIfF as u8, 3,
+                Opcode::JumpIfF as u8, 0, 4,
                 Opcode::T as u8,
-                Opcode::Jump as u8, 1,
+                Opcode::Jump as u8, 0, 1,
                 Opcode::F as u8,
                 Opcode::Return as u8
             ],
@@ -1967,11 +1984,11 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 6,
+                Opcode::JumpIfF as u8, 0, 7,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::LStore0 as u8,
-                Opcode::Jump as u8, 3,
+                Opcode::Jump as u8, 0, 3,
                 Opcode::Pop as u8,
                 Opcode::Constant as u8, with_prelude_const_offset(2),
                 Opcode::Return as u8
@@ -2760,10 +2777,10 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 3,
+                Opcode::Jump as u8, 0, 3,
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -2778,7 +2795,7 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 3,
+                Opcode::JumpIfF as u8, 0, 3,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -2793,8 +2810,8 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 2,
-                Opcode::Jump as u8, 3,
+                Opcode::JumpIfF as u8, 0, 3,
+                Opcode::Jump as u8, 0, 3,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -2809,17 +2826,17 @@ mod tests {
                 Opcode::IConst1 as u8,
                 Opcode::IConst2 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 13,
+                Opcode::Jump as u8, 0, 15,
                 Opcode::IConst3 as u8,
                 Opcode::IConst4 as u8,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 3,
+                Opcode::Jump as u8, 0, 3,
                 Opcode::Constant as u8, with_prelude_const_offset(2),
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -2841,7 +2858,7 @@ mod tests {
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::GStore as u8,
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 9,
+                Opcode::JumpIfF as u8, 0, 9,
                 Opcode::Constant as u8, with_prelude_const_offset(2),
                 Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
@@ -2872,10 +2889,10 @@ mod tests {
                 Opcode::ArrLoad as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 3,
+                Opcode::Jump as u8, 0, 3,
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::Pop as u8,
                 Opcode::Return as u8
@@ -2898,12 +2915,12 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 7,
+                Opcode::JumpIfF as u8, 0, 8,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 4,
+                Opcode::Jump as u8, 0, 4,
                 Opcode::Pop as u8,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
@@ -3052,7 +3069,7 @@ mod tests {
                         Opcode::Nil as u8,
                         Opcode::LLoad2 as u8,
                         Opcode::Eq as u8,
-                        Opcode::JumpIfF as u8, 4,
+                        Opcode::JumpIfF as u8, 0, 4,
                         Opcode::IConst2 as u8,
                         Opcode::LStore2 as u8,
                         Opcode::LLoad2 as u8,
@@ -3316,7 +3333,7 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 14,
+                Opcode::JumpIfF as u8, 0, 15,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
@@ -3326,7 +3343,7 @@ mod tests {
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 21,
+                Opcode::JumpB as u8, 0, 23,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
@@ -3345,10 +3362,10 @@ mod tests {
                 Opcode::ArrLoad as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 15,
+                Opcode::JumpB as u8, 0, 17,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
@@ -3374,11 +3391,11 @@ mod tests {
                 Opcode::LStore0 as u8,
                 Opcode::Nil as u8,
                 Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 5,
+                Opcode::JumpIfF as u8, 0, 6,
                 Opcode::LLoad0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 20,
+                Opcode::JumpB as u8, 0, 22,
                 Opcode::Pop as u8,
                 Opcode::Return as u8
             ],
@@ -3405,7 +3422,7 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 18,
+                Opcode::JumpIfF as u8, 0, 19,
                 Opcode::Constant as u8, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
                 Opcode::IConst1 as u8,
@@ -3418,7 +3435,7 @@ mod tests {
                 Opcode::GLoad as u8,
                 Opcode::Pop as u8,
                 Opcode::Pop as u8,
-                Opcode::JumpB as u8, 25,
+                Opcode::JumpB as u8, 0, 27,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
@@ -3439,12 +3456,12 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 8,
+                Opcode::JumpIfF as u8, 0, 10,
                 Opcode::IConst1 as u8,
                 Opcode::MarkLocal as u8, 0,
-                Opcode::Pop as u8,       // <
-                Opcode::Jump as u8, 2,   // < These 3 instrs are generated by the break
-                Opcode::JumpB as u8, 11, // These 2 get falsely attributed to the break, because of #32
+                Opcode::Pop as u8,          // <
+                Opcode::Jump as u8, 0, 3,   // < These 3 instrs are generated by the break
+                Opcode::JumpB as u8, 0, 14, // These 2 get falsely attributed to the break, because of #32
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![]),
@@ -3463,19 +3480,19 @@ mod tests {
         let expected = Module {
             code: vec![
                 Opcode::T as u8,
-                Opcode::JumpIfF as u8, 18,
+                Opcode::JumpIfF as u8, 0, 21,
                 Opcode::IConst1 as u8,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::LLoad0 as u8,
                 Opcode::IConst1 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 7,
+                Opcode::JumpIfF as u8, 0, 8,
                 Opcode::IConst2 as u8,
                 Opcode::MarkLocal as u8, 1,
-                Opcode::PopN as u8, 2,  // <
-                Opcode::Jump as u8, 3,  // < These 3 instrs are generated by the break
-                Opcode::Pop as u8,      // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
-                Opcode::JumpB as u8, 21,
+                Opcode::PopN as u8, 2,     // <
+                Opcode::Jump as u8, 0, 4,  // < These 3 instrs are generated by the break
+                Opcode::Pop as u8,         // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
+                Opcode::JumpB as u8, 0, 25,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![]),
@@ -3521,7 +3538,7 @@ mod tests {
                 Opcode::LLoad1 as u8,
                 Opcode::GetField as u8, 0,
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 33,
+                Opcode::JumpIfF as u8, 0, 34,
 
                 // a = $iter[$idx][0]
                 Opcode::LLoad1 as u8,
@@ -3556,7 +3573,7 @@ mod tests {
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::PopN as u8, 2,
-                Opcode::JumpB as u8, 40,
+                Opcode::JumpB as u8, 0, 42,
 
                 // Cleanup/end
                 Opcode::Pop as u8,
@@ -3568,6 +3585,351 @@ mod tests {
                 Value::Str("msg".to_string()),
                 Value::Str("arr".to_string()),
             ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_jump_bigger_than_u8() {
+        let input = r#"
+          for i in range(0, 1) {
+            if true && true && true && true {
+              val a = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val b = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val c = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val d = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val e = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val f = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+            } else {
+              val a = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val b = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val c = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val d = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val e = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val f = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+            }
+          }
+        "#;
+        let chunk = compile(input);
+        let expected = Module {
+            constants: with_prelude_consts(vec![
+                Value::Int(5), Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9), Value::Int(10), Value::Int(11)
+            ]),
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::MarkLocal as u8, 0,
+                Opcode::Nil as u8,
+                Opcode::Nil as u8,
+                Opcode::IConst0 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::Nil as u8,
+                Opcode::Constant as u8, 1,
+                Opcode::Invoke as u8, 3,
+                Opcode::GetField as u8, 2,
+                Opcode::Invoke as u8, 0,
+                Opcode::MarkLocal as u8, 1,
+                Opcode::LLoad0 as u8,
+                Opcode::LLoad1 as u8,
+                Opcode::GetField as u8, 0,
+                Opcode::LT as u8,
+                Opcode::JumpIfF as u8, 1, 154,
+                Opcode::LLoad1 as u8,
+                Opcode::LLoad0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::MarkLocal as u8, 2,
+                Opcode::LLoad0 as u8,
+                Opcode::IConst1 as u8,
+                Opcode::IAdd as u8,
+                Opcode::LStore0 as u8,
+                Opcode::T as u8,
+                Opcode::JumpIfF as u8, 0, 4,
+                Opcode::T as u8,
+                Opcode::Jump as u8, 0, 1,
+                Opcode::F as u8,
+                Opcode::JumpIfF as u8, 0, 4,
+                Opcode::T as u8,
+                Opcode::Jump as u8, 0, 1,
+                Opcode::F as u8,
+                Opcode::JumpIfF as u8, 0, 4,
+                Opcode::T as u8,
+                Opcode::Jump as u8, 0, 1,
+                Opcode::F as u8,
+                Opcode::JumpIfF as u8, 0, 185,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 3,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 4,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 5,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 6,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 7,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 8,
+                Opcode::PopN as u8, 6,
+                Opcode::Jump as u8, 0, 182,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 3,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 4,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 5,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 6,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 7,
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst3 as u8,
+                Opcode::IAdd as u8,
+                Opcode::IConst4 as u8,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 13,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 14,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 15,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 16,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 17,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 18,
+                Opcode::IAdd as u8,
+                Opcode::Constant as u8, 19,
+                Opcode::IAdd as u8,
+                Opcode::MarkLocal as u8, 8,
+                Opcode::PopN as u8, 6,
+                Opcode::Pop as u8,
+                Opcode::JumpB as u8, 1, 162,
+                Opcode::Pop as u8,
+                Opcode::Pop as u8,
+                Opcode::Return as u8,
+            ],
         };
         assert_eq!(expected, chunk);
     }
@@ -3676,13 +4038,13 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 10,
+                Opcode::JumpIfF as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 8,
+                Opcode::Jump as u8, 0, 8,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
@@ -3714,13 +4076,13 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 10,
+                Opcode::JumpIfF as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::IConst4 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 8,
+                Opcode::Jump as u8, 0, 8,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
@@ -3760,24 +4122,24 @@ mod tests {
                 Opcode::Typeof as u8,
                 Opcode::Constant as u8, with_prelude_const_offset(1),
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 10,
+                Opcode::JumpIfF as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // p
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 17,
+                Opcode::Jump as u8, 0, 19,
                 Opcode::Dup as u8,
                 Opcode::Typeof as u8,
                 Opcode::Constant as u8, PRELUDE_INT_INDEX,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 10,
+                Opcode::JumpIfF as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // s
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 0,
+                Opcode::Jump as u8, 0, 0,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
@@ -3819,13 +4181,13 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 11,
+                Opcode::JumpIfF as u8, 0, 12,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::Constant as u8, with_prelude_const_offset(3),
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 8,
+                Opcode::Jump as u8, 0, 8,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
@@ -3898,7 +4260,7 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 16,
+                Opcode::JumpIfF as u8, 0, 17,
                 Opcode::MarkLocal as u8, 0, // $match_target
                 Opcode::LLoad0 as u8,
                 Opcode::GetField as u8, 0,
@@ -3907,7 +4269,7 @@ mod tests {
                 Opcode::Constant as u8, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::PopN as u8, 2,
-                Opcode::Jump as u8, 0,
+                Opcode::Jump as u8, 0, 0,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
