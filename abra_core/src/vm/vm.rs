@@ -202,6 +202,12 @@ impl VM {
             .ok_or(InterpretError::EndOfBytes)
     }
 
+    fn read_2_bytes_expect(&mut self) -> Result<u16, InterpretError> {
+        let b1 = self.read_byte().ok_or(InterpretError::EndOfBytes)? as u16;
+        let b2 = self.read_byte().ok_or(InterpretError::EndOfBytes)? as u16;
+        Ok((b1 << 8) | b2)
+    }
+
     fn read_instr(&mut self) -> Option<Opcode> {
         self.read_byte().map(|b| Opcode::from(&b))
     }
@@ -864,13 +870,12 @@ impl VM {
                     self.load_upvalue(upvalue_idx)?;
                 }
                 Opcode::Jump => {
-                    let jump_offset = self.read_byte_expect()?;
-
+                    let jump_offset = self.read_2_bytes_expect()? as usize;
                     let frame = current_frame!(self);
                     frame.ip += jump_offset;
                 }
                 Opcode::JumpIfF => {
-                    let jump_offset = self.read_byte_expect()?;
+                    let jump_offset = self.read_2_bytes_expect()? as usize;
                     let cond = pop_expect_bool!(self)?;
                     if !cond {
                         let frame = current_frame!(self);
@@ -878,7 +883,7 @@ impl VM {
                     }
                 }
                 Opcode::JumpB => {
-                    let jump_offset = self.read_byte_expect()?;
+                    let jump_offset = self.read_2_bytes_expect()? as usize;
                     let frame = current_frame!(self);
                     frame.ip -= jump_offset;
                 }

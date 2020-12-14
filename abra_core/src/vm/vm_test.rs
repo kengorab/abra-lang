@@ -1658,4 +1658,34 @@ mod tests {
         let expected = Value::Int(10);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    pub fn interpret_u16_jump_offsets() {
+        let input = r#"
+          var total = 0
+          for i in range(0, 1) {
+            total += if true && true && true && true {
+              val a = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val b = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val c = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val d = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val e = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val f = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              a + b + c + d + e + f
+            } else {
+              val a = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val b = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val c = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val d = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val e = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              val f = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11
+              a + b + c + d + e + f
+            }
+          }
+          total
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(396);
+        assert_eq!(expected, result);
+    }
 }

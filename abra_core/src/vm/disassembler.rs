@@ -61,22 +61,26 @@ impl Disassembler {
 
             match opcode {
                 Opcode::Constant => {
-                    let imm = imms[0].expect("Constant requires an immediate");
-                    let constant = self.module.constants.get(*imm as usize)
+                    let imm = *imms[0].expect("Constant requires an immediate");
+                    let constant = self.module.constants.get(imm as usize)
                         .expect(format!("The constant at index {} should exist", imm).as_str());
                     acc.push(format!("\t; {}", constant))
                 }
                 Opcode::JumpIfF | Opcode::Jump => {
-                    let imm = imms[0].expect("JumpIfF/Jump requires an immediate");
+                    let b1 = *imms[0].expect("JumpIfF/Jump requires 2 immediates") as u16;
+                    let b2 = *imms[1].expect("JumpIfF/Jump requires 2 immediates") as u16;
+                    let offset = (b1 << 8) | b2;
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 + (*imm as i16)) as usize, label.clone());
-                    acc.push(format!("\t; {}", label))
+                    labels.insert((slot_idx + 1 + (offset as i16)) as usize, label.clone());
+                    acc.push(format!("\t; {}, offset={}", label, offset))
                 }
                 Opcode::JumpB => {
-                    let imm = imms[0].expect("JumpB requires an immediate");
+                    let b1 = *imms[0].expect("JumpB requires 2 immediates") as u16;
+                    let b2 = *imms[1].expect("JumpB requires 2 immediates") as u16;
+                    let offset = (b1 << 8) | b2;
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 - (*imm as i16)) as usize, label.clone());
-                    acc.push(format!("\t; {}", label))
+                    labels.insert((slot_idx + 1 - (offset as i16)) as usize, label.clone());
+                    acc.push(format!("\t; {}, offset={}", label, offset))
                 }
                 Opcode::LLoad | Opcode::LLoad0 | Opcode::LLoad1 | Opcode::LLoad2 | Opcode::LLoad3 | Opcode::LLoad4 => {
                     let ident = self.metadata.loads.get(self.current_load)
