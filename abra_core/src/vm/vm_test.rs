@@ -667,7 +667,7 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant as u8, with_prelude_const_offset(3),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
                 Opcode::LStore0 as u8,
                 Opcode::Pop as u8,
                 Opcode::Return as u8

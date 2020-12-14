@@ -61,10 +61,12 @@ impl Disassembler {
 
             match opcode {
                 Opcode::Constant => {
-                    let imm = *imms[0].expect("Constant requires an immediate");
+                    let b1 = *imms[0].expect("Constant requires 2 immediates") as u16;
+                    let b2 = *imms[1].expect("Constant requires 2 immediates") as u16;
+                    let imm = (b1 << 8) | b2;
                     let constant = self.module.constants.get(imm as usize)
                         .expect(format!("The constant at index {} should exist", imm).as_str());
-                    acc.push(format!("\t; {}", constant))
+                    acc.push(format!("\t; {}, const_idx={}", constant, imm))
                 }
                 Opcode::JumpIfF | Opcode::Jump => {
                     let b1 = *imms[0].expect("JumpIfF/Jump requires 2 immediates") as u16;
