@@ -522,6 +522,33 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         } else { unreachable!() }
     }
 
+    fn method_find_index(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let callback = args.into_iter().next().expect("Array::findIndex requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    let mut iter = array.iter().enumerate();
+                    let return_value = loop {
+                        match iter.next() {
+                            None => break Value::Nil,
+                            Some((idx, value)) => {
+                                let args = vec![value.clone()];
+                                let ret_val = invoke_fn(vm, &callback, args);
+                                match ret_val {
+                                    Value::Bool(false) | Value::Nil => continue,
+                                    _ => break Value::new_tuple_obj(vec![value.clone(), Value::Int(idx as i64)])
+                                }
+                            }
+                        }
+                    };
+                    Some(return_value)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_any(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         let callback = args.into_iter().next().expect("Array::any requires 1 argument");
 
@@ -1550,6 +1577,24 @@ mod test {
 
         let result = interpret("[[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2)");
         let expected = array![Value::Int(3), Value::Int(4)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3].find(x => x >= 4)");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_find_index() {
+        let result = interpret("[1, 2, 3].findIndex(x => x >= 2)");
+        let expected = tuple![Value::Int(1), Value::Int(2)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[[1, 2], [3, 4]].find(p => p[0])");
+        let expected = tuple![
+            Value::Int(0),
+            array![Value::Int(1), Value::Int(2)]
+        ];
         assert_eq!(Some(expected), result);
 
         let result = interpret("[1, 2, 3].find(x => x >= 4)");

@@ -45,6 +45,7 @@ type NativeArray<T> {
   func join(self, joiner: String = ""): String {}
   func contains(self, item: T): Bool {}
   func find<U>(self, fn: (T) => (Bool | U?)): T? {}
+  func findIndex<U>(self, fn: (T) => (Bool | U?)): (T, Int)? {}
   func any<U>(self, fn: (T) => (Bool | U?)): Bool {}
   func all<U>(self, fn: (T) => (Bool | U?)): Bool {}
   func none<U>(self, fn: (T) => (Bool | U?)): Bool {}

@@ -6,8 +6,10 @@ use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
+    IllegalTarget,
     IndexingMode,
     StringTarget,
+    OptionalTarget,
 }
 
 #[derive(Debug, PartialEq)]
@@ -24,7 +26,7 @@ pub enum TypecheckerError {
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
     UnboundGeneric(Token, String),
     UnknownIdentifier { ident: Token },
-    InvalidAssignmentTarget { token: Token, reason: Option<InvalidAssignmentTargetReason> },
+    InvalidAssignmentTarget { token: Token, typ: Option<Type>, reason: InvalidAssignmentTargetReason },
     AssignmentToImmutable { orig_ident: Token, token: Token },
     UnannotatedUninitialized { ident: Token, is_mutable: bool },
     UnknownType { type_ident: Token },
@@ -67,7 +69,7 @@ impl TypecheckerError {
             TypecheckerError::Unimplemented(token, _) => token,
             TypecheckerError::Mismatch { token, .. } => token,
             TypecheckerError::InvalidIfConditionType { token, .. } => token,
-            TypecheckerError::InvalidLoopTarget { token, ..} => token,
+            TypecheckerError::InvalidLoopTarget { token, .. } => token,
             TypecheckerError::InvalidOperator { token, .. } => token,
             TypecheckerError::MissingRequiredAssignment { ident } => ident,
             TypecheckerError::DuplicateBinding { ident, .. } => ident,
@@ -238,7 +240,7 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line, type_repr(actual)
                 )
             }
-            TypecheckerError::InvalidLoopTarget { target_type: actual, ..} => {
+            TypecheckerError::InvalidLoopTarget { target_type: actual, .. } => {
                 format!(
                     "Invalid type for for-loop target: ({}:{})\n{}\n\
                     Type {} is not iterable",
@@ -310,11 +312,6 @@ impl DisplayError for TypecheckerError {
                 format!("{}\n{}", first_msg, second_msg)
             }
             TypecheckerError::UnboundGeneric(_, type_arg_ident) => {
-                // let first_msg = format!("Type argument '{}' is unbound: ({}:{})\n{}", type_arg_ident, pos.line, pos.col, cursor_line);
-                // let second_msg = format!("There is not enough information to determine a possible value for '{}'", type_arg_ident);
-                //
-                // format!("{}\n{}", first_msg, second_msg)
-
                 format!(
                     "Type argument '{}' is unbound: ({}:{})\n{}\n\
                     There is not enough information to determine a possible value for '{}'",
@@ -329,9 +326,16 @@ impl DisplayError for TypecheckerError {
                     ident, pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::InvalidAssignmentTarget { reason: _, .. } => {
-                // TODO: Use reason
-                let msg = "Left-hand side of assignment must be a valid identifier";
+            TypecheckerError::InvalidAssignmentTarget { typ, reason, .. } => {
+                let msg = match reason {
+                    InvalidAssignmentTargetReason::IllegalTarget => "Left-hand side of assignment must be a valid identifier".to_string(),
+                    InvalidAssignmentTargetReason::IndexingMode |
+                    InvalidAssignmentTargetReason::StringTarget => "Cannot assign to sub-range of target".to_string(),
+                    InvalidAssignmentTargetReason::OptionalTarget => format!(
+                        "Cannot assign by indexing into type {}, which is potentially None",
+                        type_repr(typ.as_ref().unwrap())
+                    ),
+                };
                 format!(
                     "Cannot perform assignment: ({}:{})\n{}\n{}",
                     pos.line, pos.col, cursor_line, msg
@@ -633,6 +637,7 @@ mod tests {
     use crate::typechecker::types::{Type, StructType};
     use crate::common::display_error::DisplayError;
     use crate::parser::ast::{BinaryOp, AstNode, AstLiteralNode, IndexingMode};
+    use crate::typechecker::typechecker_error::InvalidAssignmentTargetReason;
 
     #[test]
     fn test_mismatch_error() {
@@ -798,7 +803,8 @@ Since it's a 'val', you must provide an initial value"
         let src = "true = \"abc\"".to_string();
         let err = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(1, 6)),
-            reason: None,
+            typ: None,
+            reason: InvalidAssignmentTargetReason::IllegalTarget,
         };
 
         let expected = format!("\

@@ -1196,11 +1196,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let TypedIndexingNode { target, index, .. } = node;
 
-        let opcode = match &target.get_type() {
+        let mut target_type = target.get_type();
+        if let Type::Option(inner) = target_type { target_type = *inner };
+
+        let opcode = match &target_type {
             Type::Map(_, _) => Opcode::MapLoad,
             Type::Array(_) | Type::String => Opcode::ArrLoad,
             Type::Tuple(_) => Opcode::TupleLoad,
-            _ => unreachable!()
+            t @ _ => {dbg!(t);unreachable!()}
         };
         self.visit(*target)?;
 

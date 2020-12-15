@@ -1641,7 +1641,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             AstNode::Indexing(tok, node) => {
                 if let IndexingMode::Range(_, _) = &node.index {
-                    return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::IndexingMode) });
+                    return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IndexingMode });
                 }
 
                 let mut typed_expr = self.visit(*expr)?;
@@ -1664,9 +1664,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             }
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
-                                return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
+                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(Type::String), reason: InvalidAssignmentTargetReason::StringTarget });
                             }
-                            _ => unreachable!()
+                            typ @ Type::Option(_) => {
+                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(typ), reason: InvalidAssignmentTargetReason::OptionalTarget });
+                            }
+                            t @ _ => {
+                                dbg!(t);
+                                unreachable!()
+                            }
                         }
                     }
                     _ => unreachable!()
@@ -1704,7 +1710,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Ok(TypedAstNode::Assignment(token, node))
                 }
             }
-            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, reason: None })
+            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget })
         }
     }
 
@@ -1734,6 +1740,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type, index_mode: index })
             };
         }
+
+        let mut target_type = target_type.clone();
+        while let Type::Option(inner) = target_type { target_type = *inner };
 
         let typ = match (target_type.clone(), &index) {
             (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
@@ -4812,7 +4821,7 @@ mod tests {
     #[test]
     fn typecheck_assignment_errors_with_target() {
         let err = typecheck("true = 345").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), reason: None };
+        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget };
         assert_eq!(expected, err);
 
         let err = typecheck("val abc = 345\nabc = 67").unwrap_err();
@@ -4833,14 +4842,16 @@ mod tests {
         let err = typecheck("val a = [1, 2]\na[0:1] = \"str\"").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 8)),
-            reason: Some(InvalidAssignmentTargetReason::IndexingMode),
+            typ: None,
+            reason: InvalidAssignmentTargetReason::IndexingMode,
         };
         assert_eq!(expected, err);
 
         let err = typecheck("val a = \"abc\"\na[0] = \"qwer\"").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 6)),
-            reason: Some(InvalidAssignmentTargetReason::StringTarget),
+            typ: Some(Type::String),
+            reason: InvalidAssignmentTargetReason::StringTarget,
         };
         assert_eq!(expected, err);
 

@@ -695,7 +695,14 @@ impl VM {
                 }
                 Opcode::MapLoad => {
                     let key = self.pop_expect()?;
-                    let obj = pop_expect_obj!(self)?;
+                    let obj = match self.pop_expect()? {
+                        Value::Obj(value) => value,
+                        Value::Nil => {
+                            self.push(Value::Nil);
+                            continue;
+                        }
+                        _ => unreachable!()
+                    };
                     let val = match &*obj.borrow() {
                         Obj::MapObj(value) => match value.get(&key) {
                             Some(val) => val.clone(),
@@ -739,7 +746,14 @@ impl VM {
                 }
                 Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let obj = pop_expect_obj!(self)?;
+                    let obj = match self.pop_expect()? {
+                        Value::Obj(value) => value,
+                        Value::Nil => {
+                            self.push(Value::Nil);
+                            continue;
+                        }
+                        _ => unreachable!()
+                    };
                     let value = match &*obj.borrow() {
                         Obj::StringObj(values) => {
                             let len = values.len() as i64;
