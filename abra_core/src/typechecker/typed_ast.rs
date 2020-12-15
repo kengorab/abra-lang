@@ -28,6 +28,7 @@ pub enum TypedAstNode {
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token),
+    ReturnStatement(Token, TypedReturnNode),
     Accessor(Token, TypedAccessorNode),
     MatchStatement(Token, TypedMatchNode),
     MatchExpression(Token, TypedMatchNode),
@@ -60,6 +61,7 @@ impl TypedAstNode {
             TypedAstNode::ForLoop(token, _) |
             TypedAstNode::WhileLoop(token, _) |
             TypedAstNode::Break(token) |
+            TypedAstNode::ReturnStatement(token, _) |
             TypedAstNode::Accessor(token, _) |
             TypedAstNode::MatchStatement(token, _) |
             TypedAstNode::MatchExpression(token, _) |
@@ -90,6 +92,7 @@ impl TypedAstNode {
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
+            TypedAstNode::ReturnStatement(_, node) => node.typ.clone(),
             TypedAstNode::Identifier(_, node) => node.typ.clone(),
             TypedAstNode::Assignment(_, node) => node.typ.clone(),
             TypedAstNode::Indexing(_, node) => node.typ.clone(),
@@ -297,4 +300,10 @@ pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<Token>>)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedReturnNode {
+    pub typ: Type,
+    pub target: Option<Box<TypedAstNode>>,
 }

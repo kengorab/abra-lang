@@ -28,6 +28,7 @@ pub trait AstVisitor<V, E> {
             Invocation(tok, node) => self.visit_invocation(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok) => self.visit_break(tok),
+            ReturnStatement(tok, node) => self.visit_return(tok, node),
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
             Accessor(tok, node) => self.visit_accessor(tok, node),
             Lambda(tok, node) => self.visit_lambda(tok, node, None),
@@ -57,6 +58,7 @@ pub trait AstVisitor<V, E> {
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<V, E>;
     fn visit_break(&mut self, token: Token) -> Result<V, E>;
+    fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<V, E>;
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<V, E>;
     fn visit_lambda(&mut self, token: Token, node: LambdaNode, args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>) -> Result<V, E>;
     fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<V, E>;

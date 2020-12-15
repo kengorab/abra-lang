@@ -200,6 +200,7 @@ impl Parser {
             Token::While(_) => self.parse_while_statement(),
             Token::For(_) => self.parse_for_statement(),
             Token::Break(_) => self.parse_break_statement(),
+            Token::Return(_, _) => self.parse_return_statement(),
             _ => self.parse_expr(),
         }
     }
@@ -613,6 +614,32 @@ impl Parser {
     fn parse_break_statement(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
         Ok(AstNode::Break(token))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        let has_newline = if let Token::Return(_, has_newline) = token { has_newline } else { unreachable!() };
+        if has_newline {
+            return Ok(AstNode::ReturnStatement(token, None));
+        }
+
+        let next_tok = self.expect_peek()?.clone();
+
+        let token_begins_statement = match &next_tok {
+            Token::Func(_) | Token::Val(_) | Token::Var(_) | Token::Type(_) | Token::Enum(_) |
+            Token::While(_) | Token::For(_) | Token::Break(_) | Token::Return(_, _) => true,
+            _ => false
+        };
+        if token_begins_statement {
+            return Err(ParseError::UnexpectedToken(next_tok));
+        }
+
+        let has_expr = self.get_prefix_rule(&next_tok).is_some();
+        let expr = if has_expr {
+            Some(Box::new(self.parse_expr()?))
+        } else { None };
+
+        Ok(AstNode::ReturnStatement(token, expr))
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
@@ -3913,6 +3940,111 @@ mod tests {
 
         let error = parse("match a { Int(123) x => 123 }").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 15), 123));
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_return_statement() -> TestResult {
+        let ast = parse("func abc() { return }")?;
+        let body = if let AstNode::FunctionDecl(_, FunctionDeclNode { body, .. }) = &ast[0] { body } else { unreachable!() };
+        let expected = vec![
+            AstNode::ReturnStatement(
+                Token::Return(Position::new(1, 14), false),
+                None,
+            )
+        ];
+        assert_eq!(&expected, body);
+
+        let ast = parse("\
+          func abc() {\n\
+            return\n\
+          }\
+        ")?;
+        let body = if let AstNode::FunctionDecl(_, FunctionDeclNode { body, .. }) = &ast[0] { body } else { unreachable!() };
+        let expected = vec![
+            AstNode::ReturnStatement(
+                Token::Return(Position::new(2, 1), true),
+                None,
+            )
+        ];
+        assert_eq!(&expected, body);
+
+        let ast = parse("\
+          func abc() {\n\
+            return   }\
+        ")?;
+        let body = if let AstNode::FunctionDecl(_, FunctionDeclNode { body, .. }) = &ast[0] { body } else { unreachable!() };
+        let expected = vec![
+            AstNode::ReturnStatement(
+                Token::Return(Position::new(2, 1), false),
+                None,
+            )
+        ];
+        assert_eq!(&expected, body);
+
+        let ast = parse("func abc() { return 123 }")?;
+        let body = if let AstNode::FunctionDecl(_, FunctionDeclNode { body, .. }) = &ast[0] { body } else { unreachable!() };
+        let expected = vec![
+            AstNode::ReturnStatement(
+                Token::Return(Position::new(1, 14), false),
+                Some(Box::new(int_literal!((1, 21), 123))),
+            )
+        ];
+        assert_eq!(&expected, body);
+        let ast = parse("\
+          func abc() {\n\
+            return \n\
+            123 }\
+        ")?;
+        let body = if let AstNode::FunctionDecl(_, FunctionDeclNode { body, .. }) = &ast[0] { body } else { unreachable!() };
+        let expected = vec![
+            AstNode::ReturnStatement(
+                Token::Return(Position::new(2, 1), true),
+                None,
+            ),
+            int_literal!((3, 1), 123)
+        ];
+        assert_eq!(&expected, body);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_match_return_statement_errors() {
+        let error = parse("return func abc() {}").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Func(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return val a = 3").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return var a").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Var(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return type Person { name: String }").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Type(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return enum Direction { Up, Down }").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Enum(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return while true {}").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::While(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return for x in range(0, 1) {}").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::For(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return break").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Break(Position::new(1, 8)));
+        assert_eq!(expected, error);
+
+        let error = parse("return return").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Return(Position::new(1, 8), true));
         assert_eq!(expected, error);
     }
 }

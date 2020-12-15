@@ -4,7 +4,7 @@ use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode, TypedSetNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -57,6 +57,7 @@ pub struct Typechecker {
     pub(crate) cur_typedef: Option<Type>,
     pub(crate) scopes: Vec<Scope>,
     pub(crate) referencable_types: HashMap<String, Type>,
+    pub(crate) returns: Vec<TypedAstNode>,
 }
 
 impl Typechecker {
@@ -834,6 +835,7 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
         cur_typedef: None,
         scopes: vec![Scope::root_scope()],
         referencable_types,
+        returns: vec![],
     };
 
     let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
@@ -1166,6 +1168,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+        let mut old_returns = vec![];
+        std::mem::swap(&mut self.returns, &mut old_returns);
+
         let FunctionDeclNode { name, type_args, args, ret_type, body, } = node;
 
         let func_name = Token::get_ident_name(&name);
@@ -1283,6 +1288,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             *return_type = Box::new(ret_type.clone());
         }
         let scope_depth = self.scopes.len() - 1;
+
+        std::mem::swap(&mut old_returns, &mut self.returns);
 
         Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
     }
@@ -2223,25 +2230,46 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
-        let mut has_loop_parent = false;
-        for Scope { kind, .. } in self.scopes.iter().rev() {
-            match kind {
-                ScopeKind::Loop => {
-                    has_loop_parent = true;
-                    break;
-                }
-                ScopeKind::Block => continue,
-                _ => {
-                    has_loop_parent = false;
-                    break;
-                }
-            };
+        let mut iter = self.scopes.iter().rev();
+        let has_loop_parent = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Loop) => break true,
+                Some(ScopeKind::Block) => continue,
+                _ => break false
+            }
         };
 
         if has_loop_parent {
             Ok(TypedAstNode::Break(token))
         } else {
             Err(TypecheckerError::InvalidBreak(token))
+        }
+    }
+
+    fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<TypedAstNode, TypecheckerError> {
+        let mut iter = self.scopes.iter_mut().rev();
+        let has_fn_parent = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Function(_, _, _)) | Some(ScopeKind::Lambda(_)) => break true,
+                Some(ScopeKind::Root) => break false,
+                _ => continue
+            }
+        };
+
+        if has_fn_parent {
+            let (target, typ) = match node {
+                None => (None, Type::Unit),
+                Some(target) => {
+                    let target = self.visit(*target)?;
+                    let typ = target.get_type();
+                    (Some(Box::new(target)), typ)
+                }
+            };
+            let node = TypedAstNode::ReturnStatement(token, TypedReturnNode { typ, target });
+            self.returns.push(node.clone());
+            Ok(node)
+        } else {
+            Err(TypecheckerError::InvalidReturn(token))
         }
     }
 

@@ -1,32 +1,12 @@
-//val dArr = [
-//  [0, 1],
-//  [1, 0],
-//]
-//
-//if dArr[1][0] |i| {
-//  println("i: " + i)
-//} else {
-//  println("nope")
-//}
-//
-//val m = {
-//  a: { a: [1, 2, 3] },
-//  b: { b: [4, 5, 6] }
-//}
-//
-//if m["c"]["b"][0] |i| {
-//  println("i: " + i)
-//} else {
-//  println("nope")
-//}
-//
-//dArr[1][0] = 1
-
-val a = [true, false]
-
-// TODO: what does kotlin do here?
-if a[1] |v| {
-  println(v)
-} else {
-  println("else")
+func contains<T>(arr: T[], item: T): Bool {
+  var contains = false
+  for i in arr {
+    if item == i {
+      return true
+    }
+  }
+  false
 }
+
+val arr = [1, 2, 3, 4]
+contains(arr, 7)

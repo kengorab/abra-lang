@@ -309,6 +309,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidReturn(token) => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidReturn")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
                 TypecheckerError::InvalidRequiredArgPosition(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
@@ -459,6 +467,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateMatchCase")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::NonExhaustiveMatch { token } => {
@@ -466,6 +475,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "nonExhaustiveMatch")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::EmptyMatchBlock { token } => {
@@ -473,6 +483,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "emptyMatchBlock")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::MatchBranchMismatch { token, expected, actual } => {
@@ -482,6 +493,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("expected", &JsType(expected))?;
                     obj.serialize_entry("actual", &JsType(actual))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::InvalidUninitializedEnumVariant { token } => {
@@ -489,6 +501,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidUninitializedEnumVariant")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::InvalidDestructuring { token, typ } => {
@@ -497,6 +510,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("type", &JsType(typ))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
                 TypecheckerError::InvalidDestructuringArity { token, typ, expected, actual } => {
@@ -507,6 +521,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("type", &JsType(typ))?;
                     obj.serialize_entry("expected", expected)?;
                     obj.serialize_entry("actual", actual)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
             }

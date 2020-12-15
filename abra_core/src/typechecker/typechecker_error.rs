@@ -38,6 +38,7 @@ pub enum TypecheckerError {
     DuplicateParamName { token: Token },
     RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
+    InvalidReturn(Token),
     InvalidRequiredArgPosition(Token),
     InvalidIndexingTarget { token: Token, target_type: Type, index_mode: IndexingMode<AstNode> },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
@@ -90,6 +91,7 @@ impl TypecheckerError {
             TypecheckerError::DuplicateParamName { token } => token,
             TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token,
             TypecheckerError::InvalidBreak(token) => token,
+            TypecheckerError::InvalidReturn(token) => token,
             TypecheckerError::InvalidRequiredArgPosition(token) => token,
             TypecheckerError::InvalidIndexingTarget { token, .. } => token,
             TypecheckerError::InvalidIndexingSelector { token, .. } => token,
@@ -430,7 +432,15 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::InvalidBreak(_token) => {
                 format!(
-                    "Unexpected break keyword: ({}:{})\n{}\nA break keyword cannot appear outside of a loop",
+                    "Unexpected break keyword: ({}:{})\n{}\n\
+                    A break keyword cannot appear outside of a loop",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidReturn(_) => {
+                format!(
+                    "Unexpected return keyword: ({}:{})\n{}\n\
+                    A return keyword cannot appear outside of a function",
                     pos.line, pos.col, cursor_line
                 )
             }
