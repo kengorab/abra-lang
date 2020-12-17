@@ -467,6 +467,9 @@ impl Compiler {
         loop_start_jump_handle: JumpHandle, // The handle representing the start of the loop conditional
         loop_end_jump_handle: JumpHandle, // The handle representing the end of the loop
     ) -> Result<usize, ()> {
+        let mut old_interrupt_handles = vec![];
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
+
         let body_len = body.len();
         let mut last_line = 0;
         for (idx, node) in body.into_iter().enumerate() {
@@ -508,8 +511,9 @@ impl Compiler {
 
         // Fill in any break-jump slots that have been accrued during compilation of this loop
         // Note: for nested loops, break-jumps will break out of inner loop only
-        let interrupt_handles = self.interrupt_handles.drain(..).collect::<Vec<_>>();
-        for handle in interrupt_handles {
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
+        let mut interrupt_handles = old_interrupt_handles;
+        for handle in interrupt_handles.drain(..) {
             self.close_jump(handle);
         }
         Ok(last_line)

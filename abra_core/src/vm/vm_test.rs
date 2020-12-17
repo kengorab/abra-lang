@@ -1064,18 +1064,34 @@ mod tests {
 
     #[test]
     fn interpret_while_loop_with_break() {
-        let input = "\
-          var a = 0\n\
-          while true {\n\
-            a = a + 1\n\
-            if a == 3 {\n\
-              break\n\
-            }\n\
-          }\n\
-          a\
-        ";
+        let input = r#"
+          var sum = 0
+          while true {
+            while true {
+              sum += 1
+              if sum.isEven() { break }
+            }
+            if sum > 20 { break }
+          }
+          sum
+        "#;
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Int(22);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          var sum = 0
+          while true {
+            if sum > 20 { break }
+            while true {
+              sum += 1
+              if sum.isEven() { break }
+            }
+          }
+          sum
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(22);
         assert_eq!(expected, result);
     }
 
