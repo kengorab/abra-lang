@@ -1556,6 +1556,10 @@ mod test {
 
     #[test]
     fn test_array_contains() {
+        let result = interpret("[].contains(5)");
+        let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+
         let result = interpret("[1, 2, 3, 4, 5].contains(5)");
         let expected = Value::Bool(true);
         assert_eq!(Some(expected), result);
@@ -1587,17 +1591,17 @@ mod test {
     #[test]
     fn test_array_find_index() {
         let result = interpret("[1, 2, 3].findIndex(x => x >= 2)");
-        let expected = tuple![Value::Int(1), Value::Int(2)];
+        let expected = tuple![Value::Int(2), Value::Int(1)];
         assert_eq!(Some(expected), result);
 
-        let result = interpret("[[1, 2], [3, 4]].find(p => p[0])");
+        let result = interpret("[[1, 2], [3, 4]].findIndex(p => p[0])");
         let expected = tuple![
-            Value::Int(0),
-            array![Value::Int(1), Value::Int(2)]
+            array![Value::Int(1), Value::Int(2)],
+            Value::Int(0)
         ];
         assert_eq!(Some(expected), result);
 
-        let result = interpret("[1, 2, 3].find(x => x >= 4)");
+        let result = interpret("[1, 2, 3].findIndex(x => x >= 4)");
         let expected = Value::Nil;
         assert_eq!(Some(expected), result);
     }

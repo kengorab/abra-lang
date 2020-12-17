@@ -62,6 +62,7 @@ pub enum TypecheckerError {
     InvalidUninitializedEnumVariant { token: Token },
     InvalidDestructuring { token: Token, typ: Type },
     InvalidDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
+    UnreachableCode { token: Token },
 }
 
 impl TypecheckerError {
@@ -115,6 +116,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
             TypecheckerError::InvalidDestructuring { token, .. } => token,
             TypecheckerError::InvalidDestructuringArity { token, .. } => token,
+            TypecheckerError::UnreachableCode { token } => token,
         }
     }
 }
@@ -634,6 +636,13 @@ impl DisplayError for TypecheckerError {
                     Instances of type {} have {} field{}, but the pattern attempts to extract {}",
                     pos.line, pos.col, cursor_line,
                     type_repr(typ), expected, if *expected == 1 { "" } else { "s" }, actual
+                )
+            }
+            TypecheckerError::UnreachableCode { .. } => {
+                format!(
+                    "Unreachable code: ({}:{})\n{}\
+                    Code comes after a return statement",
+                    pos.line, pos.col, cursor_line
                 )
             }
         }
