@@ -640,7 +640,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::UnreachableCode { .. } => {
                 format!(
-                    "Unreachable code: ({}:{})\n{}\
+                    "Unreachable code: ({}:{})\n{}\n\
                     Code comes after a return statement",
                     pos.line, pos.col, cursor_line
                 )

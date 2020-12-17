@@ -1704,4 +1704,23 @@ mod tests {
         let expected = Value::Int(396);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    pub fn interpret_return_statements() {
+        let input = r#"
+          func contains(arr: Int[], item: Int) {
+            for i in arr {
+              if item == i {
+                return true
+              }
+            }
+            false
+          }
+          val arr = [1, 2, 3, 4]
+          contains(arr, 4)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
 }

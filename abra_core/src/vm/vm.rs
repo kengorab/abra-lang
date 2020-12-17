@@ -553,10 +553,7 @@ impl VM {
                     let val = pop_expect_bool!(self)?;
                     self.push(Value::Bool(!val));
                 }
-                Opcode::LT => {
-                    println!("");
-                    self.comp_values(Opcode::LT)?
-                },
+                Opcode::LT => self.comp_values(Opcode::LT)?,
                 Opcode::LTE => self.comp_values(Opcode::LTE)?,
                 Opcode::GT => self.comp_values(Opcode::GT)?,
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
@@ -863,10 +860,7 @@ impl VM {
                     self.push(value);
                 }
                 Opcode::LLoad0 => self.load_local(0)?,
-                Opcode::LLoad1 => {
-                    println!("");
-                    self.load_local(1)?
-                },
+                Opcode::LLoad1 => self.load_local(1)?,
                 Opcode::LLoad2 => self.load_local(2)?,
                 Opcode::LLoad3 => self.load_local(3)?,
                 Opcode::LLoad4 => self.load_local(4)?,

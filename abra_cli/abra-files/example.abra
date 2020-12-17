@@ -1,5 +1,4 @@
-func contains<T>(arr: T[], item: T): Bool {
-  var contains = false
+func contains(arr: Int[], item: Int) {
   for i in arr {
     if item == i {
       return true
@@ -9,4 +8,4 @@ func contains<T>(arr: T[], item: T): Bool {
 }
 
 val arr = [1, 2, 3, 4]
-contains(arr, 7)
+contains(arr, 4)

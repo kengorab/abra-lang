@@ -49,6 +49,7 @@ pub struct Compiler {
     locals: Vec<Local>,
     upvalues: Vec<Upvalue>,
     interrupt_handles: Vec<JumpHandle>,
+    return_handles: Vec<JumpHandle>,
     metadata: Metadata,
 }
 
@@ -95,6 +96,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         locals: Vec::new(),
         upvalues: Vec::new(),
         interrupt_handles: Vec::new(),
+        return_handles: Vec::new(),
         metadata,
     };
 
@@ -221,7 +223,7 @@ impl Compiler {
         }
     }
 
-    fn write_pops_for_closure(&mut self, popped_locals: Vec<Local>, line: usize) {
+    fn write_pops_for_closure(&mut self, popped_locals: &Vec<Local>, line: usize) {
         for local in popped_locals.iter().rev() {
             if local.name == "<ret>".to_string() { continue; }
 
@@ -535,9 +537,11 @@ impl Compiler {
 
         let line = token.get_position().line;
 
-        let prev_code = self.code.clone();
-        self.code = Vec::new();
-        // TODO: std::mem::swap?
+        let mut old_code = vec![];
+        std::mem::swap(&mut self.code, &mut old_code);
+
+        let mut old_return_handles = vec![];
+        std::mem::swap(&mut self.return_handles, &mut old_return_handles);
 
         self.push_scope(ScopeKind::Func);
 
@@ -626,15 +630,21 @@ impl Compiler {
                     self.write_store_local_instr(0, line);
                     self.metadata.stores.push("<ret>".to_string());
                 }
-                self.write_pops_for_closure(popped_locals, line);
+                self.write_pops_for_closure(&popped_locals, line);
             }
         }
+
+        std::mem::swap(&mut self.return_handles, &mut old_return_handles);
+        let mut return_handles = old_return_handles;
+        for handle in return_handles.drain(..) {
+            self.close_jump(handle);
+        }
+
         self.write_opcode(Opcode::Return, last_line);
         self.pop_scope();
 
-        let code = self.code.clone();
-        self.code = prev_code;
-        // TODO: std::mem::swap?
+        std::mem::swap(&mut self.code, &mut old_code);
+        let code = old_code;
 
         let fn_upvalues = self.upvalues.iter().rev()
             .take_while(|uv| uv.depth == self.get_fn_depth())
@@ -1691,8 +1701,35 @@ impl TypedAstVisitor<(), ()> for Compiler {
         Ok(())
     }
 
-    fn visit_return(&mut self, _token: Token, _node: TypedReturnNode) -> Result<(), ()> {
-        todo!()
+    fn visit_return(&mut self, token: Token, node: TypedReturnNode) -> Result<(), ()> {
+        let has_return = if let Some(target) = node.target {
+            self.visit(*target)?;
+            true
+        } else { false };
+
+        let mut scopes_iter = self.scopes.iter().rev();
+        let mut split_idx = self.locals.len() as i64;
+        loop {
+            let Scope { num_locals, kind, .. } = scopes_iter.next().unwrap();
+            split_idx -= *num_locals as i64;
+            if kind == &ScopeKind::Func {
+                break;
+            }
+        }
+
+        let line = token.get_position().line;
+        if has_return {
+            self.write_store_local_instr(0, line);
+            self.metadata.stores.push("<ret>".to_string());
+        }
+
+        let mut locals_to_pop = self.locals.split_off(split_idx as usize);
+        self.write_pops_for_closure(&locals_to_pop, line);
+        self.locals.append(&mut locals_to_pop);
+
+        let return_jump_handle = self.begin_jump(Opcode::Jump, line);
+        self.return_handles.push(return_jump_handle);
+        Ok(())
     }
 }
 
@@ -4330,6 +4367,52 @@ mod tests {
                 }),
                 Value::Int(24),
                 Value::Str("f".to_string()),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_return_statement() {
+        let chunk = compile("\
+          func f() {\n\
+            if true { return 24 }\n\
+            return 6\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("f".to_string()),
+                Value::Int(24),
+                Value::Int(6),
+                Value::Fn(FnValue {
+                    name: "f".to_string(),
+                    code: vec![
+                        Opcode::T as u8,
+                        Opcode::JumpIfF as u8, 0, 8,
+                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                        Opcode::LStore0 as u8,
+                        Opcode::Jump as u8, 0, 9,
+                        Opcode::Pop as u8,
+                        Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                        Opcode::LStore0 as u8,
+                        Opcode::Jump as u8, 0, 1,
+                        Opcode::LStore0 as u8,
+                        Opcode::Return as u8,
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: true,
+                }),
             ]),
         };
         assert_eq!(expected, chunk);
