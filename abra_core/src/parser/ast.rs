@@ -27,6 +27,40 @@ pub enum AstNode {
     MatchStatement(Token, MatchNode),
     MatchExpression(Token, MatchNode),
     Tuple(Token, Vec<AstNode>),
+    ReturnStatement(Token, Option<Box<AstNode>>),
+}
+
+impl AstNode {
+    pub fn get_token(&self) -> &Token {
+        match self {
+            AstNode::Literal(token, _) |
+            AstNode::Unary(token, _) |
+            AstNode::Binary(token, _) |
+            AstNode::Grouped(token, _) |
+            AstNode::Array(token, _) |
+            AstNode::Map(token, _) |
+            AstNode::Set(token, _) |
+            AstNode::Tuple(token, _) |
+            AstNode::Lambda(token, _) |
+            AstNode::BindingDecl(token, _) |
+            AstNode::FunctionDecl(token, _) |
+            AstNode::TypeDecl(token, _) |
+            AstNode::EnumDecl(token, _) |
+            AstNode::Identifier(token, _) |
+            AstNode::Assignment(token, _) |
+            AstNode::Indexing(token, _) |
+            AstNode::IfStatement(token, _) |
+            AstNode::IfExpression(token, _) |
+            AstNode::Invocation(token, _) |
+            AstNode::ForLoop(token, _) |
+            AstNode::WhileLoop(token, _) |
+            AstNode::Break(token) |
+            AstNode::ReturnStatement(token, _) |
+            AstNode::Accessor(token, _) |
+            AstNode::MatchStatement(token, _) |
+            AstNode::MatchExpression(token, _) => token
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

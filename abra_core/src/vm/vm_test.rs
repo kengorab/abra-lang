@@ -1064,18 +1064,34 @@ mod tests {
 
     #[test]
     fn interpret_while_loop_with_break() {
-        let input = "\
-          var a = 0\n\
-          while true {\n\
-            a = a + 1\n\
-            if a == 3 {\n\
-              break\n\
-            }\n\
-          }\n\
-          a\
-        ";
+        let input = r#"
+          var sum = 0
+          while true {
+            while true {
+              sum += 1
+              if sum.isEven() { break }
+            }
+            if sum > 20 { break }
+          }
+          sum
+        "#;
         let result = interpret(input).unwrap();
-        let expected = Value::Int(3);
+        let expected = Value::Int(22);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          var sum = 0
+          while true {
+            if sum > 20 { break }
+            while true {
+              sum += 1
+              if sum.isEven() { break }
+            }
+          }
+          sum
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(22);
         assert_eq!(expected, result);
     }
 
@@ -1686,6 +1702,25 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(396);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    pub fn interpret_return_statements() {
+        let input = r#"
+          func contains(arr: Int[], item: Int) {
+            for i in arr {
+              if item == i {
+                return true
+              }
+            }
+            false
+          }
+          val arr = [1, 2, 3, 4]
+          contains(arr, 4)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Bool(true);
         assert_eq!(expected, result);
     }
 }

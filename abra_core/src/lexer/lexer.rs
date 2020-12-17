@@ -231,6 +231,11 @@ impl<'a> Lexer<'a> {
                 "match" => Token::Match(pos),
                 "type" => Token::Type(pos),
                 "enum" => Token::Enum(pos),
+                "return" => {
+                    let saw_newline = self.skip_whitespace();
+                    let has_newline = saw_newline || self.peek().is_none();
+                    Token::Return(pos, has_newline)
+                },
                 "None" => Token::None(pos),
                 s @ _ => Token::Ident(pos, s.to_string())
             };
@@ -658,6 +663,36 @@ mod tests {
             Token::Enum(Position::new(1, 57)),
             Token::Self_(Position::new(1, 62)),
             Token::Match(Position::new(1, 67)),
+        ];
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_keyword_return() {
+        let tokens = tokenize(&"return".to_string()).unwrap();
+        let expected = vec![
+            Token::Return(Position::new(1, 1), true),
+        ];
+        assert_eq!(expected, tokens);
+
+        let tokens = tokenize(&"return     123".to_string()).unwrap();
+        let expected = vec![
+            Token::Return(Position::new(1, 1), false),
+            Token::Int(Position::new(1, 12), 123)
+        ];
+        assert_eq!(expected, tokens);
+
+        let tokens = tokenize(&"return\n123".to_string()).unwrap();
+        let expected = vec![
+            Token::Return(Position::new(1, 1), true),
+            Token::Int(Position::new(2, 1), 123)
+        ];
+        assert_eq!(expected, tokens);
+
+        let tokens = tokenize(&"return  \t  \n123".to_string()).unwrap();
+        let expected = vec![
+            Token::Return(Position::new(1, 1), true),
+            Token::Int(Position::new(2, 1), 123)
         ];
         assert_eq!(expected, tokens);
     }

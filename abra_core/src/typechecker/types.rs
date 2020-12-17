@@ -108,7 +108,7 @@ impl Type {
         match (self, target_type) {
             // Easy cases
             (Unit, Unit) | (Int, Int) | (Float, Float) |
-            (String, String) | (Bool, Bool) | (Any, Any) => true,
+            (String, String) | (Bool, Bool) | (Any, Any) | (Unknown, Unknown) => true,
             // For Array / Option types, compare inner type
             (Array(t1), Array(t2)) => t1.is_equivalent_to(t2, referencable_types),
             (Set(t1), Set(t2)) => t1.is_equivalent_to(t2, referencable_types),

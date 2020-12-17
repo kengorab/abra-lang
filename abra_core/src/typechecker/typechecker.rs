@@ -4,7 +4,7 @@ use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedTupleNode, TypedSetNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -57,6 +57,7 @@ pub struct Typechecker {
     pub(crate) cur_typedef: Option<Type>,
     pub(crate) scopes: Vec<Scope>,
     pub(crate) referencable_types: HashMap<String, Type>,
+    pub(crate) returns: Vec<TypedAstNode>,
 }
 
 impl Typechecker {
@@ -304,17 +305,32 @@ impl Typechecker {
             self.resolve_ref_type(&node.get_type())
         };
 
+        // If the target_type contains an `Unknown` in some shape or form, we should compare by
+        // structure; for example:
+        //   [].contains("a"), [].concat([1, 3]) // Should both pass
         if target_type.is_unknown(&self.referencable_types) {
-            Ok(true) // TODO: This could be wrong
+            let is_same_shape = match (typ, target_type) {
+                (_, Type::Unknown) => true,
+                (Type::Array(_), Type::Array(i2)) if **i2 == Type::Unknown => true,
+                (Type::Set(_), Type::Set(i2)) if **i2 == Type::Unknown => true,
+                (Type::Map(_, _), Type::Map(_, i2)) if **i2 == Type::Unknown => true,
+                _ => false
+            };
+            Ok(is_same_shape)
         } else {
             Ok(typ.is_equivalent_to(target_type, &self.referencable_types))
         }
     }
 
     fn visit_block(&mut self, is_stmt: bool, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+        let mut seen_return = false;
         let len = body.len();
         body.into_iter().enumerate()
             .map(|(idx, mut node)| {
+                if seen_return {
+                    return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
+                }
+
                 // If the last node of an if-expression is an if-statement, treat it as an if-expr.
                 // This is due to the fact that if-blocks are only treated as expressions in certain
                 // situations, namely when an expression is already expected. Otherwise, they're parsed
@@ -328,7 +344,10 @@ impl Typechecker {
                         node = AstNode::MatchExpression(token, match_node)
                     }
                 }
-                self.visit(node)
+                let typed_node = self.visit(node)?;
+                seen_return = Self::all_branches_return(&typed_node);
+
+                Ok(typed_node)
             })
             .collect()
     }
@@ -630,10 +649,40 @@ impl Typechecker {
         Ok(typed_args)
     }
 
+    fn all_branches_return(node: &TypedAstNode) -> bool {
+        match node {
+            TypedAstNode::IfStatement(_, TypedIfNode { if_block, else_block, .. }) |
+            TypedAstNode::IfExpression(_, TypedIfNode { if_block, else_block, .. }) => {
+                let if_block_has_return = if_block.last().map(|n| Self::all_branches_return(n)).unwrap_or(false);
+                if !if_block_has_return {
+                    false
+                } else if let Some(else_block) = else_block {
+                    let else_block_has_return = else_block.last().map(|n| Self::all_branches_return(n)).unwrap_or(false);
+                    if_block_has_return && else_block_has_return
+                } else {
+                    false
+                }
+            }
+            TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
+            TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
+                branches.iter().all(|(_, _, _, body, _)| {
+                    body.last().map(|n| Self::all_branches_return(n)).unwrap_or(false)
+                })
+            }
+            TypedAstNode::ReturnStatement(_, _) => true,
+            _ => false
+        }
+    }
+
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+        let mut seen_return = false;
         let body_len = body.len();
         body.into_iter().enumerate()
             .map(|(idx, node)| {
+                if seen_return {
+                    return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
+                }
+
                 if idx == body_len - 1 {
                     // This is sufficiently gross to warrant a comment. This logic is similar to the
                     // if-block logic in `visit_if_node` above, but slightly different. Like in an
@@ -687,7 +736,10 @@ impl Typechecker {
                         n @ _ => self.visit(n)
                     }
                 } else {
-                    self.visit(node)
+                    let typed_node = self.visit(node)?;
+                    seen_return = Self::all_branches_return(&typed_node);
+
+                    Ok(typed_node)
                 }
             })
             .collect()
@@ -834,6 +886,7 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
         cur_typedef: None,
         scopes: vec![Scope::root_scope()],
         referencable_types,
+        returns: vec![],
     };
 
     let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
@@ -1166,7 +1219,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let FunctionDeclNode { name, type_args, args, ret_type, body, } = node;
+        let FunctionDeclNode { name, type_args, args, ret_type: ret_ann_type, body, } = node;
 
         let func_name = Token::get_ident_name(&name);
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
@@ -1211,7 +1264,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
             })
             .collect::<Vec<_>>();
-        let initial_ret_type = match &ret_type {
+        let initial_ret_type = match &ret_ann_type {
             None => Type::Unknown,
             Some(ret_type) => self.type_from_type_ident(ret_type)?,
         };
@@ -1231,7 +1284,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let ret_generics = initial_ret_type.extract_unbound_generics();
             for name in ret_generics {
                 if !valid_return_type_args.contains(&&name) {
-                    let ret_type = ret_type.expect("Should be Some if initial_ret_type is anything but Unknown");
+                    let ret_type = ret_ann_type.expect("Should be Some if initial_ret_type is anything but Unknown");
                     let ident_token = ret_type.get_ident();
                     let ret_type_name = Token::get_ident_name(&ident_token);
                     return Err(TypecheckerError::UnboundGeneric(ident_token, ret_type_name));
@@ -1246,32 +1299,92 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         self.add_binding(&func_name, &name, &func_type, false);
         self.scopes.push(scope);
 
+        let mut old_returns = vec![];
+        std::mem::swap(&mut self.returns, &mut old_returns);
         let mut body = self.visit_fn_body(body)?;
-        let body_type = body.last().map_or(Type::Unit, |node| node.get_type());
+        std::mem::swap(&mut old_returns, &mut self.returns);
+        let returns = old_returns;
 
-        let ret_type = match ret_type {
-            None => body_type,
+        let body_type = body.last().map_or(Type::Unit, |node| {
+            if let TypedAstNode::ReturnStatement(_, TypedReturnNode { target, .. }) = &node {
+                target.as_ref().map(|n| n.get_type()).unwrap_or(Type::Unit)
+            } else {
+                node.get_type()
+            }
+        });
+
+        let mut ret_type = match &ret_ann_type {
+            None => {
+                if body.last().map_or(false, |n| Self::all_branches_return(n)) {
+                    None
+                } else {
+                    Some(body_type)
+                }
+            }
             Some(ret_type) => {
-                let typ = self.type_from_type_ident(&ret_type)?;
+                let typ = self.type_from_type_ident(ret_type)?;
                 match body.last_mut() {
-                    None => body_type,
+                    None => Some(Type::Unit),
                     Some(mut node) => {
-                        let node_type_unknown = node.get_type().is_unknown(&self.referencable_types);
-
-                        if !self.are_types_equivalent(&mut node, &typ)? {
-                            let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                            return Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ });
-                        } else if typ.has_unbound_generic() {
-                            typ
-                        } else if node_type_unknown {
-                            node.get_type()
+                        if Self::all_branches_return(node) {
+                            Some(typ)
                         } else {
-                            typ
+                            let node_type_unknown = node.get_type().is_unknown(&self.referencable_types);
+
+                            if !self.are_types_equivalent(&mut node, &typ)? {
+                                let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
+                                return Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ });
+                            } else if typ.has_unbound_generic() {
+                                Some(typ)
+                            } else if node_type_unknown {
+                                Some(node.get_type())
+                            } else {
+                                Some(typ)
+                            }
                         }
                     }
                 }
             }
         };
+
+        // Returns that have types that are Type::Unknown will be handled _after_ non-unknown ones
+        let returns = returns.into_iter()
+            .map(|n| if let TypedAstNode::ReturnStatement(tok, node) = n { (tok, node) } else { unreachable!() })
+            .sorted_by_key(|(_, node)| {
+                node.target.as_ref().map_or(false, |n| n.get_type().is_unknown(&self.referencable_types))
+            })
+            .collect::<Vec<_>>();
+        for (return_tok, node) in returns {
+            if let Some(ret_node) = node.target {
+                let ret_node_typ = ret_node.get_type();
+                match &ret_type {
+                    None => ret_type = Some(ret_node_typ),
+                    Some(ret_type) => {
+                        let token = ret_node.get_token().clone();
+                        let mut ret_node = ret_node;
+                        if !self.are_types_equivalent(&mut *ret_node, &ret_type)? {
+                            return Err(TypecheckerError::Mismatch {
+                                token,
+                                actual: ret_node_typ,
+                                expected: ret_type.clone(),
+                            });
+                        }
+                    }
+                }
+            } else if ret_type != Some(Type::Unit) {
+                let ret_ann_type = match &ret_ann_type {
+                    None => Type::Unit,
+                    Some(ret_type_ann) => self.type_from_type_ident(&ret_type_ann)?
+                };
+                return Err(TypecheckerError::Mismatch {
+                    token: return_tok.clone(),
+                    actual: Type::Unit,
+                    expected: ret_ann_type,
+                });
+            }
+        }
+        let ret_type = ret_type.unwrap_or(Type::Unknown);
+
         let fn_scope = self.scopes.pop().unwrap();
         let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
             is_recursive
@@ -1641,7 +1754,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             AstNode::Indexing(tok, node) => {
                 if let IndexingMode::Range(_, _) = &node.index {
-                    return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::IndexingMode) });
+                    return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IndexingMode });
                 }
 
                 let mut typed_expr = self.visit(*expr)?;
@@ -1664,9 +1777,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             }
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
-                                return Err(TypecheckerError::InvalidAssignmentTarget { token, reason: Some(InvalidAssignmentTargetReason::StringTarget) });
+                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(Type::String), reason: InvalidAssignmentTargetReason::StringTarget });
                             }
-                            _ => unreachable!()
+                            typ @ Type::Option(_) => {
+                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(typ), reason: InvalidAssignmentTargetReason::OptionalTarget });
+                            }
+                            t @ _ => {
+                                dbg!(t);
+                                unreachable!()
+                            }
                         }
                     }
                     _ => unreachable!()
@@ -1704,7 +1823,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Ok(TypedAstNode::Assignment(token, node))
                 }
             }
-            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, reason: None })
+            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget })
         }
     }
 
@@ -1734,6 +1853,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type, index_mode: index })
             };
         }
+
+        let mut target_type = target_type.clone();
+        while let Type::Option(inner) = target_type { target_type = *inner };
 
         let typ = match (target_type.clone(), &index) {
             (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
@@ -1804,9 +1926,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
         let mut node = self.visit_if_node(false, node)?;
 
+        let mut if_block_is_return = false;
         let if_block_type = match &node.if_block.last() {
             None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
-            Some(expr) => Ok(expr.get_type())
+            Some(expr) => {
+                if_block_is_return = Self::all_branches_return(expr);
+                Ok(expr.get_type())
+            }
         }?;
 
         let typ = match &node.else_block {
@@ -1814,15 +1940,28 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: false }),
                 Some(expr) => {
                     let else_block_type = expr.get_type();
-                    let mut if_block_last = node.if_block.last_mut().expect("MissingIfExprBranch should be emitted otherwise");
-                    if !self.are_types_equivalent(&mut if_block_last, &else_block_type)? {
-                        Err(TypecheckerError::IfExprBranchMismatch {
-                            if_token: token.clone(),
-                            if_type: if_block_type,
-                            else_type: else_block_type,
-                        })
+
+                    if if_block_is_return {
+                        if Self::all_branches_return(expr) {
+                            node.typ = Type::Unit;
+                            return Ok(TypedAstNode::IfExpression(token.clone(), node));
+                        } else {
+                            Ok(else_block_type)
+                        }
+                    } else if Self::all_branches_return(expr) {
+                        node.typ = if_block_type;
+                        return Ok(TypedAstNode::IfExpression(token.clone(), node));
                     } else {
-                        Ok(if_block_last.get_type())
+                        let mut if_block_last = node.if_block.last_mut().expect("MissingIfExprBranch should be emitted otherwise");
+                        if !self.are_types_equivalent(&mut if_block_last, &else_block_type)? {
+                            Err(TypecheckerError::IfExprBranchMismatch {
+                                if_token: token.clone(),
+                                if_type: if_block_type,
+                                else_type: else_block_type,
+                            })
+                        } else {
+                            Ok(if_block_last.get_type())
+                        }
                     }
                 }
             }
@@ -1844,6 +1983,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut typ = None;
         for (_, _, _, ref mut block, _) in &mut node.branches {
+            if block.last().as_ref().map_or(false, |n| Self::all_branches_return(n)) {
+                continue;
+            }
+
             if let Some(typ) = &typ {
                 let mut block_last = block.last_mut().expect("A case should have a non-empty body");
                 let block_typ = block_last.get_type();
@@ -1860,7 +2003,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         }
 
-        node.typ = typ.unwrap();
+        node.typ = typ.unwrap_or(Type::Unit);
         Ok(TypedAstNode::MatchExpression(token, node))
     }
 
@@ -2156,10 +2299,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
-        let body: Result<Vec<_>, _> = body.into_iter()
-            .map(|node| self.visit(node))
-            .collect();
-        let body = body?;
+        let body = self.visit_block(true, body)?;
         self.scopes.pop();
         self.scopes.pop(); // Pop loop intrinsic-variables outer block
 
@@ -2201,10 +2341,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
-        let body: Result<Vec<_>, _> = body.into_iter()
-            .map(|node| self.visit(node))
-            .collect();
-        let body = body?;
+        let body = self.visit_block(true, body)?;
         self.scopes.pop();
 
         // Pop outer block, if created
@@ -2214,25 +2351,45 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
-        let mut has_loop_parent = false;
-        for Scope { kind, .. } in self.scopes.iter().rev() {
-            match kind {
-                ScopeKind::Loop => {
-                    has_loop_parent = true;
-                    break;
-                }
-                ScopeKind::Block => continue,
-                _ => {
-                    has_loop_parent = false;
-                    break;
-                }
-            };
+        let mut iter = self.scopes.iter().rev();
+        let has_loop_parent = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Loop) => break true,
+                Some(ScopeKind::Block) => continue,
+                _ => break false
+            }
         };
 
         if has_loop_parent {
             Ok(TypedAstNode::Break(token))
         } else {
             Err(TypecheckerError::InvalidBreak(token))
+        }
+    }
+
+    fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<TypedAstNode, TypecheckerError> {
+        let mut iter = self.scopes.iter_mut().rev();
+        let has_fn_parent = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Function(_, _, _)) | Some(ScopeKind::Lambda(_)) => break true,
+                Some(ScopeKind::Root) => break false,
+                _ => continue
+            }
+        };
+
+        if has_fn_parent {
+            let target = match node {
+                None => None,
+                Some(target) => {
+                    let target = self.visit(*target)?;
+                    Some(Box::new(target))
+                }
+            };
+            let node = TypedAstNode::ReturnStatement(token, TypedReturnNode { typ: Type::Unit, target });
+            self.returns.push(node.clone());
+            Ok(node)
+        } else {
+            Err(TypecheckerError::InvalidReturn(token))
         }
     }
 
@@ -4306,18 +4463,6 @@ mod tests {
 
         let input = format!("{}\n\
           val l = List(items: [1, 2, 3])\n\
-          l.reduce([], (acc, i) => acc.concat([i]))\
-        ", type_def);
-        let error = typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
-            token: Token::Arrow(Position::new(12, 23)),
-            expected: Type::Array(Box::new(Type::Unknown)),
-            actual: Type::Array(Box::new(Type::Unknown)),
-        };
-        assert_eq!(expected, error);
-
-        let input = format!("{}\n\
-          val l = List(items: [1, 2, 3])\n\
           l.reduce<Int>(\"\", (acc, i) => acc + i)\
         ", type_def);
         let error = typecheck(&input).unwrap_err();
@@ -4812,7 +4957,7 @@ mod tests {
     #[test]
     fn typecheck_assignment_errors_with_target() {
         let err = typecheck("true = 345").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), reason: None };
+        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget };
         assert_eq!(expected, err);
 
         let err = typecheck("val abc = 345\nabc = 67").unwrap_err();
@@ -4833,14 +4978,16 @@ mod tests {
         let err = typecheck("val a = [1, 2]\na[0:1] = \"str\"").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 8)),
-            reason: Some(InvalidAssignmentTargetReason::IndexingMode),
+            typ: None,
+            reason: InvalidAssignmentTargetReason::IndexingMode,
         };
         assert_eq!(expected, err);
 
         let err = typecheck("val a = \"abc\"\na[0] = \"qwer\"").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 6)),
-            reason: Some(InvalidAssignmentTargetReason::StringTarget),
+            typ: Some(Type::String),
+            reason: InvalidAssignmentTargetReason::StringTarget,
         };
         assert_eq!(expected, err);
 
@@ -6802,6 +6949,219 @@ mod tests {
         let expected = TypecheckerError::ForbiddenVariableType {
             token: ident_token!((2, 5), "j"),
             typ: Type::Unit,
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_return_statements() {
+        let input = r#"
+          func f() {
+            if true { return 1 }
+            return 2
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f() {
+            if true { return 1 }
+            2
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f(): Int {
+            if true { return 1 } else { return 2 }
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f(i: Int | String): Int {
+            match i {
+              String => { return 3 }
+              Int => { return 3 }
+            }
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f(): String {
+            while true {
+              if true { return "a" }
+            }
+            val s = if true { return "1" } else { "a" }
+            s
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f(i: Int | String) {
+            while true {
+              if true { return "a" }
+            }
+            val s = match i {
+              Int => { return "a" }
+              String => "st"
+            }
+            s
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f(i: Int | String) {
+            for _ in [1, 2] {
+              if true { return [] }
+            }
+            val s = match i {
+              Int => { return ["a"] }
+              String => "st"
+            }
+            [s]
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f() {
+            val d = if true {
+              if true { return [] } else { "d" }
+            } else if false {
+              if true { return [] } else { "d" }
+            } else {
+              if true { return [] } else { "d" }
+            }
+            [d]
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+
+        let input = r#"
+          func f() {
+            if true {
+              return (i) => 5
+            }
+            (i: Int) => 6
+          }
+        "#;
+        assert!(typecheck(input).is_ok());
+    }
+
+    #[test]
+    fn typecheck_return_statements_unreachable_code_errors() {
+        let err = typecheck("\
+          func f() {\n\
+            return 3\n\
+            return 6\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableCode {
+            token: Token::Return(Position::new(3, 1), false)
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            if true { return 1 } else { return 2 }\n\
+            return 3\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableCode {
+            token: Token::Return(Position::new(3, 1), false)
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            if true {\
+              return 1\n\
+              val x = 5 + 4\n\
+            }\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableCode {
+            token: Token::Val(Position::new(3, 1))
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            while true {\
+              return 1\n\
+              val x = 5 + 4\n\
+            }\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableCode {
+            token: Token::Val(Position::new(3, 1))
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            for _ in [1, 2] {\
+              return 1\n\
+              val x = 5 + 4\n\
+            }\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnreachableCode {
+            token: Token::Val(Position::new(3, 1))
+        };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_return_statements_type_errors() {
+        let err = typecheck("func f(): String { return 5 }").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(1, 27), 5),
+            actual: Type::Int,
+            expected: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            if true { return \"\" }\n\
+            return 5\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::Int(Position::new(3, 8), 5),
+            actual: Type::Int,
+            expected: Type::String,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f() {\n\
+            if true { return [] }\n\
+            return {}\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrace(Position::new(3, 8)),
+            actual: Type::Map(Box::new(Type::String), Box::new(Type::Unknown)),
+            expected: Type::Array(Box::new(Type::Unknown)),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f(): Map<String, Int> {\n\
+            if true { return [] }\n\
+            return {}\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LBrack(Position::new(2, 18), false),
+            actual: Type::Array(Box::new(Type::Unknown)),
+            expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
         };
         assert_eq!(expected, err);
     }

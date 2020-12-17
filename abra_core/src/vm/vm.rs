@@ -553,10 +553,7 @@ impl VM {
                     let val = pop_expect_bool!(self)?;
                     self.push(Value::Bool(!val));
                 }
-                Opcode::LT => {
-                    println!("");
-                    self.comp_values(Opcode::LT)?
-                },
+                Opcode::LT => self.comp_values(Opcode::LT)?,
                 Opcode::LTE => self.comp_values(Opcode::LTE)?,
                 Opcode::GT => self.comp_values(Opcode::GT)?,
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
@@ -695,7 +692,14 @@ impl VM {
                 }
                 Opcode::MapLoad => {
                     let key = self.pop_expect()?;
-                    let obj = pop_expect_obj!(self)?;
+                    let obj = match self.pop_expect()? {
+                        Value::Obj(value) => value,
+                        Value::Nil => {
+                            self.push(Value::Nil);
+                            continue;
+                        }
+                        _ => unreachable!()
+                    };
                     let val = match &*obj.borrow() {
                         Obj::MapObj(value) => match value.get(&key) {
                             Some(val) => val.clone(),
@@ -739,7 +743,14 @@ impl VM {
                 }
                 Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let obj = pop_expect_obj!(self)?;
+                    let obj = match self.pop_expect()? {
+                        Value::Obj(value) => value,
+                        Value::Nil => {
+                            self.push(Value::Nil);
+                            continue;
+                        }
+                        _ => unreachable!()
+                    };
                     let value = match &*obj.borrow() {
                         Obj::StringObj(values) => {
                             let len = values.len() as i64;
@@ -849,10 +860,7 @@ impl VM {
                     self.push(value);
                 }
                 Opcode::LLoad0 => self.load_local(0)?,
-                Opcode::LLoad1 => {
-                    println!("");
-                    self.load_local(1)?
-                },
+                Opcode::LLoad1 => self.load_local(1)?,
                 Opcode::LLoad2 => self.load_local(2)?,
                 Opcode::LLoad3 => self.load_local(3)?,
                 Opcode::LLoad4 => self.load_local(4)?,
