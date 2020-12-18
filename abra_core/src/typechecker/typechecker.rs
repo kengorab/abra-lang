@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeArray, NativeType, NativeString, NativeFloat, NativeInt, NativeMap, NativeSet};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};

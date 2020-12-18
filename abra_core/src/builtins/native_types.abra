@@ -11,6 +11,7 @@ type NativeInt {
   func asBase(self, base: Int): String {}
   func isEven(self): Bool {}
   func isOdd(self): Bool {}
+  func isBetween(self, lower: Int, upper: Int, inclusive: Bool = false): Bool {}
 }
 
 type NativeString {

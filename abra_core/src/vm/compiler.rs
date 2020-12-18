@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native_types::{NativeArray, NativeType, NativeSet, NativeMap};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
 use crate::common::util::random_string;
 use crate::common::compiler_util::get_anon_name;
 use std::collections::HashMap;
@@ -1217,7 +1217,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
             Type::Map(_, _) => Opcode::MapLoad,
             Type::Array(_) | Type::String => Opcode::ArrLoad,
             Type::Tuple(_) => Opcode::TupleLoad,
-            t @ _ => {dbg!(t);unreachable!()}
+            t @ _ => {
+                dbg!(t);
+                unreachable!()
+            }
         };
         self.visit(*target)?;
 

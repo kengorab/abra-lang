@@ -1,7 +1,7 @@
 // Auto-generated file, do not modify
 
+use crate::builtins::native::NativeType;
 use crate::builtins::native_fns::NativeFn;
-use crate::builtins::native_types::NativeType;
 use crate::typechecker::types::{FnType, Type};
 use crate::vm::value::Value;
 use crate::vm::vm::VM;
@@ -111,6 +111,7 @@ pub trait NativeIntMethodsAndFields {
     fn method_as_base(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_even(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_odd(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_is_between(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeInt {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -147,6 +148,18 @@ impl NativeType for NativeInt {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
+            "isBetween" => Some((
+                4usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("lower".to_string(), Type::Int, false),
+                        ("upper".to_string(), Type::Int, false),
+                        ("inclusive".to_string(), Type::Bool, true),
+                    ],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
             _ => None,
         }
     }
@@ -177,6 +190,12 @@ impl NativeType for NativeInt {
                 name: "isOdd",
                 receiver: Some(obj),
                 native_fn: Self::method_is_odd,
+                has_return: true,
+            }),
+            4usize => Value::NativeFn(NativeFn {
+                name: "isBetween",
+                receiver: Some(obj),
+                native_fn: Self::method_is_between,
                 has_return: true,
             }),
             _ => unreachable!(),
