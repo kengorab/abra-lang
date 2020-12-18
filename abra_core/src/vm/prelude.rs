@@ -1,8 +1,8 @@
 use crate::vm::value::{Value, TypeValue};
 use crate::typechecker::types::Type;
 use crate::builtins::native_fns::native_fns;
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
 use std::collections::HashMap;
-use crate::builtins::native_types::{NativeMap, NativeType, NativeArray, NativeSet};
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {

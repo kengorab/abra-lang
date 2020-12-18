@@ -1,4 +1,4 @@
-use crate::builtins::native_types::{NativeString, NativeType, NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};

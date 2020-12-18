@@ -28,7 +28,7 @@ fn main() {
 
     let imports_code = quote! {
         use crate::builtins::native_fns::NativeFn;
-        use crate::builtins::native_types::NativeType;
+        use crate::builtins::native::NativeType;
         use crate::typechecker::types::{Type, FnType};
         use crate::vm::value::Value;
         use crate::vm::vm::VM;

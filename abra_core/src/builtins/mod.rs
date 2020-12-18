@@ -2,4 +2,4 @@
 pub mod gen_native_types;
 
 pub mod native_fns;
-pub mod native_types;
+pub mod native;
