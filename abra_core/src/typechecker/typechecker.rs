@@ -705,9 +705,20 @@ impl Typechecker {
                             match typ {
                                 Type::Unit => {
                                     if let TypedAstNode::IfExpression(token, mut typed_if_node) = typed_node {
-                                        // Explicitly set the underlying node's type to Unit, in case
-                                        // it had been Unit? (eg. an if-expr missing an else branch)
+                                        // Explicitly set the underlying node's type to Unit, in case it had been Unit? (eg. an if-expr missing an else branch)
                                         typed_if_node.typ = Type::Unit;
+
+                                        // Since we attempt to parse the if-stmt as an expr, it will end up with a `None` as its else-branch
+                                        // if it was missing one. If the else branch is exactly 1 node and it's the `_Nil` node, treat it as if
+                                        // the statement's else_block was None.
+                                        // TODO: Think of a more sane way of representing this
+                                        if let Some(ref mut else_block) = &mut typed_if_node.else_block {
+                                            if else_block.len() == 1 {
+                                                if let Some(TypedAstNode::_Nil(_)) = else_block.last() {
+                                                    typed_if_node.else_block = None;
+                                                }
+                                            }
+                                        }
                                         Ok(TypedAstNode::IfStatement(token, typed_if_node))
                                     } else { unreachable!() }
                                 }
@@ -724,8 +735,7 @@ impl Typechecker {
                             match typ {
                                 Type::Unit => {
                                     if let TypedAstNode::MatchExpression(token, mut typed_match_node) = typed_node {
-                                        // Explicitly set the underlying node's type to Unit, in case
-                                        // it had been Unit? (eg. an if-expr missing an else branch)
+                                        // Explicitly set the underlying node's type to Unit, in case it had been Unit? (eg. an if-expr missing an else branch)
                                         typed_match_node.typ = Type::Unit;
                                         Ok(TypedAstNode::MatchStatement(token, typed_match_node))
                                     } else { unreachable!() }
@@ -1965,7 +1975,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     }
                 }
             }
-            None => Ok(Type::Option(Box::new(if_block_type)))
+            None => {
+                // If missing an else block, the value of this expr should be None, so we modify the AST to add a _Nil node here.
+                // This means that there is always a value produced by this expr.
+                node.else_block = Some(vec![TypedAstNode::_Nil(Token::Ident(token.get_position(), "nil".to_string()))]);
+                Ok(Type::Option(Box::new(if_block_type)))
+            }
         }?;
 
         node.typ = typ.clone();

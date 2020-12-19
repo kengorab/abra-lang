@@ -1,11 +1,4 @@
-func contains(arr: Int[], item: Int) {
-  for i in arr {
-    if item == i {
-      return true
-    }
-  }
-  false
+func abc() {
+  if true { println("hello") }
 }
-
-val arr = [1, 2, 3, 4]
-contains(arr, 4)
+println(abc())

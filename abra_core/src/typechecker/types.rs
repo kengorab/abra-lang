@@ -224,8 +224,8 @@ impl Type {
                 }
                 v_type_1.is_equivalent_to(&v_type_2, referencable_types)
             }
-            // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"])
-            (_, Any) => true,
+            // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"]). Unit types should not be assignable to anything
+            (t, Any) => t != &Unit,
             (Placeholder, _) | (_, Placeholder) => true,
             (Reference(name, _), other) => {
                 if let Some(referenced_type) = referencable_types.get(name) {
