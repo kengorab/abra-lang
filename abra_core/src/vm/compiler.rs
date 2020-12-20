@@ -2303,7 +2303,7 @@ mod tests {
 
     #[test]
     fn compile_ident_upvalues() {
-        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { b + 1 }\n}");
+        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
@@ -2358,7 +2358,7 @@ mod tests {
 
     #[test]
     fn compile_ident_upvalues_skip_level() {
-        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d() { b + 1 }\n}\n}");
+        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
@@ -2498,7 +2498,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_globals() {
-        let chunk = compile("var a = 1\nfunc abc() { a = 3 }");
+        let chunk = compile("var a = 1\nfunc abc(): Int { a = 3 }");
         let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
@@ -2537,7 +2537,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_upvalues() {
-        let chunk = compile("func outer() {\nvar a = 1\nfunc inner() { a = 3 }\n}");
+        let chunk = compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
@@ -2967,16 +2967,16 @@ mod tests {
 
     #[test]
     fn compile_function_declaration() {
-        let chunk = compile("\
-          val a = 1\n\
-          val b = 2\n\
-          val c = 3\n\
-          func abc(b: Int) {\n\
-            val a1 = a\n\
-            val c = b + a1\n\
-            c\n\
-          }\
-        ");
+        let chunk = compile(r#"
+          val a = 1
+          val b = 2
+          val c = 3
+          func abc(b: Int): Int {
+            val a1 = a
+            val c = b + a1
+            c
+          }
+        "#);
         let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
@@ -3071,7 +3071,7 @@ mod tests {
 
     #[test]
     fn compile_function_declaration_default_args() {
-        let chunk = compile("func add(a: Int, b = 2) = a + b\nadd(1)\nadd(1, 2)");
+        let chunk = compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
@@ -3127,13 +3127,13 @@ mod tests {
 
     #[test]
     fn compile_function_declaration_with_inner() {
-        let chunk = compile("\
-          func abc(b: Int) {\n\
-            func def(g: Int) { g + 1 }
-            val c = b + def(b)\n\
-            c\n\
-          }\
-        ");
+        let chunk = compile(r#"
+          func abc(b: Int): Int {
+            func def(g: Int): Int { g + 1 }
+            val c = b + def(b)
+            c
+          }
+        "#);
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,
@@ -3299,13 +3299,13 @@ mod tests {
 
     #[test]
     fn compile_function_invocation() {
-        let chunk = compile("\
-          val one = 1\n\
-          func inc(number: Int) {\n\
-            number + 1\n\
-          }\n
-          val two = inc(number: one)\
-        ");
+        let chunk = compile(r#"
+          val one = 1
+          func inc(number: Int): Int {
+            number + 1
+          }
+          val two = inc(number: one)
+        "#);
         let expected = Module {
             code: vec![
                 Opcode::IConst1 as u8,
@@ -4377,12 +4377,12 @@ mod tests {
 
     #[test]
     fn compile_return_statement() {
-        let chunk = compile("\
-          func f() {\n\
-            if true { return 24 }\n\
-            return 6\n\
-          }\
-        ");
+        let chunk = compile(r#"
+          func f(): Int {
+            if true { return 24 }
+            return 6
+          }
+        "#);
         let expected = Module {
             code: vec![
                 Opcode::IConst0 as u8,

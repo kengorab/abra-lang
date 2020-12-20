@@ -1,4 +1,1 @@
-func abc() {
-  if true { println("hello") }
-}
-println(abc())
+func a(): Int? = None

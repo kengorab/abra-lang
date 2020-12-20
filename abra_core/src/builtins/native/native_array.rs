@@ -661,9 +661,9 @@ mod test {
 
         // Verify deep call stack initiated from native fn call
         let result = interpret(r#"
-          func mult1(a: Int) = a * 1
-          func sub1(a: Int) = mult1(a) - 1
-          func sameNum(a: Int) = sub1(a) + 1
+          func mult1(a: Int): Int = a * 1
+          func sub1(a: Int): Int = mult1(a) - 1
+          func sameNum(a: Int): Int = sub1(a) + 1
           [1, 2].map(i => sameNum(i))
         "#);
         let expected = int_array![1, 2];

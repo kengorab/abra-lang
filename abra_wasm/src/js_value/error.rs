@@ -292,15 +292,6 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token } => {
-                    let mut obj = serializer.serialize_map(Some(6))?;
-                    obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "recursiveRefWithoutReturnType")?;
-                    obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("origToken", &JsToken(orig_token))?;
-                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
-                    obj.end()
-                }
                 TypecheckerError::InvalidBreak(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
@@ -402,14 +393,6 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidSelfParam")?;
-                    obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
-                    obj.end()
-                }
-                TypecheckerError::MissingRequiredTypeAnnotation { token } => {
-                    let mut obj = serializer.serialize_map(Some(4))?;
-                    obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "missingRequiredTypeAnnotation")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
@@ -529,6 +512,19 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unreachableCode")?;
                     obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::ReturnTypeMismatch { token, fn_name, fn_missing_ret_ann, bare_return, expected, actual } => {
+                    let mut obj = serializer.serialize_map(Some(9))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "returnTypeMismatch")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("fnName", fn_name)?;
+                    obj.serialize_entry("fnMissingReturnAnnotation", fn_missing_ret_ann)?;
+                    obj.serialize_entry("bareReturn", bare_return)?;
+                    obj.serialize_entry("expected", &JsType(expected))?;
+                    obj.serialize_entry("actual", &JsType(actual))?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

@@ -69,11 +69,23 @@ impl PartialEq for Type {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub struct FnType {
     pub arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
     pub type_args: Vec<String>,
     pub ret_type: Box<Type>,
+}
+
+impl PartialEq for FnType {
+    fn eq(&self, other: &Self) -> bool {
+        if !self.type_args.eq(&other.type_args) || !self.ret_type.eq(&other.ret_type) {
+            false
+        } else {
+            let arg_types = self.arg_types.iter().map(|(_, ty, is_o)| (ty, is_o)).collect::<Vec<_>>();
+            let other_arg_types = other.arg_types.iter().map(|(_, ty, is_o)| (ty, is_o)).collect::<Vec<_>>();
+            arg_types.eq(&other_arg_types)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
