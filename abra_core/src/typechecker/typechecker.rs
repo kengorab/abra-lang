@@ -383,6 +383,7 @@ impl Typechecker {
             scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
         }
         self.scopes.push(scope);
+        self.hoist_declarations_in_scope(&if_block)?;
         let if_block = self.visit_block(is_stmt, if_block)?;
         self.scopes.pop();
 
@@ -390,6 +391,7 @@ impl Typechecker {
             None => None,
             Some(body) => {
                 self.scopes.push(Scope::new(ScopeKind::Block));
+                self.hoist_declarations_in_scope(&body)?;
                 let else_block = self.visit_block(is_stmt, body)?;
                 self.scopes.pop();
 
@@ -552,6 +554,7 @@ impl Typechecker {
                 return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
             }
             self.scopes.push(scope);
+            self.hoist_declarations_in_scope(&block)?;
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
@@ -675,6 +678,8 @@ impl Typechecker {
     }
 
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+        self.hoist_declarations_in_scope(&body)?;
+
         let mut seen_return = false;
         let body_len = body.len();
         body.into_iter().enumerate()
@@ -755,72 +760,139 @@ impl Typechecker {
             .collect()
     }
 
+    fn get_func_signature(&mut self, type_args: &Vec<Token>, node: &AstNode) -> Result<(bool, Token, Type), TypecheckerError> {
+        let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &node {
+            AstNode::FunctionDecl(_, node) => node,
+            _ => unreachable!()
+        };
+
+        let func_name = Token::get_ident_name(&name);
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
+            if orig_ident != name {
+                let orig_ident = orig_ident.clone();
+                return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident });
+            }
+        }
+
+        // Create temporary "scope" to capture function's type_args, and eventually...
+        let type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
+        let mut fn_type_arg_names = Vec::new();
+        let mut scope = Scope::new(ScopeKind::TypeDef);
+        for fn_type_arg in fn_type_args {
+            let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
+            if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
+                return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
+            }
+            fn_type_arg_names.push(fn_type_arg_name.clone());
+            scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
+        }
+        self.scopes.push(scope);
+
+        let ret_type = ret_type.as_ref()
+            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+        let mut is_static = true;
+        let mut arg_types = Vec::new();
+        for (ident, type_ident, default_value) in args {
+            match ident {
+                Token::Self_(_) => is_static = false,
+                ident @ _ => {
+                    let arg_type = match type_ident {
+                        None => match default_value {
+                            None => unreachable!(), // This should be caught during parsing
+                            Some(default_value) => {
+                                let default_value = self.visit(default_value.clone())?;
+                                default_value.get_type()
+                            }
+                        },
+                        Some(type_ident) => self.type_from_type_ident(type_ident)?,
+                    };
+                    // Insert arg as binding in throwaway scope, to handle references in other variables' default values
+                    let arg_name = Token::get_ident_name(ident);
+                    self.add_binding(&arg_name, &ident, &arg_type, false);
+                    arg_types.push((arg_name, arg_type, default_value.is_some()));
+                }
+            }
+        }
+
+        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
+        let ret = if is_static {
+            // TODO: Handle static methods referencing type's type_args
+            (true, name.clone(), fn_type)
+        } else {
+            (false, name.clone(), fn_type)
+        };
+        // ...pop off the throwaway scope here.
+        self.scopes.pop();
+        Ok(ret)
+    }
+
+    fn hoist_declarations_in_scope(&mut self, body: &Vec<AstNode>) -> Result<(), TypecheckerError> {
+        for n in body {
+            match n {
+                AstNode::FunctionDecl(_, _) => {
+                    let (_, name, func_type) = self.get_func_signature(&vec![], n)?;
+                    let func_name = Token::get_ident_name(&name).clone();
+                    self.add_binding(&func_name, &name, &func_type, false);
+                }
+                AstNode::TypeDecl(_, TypeDeclNode { name, type_args, .. }) |
+                AstNode::EnumDecl(_, EnumDeclNode { name, type_args, .. }) => {
+                    let type_is_enum = if let AstNode::EnumDecl(_, _) = &n { true } else { false };
+                    let new_type_name = Token::get_ident_name(&name).clone();
+
+                    if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&new_type_name) {
+                        if orig_ident != name {
+                            let orig_ident = orig_ident.clone();
+                            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: Some(orig_ident) });
+                        }
+                    }
+
+                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
+                    // reference we must look it up by name in self.referencable_types. This level of indirection
+                    // allows for cyclic/self-referential types.
+                    let typeref = Type::Reference(new_type_name.clone(), vec![]);
+                    let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
+                    self.add_binding(&new_type_name, &name, &binding_type, false);
+                    self.add_type(new_type_name.clone(), None, typeref.clone());
+
+                    let referencable_type = if type_is_enum {
+                        let typedef = EnumType { name: new_type_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
+                        Type::Enum(typedef)
+                    } else {
+                        let type_arg_names = type_args.iter()
+                            .map(|name| {
+                                let name = Token::get_ident_name(name);
+                                (name.clone(), Type::Generic(name))
+                            })
+                            .collect::<Vec<(String, Type)>>();
+                        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
+                        Type::Struct(typedef)
+                    };
+                    self.referencable_types.insert(new_type_name.clone(), referencable_type);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn typecheck_typedef_methods_phase_1(
         &mut self,
         type_args: &Vec<Token>,
         methods: &Vec<AstNode>,
     ) -> Result<(/* static_fields: */ Vec<(String, Type, bool)>, /* typed_methods: */ Vec<(String, Type)>), TypecheckerError> {
+        let methods = methods.into_iter()
+            .map(|node| self.get_func_signature(type_args, node))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut static_fields = Vec::new();
         let mut typed_methods = Vec::new();
-
-        for func_decl_node in methods {
-            let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &func_decl_node {
-                AstNode::FunctionDecl(_, node) => node,
-                _ => unreachable!()
-            };
-            let type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
-
-            // Create temporary "scope" to capture function's type_args, and...
-            let mut fn_type_arg_names = Vec::new();
-            let mut scope = Scope::new(ScopeKind::TypeDef);
-            for fn_type_arg in fn_type_args {
-                let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
-                if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
-                }
-                fn_type_arg_names.push(fn_type_arg_name.clone());
-                scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
-            }
-            self.scopes.push(scope);
-
-            let ret_type = ret_type.as_ref()
-                .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
-            let mut is_static = true;
-            let mut arg_types = Vec::new();
-            for (ident, type_ident, default_value) in args {
-                match ident {
-                    Token::Self_(_) => is_static = false,
-                    ident @ _ => {
-                        let arg_type = match type_ident {
-                            None => match default_value {
-                                None => unreachable!(), // This should be caught during parsing
-                                Some(default_value) => {
-                                    let default_value = self.visit(default_value.clone())?;
-                                    default_value.get_type()
-                                }
-                            },
-                            Some(type_ident) => self.type_from_type_ident(type_ident)?,
-                        };
-                        arg_types.push((Token::get_ident_name(ident).clone(), arg_type.clone(), default_value.is_some()));
-                    }
-                }
-            }
-
-            let fn_name = Token::get_ident_name(name).clone();
-            let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
-            // let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+        for (is_static, name, typ) in methods {
+            let fn_name = Token::get_ident_name(&name).clone();
             if is_static {
-                // TODO: Handle static methods referencing type's type_args
-                // typedef.static_fields.push((fn_name, fn_type, true))
-                static_fields.push((fn_name, fn_type, true))
+                static_fields.push((fn_name, typ, true))
             } else {
-                // typedef.methods.push((fn_name, fn_type))
-                typed_methods.push((fn_name, fn_type))
+                typed_methods.push((fn_name, typ))
             }
-            // ...pop off the temporary scope here.
-            self.scopes.pop();
         }
-
         Ok((static_fields, typed_methods))
     }
 
@@ -895,6 +967,8 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
         referencable_types,
         returns: vec![],
     };
+
+    typechecker.hoist_declarations_in_scope(&ast)?;
 
     let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
         .map(|node| typechecker.visit(node))
@@ -1229,11 +1303,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let FunctionDeclNode { name, type_args, args, ret_type: ret_ann_type, body, } = node;
 
         let func_name = Token::get_ident_name(&name);
-        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
-            let orig_ident = orig_ident.clone();
-            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
-        }
-
         let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
         let mut seen = HashMap::<String, Token>::new();
         for type_arg in &type_args {
@@ -1388,39 +1457,25 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let TypeDeclNode { name, type_args, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
 
-        if let Some((_, typed_decl_node)) = self.get_type(&new_type_name) {
-            let token = typed_decl_node.map(|node| node.get_token().clone());
-            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
-        }
+        // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // // --- First gather only the type data for each field, method, and static value. --- \\
+        // // --- This first pass guarantees that all type data is available for the second --- \\
+        // // --- pass. Without doing this, forward-referencing of fields is not possible.  --- \\
+        // // --------------------------------------------------------------------------------- \\
+        //
+        // Note: At this point in time, the type declaration has already been inserted into the
+        // referencable_types list, since it was hoisted to the top of the scope. As we progress
+        // through this type declaration, we build up this referencable_type value. This value will
+        // be used for values of type Type::Reference, when the referenced type is "materialized".
 
-        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
-        // --- First gather only the type data for each field, method, and static value. --- \\
-        // --- This first pass guarantees that all type data is available for the second --- \\
-        // --- pass. Without doing this, forward-referencing of fields is not possible.  --- \\
-        // --------------------------------------------------------------------------------- \\
-
-        // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-        // reference we must look it up by name in self.referencable_types. This level of indirection
-        // allows for cyclic types.
-        let typeref = Type::Reference(new_type_name.clone(), vec![]);
-        let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
-        self.add_binding(&new_type_name, &name, &binding_type, false);
-        self.add_type(new_type_name.clone(), None, typeref.clone());
-
-        // As we progress through this type declaration, we build up this value in
-        // self.referencable_types. This value will be used for values of type Type::Reference, when
-        // the referenced type is "materialized".
+        // Update the Reference type of the type's identifier to include the generics, and establish
+        // that Reference as the cur_typedef
         let type_arg_names = type_args.iter()
             .map(|name| {
                 let name = Token::get_ident_name(name);
                 (name.clone(), Type::Generic(name))
             })
             .collect::<Vec<(String, Type)>>();
-        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
-        self.referencable_types.insert(new_type_name.clone(), Type::Struct(typedef));
-
-        // Update the Reference type of the type's identifier to include the generics, and establish
-        // that Reference as the cur_typedef
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         let typeref = Type::Reference(new_type_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
         *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
@@ -1516,25 +1571,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let EnumDeclNode { name, variants, methods, .. } = node;
         let new_enum_name = Token::get_ident_name(&name);
 
-        if let Some((_, typed_decl_node)) = self.get_type(&new_enum_name) {
-            let token = typed_decl_node.map(|node| node.get_token().clone());
-            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
-        }
-
-        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
-        // ---    See comment in visit_type_decl above, the process here is similar      --- \\
-        // --------------------------------------------------------------------------------- \\
-
-        // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-        // reference we must look it up by name in self.referencable_types. This level of indirection
-        // allows for cyclic types.
-        let typeref = Type::Reference(new_enum_name.clone(), vec![]);
-        let binding_type = Type::Type(new_enum_name.clone(), Box::new(typeref.clone()), true);
-        self.add_binding(&new_enum_name, &name, &binding_type, false);
-        self.add_type(new_enum_name.clone(), None, typeref.clone());
-
-        let typedef = EnumType { name: new_enum_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
-        self.referencable_types.insert(new_enum_name.clone(), Type::Enum(typedef));
+        // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // // ---    See comment in visit_type_decl above, the process here is similar      --- \\
+        // // --------------------------------------------------------------------------------- \\
+        //
+        // Note: much like type declarations, enum declarations are also hoisted to the top of their
+        // scope. As such, by this point there will already be an entry in self.referencable_types.
 
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
         let typeref = Type::Reference(new_enum_name.clone(), vec![]);
@@ -2271,6 +2313,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
+        self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
         self.scopes.pop();
         self.scopes.pop(); // Pop loop intrinsic-variables outer block
@@ -2313,6 +2356,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
+        self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
         self.scopes.pop();
 
@@ -3754,16 +3798,6 @@ mod tests {
         assert_eq!(&true, is_recursive);
     }
 
-    // #[test]
-    // fn typecheck_function_decl_recursion_error() {
-    //     let error = typecheck("func abc(): Int {\nval i = abc()\n12}").unwrap_err();
-    //     let expected = TypecheckerError::RecursiveRefWithoutReturnType {
-    //         orig_token: ident_token!((1, 6), "abc"),
-    //         token: ident_token!((2, 1), "abc"),
-    //     };
-    //     assert_eq!(expected, error);
-    // }
-
     #[test]
     fn typecheck_function_decl_inner_function() -> TestResult {
         let typed_ast = typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b()\n}")?;
@@ -3786,6 +3820,66 @@ mod tests {
             rtype: Type::Int,
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_function_decl_ordering() {
+        // Test root level
+        let res = typecheck(r#"
+          func abc(): Int = def()
+          func def(): Int = 5
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within function scope
+        let res = typecheck(r#"
+          func abc() {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within if-block/else-block
+        let res = typecheck(r#"
+          if true {
+            func abc(): Int = def()
+            func def(): Int = 5
+          } else {
+            func abc(): Int = def()
+            func def(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within match block
+        let res = typecheck(r#"
+          match "asdf" {
+            String => {
+              func abc(): Int = def()
+              func def(): Int = 5
+            }
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within for-loop
+        let res = typecheck(r#"
+          for i in [1, 2] {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within while-loop
+        let res = typecheck(r#"
+          while true {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -4015,6 +4109,15 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_type_decl_ordering() {
+        let res = typecheck(r#"
+          type Person { name: Name }
+          type Name { first: String }
+        "#);
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -4646,7 +4749,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::DuplicateType {
             ident: ident_token!((2, 6), "Temp"),
-            orig_ident: Some(Token::Enum(Position::new(1, 1))),
+            orig_ident: Some(ident_token!((1, 6), "Temp")),
         };
         assert_eq!(expected, error);
 
@@ -4666,6 +4769,16 @@ mod tests {
             token: Token::Self_(Position::new(1, 17))
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_ordering() {
+        let res = typecheck(r#"
+          type Qux { foo1: Foo1, foo2: Foo2 }
+          enum Foo1 { Bar(f: Foo2), Baz(qux: Qux) }
+          enum Foo2 { Asdf, Qwer }
+        "#);
+        assert!(res.is_ok());
     }
 
     #[test]

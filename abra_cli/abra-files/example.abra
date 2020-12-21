@@ -1,1 +1,21 @@
-func a(): Int? = None
+func abc(): Int = def()
+func def(): String = "3"
+abc()
+
+//func abc(): Int {
+//  func def(): Int = ghi()
+//
+//  func ghi(): Int = 4
+//
+//  def()
+//}
+//
+//abc()
+
+//func a() {
+//  b()
+//}
+//
+//func b() {
+//  println("Ok")
+//}
