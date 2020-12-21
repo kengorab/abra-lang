@@ -1,6 +1,16 @@
-func abc(): Int = def()
-func def(): String = "3"
-abc()
+//func abc(): String = def()
+//func def(): String = "3"
+//abc()
+
+//if true { if true { abc() } func abc() = println("") }
+if true { func def() { if true { abc() } } func abc() = println("") }
+
+//if true {
+//  if true {
+//    abc()
+//  }
+//  func abc() = println("")
+//}
 
 //func abc(): Int {
 //  func def(): Int = ghi()

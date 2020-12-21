@@ -27,12 +27,14 @@ pub enum ScopeKind {
 pub struct Scope {
     pub kind: ScopeKind,
     pub bindings: HashMap<String, ScopeBinding>,
+    // Track hoisted fn defs for a scope; upon real visiting, binding will be stored in bindings
+    pub fns: HashMap<String, ScopeBinding>,
     pub types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
 }
 
 impl Scope {
     fn new(kind: ScopeKind) -> Self {
-        Scope { kind, bindings: HashMap::new(), types: HashMap::new() }
+        Scope { kind, bindings: HashMap::new(), fns: HashMap::new(), types: HashMap::new() }
     }
 
     fn root_scope() -> Self {
@@ -67,9 +69,25 @@ impl Typechecker {
 
     fn get_binding(&self, name: &str) -> Option<(&ScopeBinding, usize)> {
         let mut depth = 0;
+        let mut fn_depth = 0;
         for scope in self.scopes.iter().rev() {
+            match &scope.kind {
+                ScopeKind::Function(_, _, _) | ScopeKind::Root => fn_depth += 1,
+                _ => {}
+            }
             match scope.bindings.get(name) {
                 None => {
+                    // If we've crossed at least 1 fn-scope border, then consider "pre-hoisted" fn defs from that outer scope
+                    // A scope's `fns` represent the signatures of all fns in that scope, regardless of ordering. We can only
+                    // consider these as valid options for a binding resolution if we've crossed at least 1 fn-scope boundary
+                    // or else we allow invocations of fns that haven't been defined yet:
+                    //   if true { if true { abc() } func abc() = println("") }        VS
+                    //   if true { func def() { if true { abc() } } func abc() = println("") }
+                    if fn_depth >= 1 {
+                        if let Some(binding) = scope.fns.get(name) {
+                            return Some((binding, self.scopes.len() - depth - 1));
+                        }
+                    }
                     depth += 1;
                     continue;
                 }
@@ -83,10 +101,20 @@ impl Typechecker {
         self.scopes.last().and_then(|scope| scope.bindings.get(name))
     }
 
+    fn get_fn_binding_in_current_scope(&self, name: &str) -> Option<&ScopeBinding> {
+        self.scopes.last().and_then(|scope| scope.fns.get(name))
+    }
+
     fn add_binding(&mut self, name: &str, ident: &Token, typ: &Type, is_mutable: bool) {
         let scope = self.scopes.last_mut().unwrap();
         let binding = ScopeBinding(ident.clone(), typ.clone(), is_mutable);
         scope.bindings.insert(name.to_string(), binding);
+    }
+
+    fn add_fn_binding(&mut self, name: &str, ident: &Token, typ: &Type) {
+        let scope = self.scopes.last_mut().unwrap();
+        let binding = ScopeBinding(ident.clone(), typ.clone(), false);
+        scope.fns.insert(name.to_string(), binding);
     }
 
     fn get_binding_mut(&mut self, name: &str) -> Option<&mut ScopeBinding> {
@@ -767,7 +795,8 @@ impl Typechecker {
         };
 
         let func_name = Token::get_ident_name(&name);
-        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
+        // Check to see if there is already a fn binding; pre-hoisted fns use fn_bindings, not normal bindings
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_fn_binding_in_current_scope(&func_name) {
             if orig_ident != name {
                 let orig_ident = orig_ident.clone();
                 return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident });
@@ -832,7 +861,7 @@ impl Typechecker {
                 AstNode::FunctionDecl(_, _) => {
                     let (_, name, func_type) = self.get_func_signature(&vec![], n)?;
                     let func_name = Token::get_ident_name(&name).clone();
-                    self.add_binding(&func_name, &name, &func_type, false);
+                    self.add_fn_binding(&func_name, &name, &func_type);
                 }
                 AstNode::TypeDecl(_, TypeDeclNode { name, type_args, .. }) |
                 AstNode::EnumDecl(_, EnumDeclNode { name, type_args, .. }) => {
@@ -1303,6 +1332,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let FunctionDeclNode { name, type_args, args, ret_type: ret_ann_type, body, } = node;
 
         let func_name = Token::get_ident_name(&name);
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
+            let orig_ident = orig_ident.clone();
+            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
+        }
         let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
         let mut seen = HashMap::<String, Token>::new();
         for type_arg in &type_args {
@@ -3851,6 +3884,19 @@ mod tests {
           }
         "#);
         assert!(res.is_ok());
+
+        let err = typecheck("\
+          if true {\n\
+            if true {\n\
+              abc()\n\
+            }\n\
+            func abc() = println(\"\")\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownIdentifier {
+            ident: ident_token!((3, 1), "abc")
+        };
+        assert_eq!(expected, err);
 
         // Test nested within match block
         let res = typecheck(r#"
