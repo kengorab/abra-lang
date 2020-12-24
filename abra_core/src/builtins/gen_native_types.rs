@@ -428,6 +428,13 @@ pub trait NativeArrayMethodsAndFields {
     fn method_tally(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_tally_by(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_as_set(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_get_or_default(
+        receiver: Option<Value>,
+        args: Vec<Value>,
+        vm: &mut VM,
+    ) -> Option<Value>;
+    fn method_get_or_else(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_update(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -788,6 +795,59 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
                 }),
             )),
+            "getOrDefault" => Some((
+                22usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Int, false),
+                        ("default".to_string(), Type::Generic("T".to_string()), false),
+                    ],
+                    ret_type: Box::new(Type::Generic("T".to_string())),
+                }),
+            )),
+            "getOrElse" => Some((
+                23usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Int, false),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![],
+                                ret_type: Box::new(Type::Generic("T".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Generic("T".to_string())),
+                }),
+            )),
+            "update" => Some((
+                24usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Int, false),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![(
+                                    "_".to_string(),
+                                    Type::Generic("T".to_string()),
+                                    false,
+                                )],
+                                ret_type: Box::new(Type::Generic("T".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Unit),
+                }),
+            )),
             _ => None,
         }
     }
@@ -955,6 +1015,24 @@ impl NativeType for NativeArray {
                 native_fn: Self::method_as_set,
                 has_return: true,
             }),
+            22usize => Value::NativeFn(NativeFn {
+                name: "getOrDefault",
+                receiver: Some(obj),
+                native_fn: Self::method_get_or_default,
+                has_return: true,
+            }),
+            23usize => Value::NativeFn(NativeFn {
+                name: "getOrElse",
+                receiver: Some(obj),
+                native_fn: Self::method_get_or_else,
+                has_return: true,
+            }),
+            24usize => Value::NativeFn(NativeFn {
+                name: "update",
+                receiver: Some(obj),
+                native_fn: Self::method_update,
+                has_return: false,
+            }),
             _ => unreachable!(),
         }
     }
@@ -997,6 +1075,13 @@ pub trait NativeMapMethodsAndFields {
     fn method_contains_key(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM)
         -> Option<Value>;
     fn method_map_values(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_get_or_default(
+        receiver: Option<Value>,
+        args: Vec<Value>,
+        vm: &mut VM,
+    ) -> Option<Value>;
+    fn method_get_or_else(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_update(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeMap {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
@@ -1078,6 +1163,59 @@ impl NativeType for NativeMap {
                     )),
                 }),
             )),
+            "getOrDefault" => Some((
+                8usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Generic("K".to_string()), false),
+                        ("default".to_string(), Type::Generic("V".to_string()), false),
+                    ],
+                    ret_type: Box::new(Type::Generic("V".to_string())),
+                }),
+            )),
+            "getOrElse" => Some((
+                9usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Generic("K".to_string()), false),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![],
+                                ret_type: Box::new(Type::Generic("V".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Generic("V".to_string())),
+                }),
+            )),
+            "update" => Some((
+                10usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("key".to_string(), Type::Generic("K".to_string()), false),
+                        (
+                            "fn".to_string(),
+                            Type::Fn(FnType {
+                                type_args: vec![],
+                                arg_types: vec![(
+                                    "_".to_string(),
+                                    Type::Generic("V".to_string()),
+                                    false,
+                                )],
+                                ret_type: Box::new(Type::Generic("V".to_string())),
+                            }),
+                            false,
+                        ),
+                    ],
+                    ret_type: Box::new(Type::Unit),
+                }),
+            )),
             _ => None,
         }
     }
@@ -1148,6 +1286,24 @@ impl NativeType for NativeMap {
                 receiver: Some(obj),
                 native_fn: Self::method_map_values,
                 has_return: true,
+            }),
+            8usize => Value::NativeFn(NativeFn {
+                name: "getOrDefault",
+                receiver: Some(obj),
+                native_fn: Self::method_get_or_default,
+                has_return: true,
+            }),
+            9usize => Value::NativeFn(NativeFn {
+                name: "getOrElse",
+                receiver: Some(obj),
+                native_fn: Self::method_get_or_else,
+                has_return: true,
+            }),
+            10usize => Value::NativeFn(NativeFn {
+                name: "update",
+                receiver: Some(obj),
+                native_fn: Self::method_update,
+                has_return: false,
             }),
             _ => unreachable!(),
         }

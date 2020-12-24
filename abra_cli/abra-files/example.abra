@@ -1,75 +1,21 @@
-//func abc(): String = def()
-//func def(): String = "3"
-//abc()
-
-//if true { if true { abc() } func abc() = println("") }
-//if true { func def() { if true { abc() } } func abc() = println("") }
-
-//if true {
-//  if true {
-//    abc()
-//  }
-//  func abc() = println("")
-//}
-
-func a() {
-  func b() {
-    func d() {
-      c()
-      b()
-    }
-  }
-  func c() { println("c") }
-}
-a()
-
-func abc(): Int {
-  func def(): Int = ghi()
-
-  func ghi(): Int = 4
-
-  def()
-}
-
-abc()
-
-//func a() {
-//  b()
-//}
+//val nums = [1, 2, 3, 4]
 //
-//func b() {
-//  println("Ok")
-//}
+//var count = 0
+//val i: Int = nums.getOrElse(7, () => {
+//  count += 1
+//  5
+//})
+//println(i + " " + count)
+//nums.update(2, n => n + 10)
+//println(nums)
+//nums[6] = 6
+//println(nums)
 
-func abc2(): () => Int {
-  var count = -1
-
-  func def(): Int {
-    //val _fib = fib
-    count += 1
-
-    func qrs(): Int {
-      //_fib(count)
-      fib(count)
-    }
-    qrs()
-  }
-
-  func fib(n: Int): Int {
-    if n <= 1 {
-      return 1
-    }
-    fib(n - 1) + fib(n - 2)
-  }
-
-  def
+val map = {
+  a: 4,
+  b: 16
 }
-
-val f = abc2()
-//println(f(7))
-println(f())
-println(f())
-println(f())
-println(f())
-println(f())
-println(f())
+//map.getOrDefault("c", 24)
+//map.getOrElse("c", () => 24)
+map.update("b", v => v + 24)
+println(map)

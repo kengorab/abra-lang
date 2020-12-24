@@ -140,6 +140,59 @@ impl NativeMapMethodsAndFields for NativeMap {
             }
         } else { unreachable!() }
     }
+
+    fn method_get_or_default(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Map::getOrDefault requires 2 arguments");
+        let default = args.next().expect("Map::getOrDefault requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    map.get(&key).map(|v| v.clone()).or(Some(default))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_get_or_else(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Map::getOrElse requires 2 arguments");
+        let callback = args.next().expect("Map::getOrElse requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::MapObj(map) => {
+                    map.get(&key)
+                        .map(|v| v.clone())
+                        .or_else(|| Some(invoke_fn(vm, &callback, vec![])))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_update(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Map::update requires 2 arguments");
+        let callback = args.next().expect("Map::update requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *(obj.borrow_mut()) {
+                Obj::MapObj(ref mut map) => {
+                    match map.get_mut(&key) {
+                        None => {}
+                        Some(item) => {
+                            *item = invoke_fn(vm, &callback, vec![item.clone()]);
+                        }
+                    }
+                    None
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
 }
 
 #[cfg(test)]
@@ -272,6 +325,75 @@ mod test {
         let expected = map! {
             new_string_obj("a") => new_string_obj("a1"),
             new_string_obj("b") => new_string_obj("b2")
+        };
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_get_or_default() {
+        let result = interpret("{a:1, b:2}.getOrDefault(\"b\", 12)");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{a:1, b:2}.getOrDefault(\"c\", 12)");
+        let expected = Value::Int(12);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_get_or_else() {
+        let result = interpret("{a:1, b:2}.getOrElse(\"b\", () => 12)");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          var counter = 0
+          {a:1, b:2}.getOrElse("b", () => {
+            counter += 1
+            12
+          })
+          counter
+        "#);
+        let expected = Value::Int(0);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{a:1, b:2}.getOrElse(\"c\", () => 12)");
+        let expected = Value::Int(12);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          var counter = 0
+          {a:1, b:2}.getOrElse("c", () => {
+            counter += 1
+            12
+          })
+          counter
+        "#);
+        let expected = Value::Int(1);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_update() {
+        let result = interpret(r#"
+          val map = {a:1, b:2}
+          map.update("b", n => n + 100)
+          map
+        "#);
+        let expected = map! {
+          new_string_obj("a") => Value::Int(1),
+          new_string_obj("b") => Value::Int(102)
+        };
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val map = {a:1, b:2}
+          map.update("c", n => n + 100)
+          map
+        "#);
+        let expected = map! {
+          new_string_obj("a") => Value::Int(1),
+          new_string_obj("b") => Value::Int(2)
         };
         assert_eq!(Some(expected), result);
     }

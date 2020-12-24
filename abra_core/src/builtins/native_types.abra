@@ -57,6 +57,9 @@ type NativeArray<T> {
   func tally(self): Map<T, Int> {}
   func tallyBy<U>(self, fn: (T) => U): Map<U, Int> {}
   func asSet(self): Set<T> {}
+  func getOrDefault(self, key: Int, default: T): T {}
+  func getOrElse(self, key: Int, fn: () => T): T {}
+  func update(self, key: Int, fn: (T) => T) {}
 }
 
 type NativeMap<K, V> {
@@ -71,6 +74,9 @@ type NativeMap<K, V> {
   func entries(self): Set<(K, V)> {}
   func containsKey(self, key: K): Bool {}
   func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {}
+  func getOrDefault(self, key: K, default: V): V {}
+  func getOrElse(self, key: K, fn: () => V): V {}
+  func update(self, key: K, fn: (V) => V) {}
 }
 
 type NativeSet<T> {

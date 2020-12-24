@@ -515,6 +515,62 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
             }
         } else { unreachable!() }
     }
+
+    fn method_get_or_default(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Array::getOrDefault requires 2 arguments");
+        let key = if let Value::Int(i) = key { i as usize } else { unreachable!() };
+        let default = args.next().expect("Array::getOrDefault requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    array.get(key).map(|v| v.clone()).or(Some(default))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_get_or_else(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Array::getOrElse requires 2 arguments");
+        let key = if let Value::Int(i) = key { i as usize } else { unreachable!() };
+        let callback = args.next().expect("Array::getOrElse requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(array) => {
+                    array.get(key)
+                        .map(|v| v.clone())
+                        .or_else(|| Some(invoke_fn(vm, &callback, vec![])))
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_update(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let key = args.next().expect("Array::update requires 2 arguments");
+        let key = if let Value::Int(i) = key { i as usize } else { unreachable!() };
+        let callback = args.next().expect("Array::update requires 2 arguments");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *(obj.borrow_mut()) {
+                Obj::ArrayObj(ref mut array) => {
+                    match array.get_mut(key) {
+                        None => {}
+                        Some(item) => {
+                            *item = invoke_fn(vm, &callback, vec![item.clone()]);
+                        }
+                    }
+                    None
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
 }
 
 #[cfg(test)]
@@ -952,6 +1008,69 @@ mod test {
           [1, 2, 3, 4, 3, 2, 1, 2, 1].asSet()\n\
         ");
         let expected = set![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_get_or_default() {
+        let result = interpret("[1, 2, 3].getOrDefault(1, 12)");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3].getOrDefault(10, 12)");
+        let expected = Value::Int(12);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_get_or_else() {
+        let result = interpret("[1, 2, 3].getOrElse(1, () => 12)");
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          var counter = 0
+          [1, 2, 3].getOrElse(1, () => {
+            counter += 1
+            12
+          })
+          counter
+        "#);
+        let expected = Value::Int(0);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[1, 2, 3].getOrElse(10, () => 12)");
+        let expected = Value::Int(12);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          var counter = 0
+          [1, 2, 3].getOrElse(10, () => {
+            counter += 1
+            12
+          })
+          counter
+        "#);
+        let expected = Value::Int(1);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_update() {
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          arr.update(1, n => n + 100)
+          arr
+        "#);
+        let expected = array![Value::Int(1), Value::Int(102), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          arr.update(7, n => n + 100)
+          arr
+        "#);
+        let expected = array![Value::Int(1), Value::Int(2), Value::Int(3)];
         assert_eq!(Some(expected), result);
     }
 }
