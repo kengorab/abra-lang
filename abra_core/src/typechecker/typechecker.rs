@@ -1715,9 +1715,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
                 if let Type::Fn(_) = typ {
                     for scope in self.scopes.iter_mut().rev() {
-                        if let ScopeKind::Function(func_token, func_name, _) = &scope.kind {
+                        if let ScopeKind::Function(_, func_name, ref mut is_recursive) = &mut scope.kind {
                             if &name == func_name {
-                                scope.kind = ScopeKind::Function(func_token.clone(), func_name.clone(), true);
+                                *is_recursive = true;
                             }
                         }
                     }

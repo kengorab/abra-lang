@@ -1023,6 +1023,80 @@ mod tests {
     }
 
     #[test]
+    fn interpret_func_invocation_ordering() {
+        // Test global fns
+        let input = r#"
+          func abc(): Int = def()
+          func def(): Int = 3
+          abc()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        // Test nested within fn
+        let input = r#"
+          func abc(): Int {
+            func def(): Int = ghi()
+            func ghi(): Int = 4
+            def()
+          }
+          abc()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
+        assert_eq!(expected, result);
+
+        // Test nested within if-expr
+        let input = r#"
+          val x = if true {
+            func def(): Int? {
+              if true { abc() }
+            }
+            func abc(): Int = 123
+            def()
+          }
+          x
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+
+        // Test very complex example
+        let input = r#"
+          func abc(): () => Int {
+            var count = -1
+
+            func def(): Int {
+              count += 1
+
+              func qrs(): Int = fib(count)
+              qrs()
+            }
+
+            func fib(n: Int): Int {
+              if n <= 1 { return 1 }
+              fib(n - 1) + fib(n - 2)
+            }
+            def
+          }
+          val fn = abc()
+          [fn(), fn(), fn(), fn(), fn(), fn(), fn()]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(5),
+            Value::Int(8),
+            Value::Int(13),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_while_loop() {
         let input = "\
           var a = 0\n\
