@@ -49,17 +49,14 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     };
 
     match compile_and_run(contents.clone(), ctx) {
-        Ok(Some(res)) => match res {
-            Value::Nil => {}
-            res @ _ => println!("{}", res.to_string())
-        }
+        Ok(Some(res)) if res != Value::Nil => println!("{}", res.to_string()),
         Err(error) => match error {
             Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
             Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
             Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
             Error::InterpretError(e) => eprintln!("{:?}", e),
         }
-        _ => println!()
+        _ => {}
     };
 
     Ok(())
