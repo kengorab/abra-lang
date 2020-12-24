@@ -105,7 +105,7 @@ mod tests {
     fn interpret_binary_boolean_short_circuiting() {
         let preface = "\n\
           var called = false\n\
-          func getTrue() {\n\
+          func getTrue(): Bool {\n\
             called = true\n\
             true\n\
           }\n\
@@ -114,7 +114,7 @@ mod tests {
         let input = format!("{}\n\
           val res = true || getTrue()
           res + \" \" + called",
-                            preface
+          preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("true false");
@@ -123,7 +123,7 @@ mod tests {
         let input = format!("{}\n\
           val res = false && getTrue()
           res + \" \" + called",
-                            preface
+          preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("false false");
@@ -623,14 +623,14 @@ mod tests {
 
     #[test]
     fn interpret_if_else_expressions() {
-        let input = "\
-          val abc = if (1 != 2) {\
-            123\
-          } else {\
-            456\
-          }\
+        let input = r#"
+          val abc = if (1 != 2) {
+            123
+          } else {
+            456
+          }
           abc
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(123);
         assert_eq!(expected, result);
@@ -640,16 +640,16 @@ mod tests {
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
-        let input = "\
-          func abc() {\n\
-            val a = 20\n\
-            4 + if (true) {\n\
-              val b = 123\n\
-              a\n\
-            } else { 0 }\n\
-          }\n\
-          abc()\
-        ";
+        let input = r#"
+          func abc(): Int {
+            val a = 20
+            4 + if (true) {
+              val b = 123
+              a
+            } else { 0 }
+          }
+          abc()
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
         assert_eq!(expected, result);
@@ -735,9 +735,9 @@ mod tests {
     #[test]
     fn interpret_func_invocation_closures() {
         let input = "\
-          func getCounter() {\n\
+          func getCounter(): () => Int {\n\
             var count = 100\n\
-            func tick() { count = count + 1 }\n\
+            func tick(): Int { count = count + 1 }\n\
             count = 0\n\
             tick\n\
           }\n\
@@ -757,11 +757,11 @@ mod tests {
 
         // Test deeply nested upvalue access
         let input = "\
-          func getCounter() {\n\
+          func getCounter(): () => Int {\n\
             var count = 100\n\
-            func unnecessaryLayer1() {\n\
-              func unnecessaryLayer2() {\n\
-                func tick() { count = count + 1 }\n\
+            func unnecessaryLayer1(): () => () => Int {\n\
+              func unnecessaryLayer2(): () => Int {\n\
+                func tick(): Int { count = count + 1 }\n\
                 tick\n\
               }\n\
               unnecessaryLayer2\n\
@@ -786,39 +786,39 @@ mod tests {
 
     #[test]
     fn interpret_func_invocation_closures_upvalues_not_yet_closed() {
-        let input = "\
-          func abc() {\n\
-            val a = 20\n\
-            func def() { a }\n\
-            4 + def()\n\
-          }\n\
-          abc()\
-        ";
+        let input = r#"
+          func abc(): Int {
+            val a = 20
+            func def(): Int { a }
+            4 + def()
+          }
+          abc()
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
-        let input = "\
-          func abc() {\n\
-            var a = 20\n\
-            func wrapper() {\n\
-              val b = 123\n\
-              func wrapper2() {\n\
-                val c = 456\n\
-                if (true) {\n\
-                  val b = 456\n\
-                  a = 24\n\
-                  a\n\
-                } else {\n\
-                  0\n\
-                }\n\
-              }\n\
-              wrapper2()\n\
-            }\n\
-            wrapper()\n\
-          }\n\
-          abc()\
-        ";
+        let input = r#"
+          func abc(): Int {
+            var a = 20
+            func wrapper(): Int {
+              val b = 123
+              func wrapper2(): Int {
+                val c = 456
+                if (true) {
+                  val b = 456
+                  a = 24
+                  a
+                } else {
+                  0
+                }
+              }
+              wrapper2()
+            }
+            wrapper()
+          }
+          abc()
+        "#;
 
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
@@ -829,11 +829,11 @@ mod tests {
     fn interpret_func_invocation_callstack() {
         let input = "\
           val greeting = \"Hello\"\n\
-          func exclaim(word: String) {\n\
+          func exclaim(word: String): String {\n\
             val abc = 123\n\
             word + \"!\"\n\
           }\n\
-          func greet(recipient: String) {\n\
+          func greet(recipient: String): String {\n\
             greeting + \", \" + exclaim(recipient)\n\
           }\n\
           val languageName = \"Abra\"\n\
@@ -846,22 +846,22 @@ mod tests {
 
     #[test]
     fn interpret_func_invocation_nested_if() {
-        let input = "\
-          val prefix = \"Save the\"\n\
-          func exclaim(word: String) {\n\
-            val abc = 123\n\
-            word + \"!\"\n\
-          }\n\
-          func save(recipient: String) {\n\
-            if (recipient == \"World\") {
+        let input = r#"
+          val prefix = "Save the"
+          func exclaim(word: String): String {
+            val abc = 123
+            word + "!"
+          }
+          func save(recipient: String): String {
+            if (recipient == "World") {
               val target = exclaim(recipient)
-              prefix + \" \" + target\n\
+              prefix + " " + target
             } else {
-              prefix + \" \" + recipient\n\
+              prefix + " " + recipient
             }
-          }\n\
-          save(\"Cheerleader\") + \", \" + save(\"World\")\n\
-        ";
+          }
+          save("Cheerleader") + ", " + save("World")
+        "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("Save the Cheerleader, Save the World!");
         assert_eq!(expected, result);
@@ -932,10 +932,10 @@ mod tests {
 
     #[test]
     fn interpret_func_invocation_default_args() {
-        let input = "\
-          func abc(a: Int = 2, b = 3, c = 5) { a * b * c }\n\
-          [abc(), abc(7), abc(7, 11), abc(7, 11, 13)]\n\
-        ";
+        let input = r#"
+          func abc(a: Int = 2, b = 3, c = 5): Int { a * b * c }
+          [abc(), abc(7), abc(7, 11), abc(7, 11, 13)]
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
             Value::Int(30),
@@ -948,30 +948,30 @@ mod tests {
 
     #[test]
     fn interpret_func_invocation_default_args_closure() {
-        let input = "
+        let input = r#"
           var called = false
-          func getOne() {
+          func getOne(): Int {
             called = true
             1
           }
-          func abc(def = getOne()) = def
+          func abc(def = getOne()): Int = def
           abc(1)
           called
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
 
-        let input = "
+        let input = r#"
           var called = false
-          func getOne() {
+          func getOne(): Int {
             called = true
             1
           }
-          func abc(def = getOne()) = def
+          func abc(def = getOne()): Int = def
           abc()
           called
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
@@ -979,17 +979,17 @@ mod tests {
 
     #[test]
     fn interpret_func_invocation_default_args_laziness() {
-        let input = "
-          func getOne() = 1
-          func outer() {
-            func abc(def = getOne(), ghi = def, jkl = def + ghi) {
+        let input = r#"
+          func getOne(): Int = 1
+          func outer(): () => Int {
+            func abc(def = getOne(), ghi = def, jkl = def + ghi): Int {
               def + ghi + jkl
             }
             abc
           }
           val fn = outer()
           fn()
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(4);
         assert_eq!(expected, result);
@@ -1018,6 +1018,80 @@ mod tests {
             Value::Int(2),
             Value::Int(3),
             Value::Int(4),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_func_invocation_ordering() {
+        // Test global fns
+        let input = r#"
+          func abc(): Int = def()
+          func def(): Int = 3
+          abc()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        // Test nested within fn
+        let input = r#"
+          func abc(): Int {
+            func def(): Int = ghi()
+            func ghi(): Int = 4
+            def()
+          }
+          abc()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
+        assert_eq!(expected, result);
+
+        // Test nested within if-expr
+        let input = r#"
+          val x = if true {
+            func def(): Int? {
+              if true { abc() }
+            }
+            func abc(): Int = 123
+            def()
+          }
+          x
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+
+        // Test very complex example
+        let input = r#"
+          func abc(): () => Int {
+            var count = -1
+
+            func def(): Int {
+              count += 1
+
+              func qrs(): Int = fib(count)
+              qrs()
+            }
+
+            func fib(n: Int): Int {
+              if n <= 1 { return 1 }
+              fib(n - 1) + fib(n - 2)
+            }
+            def
+          }
+          val fn = abc()
+          [fn(), fn(), fn(), fn(), fn(), fn(), fn()]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(5),
+            Value::Int(8),
+            Value::Int(13),
         ]);
         assert_eq!(expected, result);
     }
@@ -1517,7 +1591,7 @@ mod tests {
             }
           }
 
-          func sum(list: Int[]) = list.reduce(0, (acc, i) => acc + i)
+          func sum(list: Int[]): Int = list.reduce(0, (acc, i) => acc + i)
 
           var list: List<Int> = List(items: [])
           for n in range(1, 500) { list.push(n) }
@@ -1536,28 +1610,28 @@ mod tests {
 
     #[test]
     fn interpret_lambdas() {
-        let input = "\
-          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
-          call(x => x + 1, 23)\
-        ";
+        let input = r#"
+          func call(fn: (Int) => Int, value: Int): Int = fn(value)
+          call(x => x + 1, 23)
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
-        let input = "\
-          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
-          call((x, y = 1) => x + y + 1, 22)\
-        ";
+        let input = r#"
+          func call(fn: (Int) => Int, value: Int): Int = fn(value)
+          call((x, y = 1) => x + y + 1, 22)
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
-        let input = "\
-          func getAdder(x: Int): (Int) => Int {\n\
-            (y, z = 3) => x + y + z\n\
-          }\n\
-          getAdder(20)(1)\
-        ";
+        let input = r#"
+          func getAdder(x: Int): (Int) => Int {
+            (y, z = 3) => x + y + z
+          }
+          getAdder(20)(1)
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Int(24);
         assert_eq!(expected, result);
@@ -1657,7 +1731,7 @@ mod tests {
         // whether a non-root-scope function will be correctly recognized as recursive if its only
         // usage is within a lambda
         let input = r#"
-          func abc() {
+          func abc(): Int {
             func def(nums: Int[]): Int {
               if nums[0] |n| {
                 n + nums[1:].reduce(0, (acc, i) => acc + def([i]))
@@ -1708,7 +1782,7 @@ mod tests {
     #[test]
     pub fn interpret_return_statements() {
         let input = r#"
-          func contains(arr: Int[], item: Int) {
+          func contains(arr: Int[], item: Int): Bool {
             for i in arr {
               if item == i {
                 return true

@@ -354,7 +354,7 @@ impl VM {
             (Value::Int(a), Value::Int(b)) => {
                 self.push(Value::Int(f(a, b)))
             }
-            _ => unreachable!()
+            v@_ => {dbg!(v);unreachable!()}
         };
         Ok(())
     }
@@ -868,8 +868,12 @@ impl VM {
                     let stack_slot = self.read_byte_expect()?;
                     self.load_local(stack_slot)?
                 }
-                Opcode::ULoad0 => self.load_upvalue(0)?,
-                Opcode::ULoad1 => self.load_upvalue(1)?,
+                Opcode::ULoad0 => {
+                    self.load_upvalue(0)?
+                },
+                Opcode::ULoad1 => {
+                    self.load_upvalue(1)?
+                },
                 Opcode::ULoad2 => self.load_upvalue(2)?,
                 Opcode::ULoad3 => self.load_upvalue(3)?,
                 Opcode::ULoad4 => self.load_upvalue(4)?,

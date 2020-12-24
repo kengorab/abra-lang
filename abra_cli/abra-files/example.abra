@@ -1,4 +1,75 @@
-func abc() {
-  if true { println("hello") }
+//func abc(): String = def()
+//func def(): String = "3"
+//abc()
+
+//if true { if true { abc() } func abc() = println("") }
+//if true { func def() { if true { abc() } } func abc() = println("") }
+
+//if true {
+//  if true {
+//    abc()
+//  }
+//  func abc() = println("")
+//}
+
+func a() {
+  func b() {
+    func d() {
+      c()
+      b()
+    }
+  }
+  func c() { println("c") }
 }
-println(abc())
+a()
+
+func abc(): Int {
+  func def(): Int = ghi()
+
+  func ghi(): Int = 4
+
+  def()
+}
+
+abc()
+
+//func a() {
+//  b()
+//}
+//
+//func b() {
+//  println("Ok")
+//}
+
+func abc2(): () => Int {
+  var count = -1
+
+  func def(): Int {
+    //val _fib = fib
+    count += 1
+
+    func qrs(): Int {
+      //_fib(count)
+      fib(count)
+    }
+    qrs()
+  }
+
+  func fib(n: Int): Int {
+    if n <= 1 {
+      return 1
+    }
+    fib(n - 1) + fib(n - 2)
+  }
+
+  def
+}
+
+val f = abc2()
+//println(f(7))
+println(f())
+println(f())
+println(f())
+println(f())
+println(f())
+println(f())

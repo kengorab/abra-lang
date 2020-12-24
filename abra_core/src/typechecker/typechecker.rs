@@ -27,12 +27,14 @@ pub enum ScopeKind {
 pub struct Scope {
     pub kind: ScopeKind,
     pub bindings: HashMap<String, ScopeBinding>,
+    // Track hoisted fn defs for a scope; upon real visiting, binding will be stored in bindings
+    pub fns: HashMap<String, ScopeBinding>,
     pub types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
 }
 
 impl Scope {
     fn new(kind: ScopeKind) -> Self {
-        Scope { kind, bindings: HashMap::new(), types: HashMap::new() }
+        Scope { kind, bindings: HashMap::new(), fns: HashMap::new(), types: HashMap::new() }
     }
 
     fn root_scope() -> Self {
@@ -67,9 +69,25 @@ impl Typechecker {
 
     fn get_binding(&self, name: &str) -> Option<(&ScopeBinding, usize)> {
         let mut depth = 0;
+        let mut fn_depth = 0;
         for scope in self.scopes.iter().rev() {
+            match &scope.kind {
+                ScopeKind::Function(_, _, _) | ScopeKind::Root => fn_depth += 1,
+                _ => {}
+            }
             match scope.bindings.get(name) {
                 None => {
+                    // If we've crossed at least 1 fn-scope border, then consider "pre-hoisted" fn defs from that outer scope
+                    // A scope's `fns` represent the signatures of all fns in that scope, regardless of ordering. We can only
+                    // consider these as valid options for a binding resolution if we've crossed at least 1 fn-scope boundary
+                    // or else we allow invocations of fns that haven't been defined yet:
+                    //   if true { if true { abc() } func abc() = println("") }        VS
+                    //   if true { func def() { if true { abc() } } func abc() = println("") }
+                    if fn_depth >= 1 {
+                        if let Some(binding) = scope.fns.get(name) {
+                            return Some((binding, self.scopes.len() - depth - 1));
+                        }
+                    }
                     depth += 1;
                     continue;
                 }
@@ -83,10 +101,20 @@ impl Typechecker {
         self.scopes.last().and_then(|scope| scope.bindings.get(name))
     }
 
+    fn get_fn_binding_in_current_scope(&self, name: &str) -> Option<&ScopeBinding> {
+        self.scopes.last().and_then(|scope| scope.fns.get(name))
+    }
+
     fn add_binding(&mut self, name: &str, ident: &Token, typ: &Type, is_mutable: bool) {
         let scope = self.scopes.last_mut().unwrap();
         let binding = ScopeBinding(ident.clone(), typ.clone(), is_mutable);
         scope.bindings.insert(name.to_string(), binding);
+    }
+
+    fn add_fn_binding(&mut self, name: &str, ident: &Token, typ: &Type) {
+        let scope = self.scopes.last_mut().unwrap();
+        let binding = ScopeBinding(ident.clone(), typ.clone(), false);
+        scope.fns.insert(name.to_string(), binding);
     }
 
     fn get_binding_mut(&mut self, name: &str) -> Option<&mut ScopeBinding> {
@@ -383,6 +411,7 @@ impl Typechecker {
             scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
         }
         self.scopes.push(scope);
+        self.hoist_declarations_in_scope(&if_block)?;
         let if_block = self.visit_block(is_stmt, if_block)?;
         self.scopes.pop();
 
@@ -390,6 +419,7 @@ impl Typechecker {
             None => None,
             Some(body) => {
                 self.scopes.push(Scope::new(ScopeKind::Block));
+                self.hoist_declarations_in_scope(&body)?;
                 let else_block = self.visit_block(is_stmt, body)?;
                 self.scopes.pop();
 
@@ -552,6 +582,7 @@ impl Typechecker {
                 return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
             }
             self.scopes.push(scope);
+            self.hoist_declarations_in_scope(&block)?;
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
@@ -675,6 +706,8 @@ impl Typechecker {
     }
 
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+        self.hoist_declarations_in_scope(&body)?;
+
         let mut seen_return = false;
         let body_len = body.len();
         body.into_iter().enumerate()
@@ -755,75 +788,140 @@ impl Typechecker {
             .collect()
     }
 
+    fn get_func_signature(&mut self, type_args: &Vec<Token>, node: &AstNode) -> Result<(bool, Token, Type), TypecheckerError> {
+        let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &node {
+            AstNode::FunctionDecl(_, node) => node,
+            _ => unreachable!()
+        };
+
+        let func_name = Token::get_ident_name(&name);
+        // Check to see if there is already a fn binding; pre-hoisted fns use fn_bindings, not normal bindings
+        if let Some(ScopeBinding(orig_ident, _, _)) = self.get_fn_binding_in_current_scope(&func_name) {
+            if orig_ident != name {
+                let orig_ident = orig_ident.clone();
+                return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident });
+            }
+        }
+
+        // Create temporary "scope" to capture function's type_args, and eventually...
+        let type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
+        let mut fn_type_arg_names = Vec::new();
+        let mut scope = Scope::new(ScopeKind::TypeDef);
+        for fn_type_arg in fn_type_args {
+            let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
+            if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
+                return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
+            }
+            fn_type_arg_names.push(fn_type_arg_name.clone());
+            scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
+        }
+        self.scopes.push(scope);
+
+        let ret_type = ret_type.as_ref()
+            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+        let mut is_static = true;
+        let mut arg_types = Vec::new();
+        for (ident, type_ident, default_value) in args {
+            match ident {
+                Token::Self_(_) => is_static = false,
+                ident @ _ => {
+                    let arg_type = match type_ident {
+                        None => match default_value {
+                            None => unreachable!(), // This should be caught during parsing
+                            Some(default_value) => {
+                                let default_value = self.visit(default_value.clone())?;
+                                default_value.get_type()
+                            }
+                        },
+                        Some(type_ident) => self.type_from_type_ident(type_ident)?,
+                    };
+                    // Insert arg as binding in throwaway scope, to handle references in other variables' default values
+                    let arg_name = Token::get_ident_name(ident);
+                    self.add_binding(&arg_name, &ident, &arg_type, false);
+                    arg_types.push((arg_name, arg_type, default_value.is_some()));
+                }
+            }
+        }
+
+        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
+        let ret = if is_static {
+            // TODO: Handle static methods referencing type's type_args
+            (true, name.clone(), fn_type)
+        } else {
+            (false, name.clone(), fn_type)
+        };
+        // ...pop off the throwaway scope here.
+        self.scopes.pop();
+        Ok(ret)
+    }
+
+    fn hoist_declarations_in_scope(&mut self, body: &Vec<AstNode>) -> Result<(), TypecheckerError> {
+        for n in body {
+            match n {
+                AstNode::FunctionDecl(_, _) => {
+                    let (_, name, func_type) = self.get_func_signature(&vec![], n)?;
+                    let func_name = Token::get_ident_name(&name).clone();
+                    self.add_fn_binding(&func_name, &name, &func_type);
+                }
+                AstNode::TypeDecl(_, TypeDeclNode { name, type_args, .. }) |
+                AstNode::EnumDecl(_, EnumDeclNode { name, type_args, .. }) => {
+                    let type_is_enum = if let AstNode::EnumDecl(_, _) = &n { true } else { false };
+                    let new_type_name = Token::get_ident_name(&name).clone();
+
+                    if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&new_type_name) {
+                        if orig_ident != name {
+                            let orig_ident = orig_ident.clone();
+                            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: Some(orig_ident) });
+                        }
+                    }
+
+                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
+                    // reference we must look it up by name in self.referencable_types. This level of indirection
+                    // allows for cyclic/self-referential types.
+                    let typeref = Type::Reference(new_type_name.clone(), vec![]);
+                    let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
+                    self.add_binding(&new_type_name, &name, &binding_type, false);
+                    self.add_type(new_type_name.clone(), None, typeref.clone());
+
+                    let referencable_type = if type_is_enum {
+                        let typedef = EnumType { name: new_type_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
+                        Type::Enum(typedef)
+                    } else {
+                        let type_arg_names = type_args.iter()
+                            .map(|name| {
+                                let name = Token::get_ident_name(name);
+                                (name.clone(), Type::Generic(name))
+                            })
+                            .collect::<Vec<(String, Type)>>();
+                        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
+                        Type::Struct(typedef)
+                    };
+                    self.referencable_types.insert(new_type_name.clone(), referencable_type);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     fn typecheck_typedef_methods_phase_1(
         &mut self,
         type_args: &Vec<Token>,
         methods: &Vec<AstNode>,
     ) -> Result<(/* static_fields: */ Vec<(String, Type, bool)>, /* typed_methods: */ Vec<(String, Type)>), TypecheckerError> {
+        let methods = methods.into_iter()
+            .map(|node| self.get_func_signature(type_args, node))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut static_fields = Vec::new();
         let mut typed_methods = Vec::new();
-
-        for func_decl_node in methods {
-            let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &func_decl_node {
-                AstNode::FunctionDecl(_, node) => node,
-                _ => unreachable!()
-            };
-            let type_args = type_args.iter().map(|t| (Token::get_ident_name(t), t)).collect::<HashMap<String, &Token>>();
-
-            // Create temporary "scope" to capture function's type_args, and...
-            let mut fn_type_arg_names = Vec::new();
-            let mut scope = Scope::new(ScopeKind::TypeDef);
-            for fn_type_arg in fn_type_args {
-                let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
-                if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
-                }
-                fn_type_arg_names.push(fn_type_arg_name.clone());
-                scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
-            }
-            self.scopes.push(scope);
-
-            let ret_type = match ret_type {
-                None => return Err(TypecheckerError::MissingRequiredTypeAnnotation { token: name.clone() }),
-                Some(ret_type_ident) => self.type_from_type_ident(ret_type_ident)?,
-            };
-
-            let mut is_static = true;
-            let mut arg_types = Vec::new();
-            for (ident, type_ident, default_value) in args {
-                match ident {
-                    Token::Self_(_) => is_static = false,
-                    ident @ _ => {
-                        let arg_type = match type_ident {
-                            None => match default_value {
-                                None => unreachable!(), // This should be caught during parsing
-                                Some(default_value) => {
-                                    let default_value = self.visit(default_value.clone())?;
-                                    default_value.get_type()
-                                }
-                            },
-                            Some(type_ident) => self.type_from_type_ident(type_ident)?,
-                        };
-                        arg_types.push((Token::get_ident_name(ident).clone(), arg_type.clone(), default_value.is_some()));
-                    }
-                }
-            }
-
-            let fn_name = Token::get_ident_name(name).clone();
-            let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()) });
-            // let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+        for (is_static, name, typ) in methods {
+            let fn_name = Token::get_ident_name(&name).clone();
             if is_static {
-                // TODO: Handle static methods referencing type's type_args
-                // typedef.static_fields.push((fn_name, fn_type, true))
-                static_fields.push((fn_name, fn_type, true))
+                static_fields.push((fn_name, typ, true))
             } else {
-                // typedef.methods.push((fn_name, fn_type))
-                typed_methods.push((fn_name, fn_type))
+                typed_methods.push((fn_name, typ))
             }
-            // ...pop off the temporary scope here.
-            self.scopes.pop();
         }
-
         Ok((static_fields, typed_methods))
     }
 
@@ -898,6 +996,8 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
         referencable_types,
         returns: vec![],
     };
+
+    typechecker.hoist_declarations_in_scope(&ast)?;
 
     let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
         .map(|node| typechecker.visit(node))
@@ -1236,7 +1336,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         }
-
         let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
         let mut seen = HashMap::<String, Token>::new();
         for type_arg in &type_args {
@@ -1274,10 +1373,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
             })
             .collect::<Vec<_>>();
-        let initial_ret_type = match &ret_ann_type {
-            None => Type::Unknown,
-            Some(ret_type) => self.type_from_type_ident(ret_type)?,
-        };
+        let initial_ret_type = ret_ann_type.as_ref()
+            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
         if initial_ret_type.has_unbound_generic() {
             // The valid type args for a return type are all of the generics available in scope, minus
             // the fn type args that aren't referenced in the arguments (and are thus unbound).
@@ -1323,33 +1420,29 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         });
 
-        let mut ret_type = match &ret_ann_type {
+        let ret_type = match &ret_ann_type {
             None => {
-                if body.last().map_or(false, |n| Self::all_branches_return(n)) {
-                    None
-                } else {
-                    Some(body_type)
+                if !body_type.is_equivalent_to(&Type::Unit, &self.referencable_types) {
+                    let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
+                    return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: true, bare_return: false, expected: Type::Unit, actual: body_type });
                 }
+                Type::Unit
             }
             Some(ret_type) => {
                 let typ = self.type_from_type_ident(ret_type)?;
                 match body.last_mut() {
-                    None => Some(Type::Unit),
+                    None => Type::Unit,
                     Some(mut node) => {
                         if Self::all_branches_return(node) {
-                            Some(typ)
+                            typ
                         } else {
-                            let node_type_unknown = node.get_type().is_unknown(&self.referencable_types);
+                            let node_type = node.get_type();
 
                             if !self.are_types_equivalent(&mut node, &typ)? {
                                 let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                                return Err(TypecheckerError::Mismatch { token, actual: body_type, expected: typ });
-                            } else if typ.has_unbound_generic() {
-                                Some(typ)
-                            } else if node_type_unknown {
-                                Some(node.get_type())
+                                return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: false, expected: typ, actual: node_type });
                             } else {
-                                Some(typ)
+                                typ
                             }
                         }
                     }
@@ -1357,43 +1450,22 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
         };
 
-        // Returns that have types that are Type::Unknown will be handled _after_ non-unknown ones
-        let returns = returns.into_iter()
-            .map(|n| if let TypedAstNode::ReturnStatement(tok, node) = n { (tok, node) } else { unreachable!() })
-            .sorted_by_key(|(_, node)| {
-                node.target.as_ref().map_or(false, |n| n.get_type().is_unknown(&self.referencable_types))
-            })
-            .collect::<Vec<_>>();
-        for (return_tok, node) in returns {
+        let returns_iter = returns.into_iter()
+            .map(|n| if let TypedAstNode::ReturnStatement(tok, node) = n { (tok, node) } else { unreachable!() });
+        for (return_tok, node) in returns_iter {
             if let Some(ret_node) = node.target {
                 let ret_node_typ = ret_node.get_type();
-                match &ret_type {
-                    None => ret_type = Some(ret_node_typ),
-                    Some(ret_type) => {
-                        let token = ret_node.get_token().clone();
-                        let mut ret_node = ret_node;
-                        if !self.are_types_equivalent(&mut *ret_node, &ret_type)? {
-                            return Err(TypecheckerError::Mismatch {
-                                token,
-                                actual: ret_node_typ,
-                                expected: ret_type.clone(),
-                            });
-                        }
-                    }
+                let token = ret_node.get_token().clone();
+                let mut ret_node = ret_node;
+                if !self.are_types_equivalent(&mut *ret_node, &ret_type)? {
+                    return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: ret_ann_type.is_none(), bare_return: false, expected: ret_type, actual: ret_node_typ });
                 }
-            } else if ret_type != Some(Type::Unit) {
-                let ret_ann_type = match &ret_ann_type {
-                    None => Type::Unit,
-                    Some(ret_type_ann) => self.type_from_type_ident(&ret_type_ann)?
-                };
-                return Err(TypecheckerError::Mismatch {
-                    token: return_tok.clone(),
-                    actual: Type::Unit,
-                    expected: ret_ann_type,
-                });
+            } else if ret_type != Type::Unit {
+                let ret_ann_type = ret_ann_type.as_ref()
+                    .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+                return Err(TypecheckerError::ReturnTypeMismatch { token: return_tok, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: true, expected: ret_ann_type, actual: Type::Unit });
             }
         }
-        let ret_type = ret_type.unwrap_or(Type::Unknown);
 
         let fn_scope = self.scopes.pop().unwrap();
         let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
@@ -1418,39 +1490,25 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let TypeDeclNode { name, type_args, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
 
-        if let Some((_, typed_decl_node)) = self.get_type(&new_type_name) {
-            let token = typed_decl_node.map(|node| node.get_token().clone());
-            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
-        }
+        // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // // --- First gather only the type data for each field, method, and static value. --- \\
+        // // --- This first pass guarantees that all type data is available for the second --- \\
+        // // --- pass. Without doing this, forward-referencing of fields is not possible.  --- \\
+        // // --------------------------------------------------------------------------------- \\
+        //
+        // Note: At this point in time, the type declaration has already been inserted into the
+        // referencable_types list, since it was hoisted to the top of the scope. As we progress
+        // through this type declaration, we build up this referencable_type value. This value will
+        // be used for values of type Type::Reference, when the referenced type is "materialized".
 
-        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
-        // --- First gather only the type data for each field, method, and static value. --- \\
-        // --- This first pass guarantees that all type data is available for the second --- \\
-        // --- pass. Without doing this, forward-referencing of fields is not possible.  --- \\
-        // --------------------------------------------------------------------------------- \\
-
-        // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-        // reference we must look it up by name in self.referencable_types. This level of indirection
-        // allows for cyclic types.
-        let typeref = Type::Reference(new_type_name.clone(), vec![]);
-        let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
-        self.add_binding(&new_type_name, &name, &binding_type, false);
-        self.add_type(new_type_name.clone(), None, typeref.clone());
-
-        // As we progress through this type declaration, we build up this value in
-        // self.referencable_types. This value will be used for values of type Type::Reference, when
-        // the referenced type is "materialized".
+        // Update the Reference type of the type's identifier to include the generics, and establish
+        // that Reference as the cur_typedef
         let type_arg_names = type_args.iter()
             .map(|name| {
                 let name = Token::get_ident_name(name);
                 (name.clone(), Type::Generic(name))
             })
             .collect::<Vec<(String, Type)>>();
-        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
-        self.referencable_types.insert(new_type_name.clone(), Type::Struct(typedef));
-
-        // Update the Reference type of the type's identifier to include the generics, and establish
-        // that Reference as the cur_typedef
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         let typeref = Type::Reference(new_type_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
         *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
@@ -1546,25 +1604,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let EnumDeclNode { name, variants, methods, .. } = node;
         let new_enum_name = Token::get_ident_name(&name);
 
-        if let Some((_, typed_decl_node)) = self.get_type(&new_enum_name) {
-            let token = typed_decl_node.map(|node| node.get_token().clone());
-            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: token });
-        }
-
-        // ------------------------ Begin First-pass Type Gathering ------------------------ \\
-        // ---    See comment in visit_type_decl above, the process here is similar      --- \\
-        // --------------------------------------------------------------------------------- \\
-
-        // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-        // reference we must look it up by name in self.referencable_types. This level of indirection
-        // allows for cyclic types.
-        let typeref = Type::Reference(new_enum_name.clone(), vec![]);
-        let binding_type = Type::Type(new_enum_name.clone(), Box::new(typeref.clone()), true);
-        self.add_binding(&new_enum_name, &name, &binding_type, false);
-        self.add_type(new_enum_name.clone(), None, typeref.clone());
-
-        let typedef = EnumType { name: new_enum_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
-        self.referencable_types.insert(new_enum_name.clone(), Type::Enum(typedef));
+        // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
+        // // ---    See comment in visit_type_decl above, the process here is similar      --- \\
+        // // --------------------------------------------------------------------------------- \\
+        //
+        // Note: much like type declarations, enum declarations are also hoisted to the top of their
+        // scope. As such, by this point there will already be an entry in self.referencable_types.
 
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
         let typeref = Type::Reference(new_enum_name.clone(), vec![]);
@@ -1668,24 +1713,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 let binding_typ = typ.clone();
                 let is_mutable = is_mutable.clone();
 
-                if let Type::Fn(FnType { ret_type, .. }) = typ {
-                    // Type::Unknown acts as the sentinel value for a not-fully typechecked function
-                    let has_explicit_ret_type = **ret_type != Type::Unknown;
-
+                if let Type::Fn(_) = typ {
                     for scope in self.scopes.iter_mut().rev() {
-                        if let ScopeKind::Function(func_token, func_name, _) = &scope.kind {
+                        if let ScopeKind::Function(_, func_name, ref mut is_recursive) = &mut scope.kind {
                             if &name == func_name {
-                                if !has_explicit_ret_type {
-                                    // A function can't be referenced recursively unless it has a declared return type
-                                    return Err(TypecheckerError::RecursiveRefWithoutReturnType {
-                                        orig_token: func_token.clone(),
-                                        token: token.clone(),
-                                    });
-                                } else {
-                                    // If it has a declared return type, then everything's cool. We just need to
-                                    // mark this function as recursive. This value will be used downstream.
-                                    scope.kind = ScopeKind::Function(func_token.clone(), func_name.clone(), true);
-                                }
+                                *is_recursive = true;
                             }
                         }
                     }
@@ -2314,6 +2346,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
+        self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
         self.scopes.pop();
         self.scopes.pop(); // Pop loop intrinsic-variables outer block
@@ -2356,6 +2389,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
+        self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
         self.scopes.pop();
 
@@ -3550,7 +3584,7 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() = 123");
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int = 123");
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -3558,7 +3592,7 @@ mod tests {
                 args: vec![],
                 ret_type: Type::Int,
                 body: vec![
-                    int_literal!((1, 14), 123)
+                    int_literal!((1, 19), 123)
                 ],
                 scope_depth: 0,
                 is_recursive: false,
@@ -3571,7 +3605,7 @@ mod tests {
         assert_eq!(&expected_type, typ);
         assert_eq!(0, scope_depth);
 
-        let typed_ast = typecheck("func abc(a: Int) = a + 1")?;
+        let typed_ast = typecheck("func abc(a: Int): Int = a + 1")?;
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -3580,12 +3614,12 @@ mod tests {
                 ret_type: Type::Int,
                 body: vec![
                     TypedAstNode::Binary(
-                        Token::Plus(Position::new(1, 22)),
+                        Token::Plus(Position::new(1, 27)),
                         TypedBinaryNode {
                             typ: Type::Int,
-                            left: Box::new(identifier!((1, 20), "a", Type::Int, 1)),
+                            left: Box::new(identifier!((1, 25), "a", Type::Int, 1)),
                             op: BinaryOp::Add,
-                            right: Box::new(int_literal!((1, 24), 1)),
+                            right: Box::new(int_literal!((1, 29), 1)),
                         })
                 ],
                 scope_depth: 0,
@@ -3594,7 +3628,7 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[0]);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc() { val a = [1, 2] a }");
+        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int[] { val a = [1, 2] a }");
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -3603,18 +3637,18 @@ mod tests {
                 ret_type: Type::Array(Box::new(Type::Int)),
                 body: vec![
                     TypedAstNode::BindingDecl(
-                        Token::Val(Position::new(1, 14)),
+                        Token::Val(Position::new(1, 21)),
                         TypedBindingDeclNode {
-                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
+                            ident: Token::Ident(Position::new(1, 25), "a".to_string()),
                             is_mutable: false,
                             expr: Some(Box::new(
                                 TypedAstNode::Array(
-                                    Token::LBrack(Position::new(1, 22), false),
+                                    Token::LBrack(Position::new(1, 29), false),
                                     TypedArrayNode {
                                         typ: Type::Array(Box::new(Type::Int)),
                                         items: vec![
-                                            int_literal!((1, 23), 1),
-                                            int_literal!((1, 26), 2),
+                                            int_literal!((1, 30), 1),
+                                            int_literal!((1, 33), 2),
                                         ],
                                     },
                                 )
@@ -3622,7 +3656,7 @@ mod tests {
                             scope_depth: 1,
                         },
                     ),
-                    identifier!((1, 29), "a", Type::Array(Box::new(Type::Int)), 1)
+                    identifier!((1, 36), "a", Type::Array(Box::new(Type::Int)), 1)
                 ],
                 scope_depth: 0,
                 is_recursive: false,
@@ -3670,7 +3704,7 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_args() -> TestResult {
-        let typed_ast = typecheck("func abc(a: Int) = 123")?;
+        let typed_ast = typecheck("func abc(a: Int): Int = 123")?;
         let args = match typed_ast.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
@@ -3680,7 +3714,7 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
-        let typed_ast = typecheck("func abc(a: Int, b: Bool?, c: Int[]) = 123")?;
+        let typed_ast = typecheck("func abc(a: Int, b: Bool?, c: Int[]): Int = 123")?;
         let args = match typed_ast.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
@@ -3692,7 +3726,7 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
-        let typed_ast = typecheck("func abc(a: Int = 1, b = [1, 2, 3]) = 123")?;
+        let typed_ast = typecheck("func abc(a: Int = 1, b = [1, 2, 3]): Int = 123")?;
         let args = match typed_ast.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
@@ -3716,11 +3750,11 @@ mod tests {
         assert_eq!(&expected, args);
 
         // A function with default-valued arguments beyond those required should still be acceptable
-        let typed_ast = typecheck("\
-          func call(fn: (Int) => Int, value: Int) = fn(value)\n\
-          func incr(v: Int, incBy = 3) = v + incBy\n\
-          call(incr, 21)\n\
-        ");
+        let typed_ast = typecheck(r#"
+          func call(fn: (Int) => Int, value: Int): Int = fn(value)
+          func incr(v: Int, incBy = 3): Int = v + incBy
+          call(incr, 21)
+        "#);
         assert!(typed_ast.is_ok());
 
         Ok(())
@@ -3771,8 +3805,11 @@ mod tests {
         assert_eq!(expected, err);
 
         let error = typecheck("func abc(a: Int): Bool = 123").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 26), 123),
+            fn_name: "abc".to_string(),
+            fn_missing_ret_ann: false,
+            bare_return: false,
             expected: Type::Bool,
             actual: Type::Int,
         };
@@ -3795,18 +3832,8 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_function_decl_recursion_error() {
-        let error = typecheck("func abc() {\nabc()\n}").unwrap_err();
-        let expected = TypecheckerError::RecursiveRefWithoutReturnType {
-            orig_token: ident_token!((1, 6), "abc"),
-            token: ident_token!((2, 1), "abc"),
-        };
-        assert_eq!(expected, error);
-    }
-
-    #[test]
     fn typecheck_function_decl_inner_function() -> TestResult {
-        let typed_ast = typecheck("func a(): Int {\nfunc b() { 1 }\n b()\n}")?;
+        let typed_ast = typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b()\n}")?;
         let func = match typed_ast.first().unwrap() {
             TypedAstNode::FunctionDecl(_, func) => func,
             _ => panic!("Node must be a FunctionDecl")
@@ -3818,7 +3845,7 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_inner_function_err() {
-        let error = typecheck("func a(): Int {\nfunc b() { 1 }\n b + 1\n}").unwrap_err();
+        let error = typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b + 1\n}").unwrap_err();
         let expected = TypecheckerError::InvalidOperator {
             token: Token::Plus(Position::new(3, 4)),
             op: BinaryOp::Add,
@@ -3829,44 +3856,117 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_function_decl_ordering() {
+        // Test root level
+        let res = typecheck(r#"
+          func abc(): Int = def()
+          func def(): Int = 5
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within function scope
+        let res = typecheck(r#"
+          func abc() {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within if-block/else-block
+        let res = typecheck(r#"
+          if true {
+            func abc(): Int = def()
+            func def(): Int = 5
+          } else {
+            func abc(): Int = def()
+            func def(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        let err = typecheck("\
+          if true {\n\
+            if true {\n\
+              abc()\n\
+            }\n\
+            func abc() = println(\"\")\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::UnknownIdentifier {
+            ident: ident_token!((3, 1), "abc")
+        };
+        assert_eq!(expected, err);
+
+        // Test nested within match block
+        let res = typecheck(r#"
+          match "asdf" {
+            String => {
+              func abc(): Int = def()
+              func def(): Int = 5
+            }
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within for-loop
+        let res = typecheck(r#"
+          for i in [1, 2] {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Test nested within while-loop
+        let res = typecheck(r#"
+          while true {
+            func def(): Int = ghi()
+            func ghi(): Int = 5
+          }
+        "#);
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn typecheck_function_decl_generics() -> TestResult {
-        let typed_ast = typecheck("\
-          func abc<T>(t: T): T { t }\n\
-          val a = abc(123)\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func abc<T>(t: T): T { t }
+          val a = abc(123)
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         assert_eq!(Type::Int, typ);
 
-        let typed_ast = typecheck("\
-          func abc<T, U>(t: T, u: U): U { u }\n\
-          val a = abc(123, \"asdf\")\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func abc<T, U>(t: T, u: U): U { u }
+          val a = abc(123, "asdf")
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         assert_eq!(Type::String, typ);
 
-        let typed_ast = typecheck("\
-          func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }\n\
-          val a = map([0, 1, 2], x => x + \"!\")\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }
+          val a = map([0, 1, 2], x => x + "!")
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         assert_eq!(Type::Array(Box::new(Type::String)), typ);
 
-        let typed_ast = typecheck("\
-          func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }\n\
-          val a = map([[0, 1], [2, 3]], a => a.length)\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }
+          val a = map([[0, 1], [2, 3]], a => a.length)
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         assert_eq!(Type::Array(Box::new(Type::Int)), typ);
 
-        let typed_ast = typecheck("\
-          func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }\n\
-          val a = map([[0, 1], [2, 3]], a => a.length)\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }
+          val a = map([[0, 1], [2, 3]], a => a.length)
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         let expected = Type::Fn(FnType {
             arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Int)), false)],
@@ -3876,20 +3976,20 @@ mod tests {
         assert_eq!(expected, typ);
 
         // Verify generic resolution works for maps
-        let typed_ast = typecheck("\
-          func abc<T>(item: T) = { a: item }\n\
-          val a = abc(\"hello\")[\"a\"]
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func abc<T>(item: T): Map<String, T> = { a: item }
+          val a = abc("hello")["a"]
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         assert_eq!(Type::Option(Box::new(Type::String)), typ);
 
         // Verify generic resolution works for named arguments too
-        let typed_ast = typecheck("\
-          func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }\n\
-          val a = map(fn: a => a.length, arr: [[0, 1], [2, 3]])\n\
-          a\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }
+          val a = map(fn: a => a.length, arr: [[0, 1], [2, 3]])
+          a
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         let expected = Type::Fn(FnType {
             arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Int)), false)],
@@ -3899,17 +3999,17 @@ mod tests {
         assert_eq!(expected, typ);
 
         // Verify generic resolution works for union types
-        let typed_ast = typecheck("\
-          func cos<T>(angle: T | Float) = angle\n\
-          cos(1.23)\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func cos<T>(angle: T | Float): T | Float = angle
+          cos(1.23)
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         let expected = Type::Union(vec![Type::Float, Type::Float]); // <- Redundant, I know
         assert_eq!(expected, typ);
-        let typed_ast = typecheck("\
-          func cos<T>(angle: T | Float) = angle\n\
-          cos(12)\
-        ")?;
+        let typed_ast = typecheck(r#"
+          func cos<T>(angle: T | Float): T | Float = angle
+          cos(12)
+        "#)?;
         let typ = typed_ast.last().unwrap().get_type();
         let expected = Type::Union(vec![Type::Int, Type::Float]);
         assert_eq!(expected, typ);
@@ -4055,6 +4155,15 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_type_decl_ordering() {
+        let res = typecheck(r#"
+          type Person { name: Name }
+          type Name { first: String }
+        "#);
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -4260,7 +4369,15 @@ mod tests {
           }
         ";
         let error = typecheck(input).unwrap_err();
-        let expected = TypecheckerError::MissingRequiredTypeAnnotation { token: ident_token!((2, 6), "hello") };
+        // let expected = TypecheckerError::MissingRequiredTypeAnnotation { token: ident_token!((2, 6), "hello") };
+        let expected = TypecheckerError::ReturnTypeMismatch {
+            token: Token::String(Position::new(2, 20), "hello".to_string()),
+            fn_name: "hello".to_string(),
+            fn_missing_ret_ann: true,
+            bare_return: false,
+            expected: Type::Unit,
+            actual: Type::String,
+        };
         assert_eq!(expected, error);
     }
 
@@ -4678,7 +4795,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::DuplicateType {
             ident: ident_token!((2, 6), "Temp"),
-            orig_ident: Some(Token::Enum(Position::new(1, 1))),
+            orig_ident: Some(ident_token!((1, 6), "Temp")),
         };
         assert_eq!(expected, error);
 
@@ -4701,17 +4818,27 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_enum_decl_ordering() {
+        let res = typecheck(r#"
+          type Qux { foo1: Foo1, foo2: Foo2 }
+          enum Foo1 { Bar(f: Foo2), Baz(qux: Qux) }
+          enum Foo2 { Asdf, Qwer }
+        "#);
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn typecheck_enum_decl_variants() {
         let is_ok = typecheck("\
           enum Scale { Fahrenheit, Celsius }\n\
-          func isBoiling(amount: Float, scale: Scale) = amount\n\
+          func isBoiling(amount: Float, scale: Scale): Float = amount\n\
           isBoiling(212.0, Scale.Fahrenheit)\
         ").is_ok();
         assert!(is_ok);
 
         let is_ok = typecheck("\
           enum Scale { Fahrenheit(degs: Float), Celsius(degs: Float) }\n\
-          func isBoiling(scale: Scale) = true\n\
+          func isBoiling(scale: Scale): Bool = true\n\
           isBoiling(Scale.Fahrenheit(degs: 212.0))\
         ").is_ok();
         assert!(is_ok);
@@ -4721,7 +4848,7 @@ mod tests {
     fn typecheck_enum_decl_variants_errors() {
         let error = typecheck("\
           enum Scale { Fahrenheit, Celsius }\n\
-          func isBoiling(amount: Float, scale: Scale = 123) = amount\
+          func isBoiling(amount: Float, scale: Scale = 123): Float = amount\
         ").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Int(Position::new(2, 46), 123),
@@ -4732,7 +4859,7 @@ mod tests {
 
         let error = typecheck("\
           enum Scale { Fahrenheit(degs: Float), Celsius(degs: Float) }\n\
-          func isBoiling(scale: Scale) = true\n\
+          func isBoiling(scale: Scale): Bool = true\n\
           isBoiling(Scale.Fahrenheit(degs: \"212.0\"))\
         ").unwrap_err();
         let expected = TypecheckerError::Mismatch {
@@ -5601,7 +5728,7 @@ mod tests {
         assert_eq!(node, &expected);
 
         let ast = typecheck("\
-          func abc(a: Int, b: String) { b }\n\
+          func abc(a: Int, b: String): String { b }\n\
           abc(1, \"2\")\
         ")?;
         let node = ast.get(1).unwrap();
@@ -5628,10 +5755,10 @@ mod tests {
         );
         assert_eq!(node, &expected);
 
-        let ast = typecheck("\
-          func abc(a: Int, b = \"hello\") { b }\n\
-          abc(1)\
-        ");
+        let ast = typecheck(r#"
+          func abc(a: Int, b = "hello"): String { b }
+          abc(1)
+        "#);
         assert_eq!(ast.is_ok(), true);
 
         Ok(())
@@ -6543,36 +6670,36 @@ mod tests {
         );
         assert_eq!(expected, typed_ast[1]);
 
-        let typed_ast = typecheck("\
-          var fn = (a: String) => a\n\
-          func abc(str: String) = str\n\
-          fn = abc\n\
-          fn(\"abc\")\n\
-        ");
+        let typed_ast = typecheck(r#"
+          var fn = (a: String) => a
+          func abc(str: String): String = str
+          fn = abc
+          fn("abc")
+        "#);
         assert!(typed_ast.is_ok());
 
-        let typed_ast = typecheck("\
-          var fn: (String) => String = a => a\n\
-          type Person {\n\
-            name: String\n\
-            func greet(self, greeting: String): String = greeting + \", \" + self.name\n\
-          }\n\
-          fn = Person(name: \"Ken\").greet\n\
-          fn(\"Hello\")\n\
-        ");
+        let typed_ast = typecheck(r#"
+          var fn: (String) => String = a => a
+          type Person {
+            name: String
+            func greet(self, greeting: String): String = greeting + ", " + self.name
+          }
+          fn = Person(name: "Ken").greet
+          fn("Hello")
+        "#);
         assert!(typed_ast.is_ok());
 
-        let typed_ast = typecheck("\
-          func call(fn: (String) => String, value: String) = fn(value)\n\
-          call((x, b = \"hello\") => b, \"hello\")\n\
-        ");
+        let typed_ast = typecheck(r#"
+          func call(fn: (String) => String, value: String): String = fn(value)
+          call((x, b = "hello") => b, "hello")
+        "#);
         assert!(typed_ast.is_ok());
 
         // A lambda which returns Unit can accept anything as a response (which will just be thrown out)
-        let typed_ast = typecheck("\
-          func call(fn: (String) => Unit, value: String) = fn(value)\n\
-          call((x, b = \"hello\") => b, \"hello\")\n\
-        ");
+        let typed_ast = typecheck(r#"
+          func call(fn: (String) => Unit, value: String) = fn(value)
+          call((x, b = "hello") => b, "hello")
+        "#);
         assert!(typed_ast.is_ok());
 
         Ok(())
@@ -6971,7 +7098,7 @@ mod tests {
     #[test]
     fn typecheck_return_statements() {
         let input = r#"
-          func f() {
+          func f(): Int {
             if true { return 1 }
             return 2
           }
@@ -6979,7 +7106,7 @@ mod tests {
         assert!(typecheck(input).is_ok());
 
         let input = r#"
-          func f() {
+          func f(): Int {
             if true { return 1 }
             2
           }
@@ -7015,7 +7142,7 @@ mod tests {
         assert!(typecheck(input).is_ok());
 
         let input = r#"
-          func f(i: Int | String) {
+          func f(i: Int | String): String {
             while true {
               if true { return "a" }
             }
@@ -7029,7 +7156,7 @@ mod tests {
         assert!(typecheck(input).is_ok());
 
         let input = r#"
-          func f(i: Int | String) {
+          func f(i: Int | String): String[] {
             for _ in [1, 2] {
               if true { return [] }
             }
@@ -7043,7 +7170,7 @@ mod tests {
         assert!(typecheck(input).is_ok());
 
         let input = r#"
-          func f() {
+          func f(): String[] {
             val d = if true {
               if true { return [] } else { "d" }
             } else if false {
@@ -7057,7 +7184,7 @@ mod tests {
         assert!(typecheck(input).is_ok());
 
         let input = r#"
-          func f() {
+          func f(): (Int) => Int {
             if true {
               return (i) => 5
             }
@@ -7134,21 +7261,27 @@ mod tests {
     #[test]
     fn typecheck_return_statements_type_errors() {
         let err = typecheck("func f(): String { return 5 }").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 27), 5),
+            fn_name: "f".to_string(),
+            fn_missing_ret_ann: false,
+            bare_return: false,
             actual: Type::Int,
             expected: Type::String,
         };
         assert_eq!(expected, err);
 
         let err = typecheck("\
-          func f() {\n\
+          func f(): String {\n\
             if true { return \"\" }\n\
             return 5\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::ReturnTypeMismatch {
             token: Token::Int(Position::new(3, 8), 5),
+            fn_name: "f".to_string(),
+            fn_missing_ret_ann: false,
+            bare_return: false,
             actual: Type::Int,
             expected: Type::String,
         };
@@ -7160,10 +7293,13 @@ mod tests {
             return {}\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
-            token: Token::LBrace(Position::new(3, 8)),
+        let expected = TypecheckerError::ReturnTypeMismatch {
+            token: Token::Return(Position::new(3, 1), false),
+            fn_name: "f".to_string(),
+            fn_missing_ret_ann: true,
+            bare_return: false,
             actual: Type::Map(Box::new(Type::String), Box::new(Type::Unknown)),
-            expected: Type::Array(Box::new(Type::Unknown)),
+            expected: Type::Unit,
         };
         assert_eq!(expected, err);
 
@@ -7173,9 +7309,27 @@ mod tests {
             return {}\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerError::ReturnTypeMismatch {
             token: Token::LBrack(Position::new(2, 18), false),
+            fn_name: "f".to_string(),
+            fn_missing_ret_ann: false,
+            bare_return: false,
             actual: Type::Array(Box::new(Type::Unknown)),
+            expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func f(): Map<String, Int> {\n\
+            return\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::ReturnTypeMismatch {
+            token: Token::Return(Position::new(2, 1), true),
+            fn_name: "f".to_string(),
+            fn_missing_ret_ann: false,
+            bare_return: true,
+            actual: Type::Unit,
             expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
         };
         assert_eq!(expected, err);

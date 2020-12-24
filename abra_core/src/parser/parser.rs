@@ -538,7 +538,8 @@ impl Parser {
         self.expect_next_token(TokenType::RBrace)?;
 
         if is_enum {
-            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { name, variants, methods }))
+            let type_args = vec![];
+            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { name, variants, methods, type_args }))
         } else {
             Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { name, fields, methods, type_args }))
         }
@@ -2811,6 +2812,7 @@ mod tests {
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
                 name: ident_token!((1, 6), "Color"),
+                type_args: vec![],
                 variants: vec![
                     (ident_token!((2, 1), "Red"), None),
                     (ident_token!((3, 1), "Blue"), None),
@@ -2826,6 +2828,7 @@ mod tests {
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
                 name: ident_token!((1, 6), "Direction"),
+                type_args: vec![],
                 variants: vec![
                     (ident_token!((1, 18), "Red"), None),
                     (ident_token!((1, 23), "Blue"), None),
@@ -2841,6 +2844,7 @@ mod tests {
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
                 name: ident_token!((1, 6), "Direction"),
+                type_args: vec![],
                 variants: vec![
                     (ident_token!((1, 18), "Red"), None),
                     (ident_token!((1, 23), "Blue"), None),

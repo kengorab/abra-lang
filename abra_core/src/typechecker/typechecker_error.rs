@@ -36,7 +36,6 @@ pub enum TypecheckerError {
     IncorrectArity { token: Token, expected: usize, actual: usize },
     UnexpectedParamName { token: Token },
     DuplicateParamName { token: Token },
-    RecursiveRefWithoutReturnType { orig_token: Token, token: Token },
     InvalidBreak(Token),
     InvalidReturn(Token),
     InvalidRequiredArgPosition(Token),
@@ -49,7 +48,6 @@ pub enum TypecheckerError {
     InvalidTypeFuncInvocation { token: Token },
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
-    MissingRequiredTypeAnnotation { token: Token },
     InvalidTypeDeclDepth { token: Token },
     ForbiddenVariableType { token: Token, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
@@ -63,6 +61,7 @@ pub enum TypecheckerError {
     InvalidDestructuring { token: Token, typ: Type },
     InvalidDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
     UnreachableCode { token: Token },
+    ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
 }
 
 impl TypecheckerError {
@@ -90,7 +89,6 @@ impl TypecheckerError {
             TypecheckerError::IncorrectArity { token, .. } => token,
             TypecheckerError::UnexpectedParamName { token } => token,
             TypecheckerError::DuplicateParamName { token } => token,
-            TypecheckerError::RecursiveRefWithoutReturnType { token, .. } => token,
             TypecheckerError::InvalidBreak(token) => token,
             TypecheckerError::InvalidReturn(token) => token,
             TypecheckerError::InvalidRequiredArgPosition(token) => token,
@@ -103,7 +101,6 @@ impl TypecheckerError {
             TypecheckerError::InvalidTypeFuncInvocation { token } => token,
             TypecheckerError::InvalidSelfParamPosition { token } => token,
             TypecheckerError::InvalidSelfParam { token } => token,
-            TypecheckerError::MissingRequiredTypeAnnotation { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
             TypecheckerError::ForbiddenVariableType { token, .. } => token,
             TypecheckerError::InvalidInstantiation { token, .. } => token,
@@ -117,6 +114,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidDestructuring { token, .. } => token,
             TypecheckerError::InvalidDestructuringArity { token, .. } => token,
             TypecheckerError::UnreachableCode { token } => token,
+            TypecheckerError::ReturnTypeMismatch { token, .. } => token,
         }
     }
 }
@@ -420,18 +418,6 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line,
                 )
             }
-            TypecheckerError::RecursiveRefWithoutReturnType { orig_token, token: _ } => {
-                let secondary_pos = orig_token.get_position();
-                let secondary_cursor_line = Self::get_underlined_line(lines, orig_token);
-
-                format!(
-                    "Missing return type declaration: ({}:{})\n{}\n\
-                    Functions that contain recursive references must explicitly declare their return type\n\
-                    Missing return type annotation here ({}:{}):\n{}",
-                    pos.line, pos.col, cursor_line,
-                    secondary_pos.line, secondary_pos.col, secondary_cursor_line
-                )
-            }
             TypecheckerError::InvalidBreak(_token) => {
                 format!(
                     "Unexpected break keyword: ({}:{})\n{}\n\
@@ -529,13 +515,6 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Invalid usage of `self` parameter: ({}:{})\n{}\n\
                     `self` can only appear within methods on types",
-                    pos.line, pos.col, cursor_line
-                )
-            }
-            TypecheckerError::MissingRequiredTypeAnnotation { .. } => {
-                format!(
-                    "Missing required type annotation: ({}:{})\n{}\n\
-                    Methods must have return type explicitly annotated",
                     pos.line, pos.col, cursor_line
                 )
             }
@@ -641,8 +620,38 @@ impl DisplayError for TypecheckerError {
             TypecheckerError::UnreachableCode { .. } => {
                 format!(
                     "Unreachable code: ({}:{})\n{}\n\
-                    Code comes after a return statement",
+                    Code comes after a return statement and will never be called",
                     pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::ReturnTypeMismatch { fn_name, fn_missing_ret_ann, bare_return, expected, actual, .. } => {
+                let actual = match &actual {
+                    Type::Option(i) if **i == Type::Placeholder => {
+                        Type::Option(Box::new(expected.clone()))
+                    }
+                    _ => actual.clone()
+                };
+                let msg = if *bare_return {
+                    format!(
+                        "Function '{}' has return type {}, but no expression was returned",
+                        fn_name, type_repr(expected)
+                    )
+                } else {
+                    format!(
+                        "Function '{}' has return type {}, but this is of type {}",
+                        fn_name, type_repr(expected), type_repr(&actual),
+                    )
+                };
+                let hint = if actual == Type::Option(Box::new(Type::Unit)) {
+                    format!("\n(Note: Values of type {} are redundant and can probably just be removed)", type_repr(&actual))
+                } else if expected == &Type::Unit && *fn_missing_ret_ann {
+                    "\n(Note: A function without a return type annotation is assumed to return Unit.\n       Try adding a return type annotation to the function.)".to_string()
+                } else {"".to_string()};
+
+                format!(
+                    "Invalid return type: ({}:{})\n{}\n{}{}",
+                    pos.line, pos.col, cursor_line,
+                    msg, hint
                 )
             }
         }
@@ -953,26 +962,6 @@ Incorrect arity for invocation: (2:1)
   |  abc(1, 2, 3)
      ^^^
 Expected 1 required argument, but 3 were passed"
-        );
-        assert_eq!(expected, err.get_message(&src));
-    }
-
-    #[test]
-    fn test_recursive_call_no_return_type() {
-        let src = "func abc() {\nabc()\n}".to_string();
-        let err = TypecheckerError::RecursiveRefWithoutReturnType {
-            orig_token: Token::Ident(Position::new(1, 6), "abc".to_string()),
-            token: Token::Ident(Position::new(2, 1), "abc".to_string()),
-        };
-
-        let expected = format!("\
-Missing return type declaration: (2:1)
-  |  abc()
-     ^^^
-Functions that contain recursive references must explicitly declare their return type
-Missing return type annotation here (1:6):
-  |  func abc() {{
-          ^^^"
         );
         assert_eq!(expected, err.get_message(&src));
     }
