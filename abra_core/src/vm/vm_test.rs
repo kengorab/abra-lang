@@ -84,6 +84,14 @@ mod tests {
         let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
         let expected = new_string_obj("hello 24 world");
         assert_eq!(expected, result);
+
+        let result = interpret("2 ** 3 ** 4").unwrap();
+        let expected = Value::Float(4096.0);
+        assert_eq!(expected, result);
+
+        let result = interpret("2 ** 3.1").unwrap();
+        let expected = Value::Float(8.574187700290345);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -99,6 +107,12 @@ mod tests {
         let result = interpret("true && false || true && true").unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
+
+        for (l, r, res) in vec![(true, true, false), (true, false, true), (false, true, true), (false, false, false)] {
+            let result = interpret(format!("{} ^ {}", l, r).as_str()).unwrap();
+            let expected = Value::Bool(res);
+            assert_eq!(expected, result);
+        }
     }
 
     #[test]

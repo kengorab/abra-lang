@@ -354,7 +354,7 @@ impl VM {
             (Value::Int(a), Value::Int(b)) => {
                 self.push(Value::Int(f(a, b)))
             }
-            v@_ => {dbg!(v);unreachable!()}
+            _ => unreachable!()
         };
         Ok(())
     }
@@ -521,6 +521,19 @@ impl VM {
                 Opcode::FMul => self.float_op(|a, b| a * b)?,
                 Opcode::FDiv => self.float_op(|a, b| a / b)?,
                 Opcode::FMod => self.float_op(|a, b| a % b)?,
+                Opcode::Pow => {
+                    let b = self.pop_expect()?;
+                    let a = self.pop_expect()?;
+
+                    let (a, b) = match (a, b) {
+                        (Value::Int(a), Value::Int(b)) => (a as f64, b as f64),
+                        (Value::Float(a), Value::Int(b)) => (a, b as f64),
+                        (Value::Int(a), Value::Float(b)) => (a as f64, b),
+                        (Value::Float(a), Value::Float(b)) => (a, b),
+                        _ => unreachable!()
+                    };
+                    self.push(Value::Float(a.powf(b)));
+                }
                 Opcode::I2F => {
                     let val = pop_expect_int!(self)?;
                     self.push(Value::Float(val as f64))
@@ -559,6 +572,12 @@ impl VM {
                 Opcode::GTE => self.comp_values(Opcode::GTE)?,
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
+                Opcode::Xor => {
+                    let b = pop_expect_bool!(self)?;
+                    let a = pop_expect_bool!(self)?;
+                    let val = if a && b { false } else { a || b };
+                    self.push(Value::Bool(val));
+                }
                 Opcode::New => {
                     let size = self.read_byte_expect()?;
                     let mut fields = Vec::with_capacity(size);

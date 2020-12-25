@@ -14,7 +14,7 @@ pub enum Precedence {
     Addition,
     // * / %
     Multiplication,
-    // ?:
+    // ** ?:
     Coalesce,
     // ! - +
     Unary,

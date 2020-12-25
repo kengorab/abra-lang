@@ -218,6 +218,12 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::StarStar(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "starStar")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::And(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "and")?;
@@ -239,6 +245,12 @@ impl<'a> Serialize for JsToken<'a> {
             Token::OrEq(pos) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "orEq")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::Caret(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "caretCaret")?;
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }

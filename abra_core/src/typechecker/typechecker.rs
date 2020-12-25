@@ -1066,6 +1066,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
+                BinaryOp::Pow =>
+                    match (&ltype, &rtype) {
+                        (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
                 BinaryOp::Div | BinaryOp::DivEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
@@ -1077,7 +1082,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::And | BinaryOp::AndEq | BinaryOp::Or | BinaryOp::OrEq =>
+                BinaryOp::And | BinaryOp::AndEq | BinaryOp::Or | BinaryOp::OrEq | BinaryOp::Xor =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
@@ -2806,7 +2811,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_binary_arithmetic() -> TestResult {
+    fn typecheck_binary_numeric_operators() -> TestResult {
         let typed_ast = typecheck("1 + 2")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 3)),
@@ -2853,11 +2858,37 @@ mod tests {
                 right: Box::new(float_literal!((1, 5), 2.3)),
             },
         );
-        Ok(assert_eq!(expected, typed_ast[0]))
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("2 ** 3")?;
+        let expected = TypedAstNode::Binary(
+            Token::StarStar(Position::new(1, 3)),
+            TypedBinaryNode {
+                typ: Type::Float,
+                left: Box::new(int_literal!((1, 1), 2)),
+                op: BinaryOp::Pow,
+                right: Box::new(int_literal!((1, 6), 3)),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("1 ** 2.3")?;
+        let expected = TypedAstNode::Binary(
+            Token::StarStar(Position::new(1, 3)),
+            TypedBinaryNode {
+                typ: Type::Float,
+                left: Box::new(int_literal!((1, 1), 1)),
+                op: BinaryOp::Pow,
+                right: Box::new(float_literal!((1, 6), 2.3)),
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+
+        Ok(())
     }
 
     #[test]
-    fn typecheck_binary_arithmetic_nested() -> TestResult {
+    fn typecheck_binary_numeric_operators_nested() -> TestResult {
         let typed_ast = typecheck("1 + 2.3 - -4.5")?;
         let expected = TypedAstNode::Binary(
             Token::Minus(Position::new(1, 9)),
@@ -2969,7 +3000,7 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_binary_arithmetic_failures() {
+    fn typecheck_binary_numeric_failures() {
         let cases = vec![
             ("3 - \"str\"", Token::Minus(Position::new(1, 3)), BinaryOp::Sub, Type::Int, Type::String),
             ("3.2 - \"str\"", Token::Minus(Position::new(1, 5)), BinaryOp::Sub, Type::Float, Type::String),
@@ -2978,6 +3009,7 @@ mod tests {
             ("3 / \"str\"", Token::Slash(Position::new(1, 3)), BinaryOp::Div, Type::Int, Type::String),
             ("3.2 / \"str\"", Token::Slash(Position::new(1, 5)), BinaryOp::Div, Type::Float, Type::String),
             ("3.2 % \"str\"", Token::Percent(Position::new(1, 5)), BinaryOp::Mod, Type::Float, Type::String),
+            ("3.2 ** \"str\"", Token::StarStar(Position::new(1, 5)), BinaryOp::Pow, Type::Float, Type::String),
             //
             ("\"str\" - 3", Token::Minus(Position::new(1, 7)), BinaryOp::Sub, Type::String, Type::Int),
             ("\"str\" - 3.2", Token::Minus(Position::new(1, 7)), BinaryOp::Sub, Type::String, Type::Float),
@@ -2986,6 +3018,7 @@ mod tests {
             ("\"str\" / 3", Token::Slash(Position::new(1, 7)), BinaryOp::Div, Type::String, Type::Int),
             ("\"str\" / 3.2", Token::Slash(Position::new(1, 7)), BinaryOp::Div, Type::String, Type::Float),
             ("\"str\" % 3.2", Token::Percent(Position::new(1, 7)), BinaryOp::Mod, Type::String, Type::Float),
+            ("\"str\" ** 3.2", Token::StarStar(Position::new(1, 7)), BinaryOp::Pow, Type::String, Type::Float),
             //
             ("true + 1", Token::Plus(Position::new(1, 6)), BinaryOp::Add, Type::Bool, Type::Int),
             ("true + 1.0", Token::Plus(Position::new(1, 6)), BinaryOp::Add, Type::Bool, Type::Float),
@@ -3021,7 +3054,6 @@ mod tests {
     #[test]
     fn typecheck_binary_boolean() -> TestResult {
         let typed_ast = typecheck("true && true || false")?;
-
         let expected = TypedAstNode::IfExpression(Token::If(Position::new(1, 14)), TypedIfNode {
             typ: Type::Bool,
             condition: Box::new(
@@ -3045,6 +3077,18 @@ mod tests {
                 bool_literal!((1, 17), false),
             ]),
         });
+        assert_eq!(expected, typed_ast[0]);
+
+        let typed_ast = typecheck("true ^ true")?;
+        let expected = TypedAstNode::Binary(
+            Token::Caret(Position::new(1, 6)),
+            TypedBinaryNode {
+                typ: Type::Bool,
+                left: Box::new(bool_literal!((1, 1), true)),
+                op: BinaryOp::Xor,
+                right: Box::new(bool_literal!((1, 8), true)),
+            }
+        );
         Ok(assert_eq!(expected, typed_ast[0]))
     }
 
@@ -3064,6 +3108,13 @@ mod tests {
             ("false || 1", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Int),
             ("false || 3.14", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::Float),
             ("false || \"str\"", Token::Or(Position::new(1, 7)), BinaryOp::Or, Type::Bool, Type::String),
+            //
+            ("true ^ 1", Token::Caret(Position::new(1, 6)), BinaryOp::Xor, Type::Bool, Type::Int),
+            ("true ^ 3.14", Token::Caret(Position::new(1, 6)), BinaryOp::Xor, Type::Bool, Type::Float),
+            ("true ^ \"str\"", Token::Caret(Position::new(1, 6)), BinaryOp::Xor, Type::Bool, Type::String),
+            ("false ^ 1", Token::Caret(Position::new(1, 7)), BinaryOp::Xor, Type::Bool, Type::Int),
+            ("false ^ 3.14", Token::Caret(Position::new(1, 7)), BinaryOp::Xor, Type::Bool, Type::Float),
+            ("false ^ \"str\"", Token::Caret(Position::new(1, 7)), BinaryOp::Xor, Type::Bool, Type::String),
         ];
 
         for (input, token, op, ltype, rtype) in cases {
