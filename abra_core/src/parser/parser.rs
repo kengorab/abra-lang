@@ -171,10 +171,11 @@ impl Parser {
             Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
             Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
             Token::And(_) | Token::AndEq(_) => Precedence::And,
-            Token::Or(_) | Token::OrEq(_) => Precedence::Or,
-            Token::Elvis(_) | Token::ElvisEq(_) => Precedence::Coalesce,
+            Token::Or(_) | Token::OrEq(_) | Token::CaretCaret(_) => Precedence::Or,
+            Token::Elvis(_) | Token::ElvisEq(_) | Token::StarStar(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
-            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
+            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) |
+            Token::GTGT(_) | Token::LTLT(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
             Token::Dot(_) | Token::QuestionDot(_) | Token::Arrow(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
@@ -969,6 +970,10 @@ impl Parser {
             Token::LTE(_) => BinaryOp::Lte,
             Token::Neq(_) => BinaryOp::Neq,
             Token::Eq(_) => BinaryOp::Eq,
+            Token::CaretCaret(_) => {},
+            Token::StarStar(_) => {},
+            Token::LTLT(_) => {},
+            Token::GTGT(_) => {},
             _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))

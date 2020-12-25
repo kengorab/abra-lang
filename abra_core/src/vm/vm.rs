@@ -354,7 +354,7 @@ impl VM {
             (Value::Int(a), Value::Int(b)) => {
                 self.push(Value::Int(f(a, b)))
             }
-            v@_ => {dbg!(v);unreachable!()}
+            _ => unreachable!()
         };
         Ok(())
     }
