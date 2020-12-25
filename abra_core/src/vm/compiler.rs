@@ -813,7 +813,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let node_type = &node.typ;
 
-        let opcode = match (node.op, node_type) {
+        let opcode = match (&node.op, node_type) {
             (BinaryOp::Add, Type::String) => Opcode::StrConcat,
             (BinaryOp::And, Type::Bool) |
             (BinaryOp::Or, Type::Bool) => unreachable!("&& and || get transformed to if-exprs"),
@@ -821,6 +821,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             (BinaryOp::Lte, Type::Bool) => Opcode::LTE,
             (BinaryOp::Gt, Type::Bool) => Opcode::GT,
             (BinaryOp::Gte, Type::Bool) => Opcode::GTE,
+            (BinaryOp::Xor, _) => Opcode::Xor,
             (BinaryOp::Eq, _) => Opcode::Eq,
             (BinaryOp::Neq, _) => Opcode::Neq,
             (BinaryOp::Coalesce, _) => unreachable!("Coalesce is handled in the if-block above"),
@@ -835,6 +836,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             (BinaryOp::Div, Type::Float) => Opcode::FDiv,
             (BinaryOp::Mod, Type::Int) => Opcode::IMod,
             (BinaryOp::Mod, Type::Float) => Opcode::FMod,
+            (BinaryOp::Pow, _) => Opcode::Pow,
             _ => unreachable!()
         };
 
@@ -844,20 +846,24 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let line = left.get_token().get_position().line;
         let ltype = left.get_type();
         self.visit(left)?;
-        match (node_type, ltype) {
-            (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
-            (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
-            _ => {}
-        };
+        if node.op != BinaryOp::Pow {
+            match (node_type, ltype) {
+                (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
+                (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
+                _ => {}
+            };
+        }
 
         let line = right.get_token().get_position().line;
         let rtype = right.get_type();
         self.visit(right)?;
-        match (node_type, rtype) {
-            (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
-            (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
-            _ => {}
-        };
+        if node.op != BinaryOp::Pow {
+            match (node_type, rtype) {
+                (Type::Int, Type::Float) => self.write_opcode(Opcode::F2I, line),
+                (Type::Float, Type::Int) => self.write_opcode(Opcode::I2F, line),
+                _ => {}
+            };
+        }
 
         self.write_opcode(opcode, token.get_position().line);
         Ok(())
@@ -1933,6 +1939,19 @@ mod tests {
             constants: with_prelude_consts(vec![Value::Float(3.4), Value::Float(2.4), Value::Int(5)]),
         };
         assert_eq!(expected, chunk);
+
+        // Testing **
+        let chunk = compile("3.4 ** 5");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Pow as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![Value::Float(3.4), Value::Int(5)]),
+        };
+        assert_eq!(expected, chunk);
     }
 
     #[test]
@@ -2001,6 +2020,19 @@ mod tests {
                 Opcode::T as u8,
                 Opcode::Jump as u8, 0, 1,
                 Opcode::F as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![]),
+        };
+        assert_eq!(expected, chunk);
+
+        // Testing xor
+        let chunk = compile("true ^ false");
+        let expected = Module {
+            code: vec![
+                Opcode::T as u8,
+                Opcode::F as u8,
+                Opcode::Xor as u8,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![]),

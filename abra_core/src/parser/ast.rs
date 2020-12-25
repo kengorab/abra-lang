@@ -99,6 +99,7 @@ pub enum BinaryOp {
     AndEq,
     Or,
     OrEq,
+    Xor,
     Coalesce,
     CoalesceEq,
     Lt,
@@ -107,6 +108,7 @@ pub enum BinaryOp {
     Gte,
     Neq,
     Eq,
+    Pow,
 }
 
 #[derive(Clone, Debug, PartialEq)]

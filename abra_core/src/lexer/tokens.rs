@@ -68,7 +68,7 @@ pub enum Token {
     #[strum(to_string = "&&=", serialize = "AndEq")] AndEq(Position),
     #[strum(to_string = "||", serialize = "Or")] Or(Position),
     #[strum(to_string = "||=", serialize = "OrEq")] OrEq(Position),
-    #[strum(to_string = "^^", serialize = "CaretCaret")] CaretCaret(Position),
+    #[strum(to_string = "^", serialize = "Caret")] Caret(Position),
     #[strum(to_string = "?:", serialize = "Elvis")] Elvis(Position),
     #[strum(to_string = "?:=", serialize = "ElvisEq")] ElvisEq(Position),
     #[strum(to_string = ">", serialize = "GT")] GT(Position),
@@ -78,8 +78,6 @@ pub enum Token {
     #[strum(to_string = "==", serialize = "Eq")] Eq(Position),
     #[strum(to_string = "!=", serialize = "Neq")] Neq(Position),
     #[strum(to_string = "!", serialize = "Bang")] Bang(Position),
-    #[strum(to_string = "<<", serialize = "LTLT")] LTLT(Position),
-    #[strum(to_string = ">>", serialize = "GTGT")] GTGT(Position),
     #[strum(to_string = "**", serialize = "StarStar")] StarStar(Position),
 
     // Delimiters
@@ -140,7 +138,7 @@ impl Token {
             Token::AndEq(pos) |
             Token::Or(pos) |
             Token::OrEq(pos) |
-            Token::CaretCaret(pos) |
+            Token::Caret(pos) |
             Token::Elvis(pos) |
             Token::ElvisEq(pos) |
             Token::GT(pos) |
@@ -150,8 +148,6 @@ impl Token {
             Token::Eq(pos) |
             Token::Neq(pos) |
             Token::Bang(pos) |
-            Token::LTLT(pos) |
-            Token::GTGT(pos) |
             Token::StarStar(pos) |
 
             Token::LParen(pos, _) |
@@ -212,7 +208,7 @@ impl Token {
             Token::AndEq(pos) => Range::with_length(pos, 2),
             Token::Or(pos) => Range::with_length(pos, 1),
             Token::OrEq(pos) => Range::with_length(pos, 2),
-            Token::CaretCaret(pos) => Range::with_length(pos, 1),
+            Token::Caret(pos) => Range::with_length(pos, 1),
             Token::Elvis(pos) => Range::with_length(pos, 1),
             Token::ElvisEq(pos) => Range::with_length(pos, 1),
             Token::GT(pos) => Range::with_length(pos, 0),
@@ -222,8 +218,6 @@ impl Token {
             Token::Eq(pos) => Range::with_length(pos, 1),
             Token::Neq(pos) => Range::with_length(pos, 1),
             Token::Bang(pos) => Range::with_length(pos, 0),
-            Token::LTLT(pos) => Range::with_length(pos, 1),
-            Token::GTGT(pos) => Range::with_length(pos, 1),
             Token::StarStar(pos) => Range::with_length(pos, 1),
 
             Token::LParen(pos, _) => Range::with_length(pos, 0),

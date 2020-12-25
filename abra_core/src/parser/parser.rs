@@ -171,11 +171,10 @@ impl Parser {
             Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
             Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
             Token::And(_) | Token::AndEq(_) => Precedence::And,
-            Token::Or(_) | Token::OrEq(_) | Token::CaretCaret(_) => Precedence::Or,
+            Token::Or(_) | Token::OrEq(_) | Token::Caret(_) => Precedence::Or,
             Token::Elvis(_) | Token::ElvisEq(_) | Token::StarStar(_) => Precedence::Coalesce,
             Token::Eq(_) | Token::Neq(_) => Precedence::Equality,
-            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) |
-            Token::GTGT(_) | Token::LTLT(_) => Precedence::Comparison,
+            Token::GT(_) | Token::GTE(_) | Token::LT(_) | Token::LTE(_) => Precedence::Comparison,
             Token::Assign(_) => Precedence::Assignment,
             Token::Dot(_) | Token::QuestionDot(_) | Token::Arrow(_) => Precedence::Call,
             Token::LParen(_, is_preceded_by_newline) => {
@@ -970,10 +969,8 @@ impl Parser {
             Token::LTE(_) => BinaryOp::Lte,
             Token::Neq(_) => BinaryOp::Neq,
             Token::Eq(_) => BinaryOp::Eq,
-            Token::CaretCaret(_) => {},
-            Token::StarStar(_) => {},
-            Token::LTLT(_) => {},
-            Token::GTGT(_) => {},
+            Token::Caret(_) => BinaryOp::Xor,
+            Token::StarStar(_) => BinaryOp::Pow,
             _ => unreachable!()
         };
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
@@ -1386,29 +1383,38 @@ mod tests {
 
     #[test]
     fn parse_binary_precedence_numeric() -> TestResult {
-        let ast = parse("1 + 2 * 3 % 4")?;
+        let ast = parse("1 ** 5 + 2 * 3 % 4")?;
         let expected = vec![
             Binary(
-                Token::Plus(Position::new(1, 3)),
+                Token::Plus(Position::new(1, 8)),
                 BinaryNode {
-                    left: Box::new(int_literal!((1, 1), 1)),
+                    left: Box::new(
+                        Binary(
+                            Token::StarStar(Position::new(1, 3)),
+                            BinaryNode {
+                                left: Box::new(int_literal!((1, 1), 1)),
+                                op: BinaryOp::Pow,
+                                right: Box::new(int_literal!((1, 6), 5))
+                            }
+                        )
+                    ),
                     op: BinaryOp::Add,
                     right: Box::new(
                         Binary(
-                            Token::Percent(Position::new(1, 11)),
+                            Token::Percent(Position::new(1, 16)),
                             BinaryNode {
                                 left: Box::new(
                                     Binary(
-                                        Token::Star(Position::new(1, 7)),
+                                        Token::Star(Position::new(1, 12)),
                                         BinaryNode {
-                                            left: Box::new(int_literal!((1, 5), 2)),
+                                            left: Box::new(int_literal!((1, 10), 2)),
                                             op: BinaryOp::Mul,
-                                            right: Box::new(int_literal!((1, 9), 3)),
+                                            right: Box::new(int_literal!((1, 14), 3)),
                                         },
                                     )
                                 ),
                                 op: BinaryOp::Mod,
-                                right: Box::new(int_literal!((1, 13), 4)),
+                                right: Box::new(int_literal!((1, 18), 4)),
                             },
                         )
                     ),
