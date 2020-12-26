@@ -51,6 +51,34 @@ impl NativeSetMethodsAndFields for NativeSet {
         } else { unreachable!() }
     }
 
+    fn method_insert(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("Set::insert requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *(obj.borrow_mut()) {
+                Obj::SetObj(ref mut set) => {
+                    set.insert(item);
+                    None
+                },
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_remove(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("Set::remove requires 1 argument");
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *(obj.borrow_mut()) {
+                Obj::SetObj(ref mut set) => {
+                    set.remove(&item);
+                    None
+                },
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_map(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         let callback = args.into_iter().next().expect("Set::map requires 1 argument");
 
@@ -235,6 +263,45 @@ mod test {
           #{Person(name: \"Ken\"), Person(name: \"Ken\")}.contains(Person(name: \"Ken\"))\
         ");
         let expected = Value::Bool(true);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_insert() {
+        let result = interpret(r#"
+          val set = #{1}
+          set.insert(3)
+          set
+        "#);
+        let expected = set![Value::Int(1), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val set = #{1}
+          set.insert(3)
+          set.insert(3)
+          set
+        "#);
+        let expected = set![Value::Int(1), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_remove() {
+        let result = interpret(r#"
+          val set = #{1}
+          set.remove(1)
+          set
+        "#);
+        let expected = set![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val set: Set<Int> = #{}
+          set.remove(1)
+          set
+        "#);
+        let expected = set![];
         assert_eq!(Some(expected), result);
     }
 

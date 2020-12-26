@@ -83,6 +83,32 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         None
     }
 
+    fn method_pop(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *obj.borrow_mut() {
+                Obj::ArrayObj(ref mut array) => {
+                    Some(array.pop().unwrap_or(Value::Nil))
+                },
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
+    fn method_pop_front(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *obj.borrow_mut() {
+                Obj::ArrayObj(ref mut array) => {
+                    if array.is_empty() {
+                        Some(Value::Nil)
+                    } else {
+                        Some(array.remove(0))
+                    }
+                },
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_concat(receiver: Option<Value>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
         let arg = args.into_iter().next().expect("Array::concat requires 1 argument");
         let mut other_arr = match arg {
@@ -638,6 +664,42 @@ mod test {
           arr
         "#);
         let expected = int_array!(1, 2, 3, 4, 5);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_pop() {
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          val last = arr.pop() ?: 0
+          arr.concat([last])
+        "#);
+        let expected = int_array!(1, 2, 3);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr: Int[] = []
+          arr.pop()
+        "#);
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_pop_front() {
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          val first = arr.popFront() ?: 0
+          [first].concat(arr)
+        "#);
+        let expected = int_array!(1, 2, 3);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr: Int[] = []
+          arr.popFront()
+        "#);
+        let expected = Value::Nil;
         assert_eq!(Some(expected), result);
     }
 
