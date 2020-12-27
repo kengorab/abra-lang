@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingDeclKind};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -454,12 +454,39 @@ impl Parser {
             _ => unreachable!()
         };
 
-        let ident = self.expect_next().and_then(|tok| {
-            match tok {
-                Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseError::UnexpectedToken(tok))
+        let kind = match self.expect_next()? {
+            tok @ Token::Ident(_, _) => BindingDeclKind::Variable(tok),
+            Token::LParen(_, _) => {
+                let mut idents = Vec::new();
+                let mut done = false;
+                loop {
+                    match self.expect_next()? {
+                        tok @ Token::Ident(_, _) => {
+                            if done {
+                                return Err(ParseError::ExpectedToken(TokenType::RParen, tok));
+                            }
+
+                            idents.push(tok);
+                            if let Token::Comma(_) = self.expect_peek()? {
+                                self.expect_next()?; // Consume ','
+                            } else {
+                                done = true;
+                            }
+                        },
+                        Token::RParen(_) => break,
+                        tok @ _ => {
+                            return if done {
+                                Err(ParseError::ExpectedToken(TokenType::RParen, tok))
+                            } else {
+                                Err(ParseError::UnexpectedToken(tok))
+                            }
+                        }
+                    }
+                }
+                BindingDeclKind::Tuple(idents)
             }
-        })?;
+            tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+        };
 
         let type_ann = match self.peek() {
             Some(Token::Colon(_)) => {
@@ -479,7 +506,7 @@ impl Parser {
             Some(_) | None => None
         };
 
-        Ok(AstNode::BindingDecl(token, BindingDeclNode { ident, is_mutable, type_ann, expr }))
+        Ok(AstNode::BindingDecl(token, BindingDeclNode { kind, is_mutable, type_ann, expr }))
     }
 
     fn parse_type_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -1914,7 +1941,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    kind: BindingDeclKind::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
                     expr: None,
@@ -1923,14 +1950,44 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    kind: BindingDeclKind::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
                     expr: None,
                 },
             ),
         ];
-        Ok(assert_eq!(expected, ast))
+        assert_eq!(expected, ast);
+
+        let ast = parse("val (a,b)\nvar (a,b)")?;
+        let expected = vec![
+            AstNode::BindingDecl(
+                Token::Val(Position::new(1, 1)),
+                BindingDeclNode {
+                    kind: BindingDeclKind::Tuple(vec![
+                        ident_token!((1, 6), "a"),
+                        ident_token!((1, 8), "b"),
+                    ]),
+                    is_mutable: false,
+                    type_ann: None,
+                    expr: None,
+                },
+            ),
+            AstNode::BindingDecl(
+                Token::Var(Position::new(2, 1)),
+                BindingDeclNode {
+                    kind: BindingDeclKind::Tuple(vec![
+                        ident_token!((2, 6), "a"),
+                        ident_token!((2, 8), "b"),
+                    ]),
+                    is_mutable: true,
+                    type_ann: None,
+                    expr: None,
+                },
+            ),
+        ];
+        assert_eq!(expected, ast);
+        Ok(())
     }
 
     #[test]
@@ -1940,7 +1997,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    kind: BindingDeclKind::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
                     expr: Some(Box::new(
@@ -1958,14 +2015,75 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    kind: BindingDeclKind::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
                     expr: Some(Box::new(int_literal!((2, 11), 1))),
                 },
             ),
         ];
-        Ok(assert_eq!(expected, ast))
+        assert_eq!(expected, ast);
+
+        let ast = parse("val (a, b) = (1, 2)\nvar (a, b) = (1, 2)")?;
+        let expected = vec![
+            AstNode::BindingDecl(
+                Token::Val(Position::new(1, 1)),
+                BindingDeclNode {
+                    kind: BindingDeclKind::Tuple(vec![
+                        ident_token!((1, 6), "a"),
+                        ident_token!((1, 9), "b"),
+                    ]),
+                    is_mutable: false,
+                    type_ann: None,
+                    expr: Some(Box::new(
+                        AstNode::Tuple(
+                            Token::LParen(Position::new(1, 14), false),
+                            vec![
+                                int_literal!((1, 15), 1),
+                                int_literal!((1, 18), 2),
+                            ]
+                        ),
+                    )),
+                },
+            ),
+            AstNode::BindingDecl(
+                Token::Var(Position::new(2, 1)),
+                BindingDeclNode {
+                    kind: BindingDeclKind::Tuple(vec![
+                        ident_token!((2, 6), "a"),
+                        ident_token!((2, 9), "b"),
+                    ]),
+                    is_mutable: true,
+                    type_ann: None,
+                    expr: Some(Box::new(
+                        AstNode::Tuple(
+                            Token::LParen(Position::new(2, 14), false),
+                            vec![
+                                int_literal!((2, 15), 1),
+                                int_literal!((2, 18), 2),
+                            ]
+                        ),
+                    )),
+                },
+            ),
+        ];
+        assert_eq!(expected, ast);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_binding_decls_errors() {
+        let err = parse("val (a b) = (1, 2)").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::RParen, ident_token!((1, 8), "b"));
+        assert_eq!(expected, err);
+
+        let err = parse("val (1, b) = (1, 2)").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 6), 1));
+        assert_eq!(expected, err);
+
+        let err = parse("val (a, b = (1, 2)").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::RParen, Token::Assign(Position::new(1, 11)));
+        assert_eq!(expected, err);
     }
 
     #[test]
@@ -2299,8 +2417,8 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 14)),
                         BindingDeclNode {
+                            kind: BindingDeclKind::Variable(ident_token!((1, 18), "a")),
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
                             type_ann: None,
                             expr: Some(Box::new(int_literal!((1, 22), 123))),
                         },
@@ -2431,7 +2549,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
-                            ident: ident_token!((2, 5), "a"),
+                            kind: BindingDeclKind::Variable(ident_token!((2, 5), "a")),
                             type_ann: None,
                             expr: Some(Box::new(int_literal!((2, 9), 123))),
                             is_mutable: false,
@@ -3039,7 +3157,7 @@ mod tests {
         let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
         let expected = vec![
             AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
-                ident: Token::Ident(Position::new(1, 5), "a".to_string()),
+                kind: BindingDeclKind::Variable(ident_token!((1, 5), "a")),
                 type_ann: None,
                 expr: Some(Box::new(AstNode::Binary(Token::Plus(Position::new(2, 1)), BinaryNode {
                     left: Box::new(int_literal!((1, 9), 1)),
@@ -3219,8 +3337,8 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
                         BindingDeclNode {
+                            kind: BindingDeclKind::Variable(ident_token!((1, 16), "a")),
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 16), "a".to_string()),
                             type_ann: None,
                             expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         },
@@ -3241,7 +3359,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             BindingDeclNode {
-                ident: Token::Ident(Position::new(1, 5), "str".to_string()),
+                kind: BindingDeclKind::Variable(ident_token!((1, 5), "str")),
                 is_mutable: false,
                 type_ann: None,
                 expr: Some(Box::new(
@@ -3672,9 +3790,9 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            kind: BindingDeclKind::Variable(ident_token!((2, 5), "a")),
                             is_mutable: false,
                             type_ann: None,
-                            ident: ident_token!((2, 5), "a"),
                             expr: Some(Box::new(int_literal!((2, 9), 1))),
                         },
                     ),

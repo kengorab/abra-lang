@@ -139,9 +139,16 @@ pub struct MapNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum BindingDeclKind {
+    Variable(Token), // Must be Token::Ident
+    Tuple(Vec<Token>) // Must be Token::Idents
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
-    // Must be a Token::Ident
-    pub ident: Token,
+    // // Must be a Token::Ident
+    // pub ident: Token,
+    pub kind: BindingDeclKind,
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
