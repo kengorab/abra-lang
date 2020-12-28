@@ -1,6 +1,6 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingDeclKind};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
@@ -948,8 +948,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedBindingDeclNode { ident, expr, .. } = node;
-        let ident = Token::get_ident_name(&ident).clone();
+        let TypedBindingDeclNode { kind, expr, .. } = node;
+        let ident = match kind {
+            BindingDeclKind::Variable(ident) => Token::get_ident_name(&ident),
+            _ => unimplemented!()
+        };
 
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             if let Some(node) = expr {
