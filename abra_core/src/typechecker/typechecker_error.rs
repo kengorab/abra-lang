@@ -1,7 +1,7 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
-use crate::parser::ast::{BinaryOp, IndexingMode, AstNode};
+use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingPattern};
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
@@ -49,7 +49,7 @@ pub enum TypecheckerError {
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
     InvalidTypeDeclDepth { token: Token },
-    ForbiddenVariableType { token: Token, typ: Type },
+    ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
     UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool },
@@ -58,8 +58,9 @@ pub enum TypecheckerError {
     EmptyMatchBlock { token: Token },
     MatchBranchMismatch { token: Token, expected: Type, actual: Type },
     InvalidUninitializedEnumVariant { token: Token },
-    InvalidDestructuring { token: Token, typ: Type },
-    InvalidDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
+    InvalidMatchCaseDestructuring { token: Token, typ: Type },
+    InvalidMatchCaseDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
+    InvalidAssignmentDestructuring { binding: BindingPattern, typ: Type },
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
 }
@@ -102,7 +103,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParamPosition { token } => token,
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
-            TypecheckerError::ForbiddenVariableType { token, .. } => token,
+            TypecheckerError::ForbiddenVariableType { binding, .. } => binding.get_token(),
             TypecheckerError::InvalidInstantiation { token, .. } => token,
             TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
             TypecheckerError::UnreachableMatchCase { token, .. } => token,
@@ -111,8 +112,9 @@ impl TypecheckerError {
             TypecheckerError::EmptyMatchBlock { token } => token,
             TypecheckerError::MatchBranchMismatch { token, .. } => token,
             TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
-            TypecheckerError::InvalidDestructuring { token, .. } => token,
-            TypecheckerError::InvalidDestructuringArity { token, .. } => token,
+            TypecheckerError::InvalidMatchCaseDestructuring { token, .. } => token,
+            TypecheckerError::InvalidMatchCaseDestructuringArity { token, .. } => token,
+            TypecheckerError::InvalidAssignmentDestructuring { binding, .. } => binding.get_token(),
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
         }
@@ -604,19 +606,35 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::InvalidDestructuring { typ, .. } => {
+            TypecheckerError::InvalidMatchCaseDestructuring { typ, .. } => {
                 format!(
-                    "Invalid destructuring: ({}:{})\n{}\n\
+                    "Invalid destructuring for match: ({}:{})\n{}\n\
                     Cannot destructure an instance of type {}",
                     pos.line, pos.col, cursor_line, type_repr(typ)
                 )
             }
-            TypecheckerError::InvalidDestructuringArity { typ, expected, actual, .. } => {
+            TypecheckerError::InvalidMatchCaseDestructuringArity { typ, expected, actual, .. } => {
                 format!(
-                    "Invalid destructuring pattern: ({}:{})\n{}\n\
+                    "Invalid destructuring pattern for match: ({}:{})\n{}\n\
                     Instances of type {} have {} field{}, but the pattern attempts to extract {}",
                     pos.line, pos.col, cursor_line,
                     type_repr(typ), expected, if *expected == 1 { "" } else { "s" }, actual
+                )
+            }
+            TypecheckerError::InvalidAssignmentDestructuring { binding, typ } => {
+                let msg = match (binding, typ) {
+                    (BindingPattern::Tuple(_, dest_args), Type::Tuple(type_opts)) if dest_args.len() != type_opts.len() => {
+                        format!("Cannot destructure a tuple of {} elements into {} values", type_opts.len(), dest_args.len())
+                    }
+                    (BindingPattern::Tuple(_, _), typ) => {
+                        format!("Cannot destructure a value of type {} as a tuple", type_repr(typ))
+                    }
+                    _ => unreachable!()
+                };
+
+                format!(
+                    "Invalid destructuring pattern for assignment: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line, msg
                 )
             }
             TypecheckerError::UnreachableCode { .. } => {
@@ -648,7 +666,7 @@ impl DisplayError for TypecheckerError {
                     format!("\n(Note: Values of type {} are redundant and can probably just be removed)", type_repr(&actual))
                 } else if expected == &Type::Unit && *fn_missing_ret_ann {
                     "\n(Note: A function without a return type annotation is assumed to return Unit.\n       Try adding a return type annotation to the function.)".to_string()
-                } else {"".to_string()};
+                } else { "".to_string() };
 
                 format!(
                     "Invalid return type: ({}:{})\n{}\n{}{}",
@@ -715,7 +733,7 @@ No operator exists to satisfy Int - String"
     fn test_missing_required_assignment() {
         let src = "val abc".to_string();
         let err = TypecheckerError::MissingRequiredAssignment {
-            ident: Token::Ident(Position::new(1, 5), "abc".to_string())
+            ident: ident_token!((1, 5), "abc")
         };
 
         let expected = format!("\

@@ -1,6 +1,6 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
@@ -8,7 +8,7 @@ use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
 use crate::common::util::random_string;
-use crate::common::compiler_util::get_anon_name;
+use crate::common::compiler_util::{get_anon_name, get_temp_name};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -946,27 +946,63 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
-        let line = token.get_position().line;
+        #[inline]
+        fn visit_pattern(zelf: &mut Compiler, binding: BindingPattern, is_root_scope: bool) {
+            match binding {
+                BindingPattern::Variable(ident) => {
+                    let line = ident.get_position().line;
+                    let ident = Token::get_ident_name(&ident);
+                    if is_root_scope {
+                        zelf.add_and_write_constant(Value::Str(ident), line);
+                        zelf.write_opcode(Opcode::GStore, line);
+                    } else {
+                        zelf.push_local(ident, line, true);
+                    }
+                }
+                BindingPattern::Tuple(lparen_tok, patterns) => {
+                    // Store tuple as temp variable, then we recursively destructure each element
+                    let line = lparen_tok.get_position().line;
+                    let temp_ident_name = get_temp_name();
+                    let temp_local_idx = if is_root_scope {
+                        zelf.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
+                        zelf.write_opcode(Opcode::GStore, line);
+                        None
+                    } else {
+                        zelf.push_local(temp_ident_name.clone(), line, true);
+                        let scope_depth = zelf.get_fn_depth();
+                        let (_, temp_idx) = zelf.resolve_local(&temp_ident_name, scope_depth).unwrap();
+                        Some(temp_idx)
+                    };
 
-        let TypedBindingDeclNode { ident, expr, .. } = node;
-        let ident = Token::get_ident_name(&ident).clone();
-
-        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.add_and_write_constant(Value::Str(ident), line);
-            self.write_opcode(Opcode::GStore, line);
-        } else { // ...otherwise, it's a local
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.push_local(ident, line, true);
+                    for (idx, pat) in patterns.into_iter().enumerate() {
+                        if let Some(temp_idx) = temp_local_idx {
+                            zelf.write_load_local_instr(temp_idx, line);
+                            zelf.metadata.loads.push(temp_ident_name.clone());
+                        } else {
+                            let const_idx = zelf.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
+                            zelf.write_constant(const_idx, line);
+                            zelf.write_opcode(Opcode::GLoad, line);
+                        }
+                        zelf.write_int_constant(idx as u32, line);
+                        zelf.write_opcode(Opcode::TupleLoad, line);
+                        visit_pattern(zelf, pat, is_root_scope);
+                    }
+                }
+            };
         }
+
+        let line = token.get_position().line;
+        let TypedBindingDeclNode { binding, expr, .. } = node;
+
+        if let Some(node) = expr {
+            self.visit(*node)?;
+        } else {
+            self.write_opcode(Opcode::Nil, line);
+        }
+
+        let is_root_scope = self.current_scope().kind == ScopeKind::Root;
+        visit_pattern(self, binding, is_root_scope);
+
         Ok(())
     }
 
@@ -1787,7 +1823,7 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
-    use crate::common::compiler_util::ANON_IDX;
+    use crate::common::compiler_util::{ANON_IDX, TEMP_IDX};
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
 
@@ -1804,8 +1840,9 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
-        // Yuck: need to reset this global so tests will be repeatable. Gross
+        // Yuck: need to reset these globals so tests will be repeatable. Gross
         ANON_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
+        TEMP_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
 
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
@@ -2350,6 +2387,84 @@ mod tests {
                 Value::Int(29),
                 new_string_obj("Some Name"),
                 Value::Str("anAdult".to_string()),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_tuples() {
+        let chunk = compile("val (a, b) = (1, 2)");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::TupleMk as u8, 2,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          func abc() {\n\
+            val (a, b) = (1, 2)\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("abc".to_string()),
+                Value::Fn(FnValue {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::TupleMk as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst0 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 1,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: false
+                }),
             ]),
         };
         assert_eq!(expected, chunk);

@@ -1,9 +1,15 @@
-val set: Set<(Int[], Int[])> = #{}
-val p1 = [1, 2, 3]
-val p2 = [4, 5, 6]
-set.insert((p1, p2))
-println(set)
+//type List<T> { items: T[] }
+//val (l1, l2): (List<Int>, List<String>) = (List(items: []), List(items: []))
 
-println(p1.popFront())
-println(p2.popFront())
-println(set)
+func a() {
+  val ((a, b), c) = ((1, "2"), (3, 4))
+  println(a)
+  println(b)
+  println(c)
+}
+a()
+
+//val ((a, b), c) = ((1, 2), ["3"])
+//println(a)
+//println(b)
+//println(c)
