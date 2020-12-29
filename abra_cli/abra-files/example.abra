@@ -1,6 +1,9 @@
 //type List<T> { items: T[] }
 //val (l1, l2): (List<Int>, List<String>) = (List(items: []), List(items: []))
 
-//val (a, b) = (1, "2")
-//val a_: Int = a
-//val b_: String = b
+func a() {
+  val (a, b) = (1, "2")
+  println(a)
+  println(b)
+}
+a()

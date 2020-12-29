@@ -8,7 +8,7 @@ use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
 use crate::common::util::random_string;
-use crate::common::compiler_util::get_anon_name;
+use crate::common::compiler_util::{get_anon_name, get_temp_name};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -947,29 +947,68 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
-
         let TypedBindingDeclNode { kind, expr, .. } = node;
-        let ident = match kind {
-            BindingDeclKind::Variable(ident) => Token::get_ident_name(&ident),
-            _ => unimplemented!()
-        };
 
-        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.add_and_write_constant(Value::Str(ident), line);
-            self.write_opcode(Opcode::GStore, line);
-        } else { // ...otherwise, it's a local
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.push_local(ident, line, true);
+        let is_uninitialized = expr.is_none();
+        if let Some(node) = expr {
+            self.visit(*node)?;
+        } else {
+            self.write_opcode(Opcode::Nil, line);
         }
+
+        match kind {
+            BindingDeclKind::Variable(ident) => {
+                let ident = Token::get_ident_name(&ident);
+                if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+                    self.add_and_write_constant(Value::Str(ident), line);
+                    self.write_opcode(Opcode::GStore, line);
+                } else { // ...otherwise, it's a local
+                    self.push_local(ident, line, true);
+                }
+            }
+            BindingDeclKind::Tuple(idents) => {
+                // Store tuple as temporary variable
+                let temp_ident_name = get_temp_name();
+                let temp_local_idx = if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+                    self.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
+                    self.write_opcode(Opcode::GStore, line);
+                    None
+                } else { // ...otherwise, it's a local
+                    self.push_local(temp_ident_name.clone(), line, true);
+                    let scope_depth = self.get_fn_depth();
+                    let (_, temp_idx) = self.resolve_local(&temp_ident_name, scope_depth).unwrap();
+                    Some(temp_idx)
+                };
+
+                // For each destructured binding, set it to the nth tuple value
+                for (idx, ident) in idents.iter().enumerate() {
+                    let ident = Token::get_ident_name(&ident);
+
+                    if is_uninitialized {
+                        self.write_opcode(Opcode::Nil, line);
+                    } else {
+                        if let Some(temp_idx) = temp_local_idx {
+                            self.write_load_local_instr(temp_idx, line);
+                            self.metadata.loads.push(ident.clone());
+                        } else {
+                            let const_idx = self.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
+                            self.write_constant(const_idx, line);
+                            self.write_opcode(Opcode::GLoad, line);
+                        }
+                        self.write_int_constant(idx as u32, line);
+                        self.write_opcode(Opcode::TupleLoad, line);
+                    }
+
+                    if self.current_scope().kind == ScopeKind::Root { // If it's a global...
+                        self.add_and_write_constant(Value::Str(ident), line);
+                        self.write_opcode(Opcode::GStore, line);
+                    } else { // ...otherwise, it's a local
+                        self.push_local(ident, line, true);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1790,7 +1829,7 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
-    use crate::common::compiler_util::ANON_IDX;
+    use crate::common::compiler_util::{ANON_IDX, TEMP_IDX};
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
 
@@ -1807,8 +1846,9 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
-        // Yuck: need to reset this global so tests will be repeatable. Gross
+        // Yuck: need to reset these globals so tests will be repeatable. Gross
         ANON_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
+        TEMP_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
 
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
@@ -2353,6 +2393,84 @@ mod tests {
                 Value::Int(29),
                 new_string_obj("Some Name"),
                 Value::Str("anAdult".to_string()),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_tuples() {
+        let chunk = compile("val (a, b) = (1, 2)");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::TupleMk as u8, 2,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          func abc() {\n\
+            val (a, b) = (1, 2)\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("abc".to_string()),
+                Value::Fn(FnValue {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::TupleMk as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst0 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 1,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: false
+                }),
             ]),
         };
         assert_eq!(expected, chunk);

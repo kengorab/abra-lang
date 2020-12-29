@@ -311,29 +311,49 @@ mod tests {
 
     #[test]
     fn interpret_bindings() {
-        let input = "\n\
-          val a = 123\n
-          val b = 456\n
-          var c = a + b > b - a\n
+        let input = r#"
+          val a = 123
+          val b = 456
+          var c = a + b > b - a
           c
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let input = "\n\
-          val a1 = 1\n
-          val a2 = 2\n
-          val a3 = 3\n
-          val a = [a1, a2 + a2, 3 * a3]\n
+        let input = r#"
+          val a1 = 1
+          val a2 = 2
+          val a3 = 3
+          val a = [a1, a2 + a2, 3 * a3]
           a
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(4),
             Value::Int(9),
         ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val (a, b) = (1, 2)
+          a + b
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func manhattanDistance(p1: (Int, Int), p2: (Int, Int)): Int {
+            val (x1, y1) = p1
+            val (x2, y2) = p2
+            (x2 - x1).abs() + (y2 - y1).abs()
+          }
+          manhattanDistance((0, 0), (2, 2))
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
 
