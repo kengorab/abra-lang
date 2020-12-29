@@ -988,6 +988,35 @@ impl TypedAstVisitor<(), ()> for Compiler {
                         visit_pattern(zelf, pat, is_root_scope);
                     }
                 }
+                BindingPattern::Array(lbrack_tok, patterns) => {
+                    // Store array as temp variable, then we recursively destructure each element
+                    let line = lbrack_tok.get_position().line;
+                    let temp_ident_name = get_temp_name();
+                    let temp_local_idx = if is_root_scope {
+                        zelf.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
+                        zelf.write_opcode(Opcode::GStore, line);
+                        None
+                    } else {
+                        zelf.push_local(temp_ident_name.clone(), line, true);
+                        let scope_depth = zelf.get_fn_depth();
+                        let (_, temp_idx) = zelf.resolve_local(&temp_ident_name, scope_depth).unwrap();
+                        Some(temp_idx)
+                    };
+
+                    for (idx, pat) in patterns.into_iter().enumerate() {
+                        if let Some(temp_idx) = temp_local_idx {
+                            zelf.write_load_local_instr(temp_idx, line);
+                            zelf.metadata.loads.push(temp_ident_name.clone());
+                        } else {
+                            let const_idx = zelf.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
+                            zelf.write_constant(const_idx, line);
+                            zelf.write_opcode(Opcode::GLoad, line);
+                        }
+                        zelf.write_int_constant(idx as u32, line);
+                        zelf.write_opcode(Opcode::ArrLoad, line);
+                        visit_pattern(zelf, pat, is_root_scope);
+                    }
+                }
             };
         }
 
@@ -2455,6 +2484,84 @@ mod tests {
                         Opcode::LLoad0 as u8,
                         Opcode::IConst1 as u8,
                         Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: false
+                }),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_arrays() {
+        let chunk = compile("val [a, b] = [1, 2]");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          func abc() {\n\
+            val [a, b] = [1, 2]\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("abc".to_string()),
+                Value::Fn(FnValue {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::ArrMk as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst0 as u8,
+                        Opcode::ArrLoad as u8,
+                        Opcode::MarkLocal as u8, 1,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::ArrLoad as u8,
                         Opcode::MarkLocal as u8, 2,
                         Opcode::Pop as u8,
                         Opcode::Pop as u8,

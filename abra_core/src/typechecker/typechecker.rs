@@ -401,11 +401,7 @@ impl Typechecker {
             let ident_name = Token::get_ident_name(ident).clone();
             let binding_type = match condition.get_type() {
                 Type::Bool => Type::Bool,
-                Type::Option(inner) => {
-                    let mut typ = *inner;
-                    while let Type::Option(inner) = typ { typ = *inner };
-                    typ
-                }
+                Type::Option(inner) => inner.get_opt_unwrapped(),
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
             scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
@@ -732,9 +728,7 @@ impl Typechecker {
                             let node = AstNode::IfExpression(token.clone(), if_node);
                             let typed_node = self.visit(node)?;
 
-                            let mut typ = typed_node.get_type();
-                            while let Type::Option(inner) = typ { typ = *inner };
-
+                            let typ = typed_node.get_type().get_opt_unwrapped();
                             match typ {
                                 Type::Unit => {
                                     if let TypedAstNode::IfExpression(token, mut typed_if_node) = typed_node {
@@ -762,9 +756,7 @@ impl Typechecker {
                             let node = AstNode::MatchExpression(token.clone(), match_node);
                             let typed_node = self.visit(node)?;
 
-                            let mut typ = typed_node.get_type();
-                            while let Type::Option(inner) = typ { typ = *inner };
-
+                            let typ = typed_node.get_type().get_opt_unwrapped();
                             match typ {
                                 Type::Unit => {
                                     if let TypedAstNode::MatchExpression(token, mut typed_match_node) = typed_node {
@@ -995,10 +987,24 @@ impl Typechecker {
                 self.add_binding(&name, &ident, &typ, is_mutable);
             }
             BindingPattern::Tuple(_, idents) => {
-                match typ {
+                match typ.get_opt_unwrapped() {
                     Type::Tuple(opts) if idents.len() == opts.len() => {
-                        for (pat, typ) in idents.iter().zip(opts) {
-                            self.visit_binding_pattern(pat, typ, is_mutable)?;
+                        for (pat, tuple_elem_typ) in idents.iter().zip(opts) {
+                            let typ = if typ.is_opt() { Type::Option(Box::new(tuple_elem_typ)) } else { tuple_elem_typ };
+                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                        }
+                    }
+                    typ @ _ => {
+                        return Err(TypecheckerError::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
+                    }
+                }
+            }
+            BindingPattern::Array(_, idents) => {
+                match typ.get_opt_unwrapped() {
+                    Type::Array(inner_typ) => {
+                        for pat in idents {
+                            let typ = Type::Option(Box::new(*inner_typ.clone()));
+                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
                         }
                     }
                     typ @ _ => {
@@ -1925,9 +1931,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             };
         }
 
-        let mut target_type = target_type.clone();
-        while let Type::Option(inner) = target_type { target_type = *inner };
-
+        let target_type = target_type.get_opt_unwrapped();
         let typ = match (target_type.clone(), &index) {
             (Type::Array(inner_type), IndexingMode::Index(_)) => Ok(Type::Option(inner_type)),
             (Type::Array(inner_type), IndexingMode::Range(_, _)) => Ok(Type::Array(inner_type)),
@@ -2407,11 +2411,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let ident_name = Token::get_ident_name(ident).clone();
             let binding_type = match condition.get_type() {
                 Type::Bool => Type::Bool,
-                Type::Option(inner) => {
-                    let mut typ = *inner;
-                    while let Type::Option(inner) = typ { typ = *inner };
-                    typ
-                }
+                Type::Option(inner) => inner.get_opt_unwrapped() ,
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
             scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
@@ -2475,15 +2475,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let AccessorNode { target, field, is_opt_safe } = node;
         let target = self.visit(*target)?;
 
-        let mut target_type = target.get_type();
-        let mut is_opt = false;
-        if is_opt_safe {
-            // Handle nested Option types (ie. String??? -> String?)
-            while let Type::Option(inner_type) = target_type {
-                target_type = *inner_type;
-                is_opt = true;
-            }
-        }
+        let target_type = target.get_type();
+        let (target_type, is_opt) = if is_opt_safe {
+            (target_type.get_opt_unwrapped(), target_type.is_opt())
+        } else {
+            (target_type, false)
+        };
 
         let (field_ident, ident_type_args) = if let AstNode::Identifier(field_ident, type_args) = *field {
             (field_ident, type_args)
@@ -3658,7 +3655,8 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_binding_decl_destructuring_tuples() -> TestResult {
+    fn typecheck_binding_decl_destructuring() -> TestResult {
+        // Tuples
         let (typechecker, typed_ast) = typecheck_get_typechecker("val (a, b, c) = (1, \"2\", [1, 2, 3])");
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
@@ -3707,11 +3705,120 @@ mod tests {
         let expected_binding = (&ScopeBinding(ident_token!((1, 12), "c"), Type::Array(Box::new(Type::Int)), false), 0);
         assert_eq!(expected_binding, binding);
 
+        // Arrays
+        let (typechecker, typed_ast) = typecheck_get_typechecker("val [a, b, c] = [1, 2, 3]");
+        let expected = TypedAstNode::BindingDecl(
+            Token::Val(Position::new(1, 1)),
+            TypedBindingDeclNode {
+                binding: BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((1, 6), "a")),
+                        BindingPattern::Variable(ident_token!((1, 9), "b")),
+                        BindingPattern::Variable(ident_token!((1, 12), "c")),
+                    ],
+                ),
+                is_mutable: false,
+                expr: Some(Box::new(TypedAstNode::Array(
+                    Token::LBrack(Position::new(1, 17), false),
+                    TypedArrayNode {
+                        typ: Type::Array(Box::new(Type::Int)),
+                        items: vec![
+                            int_literal!((1, 18), 1),
+                            int_literal!((1, 21), 2),
+                            int_literal!((1, 24), 3),
+                        ],
+                    },
+                ))),
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let binding = typechecker.get_binding("a").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 6), "a"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("b").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 9), "b"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("c").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 12), "c"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+
+        // Nested
+        let (typechecker, typed_ast) = typecheck_get_typechecker("val [(x1, y1), (x2, y2)] = [(1, 2), (3, 4)]");
+        let expected = TypedAstNode::BindingDecl(
+            Token::Val(Position::new(1, 1)),
+            TypedBindingDeclNode {
+                binding: BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Tuple(
+                            Token::LParen(Position::new(1, 6), false),
+                            vec![
+                                BindingPattern::Variable(ident_token!((1, 7), "x1")),
+                                BindingPattern::Variable(ident_token!((1, 11), "y1")),
+                            ],
+                        ),
+                        BindingPattern::Tuple(
+                            Token::LParen(Position::new(1, 16), false),
+                            vec![
+                                BindingPattern::Variable(ident_token!((1, 17), "x2")),
+                                BindingPattern::Variable(ident_token!((1, 21), "y2")),
+                            ],
+                        )
+                    ],
+                ),
+                is_mutable: false,
+                expr: Some(Box::new(TypedAstNode::Array(
+                    Token::LBrack(Position::new(1, 28), false),
+                    TypedArrayNode {
+                        typ: Type::Array(Box::new(Type::Tuple(vec![Type::Int, Type::Int]))),
+                        items: vec![
+                            TypedAstNode::Tuple(
+                                Token::LParen(Position::new(1, 29), false),
+                                TypedTupleNode {
+                                    typ: Type::Tuple(vec![Type::Int, Type::Int]),
+                                    items: vec![
+                                        int_literal!((1, 30), 1),
+                                        int_literal!((1, 33), 2),
+                                    ],
+                                },
+                            ),
+                            TypedAstNode::Tuple(
+                                Token::LParen(Position::new(1, 37), false),
+                                TypedTupleNode {
+                                    typ: Type::Tuple(vec![Type::Int, Type::Int]),
+                                    items: vec![
+                                        int_literal!((1, 38), 3),
+                                        int_literal!((1, 41), 4),
+                                    ],
+                                },
+                            )
+                        ],
+                    },
+                ))),
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let binding = typechecker.get_binding("x1").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 7), "x1"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("y1").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 11), "y1"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("x2").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 17), "x2"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("y2").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 21), "y2"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+
         Ok(())
     }
 
     #[test]
-    fn typecheck_binding_decl_destructuring_tuples_errors() {
+    fn typecheck_binding_decl_destructuring_errors() {
         let err = typecheck("val (a, b) = [1, 2, 3]").unwrap_err();
         let expected = TypecheckerError::InvalidAssignmentDestructuring {
             binding: BindingPattern::Tuple(
@@ -3722,6 +3829,18 @@ mod tests {
                 ],
             ),
             typ: Type::Array(Box::new(Type::Int)),
+        };
+        assert_eq!(expected, err);
+        let err = typecheck("val [a, b] = (1, 2, 3)").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentDestructuring {
+            binding: BindingPattern::Array(
+                Token::LBrack(Position::new(1, 5), false),
+                vec![
+                    BindingPattern::Variable(ident_token!((1, 6), "a")),
+                    BindingPattern::Variable(ident_token!((1, 9), "b")),
+                ],
+            ),
+            typ: Type::Tuple(vec![Type::Int, Type::Int, Type::Int]),
         };
         assert_eq!(expected, err);
 

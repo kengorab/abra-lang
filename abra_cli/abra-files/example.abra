@@ -1,15 +1,24 @@
 //type List<T> { items: T[] }
 //val (l1, l2): (List<Int>, List<String>) = (List(items: []), List(items: []))
 
-func a() {
-  val ((a, b), c) = ((1, "2"), (3, 4))
-  println(a)
-  println(b)
-  println(c)
-}
-a()
+//func a() {
+//  val ((a, b), c) = ((1, "2"), (3, 4))
+//  println(a)
+//  println(b)
+//  println(c)
+//}
+//a()
 
 //val ((a, b), c) = ((1, 2), ["3"])
 //println(a)
 //println(b)
 //println(c)
+
+val arr = [([1, 2], [3, 4]), ([5, 6], [7, 8, 9])]
+val [(a, b), (c, [d, e, f])] = arr
+println(a)
+println(b)
+println(c)
+println(d)
+println(e)
+println(f)

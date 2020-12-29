@@ -1851,6 +1851,21 @@ mod tests {
         assert_eq!(expected, result);
 
         let input = r#"
+          val [(x1, y1), (x2, y2), (x3, y3)] = [(1, 2), (3, 4)]
+          [x1, y1, x2, y2, x3, y3]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Nil,
+            Value::Nil,
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
           func wrapper(): Int {
             val ((a, b), c) = ((1, 2), (3, 4))
             a + b + c[0] + c[1]

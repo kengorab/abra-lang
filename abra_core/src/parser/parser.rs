@@ -342,6 +342,29 @@ impl Parser {
                 }
                 BindingPattern::Tuple(tok, patterns)
             }
+            tok @ Token::LBrack(_, _) => {
+                let mut patterns = Vec::new();
+                let mut done = false;
+                loop {
+                    if done {
+                        let err_tok = self.expect_next()?;
+                        return Err(ParseError::ExpectedToken(TokenType::RBrack, err_tok));
+                    }
+
+                    let pat = self.parse_binding_pattern()?;
+                    patterns.push(pat);
+
+                    if let Token::Comma(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ','
+                    } else if let Token::RBrack(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ']'
+                        break;
+                    } else {
+                        done = true;
+                    }
+                }
+                BindingPattern::Array(tok, patterns)
+            }
             tok @ _ => return Err(ParseError::UnexpectedToken(tok))
         };
 
@@ -2011,7 +2034,9 @@ mod tests {
     #[test]
     fn parse_binding_decls_destructuring() -> TestResult {
         let cases = vec![
+            // Variable (aka non-destructuring)
             ("val a", BindingPattern::Variable(ident_token!((1, 5), "a"))),
+            // Tuples
             (
                 "val (a, b) = (1, 2)",
                 BindingPattern::Tuple(
@@ -2035,6 +2060,60 @@ mod tests {
                             ],
                         ),
                         BindingPattern::Variable(ident_token!((1, 14), "c")),
+                    ],
+                )
+            ),
+            // Arrays
+            (
+                "val [a, b] = [1, 2]",
+                BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((1, 6), "a")),
+                        BindingPattern::Variable(ident_token!((1, 9), "b")),
+                    ],
+                )
+            ),
+            (
+                "val [[a], b] = [[1], 2]",
+                BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Array(
+                            Token::LBrack(Position::new(1, 6), false),
+                            vec![
+                                BindingPattern::Variable(ident_token!((1, 7), "a")),
+                            ],
+                        ),
+                        BindingPattern::Variable(ident_token!((1, 11), "b")),
+                    ],
+                )
+            ),
+            // Nested
+            (
+                "val ([a, b], [(c, d)]) = ([1, 2], [(3, 4)])",
+                BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Array(
+                            Token::LBrack(Position::new(1, 6), false),
+                            vec![
+                                BindingPattern::Variable(ident_token!((1, 7), "a")),
+                                BindingPattern::Variable(ident_token!((1, 10), "b")),
+                            ],
+                        ),
+                        BindingPattern::Array(
+                            Token::LBrack(Position::new(1, 14), false),
+                            vec![
+                                BindingPattern::Tuple(
+                                    Token::LParen(Position::new(1, 15), false),
+                                    vec![
+                                        BindingPattern::Variable(ident_token!((1, 16), "c")),
+                                        BindingPattern::Variable(ident_token!((1, 19), "d")),
+                                    ],
+                                ),
+                            ],
+                        ),
                     ],
                 )
             ),
