@@ -139,14 +139,23 @@ pub struct MapNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum BindingDeclKind {
-    Variable(Token), // Must be a `Token::Ident`
-    Tuple(Vec<Token>) // Must be `Token::Ident`s
+pub enum BindingPattern {
+    Variable(/* ident: */ Token),
+    Tuple(/* lparen_tok: */ Token, /* idents: */ Vec<BindingPattern>)
+}
+
+impl BindingPattern {
+    pub fn get_token(&self) -> &Token {
+        match &self {
+            BindingPattern::Variable(ident) => ident,
+            BindingPattern::Tuple(lparen_tok, _) => lparen_tok,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
-    pub kind: BindingDeclKind,
+    pub binding: BindingPattern,
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,

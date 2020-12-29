@@ -1,7 +1,7 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType};
-use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingDeclKind};
+use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingPattern};
 use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
@@ -19,7 +19,7 @@ pub enum TypecheckerError {
     InvalidIfConditionType { token: Token, actual: Type },
     InvalidLoopTarget { token: Token, target_type: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
-    MissingRequiredAssignment { binding: BindingDeclKind },
+    MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
@@ -49,7 +49,7 @@ pub enum TypecheckerError {
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
     InvalidTypeDeclDepth { token: Token },
-    ForbiddenVariableType { binding: BindingDeclKind, typ: Type },
+    ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
     UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool },
@@ -60,7 +60,7 @@ pub enum TypecheckerError {
     InvalidUninitializedEnumVariant { token: Token },
     InvalidMatchCaseDestructuring { token: Token, typ: Type },
     InvalidMatchCaseDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
-    InvalidAssignmentDestructuring { binding: BindingDeclKind, typ: Type,  },
+    InvalidAssignmentDestructuring { binding: BindingPattern, typ: Type },
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
 }
@@ -73,10 +73,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidIfConditionType { token, .. } => token,
             TypecheckerError::InvalidLoopTarget { token, .. } => token,
             TypecheckerError::InvalidOperator { token, .. } => token,
-            TypecheckerError::MissingRequiredAssignment { binding } => match binding {
-                BindingDeclKind::Variable(ident) => ident,
-                BindingDeclKind::Tuple(idents) => idents.first().expect("There shouldn't be an empty Tuple destructuring binding")
-            },
+            TypecheckerError::MissingRequiredAssignment { ident } => ident,
             TypecheckerError::DuplicateBinding { ident, .. } => ident,
             TypecheckerError::DuplicateType { ident, .. } => ident,
             TypecheckerError::DuplicateTypeArgument { ident, .. } => ident,
@@ -106,10 +103,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParamPosition { token } => token,
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
-            TypecheckerError::ForbiddenVariableType { binding, .. } => match binding {
-                BindingDeclKind::Variable(ident) => ident,
-                BindingDeclKind::Tuple(idents) => idents.first().expect("There shouldn't be an empty Tuple destructuring binding")
-            },
+            TypecheckerError::ForbiddenVariableType { binding, .. } => binding.get_token(),
             TypecheckerError::InvalidInstantiation { token, .. } => token,
             TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
             TypecheckerError::UnreachableMatchCase { token, .. } => token,
@@ -120,10 +114,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidUninitializedEnumVariant { token } => token,
             TypecheckerError::InvalidMatchCaseDestructuring { token, .. } => token,
             TypecheckerError::InvalidMatchCaseDestructuringArity { token, .. } => token,
-            TypecheckerError::InvalidAssignmentDestructuring { binding, .. } => match binding {
-                BindingDeclKind::Variable(ident) => ident,
-                BindingDeclKind::Tuple(idents) => idents.first().expect("There shouldn't be an empty Tuple destructuring binding")
-            }
+            TypecheckerError::InvalidAssignmentDestructuring { binding, .. } => binding.get_token(),
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
         }
@@ -270,24 +261,13 @@ impl DisplayError for TypecheckerError {
                     type_repr(ltype), op_repr(op), type_repr(rtype)
                 )
             }
-            TypecheckerError::MissingRequiredAssignment { binding } => {
-                match binding {
-                    BindingDeclKind::Variable(ident) => {
-                        let ident = Token::get_ident_name(&ident);
-                        format!(
-                            "Expected assignment for variable '{}': ({}:{})\n{}\n\
-                            'val' bindings must be initialized",
-                            ident, pos.line, pos.col, cursor_line
-                        )
-                    }
-                    BindingDeclKind::Tuple(_) => {
-                        format!(
-                            "Expected assignment for destructured variables: ({}:{})\n{}\n\
-                            'val' bindings must be initialized",
-                            pos.line, pos.col, cursor_line
-                        )
-                    }
-                }
+            TypecheckerError::MissingRequiredAssignment { ident } => {
+                let ident = Token::get_ident_name(&ident);
+                format!(
+                    "Expected assignment for variable '{}': ({}:{})\n{}\n\
+                    'val' bindings must be initialized",
+                    ident, pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::DuplicateBinding { ident, orig_ident } => {
                 let ident = Token::get_ident_name(&ident);
@@ -643,10 +623,10 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::InvalidAssignmentDestructuring { binding, typ } => {
                 let msg = match (binding, typ) {
-                    (BindingDeclKind::Tuple(dest_args), Type::Tuple(type_opts)) if dest_args.len() != type_opts.len() => {
+                    (BindingPattern::Tuple(_, dest_args), Type::Tuple(type_opts)) if dest_args.len() != type_opts.len() => {
                         format!("Cannot destructure a tuple of {} elements into {} values", type_opts.len(), dest_args.len())
                     }
-                    (BindingDeclKind::Tuple(_), typ) => {
+                    (BindingPattern::Tuple(_, _), typ) => {
                         format!("Cannot destructure a value of type {} as a tuple", type_repr(typ))
                     }
                     _ => unreachable!()
@@ -704,7 +684,7 @@ mod tests {
     use crate::lexer::tokens::{Token, Position};
     use crate::typechecker::types::{Type, StructType};
     use crate::common::display_error::DisplayError;
-    use crate::parser::ast::{BinaryOp, AstNode, AstLiteralNode, IndexingMode, BindingDeclKind};
+    use crate::parser::ast::{BinaryOp, AstNode, AstLiteralNode, IndexingMode};
     use crate::typechecker::typechecker_error::InvalidAssignmentTargetReason;
 
     #[test]
@@ -753,7 +733,7 @@ No operator exists to satisfy Int - String"
     fn test_missing_required_assignment() {
         let src = "val abc".to_string();
         let err = TypecheckerError::MissingRequiredAssignment {
-            binding: BindingDeclKind::Variable(Token::Ident(Position::new(1, 5), "abc".to_string()))
+            ident: ident_token!((1, 5), "abc")
         };
 
         let expected = format!("\

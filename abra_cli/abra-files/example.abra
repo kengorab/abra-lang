@@ -2,8 +2,14 @@
 //val (l1, l2): (List<Int>, List<String>) = (List(items: []), List(items: []))
 
 func a() {
-  val (a, b) = (1, "2")
+  val ((a, b), c) = ((1, "2"), (3, 4))
   println(a)
   println(b)
+  println(c)
 }
 a()
+
+//val ((a, b), c) = ((1, 2), ["3"])
+//println(a)
+//println(b)
+//println(c)

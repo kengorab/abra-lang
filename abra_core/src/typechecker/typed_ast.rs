@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingDeclKind};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -171,7 +171,7 @@ pub struct TypedLambdaNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedBindingDeclNode {
-    pub kind: BindingDeclKind,
+    pub binding: BindingPattern,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
     pub scope_depth: usize,

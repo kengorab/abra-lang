@@ -1,6 +1,6 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingDeclKind};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
@@ -946,68 +946,62 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
-        let line = token.get_position().line;
-        let TypedBindingDeclNode { kind, expr, .. } = node;
+        #[inline]
+        fn visit_pattern(zelf: &mut Compiler, binding: BindingPattern, is_root_scope: bool) {
+            match binding {
+                BindingPattern::Variable(ident) => {
+                    let line = ident.get_position().line;
+                    let ident = Token::get_ident_name(&ident);
+                    if is_root_scope {
+                        zelf.add_and_write_constant(Value::Str(ident), line);
+                        zelf.write_opcode(Opcode::GStore, line);
+                    } else {
+                        zelf.push_local(ident, line, true);
+                    }
+                }
+                BindingPattern::Tuple(lparen_tok, patterns) => {
+                    // Store tuple as temp variable, then we recursively destructure each element
+                    let line = lparen_tok.get_position().line;
+                    let temp_ident_name = get_temp_name();
+                    let temp_local_idx = if is_root_scope {
+                        zelf.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
+                        zelf.write_opcode(Opcode::GStore, line);
+                        None
+                    } else {
+                        zelf.push_local(temp_ident_name.clone(), line, true);
+                        let scope_depth = zelf.get_fn_depth();
+                        let (_, temp_idx) = zelf.resolve_local(&temp_ident_name, scope_depth).unwrap();
+                        Some(temp_idx)
+                    };
 
-        let is_uninitialized = expr.is_none();
+                    for (idx, pat) in patterns.into_iter().enumerate() {
+                        if let Some(temp_idx) = temp_local_idx {
+                            zelf.write_load_local_instr(temp_idx, line);
+                            zelf.metadata.loads.push(temp_ident_name.clone());
+                        } else {
+                            let const_idx = zelf.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
+                            zelf.write_constant(const_idx, line);
+                            zelf.write_opcode(Opcode::GLoad, line);
+                        }
+                        zelf.write_int_constant(idx as u32, line);
+                        zelf.write_opcode(Opcode::TupleLoad, line);
+                        visit_pattern(zelf, pat, is_root_scope);
+                    }
+                }
+            };
+        }
+
+        let line = token.get_position().line;
+        let TypedBindingDeclNode { binding, expr, .. } = node;
+
         if let Some(node) = expr {
             self.visit(*node)?;
         } else {
             self.write_opcode(Opcode::Nil, line);
         }
 
-        match kind {
-            BindingDeclKind::Variable(ident) => {
-                let ident = Token::get_ident_name(&ident);
-                if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-                    self.add_and_write_constant(Value::Str(ident), line);
-                    self.write_opcode(Opcode::GStore, line);
-                } else { // ...otherwise, it's a local
-                    self.push_local(ident, line, true);
-                }
-            }
-            BindingDeclKind::Tuple(idents) => {
-                // Store tuple as temporary variable
-                let temp_ident_name = get_temp_name();
-                let temp_local_idx = if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-                    self.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
-                    self.write_opcode(Opcode::GStore, line);
-                    None
-                } else { // ...otherwise, it's a local
-                    self.push_local(temp_ident_name.clone(), line, true);
-                    let scope_depth = self.get_fn_depth();
-                    let (_, temp_idx) = self.resolve_local(&temp_ident_name, scope_depth).unwrap();
-                    Some(temp_idx)
-                };
-
-                // For each destructured binding, set it to the nth tuple value
-                for (idx, ident) in idents.iter().enumerate() {
-                    let ident = Token::get_ident_name(&ident);
-
-                    if is_uninitialized {
-                        self.write_opcode(Opcode::Nil, line);
-                    } else {
-                        if let Some(temp_idx) = temp_local_idx {
-                            self.write_load_local_instr(temp_idx, line);
-                            self.metadata.loads.push(ident.clone());
-                        } else {
-                            let const_idx = self.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
-                            self.write_constant(const_idx, line);
-                            self.write_opcode(Opcode::GLoad, line);
-                        }
-                        self.write_int_constant(idx as u32, line);
-                        self.write_opcode(Opcode::TupleLoad, line);
-                    }
-
-                    if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-                        self.add_and_write_constant(Value::Str(ident), line);
-                        self.write_opcode(Opcode::GStore, line);
-                    } else { // ...otherwise, it's a local
-                        self.push_local(ident, line, true);
-                    }
-                }
-            }
-        }
+        let is_root_scope = self.current_scope().kind == ScopeKind::Root;
+        visit_pattern(self, binding, is_root_scope);
 
         Ok(())
     }

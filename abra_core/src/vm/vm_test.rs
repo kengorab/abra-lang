@@ -1760,7 +1760,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_recursive_func_in_lambda() {
+    fn interpret_recursive_func_in_lambda() {
         // This is an utterly pointless, super contrived example, but the main test case here is
         // whether a non-root-scope function will be correctly recognized as recursive if its only
         // usage is within a lambda
@@ -1784,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_u16_jump_offsets() {
+    fn interpret_u16_jump_offsets() {
         let input = r#"
           var total = 0
           for i in range(0, 1) {
@@ -1814,7 +1814,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_return_statements() {
+    fn interpret_return_statements() {
         let input = r#"
           func contains(arr: Int[], item: Int): Bool {
             for i in arr {
@@ -1829,6 +1829,36 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_destructuring_assignment() {
+        let input = r#"
+          val (a, b, c) = (1, 2, 3)
+          a + b + c
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val ((a, b), c) = ((1, 2), (3, 4))
+          a + b + c[0] + c[1]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(10);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func wrapper(): Int {
+            val ((a, b), c) = ((1, 2), (3, 4))
+            a + b + c[0] + c[1]
+          }
+          wrapper()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(10);
         assert_eq!(expected, result);
     }
 }
