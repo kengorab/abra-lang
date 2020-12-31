@@ -129,6 +129,39 @@ impl NativeStringMethodsAndFields for crate::builtins::gen_native_types::NativeS
         Some(Value::new_array_obj(items))
     }
 
+    fn method_split_at(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("String::splitAt requires 1 argument");
+        let index = if let Value::Int(index) = item { index } else { unreachable!() };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *obj.borrow_mut() {
+                Obj::StringObj(ref mut string) => {
+                    let tuple = if index >= string.len() as i64 {
+                        Value::new_tuple_obj(vec![
+                            Value::new_string_obj(string.clone()),
+                            Value::new_string_obj("".to_string()),
+                        ])
+                    } else if index < -(string.len() as i64) {
+                        Value::new_tuple_obj(vec![
+                            Value::new_string_obj("".to_string()),
+                            Value::new_string_obj(string.clone()),
+                        ])
+                    } else {
+                        let split_idx = ((string.len() as i64 + index) % string.len() as i64) as usize;
+                        let (h1, h2) = string.split_at(split_idx);
+                        Value::new_tuple_obj(vec![
+                            Value::new_string_obj(h1.to_string()),
+                            Value::new_string_obj(h2.to_string()),
+                        ])
+                    };
+
+                    Some(tuple)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_lines(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         let receiver = obj_as_string!(receiver);
 
@@ -287,6 +320,59 @@ mod test {
           new_string_obj("d"),
           new_string_obj("f")
         ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_split_at() {
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(0)
+        "#);
+        let expected = tuple!(
+            new_string_obj(""),
+            new_string_obj("hello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(1)
+        "#);
+        let expected = tuple!(
+            new_string_obj("h"),
+            new_string_obj("ello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(-1)
+        "#);
+        let expected = tuple!(
+            new_string_obj("hello"),
+            new_string_obj("!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(-8)
+        "#);
+        let expected = tuple!(
+            new_string_obj(""),
+            new_string_obj("hello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(10)
+        "#);
+        let expected = tuple!(
+            new_string_obj("hello!"),
+            new_string_obj("")
+        );
         assert_eq!(Some(expected), result);
     }
 

@@ -1900,6 +1900,27 @@ mod tests {
         assert_eq!(expected, result);
 
         let input = r#"
+          val [head, *tail] = [1, 2, 3]
+          tail
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![Value::Int(2), Value::Int(3)]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [[a], [d], [g, *h]] = ["abc", "def", "ghi"]
+          (a, d, g, h)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            new_string_obj("a"),
+            new_string_obj("d"),
+            new_string_obj("g"),
+            new_string_obj("hi"),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
           func wrapper(): Int {
             val ((a, b), c) = ((1, 2), (3, 4))
             a + b + c[0] + c[1]

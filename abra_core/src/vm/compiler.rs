@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType, NativeString};
 use crate::common::util::random_string;
 use std::collections::HashMap;
 
@@ -814,7 +814,7 @@ impl Compiler {
                     self.visit_pattern(pat);
                 }
             }
-            BindingPattern::Array(lbrack_tok, patterns) => {
+            BindingPattern::Array(lbrack_tok, patterns, is_string) => {
                 // Store array as temp variable, then we recursively destructure each element
                 let line = lbrack_tok.get_position().line;
                 let temp_var_name = self.get_temp_name();
@@ -824,8 +824,10 @@ impl Compiler {
                 let num_pats = patterns.len();
                 let mut patterns_iter = patterns.into_iter();
                 while let Some((pat, is_splat)) = patterns_iter.next() {
-                    // If the element is a splat, push arguments for eventual Array#splitAt invocation
-                    if is_splat {
+                    let is_last = idx == num_pats - 1;
+
+                    // If the element is a splat (and it's not the last element), push arguments for eventual splitAt invocation
+                    if is_splat && !is_last {
                         let line = pat.get_token().get_position().line;
 
                         self.write_opcode(Opcode::Nil, line);
@@ -842,13 +844,26 @@ impl Compiler {
                         let line = pat.get_token().get_position().line;
 
                         // Get the tail of the array from X until the end, where X is the number of elements in the
-                        // pattern before the `*splat`. Call splitAt on that tail, passing in `-N`, where N is the
-                        // number of elements in the destructuring pattern following the `*splat`. From the example above:
-                        //   arr[1:].splitAt(-2)
+                        // pattern before the `*splat`
+                        //   $temp_0[1:]
                         self.write_int_constant(idx as u32, line);
                         self.write_opcode(Opcode::Nil, line);
                         self.write_opcode(Opcode::ArrSlc, line);
-                        let split_at_method_idx = NativeArray::get_field_idx("splitAt");
+
+                        // If the splat is the last element in the destructuring pattern, there's no need to run the splitting logic
+                        if is_last {
+                            self.visit_pattern(pat);
+                            continue;
+                        }
+
+                        // Call splitAt on that tail, passing in `-N`, where N is the
+                        // number of elements in the destructuring pattern following the `*splat`. From the example above:
+                        //   $temp_0[1:].splitAt(-2)
+                        let split_at_method_idx = if is_string {
+                            NativeString::get_field_idx("splitAt")
+                        } else {
+                            NativeArray::get_field_idx("splitAt")
+                        };
                         self.write_opcode(Opcode::GetField, line);
                         self.metadata.field_gets.push("splitAt".to_string());
                         self.write_byte(split_at_method_idx as u8, line);
@@ -857,7 +872,7 @@ impl Compiler {
 
                         // Store that previous intermediate result (splitAt returns (T[], T[])); the first
                         // element of that tuple gets stored as the splat ident...
-                        //   val $temp_1 = arr[1:].splitAt(-2)
+                        //   val $temp_1 = $temp_0[1:].splitAt(-2)
                         //   val mid = $temp_1[0]
                         let splat_temp_ident_name = self.get_temp_name();
                         store(self, is_root_scope, splat_temp_ident_name.clone(), line);
@@ -2636,6 +2651,38 @@ mod tests {
                     receiver: None,
                     has_return: false,
                 }),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_strings() {
+        let chunk = compile("val [a, b] = \"hello\"");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                new_string_obj("hello"),
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
             ]),
         };
         assert_eq!(expected, chunk);
