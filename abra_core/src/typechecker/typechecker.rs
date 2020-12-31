@@ -2389,16 +2389,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where intrinsic variables $idx and $iter will be stored
         self.scopes.push(Scope::new(ScopeKind::Loop));
-        // let mut scope = Scope::new(ScopeKind::Loop);
         self.visit_binding_pattern(&mut binding, &iteratee_type, false)?;
-        // let iteratee_name = Token::get_ident_name(&iteratee).clone();
-        // scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), iteratee_type, false));
         if let Some(ident) = &index_ident {
             let ident_name = Token::get_ident_name(&ident).clone();
-            // scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), index_type, false));
             self.add_binding(ident_name.as_str(), ident, &index_type, false);
         }
-        // self.scopes.push(scope);
 
         self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;

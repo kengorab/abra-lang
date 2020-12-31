@@ -1795,13 +1795,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Insert iteratee and index bindings (if indexer expected) into loop scope
         //   $iter[$idx] is a tuple, of (<iteratee>, <index>)
         //   So, iteratee = $iter[$idx][0]
+        // This value will then be destructured, if a pattern is used
         self.push_scope(ScopeKind::Block);
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
         self.write_opcode(Opcode::IConst0, line);
         self.write_opcode(Opcode::TupleLoad, line);
-        // self.push_local(Token::get_ident_name(&iteratee), line, true);
         self.visit_pattern(binding);
         if let Some(ident) = index_ident {
             // If present, index = $iter[$idx][1]
