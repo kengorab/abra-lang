@@ -41,6 +41,7 @@ type NativeArray<T> {
   func push(self, item: T): Unit {}
   func pop(self): T? {}
   func popFront(self): T? {}
+  func splitAt(self, index: Int): (T[], T[]) {}
   func concat(self, other: T[]): T[] {}
   func map<U>(self, fn: (T) => U): U[] {}
   func filter(self, fn: (T) => Bool): T[] {}
