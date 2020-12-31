@@ -635,12 +635,7 @@ impl Parser {
     fn parse_for_statement(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
 
-        let iteratee = self.expect_next().and_then(|tok| {
-            match tok {
-                Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseError::ExpectedToken(TokenType::Ident, tok))
-            }
-        })?;
+        let binding = self.parse_binding_pattern()?;
 
         let index_ident = if let Some(Token::Comma(_)) = self.peek() {
             self.expect_next()?; // Consume ','
@@ -659,7 +654,7 @@ impl Parser {
         let iterator = Box::new(self.parse_expr()?);
         let body = self.parse_expr_or_block()?;
 
-        Ok(AstNode::ForLoop(token, ForLoopNode { iteratee, index_ident, iterator, body }))
+        Ok(AstNode::ForLoop(token, ForLoopNode { binding, index_ident, iterator, body }))
     }
 
     fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -3911,7 +3906,7 @@ mod tests {
         let expected = AstNode::ForLoop(
             Token::For(Position::new(1, 1)),
             ForLoopNode {
-                iteratee: ident_token!((1, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 index_ident: None,
                 iterator: Box::new(AstNode::Array(
                     Token::LBrack(Position::new(1, 10), false),
@@ -3931,7 +3926,7 @@ mod tests {
         let expected = AstNode::ForLoop(
             Token::For(Position::new(1, 1)),
             ForLoopNode {
-                iteratee: ident_token!((1, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 index_ident: Some(ident_token!((1, 8), "i")),
                 iterator: Box::new(AstNode::Array(
                     Token::LBrack(Position::new(1, 13), false),
@@ -3947,13 +3942,39 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
+        let ast = parse("for (x, y), i in [a, b] { x }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                binding: BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((1, 6), "x")),
+                        BindingPattern::Variable(ident_token!((1, 9), "y"))
+                    ],
+                ),
+                index_ident: Some(ident_token!((1, 13), "i")),
+                iterator: Box::new(AstNode::Array(
+                    Token::LBrack(Position::new(1, 18), false),
+                    ArrayNode {
+                        items: vec![
+                            identifier!((1, 19), "a"),
+                            identifier!((1, 22), "b")
+                        ]
+                    },
+                )),
+                body: vec![identifier!((1, 27), "x")],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
         Ok(())
     }
 
     #[test]
     fn parse_for_loop_error() {
         let error = parse("for 123 in [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 5), 123));
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
         assert_eq!(expected, error);
 
         let error = parse("for a [0, 1] { a }").unwrap_err();

@@ -237,7 +237,7 @@ pub struct InvocationNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ForLoopNode {
-    pub iteratee: Token,
+    pub binding: BindingPattern,
     pub index_ident: Option<Token>,
     pub iterator: Box<AstNode>,
     pub body: Vec<AstNode>,
