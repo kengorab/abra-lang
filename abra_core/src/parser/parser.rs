@@ -3974,7 +3974,7 @@ mod tests {
     #[test]
     fn parse_for_loop_error() {
         let error = parse("for 123 in [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 5), 123));
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
         assert_eq!(expected, error);
 
         let error = parse("for a [0, 1] { a }").unwrap_err();
