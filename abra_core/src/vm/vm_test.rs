@@ -1931,4 +1931,31 @@ mod tests {
         let expected = Value::Int(10);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_destructuring_for_loop() {
+        let input = r#"
+          val coords = [(1, 2), (3, 4), (5, 6)]
+          var total = 0
+          for (x, y), i in coords {
+            total += (x + y + i)
+          }
+          total
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val arrays = [[1], [2, 3], [4, 5, 6]]
+          var total = 0
+          for [_, *r], i in arrays {
+            total += (r.length + i)
+          }
+          total
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+    }
 }

@@ -278,7 +278,7 @@ pub struct TypedWhileLoopNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedForLoopNode {
-    pub iteratee: Token,
+    pub binding: BindingPattern,
     pub index_ident: Option<Token>,
     pub iterator: Box<TypedAstNode>,
     pub body: Vec<TypedAstNode>,

@@ -4,8 +4,13 @@
 //println(h)
 //println(m)
 //println(t)
-val [[a], [d], [g, *h]] = ["abc", "def", "ghi"]
-h
+//val [[a], [d], [g, *h]] = ["abc", "def", "ghi"]
+//h
 
 //val [a, *b] = [1, 2, 3]
 //b
+
+val coords = [(1, 2), (3, 4), (5, 6)]
+for (x, y), idx in coords {
+  println("(" + x + ", " + y + "): " + idx)
+}

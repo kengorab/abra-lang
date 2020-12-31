@@ -1003,7 +1003,7 @@ impl Typechecker {
                 let splats = idents.iter().filter(|(_, is_splat)| *is_splat).collect::<Vec<_>>();
                 if splats.len() > 1 {
                     if let Some((BindingPattern::Variable(ident), _)) = splats.last() {
-                        return Err(TypecheckerError::DuplicateSplatDestructuring { token: ident.clone() })
+                        return Err(TypecheckerError::DuplicateSplatDestructuring { token: ident.clone() });
                     } else { unreachable!() }
                 }
 
@@ -2374,7 +2374,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
-        let ForLoopNode { iteratee, index_ident, iterator, body } = node;
+        let ForLoopNode { mut binding, index_ident, iterator, body } = node;
         let iterator = self.visit(*iterator)?;
         let (iteratee_type, index_type) = match iterator.get_type() {
             Type::Array(inner) |
@@ -2388,21 +2388,24 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         let iterator = Box::new(iterator);
 
         self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where intrinsic variables $idx and $iter will be stored
-        let mut scope = Scope::new(ScopeKind::Loop);
-        let iteratee_name = Token::get_ident_name(&iteratee).clone();
-        scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), iteratee_type, false));
+        self.scopes.push(Scope::new(ScopeKind::Loop));
+        // let mut scope = Scope::new(ScopeKind::Loop);
+        self.visit_binding_pattern(&mut binding, &iteratee_type, false)?;
+        // let iteratee_name = Token::get_ident_name(&iteratee).clone();
+        // scope.bindings.insert(iteratee_name, ScopeBinding(iteratee.clone(), iteratee_type, false));
         if let Some(ident) = &index_ident {
             let ident_name = Token::get_ident_name(&ident).clone();
-            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), index_type, false));
+            // scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), index_type, false));
+            self.add_binding(ident_name.as_str(), ident, &index_type, false);
         }
-        self.scopes.push(scope);
+        // self.scopes.push(scope);
 
         self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
         self.scopes.pop();
         self.scopes.pop(); // Pop loop intrinsic-variables outer block
 
-        Ok(TypedAstNode::ForLoop(token, TypedForLoopNode { iteratee, index_ident, iterator, body }))
+        Ok(TypedAstNode::ForLoop(token, TypedForLoopNode { binding, index_ident, iterator, body }))
     }
 
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -6507,7 +6510,7 @@ mod tests {
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
-                iteratee: ident_token!((2, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                 index_ident: None,
                 iterator: Box::new(identifier!((2, 10), "arr", Type::Array(Box::new(Type::Int)), 0)),
                 body: vec![
@@ -6529,7 +6532,7 @@ mod tests {
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
-                iteratee: ident_token!((2, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                 index_ident: Some(ident_token!((2, 8), "i")),
                 iterator: Box::new(identifier!((2, 13), "arr", Type::Array(Box::new(Type::Int)), 0)),
                 body: vec![
@@ -6551,7 +6554,7 @@ mod tests {
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
-                iteratee: ident_token!((2, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                 index_ident: Some(ident_token!((2, 8), "i")),
                 iterator: Box::new(identifier!((2, 13), "set", Type::Set(Box::new(Type::Int)), 0)),
                 body: vec![
@@ -6573,7 +6576,7 @@ mod tests {
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
-                iteratee: ident_token!((2, 5), "k"),
+                binding: BindingPattern::Variable(ident_token!((2, 5), "k")),
                 index_ident: Some(ident_token!((2, 8), "v")),
                 iterator: Box::new(identifier!((2, 13), "map", Type::Map(Box::new(Type::String),Box::new(Type::Int)), 0)),
                 body: vec![
@@ -6584,6 +6587,39 @@ mod tests {
                             left: Box::new(identifier!((3, 1), "k", Type::String, 2)),
                             op: BinaryOp::Add,
                             right: Box::new(identifier!((3, 5), "v", Type::Int, 2)),
+                        },
+                    )
+                ],
+            },
+        );
+        assert_eq!(expected, ast[1]);
+
+        let ast = typecheck("\
+          val coords = [(1, 2), (3, 4)]\n\
+          for (x, y), i in coords {\n\
+            x + y\n\
+          }\
+        ")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                binding: BindingPattern::Tuple(
+                    Token::LParen(Position::new(2, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((2, 6), "x")),
+                        BindingPattern::Variable(ident_token!((2, 9), "y"))
+                    ],
+                ),
+                index_ident: Some(ident_token!((2, 13), "i")),
+                iterator: Box::new(identifier!((2, 18), "coords", Type::Array(Box::new(Type::Tuple(vec![Type::Int, Type::Int]))), 0)),
+                body: vec![
+                    TypedAstNode::Binary(
+                        Token::Plus(Position::new(3, 3)),
+                        TypedBinaryNode {
+                            typ: Type::Int,
+                            left: Box::new(identifier!((3, 1), "x", Type::Int, 2)),
+                            op: BinaryOp::Add,
+                            right: Box::new(identifier!((3, 5), "y", Type::Int, 2)),
                         },
                     )
                 ],

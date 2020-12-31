@@ -1742,7 +1742,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedForLoopNode { iteratee, index_ident, iterator, body } = node;
+        let TypedForLoopNode { binding, index_ident, iterator, body } = node;
         let iterator_type = iterator.get_type();
 
         // Push intrinsic variable $idx, to track position in $iter
@@ -1801,7 +1801,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::ArrLoad, line);
         self.write_opcode(Opcode::IConst0, line);
         self.write_opcode(Opcode::TupleLoad, line);
-        self.push_local(Token::get_ident_name(&iteratee), line, true);
+        // self.push_local(Token::get_ident_name(&iteratee), line, true);
+        self.visit_pattern(binding);
         if let Some(ident) = index_ident {
             // If present, index = $iter[$idx][1]
             load_intrinsic(self, "$iter", line);
