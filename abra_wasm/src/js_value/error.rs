@@ -37,7 +37,7 @@ impl<'a> Serialize for JsBindingPattern<'a> {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "array")?;
                 obj.serialize_entry("lbrackToken", &JsToken(lbrack_tok))?;
-                obj.serialize_entry("patterns", &patterns.iter().map(|p| JsBindingPattern(p)).collect::<Vec<_>>())?;
+                obj.serialize_entry("patterns", &patterns.iter().map(|(pat, is_splat)| (JsBindingPattern(pat), is_splat)).collect::<Vec<_>>())?;
                 obj.end()
             }
         }
@@ -568,6 +568,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("bareReturn", bare_return)?;
                     obj.serialize_entry("expected", &JsType(expected))?;
                     obj.serialize_entry("actual", &JsType(actual))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::DuplicateSplatDestructuring { token } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateSplatDestructuring")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

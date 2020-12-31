@@ -61,6 +61,7 @@ pub enum TypecheckerError {
     InvalidMatchCaseDestructuring { token: Token, typ: Type },
     InvalidMatchCaseDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
     InvalidAssignmentDestructuring { binding: BindingPattern, typ: Type },
+    DuplicateSplatDestructuring { token: Token },
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
 }
@@ -115,6 +116,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidMatchCaseDestructuring { token, .. } => token,
             TypecheckerError::InvalidMatchCaseDestructuringArity { token, .. } => token,
             TypecheckerError::InvalidAssignmentDestructuring { binding, .. } => binding.get_token(),
+            TypecheckerError::DuplicateSplatDestructuring { token } => token,
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
         }
@@ -635,6 +637,13 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Invalid destructuring pattern for assignment: ({}:{})\n{}\n{}",
                     pos.line, pos.col, cursor_line, msg
+                )
+            }
+            TypecheckerError::DuplicateSplatDestructuring { .. } => {
+                format!(
+                    "Invalid destructuring pattern for assignment: ({}: {})\n{}\n\
+                    Cannot have more than one splat (*) instance in an array destructuring",
+                    pos.line, pos.col, cursor_line
                 )
             }
             TypecheckerError::UnreachableCode { .. } => {

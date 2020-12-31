@@ -109,6 +109,39 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         } else { unreachable!() }
     }
 
+    fn method_split_at(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+        let item = args.into_iter().next().expect("Array::splitAt requires 1 argument");
+        let index = if let Value::Int(index) = item { index } else { unreachable!() };
+
+        if let Value::Obj(obj) = receiver.unwrap() {
+            match *obj.borrow_mut() {
+                Obj::ArrayObj(ref mut array) => {
+                    let tuple = if index >= array.len() as i64 {
+                        Value::new_tuple_obj(vec![
+                            Value::new_array_obj(array.clone()),
+                            Value::new_array_obj(vec![]),
+                        ])
+                    } else if index < -(array.len() as i64) {
+                        Value::new_tuple_obj(vec![
+                            Value::new_array_obj(vec![]),
+                            Value::new_array_obj(array.clone()),
+                        ])
+                    } else {
+                        let split_idx = ((array.len() as i64 + index) % array.len() as i64) as usize;
+                        let (h1, h2) = array.split_at(split_idx);
+                        Value::new_tuple_obj(vec![
+                            Value::new_array_obj(h1.to_vec().clone()),
+                            Value::new_array_obj(h2.to_vec().clone()),
+                        ])
+                    };
+
+                    Some(tuple)
+                }
+                _ => unreachable!()
+            }
+        } else { unreachable!() }
+    }
+
     fn method_concat(receiver: Option<Value>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
         let arg = args.into_iter().next().expect("Array::concat requires 1 argument");
         let mut other_arr = match arg {
@@ -700,6 +733,59 @@ mod test {
           arr.popFront()
         "#);
         let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_split_at() {
+        let result = interpret(r#"
+          val arr = [1, 2, 3, 4, 5, 6, 7]
+          arr.splitAt(0)
+        "#);
+        let expected = tuple!(
+            int_array!(),
+            int_array!(1, 2, 3, 4, 5, 6, 7)
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3, 4, 5, 6, 7]
+          arr.splitAt(1)
+        "#);
+        let expected = tuple!(
+            int_array!(1),
+            int_array!(2, 3, 4, 5, 6, 7)
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3, 4, 5, 6, 7]
+          arr.splitAt(-1)
+        "#);
+        let expected = tuple!(
+            int_array!(1, 2, 3, 4, 5, 6),
+            int_array!(7)
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3, 4, 5, 6, 7]
+          arr.splitAt(-8)
+        "#);
+        let expected = tuple!(
+            int_array!(),
+            int_array!(1, 2, 3, 4, 5, 6, 7)
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3, 4, 5, 6, 7]
+          arr.splitAt(10)
+        "#);
+        let expected = tuple!(
+            int_array!(1, 2, 3, 4, 5, 6, 7),
+            int_array!()
+        );
         assert_eq!(Some(expected), result);
     }
 

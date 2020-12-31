@@ -351,8 +351,15 @@ impl Parser {
                         return Err(ParseError::ExpectedToken(TokenType::RBrack, err_tok));
                     }
 
-                    let pat = self.parse_binding_pattern()?;
-                    patterns.push(pat);
+                    if let Token::Star(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume '*'
+                        let ident = self.expect_next_token(TokenType::Ident)?;
+                        let pat = BindingPattern::Variable(ident);
+                        patterns.push((pat, true));
+                    } else {
+                        let pat = self.parse_binding_pattern()?;
+                        patterns.push((pat, false));
+                    }
 
                     if let Token::Comma(_) = self.expect_peek()? {
                         self.expect_next()?; // Consume ','
@@ -2069,8 +2076,8 @@ mod tests {
                 BindingPattern::Array(
                     Token::LBrack(Position::new(1, 5), false),
                     vec![
-                        BindingPattern::Variable(ident_token!((1, 6), "a")),
-                        BindingPattern::Variable(ident_token!((1, 9), "b")),
+                        (BindingPattern::Variable(ident_token!((1, 6), "a")), false),
+                        (BindingPattern::Variable(ident_token!((1, 9), "b")), false),
                     ],
                 )
             ),
@@ -2079,13 +2086,16 @@ mod tests {
                 BindingPattern::Array(
                     Token::LBrack(Position::new(1, 5), false),
                     vec![
-                        BindingPattern::Array(
-                            Token::LBrack(Position::new(1, 6), false),
-                            vec![
-                                BindingPattern::Variable(ident_token!((1, 7), "a")),
-                            ],
+                        (
+                            BindingPattern::Array(
+                                Token::LBrack(Position::new(1, 6), false),
+                                vec![
+                                    (BindingPattern::Variable(ident_token!((1, 7), "a")), false),
+                                ],
+                            ),
+                            false
                         ),
-                        BindingPattern::Variable(ident_token!((1, 11), "b")),
+                        (BindingPattern::Variable(ident_token!((1, 11), "b")), false),
                     ],
                 )
             ),
@@ -2098,19 +2108,22 @@ mod tests {
                         BindingPattern::Array(
                             Token::LBrack(Position::new(1, 6), false),
                             vec![
-                                BindingPattern::Variable(ident_token!((1, 7), "a")),
-                                BindingPattern::Variable(ident_token!((1, 10), "b")),
+                                (BindingPattern::Variable(ident_token!((1, 7), "a")), false, ),
+                                (BindingPattern::Variable(ident_token!((1, 10), "b")), false, ),
                             ],
                         ),
                         BindingPattern::Array(
                             Token::LBrack(Position::new(1, 14), false),
                             vec![
-                                BindingPattern::Tuple(
-                                    Token::LParen(Position::new(1, 15), false),
-                                    vec![
-                                        BindingPattern::Variable(ident_token!((1, 16), "c")),
-                                        BindingPattern::Variable(ident_token!((1, 19), "d")),
-                                    ],
+                                (
+                                    BindingPattern::Tuple(
+                                        Token::LParen(Position::new(1, 15), false),
+                                        vec![
+                                            BindingPattern::Variable(ident_token!((1, 16), "c")),
+                                            BindingPattern::Variable(ident_token!((1, 19), "d")),
+                                        ],
+                                    ),
+                                    false
                                 ),
                             ],
                         ),

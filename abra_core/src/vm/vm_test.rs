@@ -1866,6 +1866,40 @@ mod tests {
         assert_eq!(expected, result);
 
         let input = r#"
+          val [(x1, y1), *mid, (x2, y2)] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+          (x1, y1, mid, x2, y2)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::new_array_obj(vec![
+                Value::new_tuple_obj(vec![Value::Int(3), Value::Int(4)]),
+                Value::new_tuple_obj(vec![Value::Int(5), Value::Int(6)]),
+            ]),
+            Value::Int(7),
+            Value::Int(8),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [h1, h2, *mid, t1, t2, t3, t4, t5] = [1, 2, 3, 4, 5, 6]
+          (h1, h2, mid, t1, t2, t3, t4, t5)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::new_array_obj(vec![]),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Int(5),
+            Value::Int(6),
+            Value::Nil,
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
           func wrapper(): Int {
             val ((a, b), c) = ((1, 2), (3, 4))
             a + b + c[0] + c[1]

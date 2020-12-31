@@ -142,7 +142,7 @@ pub struct MapNode {
 pub enum BindingPattern {
     Variable(/* ident: */ Token),
     Tuple(/* lparen_tok: */ Token, /* patterns: */ Vec<BindingPattern>),
-    Array(/* lbrack_tok: */ Token, /* patterns: */ Vec<BindingPattern>),
+    Array(/* lbrack_tok: */ Token, /* patterns: */ Vec<(BindingPattern, /* is_splat: */ bool)>),
 }
 
 impl BindingPattern {

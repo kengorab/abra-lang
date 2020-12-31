@@ -8,7 +8,6 @@ use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
 use crate::common::util::random_string;
-use crate::common::compiler_util::{get_anon_name, get_temp_name};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +50,8 @@ pub struct Compiler {
     interrupt_handles: Vec<JumpHandle>,
     return_handles: Vec<JumpHandle>,
     metadata: Metadata,
+    anon_idx: usize,
+    temp_idx: usize,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -98,6 +99,8 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         interrupt_handles: Vec::new(),
         return_handles: Vec::new(),
         metadata,
+        anon_idx: 0,
+        temp_idx: 0,
     };
 
     compiler.hoist_fn_defs(&ast)?;
@@ -383,6 +386,18 @@ impl Compiler {
         }
     }
 
+    #[inline]
+    fn get_anon_name(&mut self) -> String {
+        self.anon_idx += 1;
+        format!("$anon_{}", self.anon_idx - 1)
+    }
+
+    #[inline]
+    fn get_temp_name(&mut self) -> String {
+        self.temp_idx += 1;
+        format!("$temp_{}", self.temp_idx - 1)
+    }
+
     fn get_fn_depth(&self) -> usize {
         self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
@@ -555,7 +570,7 @@ impl Compiler {
     ) -> Result<FnValue, ()> {
         let func_name = match name {
             Some(name) => Token::get_ident_name(&name),
-            None => get_anon_name()
+            None => self.get_anon_name()
         };
 
         let line = token.get_position().line;
@@ -741,6 +756,133 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    // This is a pretty complex function; given a binding pattern, it will emit bytecode to destructure
+    // the TOS value according to that pattern. There may be intermediate $temp_X bindings (globals or
+    // locals, depending on context) created in scope in this process.
+    // Assumptions:
+    //   - For any pattern other than a plain Variable, the TOS must not be nil
+    fn visit_pattern(&mut self, binding: BindingPattern) {
+        #[inline]
+        fn store(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) -> Option<usize> {
+            if is_root_scope {
+                zelf.add_and_write_constant(Value::Str(ident), line);
+                zelf.write_opcode(Opcode::GStore, line);
+                None
+            } else {
+                zelf.push_local(ident.clone(), line, true);
+                let scope_depth = zelf.get_fn_depth();
+                let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                Some(temp_idx)
+            }
+        }
+
+        #[inline]
+        fn load(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) {
+            if is_root_scope {
+                let const_idx = zelf.get_constant_index(&Value::Str(ident)).unwrap();
+                zelf.write_constant(const_idx, line);
+                zelf.write_opcode(Opcode::GLoad, line);
+            } else {
+                let scope_depth = zelf.get_fn_depth();
+                let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                zelf.write_load_local_instr(temp_idx, line);
+                zelf.metadata.loads.push(ident);
+            }
+        }
+
+        let is_root_scope = self.current_scope().kind == ScopeKind::Root;
+
+        match binding {
+            BindingPattern::Variable(ident) => {
+                // If pattern is a variable, this is a root node in the tree; write store instruction
+                // (depending on whether it's a global or not) for top-of-stack.
+                let line = ident.get_position().line;
+                store(self, is_root_scope, Token::get_ident_name(&ident), line);
+            }
+            BindingPattern::Tuple(lparen_tok, patterns) => {
+                // Store tuple as temp variable, then we recursively destructure each element
+                let line = lparen_tok.get_position().line;
+                let temp_var_name = self.get_temp_name();
+                store(self, is_root_scope, temp_var_name.clone(), line);
+
+                for (idx, pat) in patterns.into_iter().enumerate() {
+                    load(self, is_root_scope, temp_var_name.clone(), line);
+                    self.write_int_constant(idx as u32, line);
+                    self.write_opcode(Opcode::TupleLoad, line);
+                    self.visit_pattern(pat);
+                }
+            }
+            BindingPattern::Array(lbrack_tok, patterns) => {
+                // Store array as temp variable, then we recursively destructure each element
+                let line = lbrack_tok.get_position().line;
+                let temp_var_name = self.get_temp_name();
+                store(self, is_root_scope, temp_var_name.clone(), line);
+
+                let mut idx = 0;
+                let num_pats = patterns.len();
+                let mut patterns_iter = patterns.into_iter();
+                while let Some((pat, is_splat)) = patterns_iter.next() {
+                    // If the element is a splat, push arguments for eventual Array#splitAt invocation
+                    if is_splat {
+                        let line = pat.get_token().get_position().line;
+
+                        self.write_opcode(Opcode::Nil, line);
+                        self.write_int_constant((num_pats - 1 - idx) as u32, line);
+                        self.write_opcode(Opcode::Invert, line);
+                    }
+
+                    load(self, is_root_scope, temp_var_name.clone(), line);
+
+                    // If the destructured pattern is a `*splat`, perform some special setup. Eg, for
+                    //   val $temp_0 = [1, 2, 3, 4, 5, 6, 7]
+                    //   val [v1, *mid, v2, v3] = $temp_0
+                    if is_splat {
+                        let line = pat.get_token().get_position().line;
+
+                        // Get the tail of the array from X until the end, where X is the number of elements in the
+                        // pattern before the `*splat`. Call splitAt on that tail, passing in `-N`, where N is the
+                        // number of elements in the destructuring pattern following the `*splat`. From the example above:
+                        //   arr[1:].splitAt(-2)
+                        self.write_int_constant(idx as u32, line);
+                        self.write_opcode(Opcode::Nil, line);
+                        self.write_opcode(Opcode::ArrSlc, line);
+                        let split_at_method_idx = NativeArray::get_field_idx("splitAt");
+                        self.write_opcode(Opcode::GetField, line);
+                        self.metadata.field_gets.push("splitAt".to_string());
+                        self.write_byte(split_at_method_idx as u8, line);
+                        self.write_opcode(Opcode::Invoke, line);
+                        self.write_byte(1, line);
+
+                        // Store that previous intermediate result (splitAt returns (T[], T[])); the first
+                        // element of that tuple gets stored as the splat ident...
+                        //   val $temp_1 = arr[1:].splitAt(-2)
+                        //   val mid = $temp_1[0]
+                        let splat_temp_ident_name = self.get_temp_name();
+                        store(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        load(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        self.write_opcode(Opcode::IConst0, line);
+                        self.write_opcode(Opcode::TupleLoad, line);
+                        self.visit_pattern(pat);
+
+                        // ...and the second element of the tuple gets assigned to the original temporary binding,
+                        // so that the remaining patterns in the destructuring are applied wrt that now (hence setting idx = 0):
+                        //   $temp_0 = $temp_1[1]
+                        load(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        self.write_opcode(Opcode::IConst1, line);
+                        self.write_opcode(Opcode::TupleLoad, line);
+                        store(self, is_root_scope, temp_var_name.clone(), line);
+                        idx = 0;
+                    } else { // otherwise, it's a simple ArrLoad, then recurse into the pattern
+                        self.write_int_constant(idx as u32, line);
+                        self.write_opcode(Opcode::ArrLoad, line);
+                        self.visit_pattern(pat);
+                        idx += 1
+                    }
+                }
+            }
+        };
     }
 }
 
@@ -946,80 +1088,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
-        #[inline]
-        fn visit_pattern(zelf: &mut Compiler, binding: BindingPattern, is_root_scope: bool) {
-            match binding {
-                BindingPattern::Variable(ident) => {
-                    let line = ident.get_position().line;
-                    let ident = Token::get_ident_name(&ident);
-                    if is_root_scope {
-                        zelf.add_and_write_constant(Value::Str(ident), line);
-                        zelf.write_opcode(Opcode::GStore, line);
-                    } else {
-                        zelf.push_local(ident, line, true);
-                    }
-                }
-                BindingPattern::Tuple(lparen_tok, patterns) => {
-                    // Store tuple as temp variable, then we recursively destructure each element
-                    let line = lparen_tok.get_position().line;
-                    let temp_ident_name = get_temp_name();
-                    let temp_local_idx = if is_root_scope {
-                        zelf.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
-                        zelf.write_opcode(Opcode::GStore, line);
-                        None
-                    } else {
-                        zelf.push_local(temp_ident_name.clone(), line, true);
-                        let scope_depth = zelf.get_fn_depth();
-                        let (_, temp_idx) = zelf.resolve_local(&temp_ident_name, scope_depth).unwrap();
-                        Some(temp_idx)
-                    };
-
-                    for (idx, pat) in patterns.into_iter().enumerate() {
-                        if let Some(temp_idx) = temp_local_idx {
-                            zelf.write_load_local_instr(temp_idx, line);
-                            zelf.metadata.loads.push(temp_ident_name.clone());
-                        } else {
-                            let const_idx = zelf.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
-                            zelf.write_constant(const_idx, line);
-                            zelf.write_opcode(Opcode::GLoad, line);
-                        }
-                        zelf.write_int_constant(idx as u32, line);
-                        zelf.write_opcode(Opcode::TupleLoad, line);
-                        visit_pattern(zelf, pat, is_root_scope);
-                    }
-                }
-                BindingPattern::Array(lbrack_tok, patterns) => {
-                    // Store array as temp variable, then we recursively destructure each element
-                    let line = lbrack_tok.get_position().line;
-                    let temp_ident_name = get_temp_name();
-                    let temp_local_idx = if is_root_scope {
-                        zelf.add_and_write_constant(Value::Str(temp_ident_name.clone()), line);
-                        zelf.write_opcode(Opcode::GStore, line);
-                        None
-                    } else {
-                        zelf.push_local(temp_ident_name.clone(), line, true);
-                        let scope_depth = zelf.get_fn_depth();
-                        let (_, temp_idx) = zelf.resolve_local(&temp_ident_name, scope_depth).unwrap();
-                        Some(temp_idx)
-                    };
-
-                    for (idx, pat) in patterns.into_iter().enumerate() {
-                        if let Some(temp_idx) = temp_local_idx {
-                            zelf.write_load_local_instr(temp_idx, line);
-                            zelf.metadata.loads.push(temp_ident_name.clone());
-                        } else {
-                            let const_idx = zelf.get_constant_index(&Value::Str(temp_ident_name.clone())).unwrap();
-                            zelf.write_constant(const_idx, line);
-                            zelf.write_opcode(Opcode::GLoad, line);
-                        }
-                        zelf.write_int_constant(idx as u32, line);
-                        zelf.write_opcode(Opcode::ArrLoad, line);
-                        visit_pattern(zelf, pat, is_root_scope);
-                    }
-                }
-            };
-        }
-
         let line = token.get_position().line;
         let TypedBindingDeclNode { binding, expr, .. } = node;
 
@@ -1029,8 +1097,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::Nil, line);
         }
 
-        let is_root_scope = self.current_scope().kind == ScopeKind::Root;
-        visit_pattern(self, binding, is_root_scope);
+        // Note: for assignments, binding patterns other than Variable are guaranteed to have an initializer.
+        // It will fail to parse without it.
+        self.visit_pattern(binding);
 
         Ok(())
     }
@@ -1852,7 +1921,6 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
-    use crate::common::compiler_util::{ANON_IDX, TEMP_IDX};
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
 
@@ -1869,10 +1937,6 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
-        // Yuck: need to reset these globals so tests will be repeatable. Gross
-        ANON_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
-        TEMP_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
-
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
@@ -2492,7 +2556,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
-                    has_return: false
+                    has_return: false,
                 }),
             ]),
         };
@@ -2570,7 +2634,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
-                    has_return: false
+                    has_return: false,
                 }),
             ]),
         };
