@@ -24,6 +24,7 @@ type NativeString {
   func trimStart(self, pattern: String = " "): String {}
   func trimEnd(self, pattern: String = " "): String {}
   func split(self, splitter: String): String[] {}
+  func splitAt(self, index: Int): (String, String) {}
   func lines(self): String[] {}
   func chars(self): String[] {}
   func parseInt(self, radix: Int = 10): Int? {}

@@ -33,10 +33,11 @@ impl<'a> Serialize for JsBindingPattern<'a> {
                 obj.serialize_entry("patterns", &patterns.iter().map(|p| JsBindingPattern(p)).collect::<Vec<_>>())?;
                 obj.end()
             }
-            BindingPattern::Array(lbrack_tok, patterns) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
+            BindingPattern::Array(lbrack_tok, patterns, is_string) => {
+                let mut obj = serializer.serialize_map(Some(4))?;
                 obj.serialize_entry("kind", "array")?;
                 obj.serialize_entry("lbrackToken", &JsToken(lbrack_tok))?;
+                obj.serialize_entry("isString", is_string)?;
                 obj.serialize_entry("patterns", &patterns.iter().map(|(pat, is_splat)| (JsBindingPattern(pat), is_splat)).collect::<Vec<_>>())?;
                 obj.end()
             }

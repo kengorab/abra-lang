@@ -975,7 +975,7 @@ impl Typechecker {
         Ok((static_fields, typed_methods))
     }
 
-    fn visit_binding_pattern(&mut self, binding: &BindingPattern, typ: &Type, is_mutable: bool) -> Result<(), TypecheckerError> {
+    fn visit_binding_pattern(&mut self, binding: &mut BindingPattern, typ: &Type, is_mutable: bool) -> Result<(), TypecheckerError> {
         match binding {
             BindingPattern::Variable(ident) => {
                 let name = Token::get_ident_name(ident);
@@ -989,7 +989,7 @@ impl Typechecker {
             BindingPattern::Tuple(_, idents) => {
                 match typ.get_opt_unwrapped() {
                     Type::Tuple(opts) if idents.len() == opts.len() => {
-                        for (pat, tuple_elem_typ) in idents.iter().zip(opts) {
+                        for (pat, tuple_elem_typ) in idents.iter_mut().zip(opts) {
                             let typ = if typ.is_opt() { Type::Option(Box::new(tuple_elem_typ)) } else { tuple_elem_typ };
                             self.visit_binding_pattern(pat, &typ, is_mutable)?;
                         }
@@ -999,7 +999,7 @@ impl Typechecker {
                     }
                 }
             }
-            BindingPattern::Array(_, idents) => {
+            BindingPattern::Array(_, idents, is_string) => {
                 let splats = idents.iter().filter(|(_, is_splat)| *is_splat).collect::<Vec<_>>();
                 if splats.len() > 1 {
                     if let Some((BindingPattern::Variable(ident), _)) = splats.last() {
@@ -1016,6 +1016,12 @@ impl Typechecker {
                             } else {
                                 Type::Option(Box::new(*inner_typ.clone()))
                             };
+                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                        }
+                    }
+                    Type::String => {
+                        *is_string = true;
+                        for (pat, _) in idents {
                             self.visit_binding_pattern(pat, &typ, is_mutable)?;
                         }
                     }
@@ -1309,7 +1315,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let BindingDeclNode { is_mutable, binding, type_ann, expr } = node;
+        let BindingDeclNode { is_mutable, mut binding, type_ann, expr } = node;
         if !is_mutable && expr.is_none() {
             if let BindingPattern::Variable(ident) = binding {
                 return Err(TypecheckerError::MissingRequiredAssignment { ident });
@@ -1363,7 +1369,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unit });
         }
 
-        self.visit_binding_pattern(&binding, &typ, is_mutable)?;
+        self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
 
         let scope_depth = self.scopes.len() - 1;
         let node = TypedBindingDeclNode {
@@ -3729,6 +3735,7 @@ mod tests {
                         (BindingPattern::Variable(ident_token!((1, 10), "b")), true),
                         (BindingPattern::Variable(ident_token!((1, 13), "c")), false),
                     ],
+                    false,
                 ),
                 is_mutable: false,
                 expr: Some(Box::new(TypedAstNode::Array(
@@ -3754,6 +3761,36 @@ mod tests {
         assert_eq!(expected_binding, binding);
         let binding = typechecker.get_binding("c").unwrap();
         let expected_binding = (&ScopeBinding(ident_token!((1, 13), "c"), Type::Option(Box::new(Type::Int)), false), 0);
+        assert_eq!(expected_binding, binding);
+
+        // Strings
+        let (typechecker, typed_ast) = typecheck_get_typechecker("val [a, *b, c] = \"hello\"");
+        let expected = TypedAstNode::BindingDecl(
+            Token::Val(Position::new(1, 1)),
+            TypedBindingDeclNode {
+                binding: BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        (BindingPattern::Variable(ident_token!((1, 6), "a")), false),
+                        (BindingPattern::Variable(ident_token!((1, 10), "b")), true),
+                        (BindingPattern::Variable(ident_token!((1, 13), "c")), false),
+                    ],
+                    true,
+                ),
+                is_mutable: false,
+                expr: Some(Box::new(string_literal!((1, 18), "hello"))),
+                scope_depth: 0,
+            },
+        );
+        assert_eq!(expected, typed_ast[0]);
+        let binding = typechecker.get_binding("a").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 6), "a"), Type::String, false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("b").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 10), "b"), Type::String, false), 0);
+        assert_eq!(expected_binding, binding);
+        let binding = typechecker.get_binding("c").unwrap();
+        let expected_binding = (&ScopeBinding(ident_token!((1, 13), "c"), Type::String, false), 0);
         assert_eq!(expected_binding, binding);
 
         // Nested
@@ -3785,6 +3822,7 @@ mod tests {
                             false
                         )
                     ],
+                    false,
                 ),
                 is_mutable: false,
                 expr: Some(Box::new(TypedAstNode::Array(
@@ -3857,6 +3895,7 @@ mod tests {
                     (BindingPattern::Variable(ident_token!((1, 6), "a")), false),
                     (BindingPattern::Variable(ident_token!((1, 9), "b")), false),
                 ],
+                false,
             ),
             typ: Type::Tuple(vec![Type::Int, Type::Int, Type::Int]),
         };

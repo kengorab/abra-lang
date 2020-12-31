@@ -370,7 +370,7 @@ impl Parser {
                         done = true;
                     }
                 }
-                BindingPattern::Array(tok, patterns)
+                BindingPattern::Array(tok, patterns, false)
             }
             tok @ _ => return Err(ParseError::UnexpectedToken(tok))
         };
@@ -2079,6 +2079,7 @@ mod tests {
                         (BindingPattern::Variable(ident_token!((1, 6), "a")), false),
                         (BindingPattern::Variable(ident_token!((1, 9), "b")), false),
                     ],
+                    false,
                 )
             ),
             (
@@ -2092,11 +2093,13 @@ mod tests {
                                 vec![
                                     (BindingPattern::Variable(ident_token!((1, 7), "a")), false),
                                 ],
+                                false,
                             ),
                             false
                         ),
                         (BindingPattern::Variable(ident_token!((1, 11), "b")), false),
                     ],
+                    false,
                 )
             ),
             // Nested
@@ -2111,6 +2114,7 @@ mod tests {
                                 (BindingPattern::Variable(ident_token!((1, 7), "a")), false, ),
                                 (BindingPattern::Variable(ident_token!((1, 10), "b")), false, ),
                             ],
+                            false,
                         ),
                         BindingPattern::Array(
                             Token::LBrack(Position::new(1, 14), false),
@@ -2126,6 +2130,7 @@ mod tests {
                                     false
                                 ),
                             ],
+                            false,
                         ),
                     ],
                 )
