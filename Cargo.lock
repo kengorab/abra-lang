@@ -2,15 +2,15 @@
 # It is not intended for manual editing.
 [[package]]
 name = "abra"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "abra_core 0.5.0",
+ "abra_core 0.5.1",
  "clap 3.0.0-beta.1 (git+https://github.com/clap-rs/clap)",
 ]
 
 [[package]]
 name = "abra_core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "itertools 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "peekmore 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -24,7 +24,7 @@ dependencies = [
 name = "abra_wasm"
 version = "0.6.2"
 dependencies = [
- "abra_core 0.5.0",
+ "abra_core 0.5.1",
  "futures 0.1.29 (registry+https://github.com/rust-lang/crates.io-index)",
  "js-sys 0.3.37 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.106 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -114,7 +114,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "gen_native_types"
 version = "0.0.1"
 dependencies = [
- "abra_core 0.5.0",
+ "abra_core 0.5.1",
  "heck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc-macro2 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 1.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
