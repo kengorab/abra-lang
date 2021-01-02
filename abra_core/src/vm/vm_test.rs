@@ -1958,4 +1958,21 @@ mod tests {
         let expected = Value::Int(6);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_destructuring_match_expr() {
+        let input = r#"
+          enum Point { TwoD(coord: (Int, Int)), ThreeD(coord: (Int, Int, Int)) }
+
+          val p: Point = Point.ThreeD(coord: (1, 2, 3))
+          val s = match p {
+            Point.TwoD((x, y)) => x + y
+            Point.ThreeD((x, y, z)) => x + y + z
+          }
+          s
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+    }
 }

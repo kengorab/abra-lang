@@ -829,11 +829,12 @@ impl Parser {
         };
 
         let ident = expect_next_ident_or_none(self)?;
+        let mut case_token = ident.clone();
         if Token::get_ident_name(&ident) == "_" {
             let case_binding = if let Some(Token::Ident(_, _)) = self.peek() {
                 Some(self.expect_next()?)
             } else { None };
-            return Ok(MatchCase { match_type: MatchCaseType::Wildcard(ident), case_binding, args: None });
+            return Ok(MatchCase { token: ident.clone(), match_type: MatchCaseType::Wildcard(ident), case_binding, args: None });
         }
 
         let mut idents = vec![ident];
@@ -844,30 +845,32 @@ impl Parser {
         }
 
         let args = if let Some(Token::LParen(_, _)) = self.peek() {
-            self.expect_next()?; // Consume '('
+            case_token = self.expect_next()?; // Consume '('
             let mut args = Vec::new();
             let mut item_expected = true;
             loop {
-                match self.expect_next()? {
-                    i @ Token::Ident(_, _) => {
+                match self.expect_peek()? {
+                    Token::RParen(_) => {
+                        let tok = self.expect_next()?; // Consume ')'
+                        if args.is_empty() {
+                            return Err(ParseError::ExpectedToken(TokenType::Ident, tok));
+                        }
+                        break;
+                    }
+                    _ => {
                         if !item_expected {
-                            return Err(ParseError::ExpectedToken(TokenType::RParen, i));
+                            let tok = self.expect_next()?;
+                            return Err(ParseError::ExpectedToken(TokenType::RParen, tok));
                         }
 
-                        args.push(i);
+                        let pat = self.parse_binding_pattern()?;
+                        args.push(pat);
                         if let Some(Token::Comma(_)) = self.peek() {
                             self.expect_next()?; // Consume ','
                         } else {
                             item_expected = false;
                         }
                     }
-                    t @ Token::RParen(_) => {
-                        if args.is_empty() {
-                            return Err(ParseError::ExpectedToken(TokenType::Ident, t));
-                        }
-                        break;
-                    }
-                    tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone()))
                 }
             }
             Some(args)
@@ -882,7 +885,7 @@ impl Parser {
         } else {
             MatchCaseType::Compound(idents.drain(..).collect())
         };
-        Ok(MatchCase { match_type, case_binding, args })
+        Ok(MatchCase { token: case_token, match_type, case_binding, args })
     }
 
     fn parse_match_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -4093,11 +4096,12 @@ mod tests {
                 target: Box::new(identifier!((1, 7), "a")),
                 branches: vec![
                     (
-                        MatchCase { match_type: MatchCaseType::Ident(ident_token!((2, 1), "Int")), case_binding: None, args: None },
+                        MatchCase { token: ident_token!((2, 1), "Int"), match_type: MatchCaseType::Ident(ident_token!((2, 1), "Int")), case_binding: None, args: None },
                         vec![int_literal!((2, 8), 123)]
                     ),
                     (
                         MatchCase {
+                            token: ident_token!((3, 1), "A"),
                             match_type: MatchCaseType::Compound(vec![ident_token!((3, 1), "A"), ident_token!((3, 3), "String")]),
                             case_binding: Some(ident_token!((3, 10), "a")),
                             args: None,
@@ -4106,31 +4110,33 @@ mod tests {
                     ),
                     (
                         MatchCase {
+                            token: Token::LParen(Position::new(4, 4), false),
                             match_type: MatchCaseType::Ident(ident_token!((4, 1), "Abc")),
                             case_binding: Some(ident_token!((4, 11), "abc")),
                             args: Some(vec![
-                                ident_token!((4, 5), "a"),
-                                ident_token!((4, 8), "b"),
+                                BindingPattern::Variable(ident_token!((4, 5), "a")),
+                                BindingPattern::Variable(ident_token!((4, 8), "b")),
                             ]),
                         },
                         vec![identifier!((4, 18), "a")]
                     ),
                     (
                         MatchCase {
+                            token: Token::LParen(Position::new(5, 6), false),
                             match_type: MatchCaseType::Compound(vec![ident_token!((5, 1), "A"), ident_token!((5, 3), "Bcd")]),
                             case_binding: None,
                             args: Some(vec![
-                                ident_token!((5, 7), "a"),
+                                BindingPattern::Variable(ident_token!((5, 7), "a")),
                             ]),
                         },
                         vec![identifier!((5, 13), "a")]
                     ),
                     (
-                        MatchCase { match_type: MatchCaseType::Wildcard(ident_token!((6, 1), "_")), case_binding: None, args: None },
+                        MatchCase { token: ident_token!((6, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((6, 1), "_")), case_binding: None, args: None },
                         vec![int_literal!((6, 6), 0)]
                     ),
                     (
-                        MatchCase { match_type: MatchCaseType::Wildcard(ident_token!((7, 1), "_")), case_binding: Some(ident_token!((7, 3), "x")), args: None },
+                        MatchCase { token: ident_token!((7, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((7, 1), "_")), case_binding: Some(ident_token!((7, 3), "x")), args: None },
                         vec![int_literal!((8, 1), 0), identifier!((9, 1), "x")]
                     )
                 ],
