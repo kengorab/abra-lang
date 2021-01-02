@@ -1100,7 +1100,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             match op {
                 BinaryOp::Add | BinaryOp::AddEq =>
                     match (&ltype, &rtype) {
-                        (Type::String, _) | (_, Type::String) => Ok(Type::String),
+                        (Type::String, t) | (t, Type::String) if t != &Type::Unit => Ok(Type::String),
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
