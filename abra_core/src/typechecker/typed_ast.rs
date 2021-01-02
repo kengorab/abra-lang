@@ -297,7 +297,7 @@ pub struct TypedAccessorNode {
 pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<Token>>)>,
+    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<BindingPattern>>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

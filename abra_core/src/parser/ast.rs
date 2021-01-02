@@ -266,9 +266,10 @@ pub struct MatchNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MatchCase {
+    pub token: Token,
     pub match_type: MatchCaseType,
     pub case_binding: Option<Token>,
-    pub args: Option<Vec<Token>>,
+    pub args: Option<Vec<BindingPattern>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1562,17 +1562,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // to facilitate destructuring (if destructured_args are present in this match case).
             let binding_name = binding.unwrap_or("$match_target".to_string());
             self.push_local(&binding_name, token.get_position().line, true);
-            if let Some(destructured_args) = &args {
+            if let Some(destructured_args) = args {
                 let depth = self.get_fn_depth();
-                for (idx, arg_tok) in destructured_args.iter().enumerate() {
+                for (idx, pat) in destructured_args.into_iter().enumerate() {
                     let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
                     self.write_load_local_instr(slot, token.get_position().line);
                     self.metadata.loads.push(binding_name.clone());
 
                     self.write_opcode(Opcode::GetField, token.get_position().line);
                     self.write_byte(idx as u8, token.get_position().line);
-                    let arg_name = Token::get_ident_name(arg_tok);
-                    self.push_local(arg_name, token.get_position().line, true);
+                    self.visit_pattern(pat);
                 }
             }
 

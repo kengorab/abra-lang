@@ -454,7 +454,7 @@ impl Typechecker {
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
-            let MatchCase { match_type, case_binding, args } = case;
+            let MatchCase { token, match_type, case_binding, args } = case;
             let ((match_type, match_type_ident), case_token) = match match_type {
                 MatchCaseType::Ident(ident) => {
                     if seen_wildcard {
@@ -542,42 +542,37 @@ impl Typechecker {
                 }
             };
 
-            let mut scope = Scope::new(ScopeKind::Block);
+            self.scopes.push(Scope::new(ScopeKind::Block));
             let case_binding_name = if let Some(ident) = case_binding {
                 let ident_name = Token::get_ident_name(&ident).clone();
-                scope.bindings.insert(ident_name.clone(), ScopeBinding(ident, match_type.clone(), false));
+                self.add_binding(ident_name.as_str(), &ident, &match_type, false);
                 Some(ident_name)
             } else { None };
 
-            if let Some(destructured_args) = &args {
+            let args = if let Some(mut destructured_args) = args {
                 match &match_type {
                     Type::EnumVariant(_, variant, _) => {
                         match &variant.arg_types {
                             Some(arg_types) => {
                                 if arg_types.len() != destructured_args.len() {
-                                    let token = if destructured_args.len() > arg_types.len() {
-                                        destructured_args[destructured_args.len() - arg_types.len()].clone()
-                                    } else {
-                                        destructured_args[destructured_args.len() - 1].clone()
-                                    };
                                     return Err(TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ: match_type.clone(), expected: arg_types.len(), actual: destructured_args.len() });
                                 }
-                                for ((_, arg_type, _), arg_tok) in arg_types.iter().zip(destructured_args.iter()) {
-                                    let arg_name = Token::get_ident_name(arg_tok);
-                                    scope.bindings.insert(arg_name, ScopeBinding(arg_tok.clone(), arg_type.clone(), false));
+
+                                for ((_, arg_type, _), ref mut pat) in arg_types.iter().zip(destructured_args.iter_mut()) {
+                                    self.visit_binding_pattern(pat, &arg_type, false)?;
                                 }
+                                Some(destructured_args)
                             }
                             None => return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: case_token, typ: match_type.clone() })
                         }
                     }
                     _ => return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: case_token, typ: match_type.clone() })
-                };
-            }
+                }
+            } else { None };
 
             if block.is_empty() && !is_stmt {
                 return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
             }
-            self.scopes.push(scope);
             self.hoist_declarations_in_scope(&block)?;
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
@@ -7398,7 +7393,7 @@ mod tests {
           }
         ").unwrap_err();
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
-            token: ident_token!((4, 12), "x"),
+            token: Token::LParen(Position::new(4, 8), false),
             typ: Type::EnumVariant(
                 Box::new(Type::Reference("Foo".to_string(), vec![])),
                 EnumVariantType {
@@ -7423,7 +7418,7 @@ mod tests {
           }
         ").unwrap_err();
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
-            token: ident_token!((4, 9), "z"),
+            token: Token::LParen(Position::new(4, 8), false),
             typ: Type::EnumVariant(
                 Box::new(Type::Reference("Foo".to_string(), vec![])),
                 EnumVariantType {
