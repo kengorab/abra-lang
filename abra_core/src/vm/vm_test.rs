@@ -128,7 +128,7 @@ mod tests {
         let input = format!("{}\n\
           val res = true || getTrue()
           res + \" \" + called",
-                            preface
+          preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("true false");
@@ -137,7 +137,7 @@ mod tests {
         let input = format!("{}\n\
           val res = false && getTrue()
           res + \" \" + called",
-                            preface
+          preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("false false");
