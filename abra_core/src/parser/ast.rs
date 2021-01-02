@@ -139,9 +139,25 @@ pub struct MapNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum BindingPattern {
+    Variable(/* ident: */ Token),
+    Tuple(/* lparen_tok: */ Token, /* patterns: */ Vec<BindingPattern>),
+    Array(/* lbrack_tok: */ Token, /* patterns: */ Vec<(BindingPattern, /* is_splat: */ bool)>, /* is_string: */ bool),
+}
+
+impl BindingPattern {
+    pub fn get_token(&self) -> &Token {
+        match &self {
+            BindingPattern::Variable(ident) => ident,
+            BindingPattern::Tuple(lparen_tok, _) => lparen_tok,
+            BindingPattern::Array(lbrack_tok, _, _) => lbrack_tok,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
-    // Must be a Token::Ident
-    pub ident: Token,
+    pub binding: BindingPattern,
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
     pub is_mutable: bool,
@@ -208,7 +224,7 @@ pub struct IndexingNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfNode {
     pub condition: Box<AstNode>,
-    pub condition_binding: Option<Token>,
+    pub condition_binding: Option<BindingPattern>,
     pub if_block: Vec<AstNode>,
     pub else_block: Option<Vec<AstNode>>,
 }
@@ -221,7 +237,7 @@ pub struct InvocationNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ForLoopNode {
-    pub iteratee: Token,
+    pub binding: BindingPattern,
     pub index_ident: Option<Token>,
     pub iterator: Box<AstNode>,
     pub body: Vec<AstNode>,
@@ -250,9 +266,10 @@ pub struct MatchNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MatchCase {
+    pub token: Token,
     pub match_type: MatchCaseType,
     pub case_binding: Option<Token>,
-    pub args: Option<Vec<Token>>,
+    pub args: Option<Vec<BindingPattern>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

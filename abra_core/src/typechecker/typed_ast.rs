@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -171,8 +171,7 @@ pub struct TypedLambdaNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedBindingDeclNode {
-    // Must be a Token::Ident
-    pub ident: Token,
+    pub binding: BindingPattern,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
     pub scope_depth: usize,
@@ -188,7 +187,6 @@ pub struct TypedFunctionDeclNode {
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
     pub is_recursive: bool,
-    // pub is_anon: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -252,7 +250,7 @@ pub struct TypedIndexingNode {
 pub struct TypedIfNode {
     pub typ: Type,
     pub condition: Box<TypedAstNode>,
-    pub condition_binding: Option<Token>,
+    pub condition_binding: Option<BindingPattern>,
     pub if_block: Vec<TypedAstNode>,
     pub else_block: Option<Vec<TypedAstNode>>,
 }
@@ -280,7 +278,7 @@ pub struct TypedWhileLoopNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedForLoopNode {
-    pub iteratee: Token,
+    pub binding: BindingPattern,
     pub index_ident: Option<Token>,
     pub iterator: Box<TypedAstNode>,
     pub body: Vec<TypedAstNode>,
@@ -299,7 +297,7 @@ pub struct TypedAccessorNode {
 pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<Token>>)>,
+    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<BindingPattern>>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

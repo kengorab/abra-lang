@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -316,6 +316,68 @@ impl Parser {
         Ok(left)
     }
 
+    fn parse_binding_pattern(&mut self) -> Result<BindingPattern, ParseError> {
+        let binding = match self.expect_next()? {
+            tok @ Token::Ident(_, _) => BindingPattern::Variable(tok),
+            tok @ Token::LParen(_, _) => {
+                let mut patterns = Vec::new();
+                let mut done = false;
+                loop {
+                    if done {
+                        let err_tok = self.expect_next()?;
+                        return Err(ParseError::ExpectedToken(TokenType::RParen, err_tok));
+                    }
+
+                    let pat = self.parse_binding_pattern()?;
+                    patterns.push(pat);
+
+                    if let Token::Comma(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ','
+                    } else if let Token::RParen(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ')'
+                        break;
+                    } else {
+                        done = true;
+                    }
+                }
+                BindingPattern::Tuple(tok, patterns)
+            }
+            tok @ Token::LBrack(_, _) => {
+                let mut patterns = Vec::new();
+                let mut done = false;
+                loop {
+                    if done {
+                        let err_tok = self.expect_next()?;
+                        return Err(ParseError::ExpectedToken(TokenType::RBrack, err_tok));
+                    }
+
+                    if let Token::Star(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume '*'
+                        let ident = self.expect_next_token(TokenType::Ident)?;
+                        let pat = BindingPattern::Variable(ident);
+                        patterns.push((pat, true));
+                    } else {
+                        let pat = self.parse_binding_pattern()?;
+                        patterns.push((pat, false));
+                    }
+
+                    if let Token::Comma(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ','
+                    } else if let Token::RBrack(_) = self.expect_peek()? {
+                        self.expect_next()?; // Consume ']'
+                        break;
+                    } else {
+                        done = true;
+                    }
+                }
+                BindingPattern::Array(tok, patterns, false)
+            }
+            tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+        };
+
+        Ok(binding)
+    }
+
     fn parse_func_args(
         &mut self,
         initial_token: Option<&Token>,
@@ -454,12 +516,7 @@ impl Parser {
             _ => unreachable!()
         };
 
-        let ident = self.expect_next().and_then(|tok| {
-            match tok {
-                Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseError::UnexpectedToken(tok))
-            }
-        })?;
+        let binding = self.parse_binding_pattern()?;
 
         let type_ann = match self.peek() {
             Some(Token::Colon(_)) => {
@@ -470,16 +527,25 @@ impl Parser {
             Some(_) | None => Ok(None)
         }?;
 
-        let expr = match self.peek() {
-            Some(Token::Assign(_)) => {
-                self.expect_next()?; // Consume '='
-                let expr = self.parse_expr()?;
-                Some(Box::new(expr))
-            }
-            Some(_) | None => None
+        // For destructuring assignments, assignment is required
+        let is_assignment_required = if let BindingPattern::Variable(_) = &binding { false } else { true };
+
+        let should_parse_expr = if is_assignment_required {
+            self.expect_next_token(TokenType::Assign)?;
+            true
+        } else if let Some(Token::Assign(_)) = self.peek() {
+            self.expect_next()?; // Consume '='
+            true
+        } else {
+            false
         };
 
-        Ok(AstNode::BindingDecl(token, BindingDeclNode { ident, is_mutable, type_ann, expr }))
+        let expr = if should_parse_expr {
+            let expr = self.parse_expr()?;
+            Some(Box::new(expr))
+        } else { None };
+
+        Ok(AstNode::BindingDecl(token, BindingDeclNode { binding, is_mutable, type_ann, expr }))
     }
 
     fn parse_type_decl(&mut self) -> Result<AstNode, ParseError> {
@@ -569,12 +635,7 @@ impl Parser {
     fn parse_for_statement(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
 
-        let iteratee = self.expect_next().and_then(|tok| {
-            match tok {
-                Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseError::ExpectedToken(TokenType::Ident, tok))
-            }
-        })?;
+        let binding = self.parse_binding_pattern()?;
 
         let index_ident = if let Some(Token::Comma(_)) = self.peek() {
             self.expect_next()?; // Consume ','
@@ -593,7 +654,7 @@ impl Parser {
         let iterator = Box::new(self.parse_expr()?);
         let body = self.parse_expr_or_block()?;
 
-        Ok(AstNode::ForLoop(token, ForLoopNode { iteratee, index_ident, iterator, body }))
+        Ok(AstNode::ForLoop(token, ForLoopNode { binding, index_ident, iterator, body }))
     }
 
     fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -648,10 +709,10 @@ impl Parser {
 
         let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
             self.expect_next()?; // Consume '|'
-            let ident = self.expect_next_token(TokenType::Ident)?; // Expect binding ident
+            let pattern = self.parse_binding_pattern()?;
             self.expect_next_token(TokenType::Pipe)?; // Expect closing '|'
 
-            Some(ident)
+            Some(pattern)
         } else { None };
 
         let if_block = self.parse_expr_or_block()?;
@@ -768,11 +829,12 @@ impl Parser {
         };
 
         let ident = expect_next_ident_or_none(self)?;
+        let mut case_token = ident.clone();
         if Token::get_ident_name(&ident) == "_" {
             let case_binding = if let Some(Token::Ident(_, _)) = self.peek() {
                 Some(self.expect_next()?)
             } else { None };
-            return Ok(MatchCase { match_type: MatchCaseType::Wildcard(ident), case_binding, args: None });
+            return Ok(MatchCase { token: ident.clone(), match_type: MatchCaseType::Wildcard(ident), case_binding, args: None });
         }
 
         let mut idents = vec![ident];
@@ -783,30 +845,32 @@ impl Parser {
         }
 
         let args = if let Some(Token::LParen(_, _)) = self.peek() {
-            self.expect_next()?; // Consume '('
+            case_token = self.expect_next()?; // Consume '('
             let mut args = Vec::new();
             let mut item_expected = true;
             loop {
-                match self.expect_next()? {
-                    i @ Token::Ident(_, _) => {
+                match self.expect_peek()? {
+                    Token::RParen(_) => {
+                        let tok = self.expect_next()?; // Consume ')'
+                        if args.is_empty() {
+                            return Err(ParseError::ExpectedToken(TokenType::Ident, tok));
+                        }
+                        break;
+                    }
+                    _ => {
                         if !item_expected {
-                            return Err(ParseError::ExpectedToken(TokenType::RParen, i));
+                            let tok = self.expect_next()?;
+                            return Err(ParseError::ExpectedToken(TokenType::RParen, tok));
                         }
 
-                        args.push(i);
+                        let pat = self.parse_binding_pattern()?;
+                        args.push(pat);
                         if let Some(Token::Comma(_)) = self.peek() {
                             self.expect_next()?; // Consume ','
                         } else {
                             item_expected = false;
                         }
                     }
-                    t @ Token::RParen(_) => {
-                        if args.is_empty() {
-                            return Err(ParseError::ExpectedToken(TokenType::Ident, t));
-                        }
-                        break;
-                    }
-                    tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone()))
                 }
             }
             Some(args)
@@ -821,7 +885,7 @@ impl Parser {
         } else {
             MatchCaseType::Compound(idents.drain(..).collect())
         };
-        Ok(MatchCase { match_type, case_binding, args })
+        Ok(MatchCase { token: case_token, match_type, case_binding, args })
     }
 
     fn parse_match_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -1394,8 +1458,8 @@ mod tests {
                             BinaryNode {
                                 left: Box::new(int_literal!((1, 1), 1)),
                                 op: BinaryOp::Pow,
-                                right: Box::new(int_literal!((1, 6), 5))
-                            }
+                                right: Box::new(int_literal!((1, 6), 5)),
+                            },
                         )
                     ),
                     op: BinaryOp::Add,
@@ -1875,7 +1939,7 @@ mod tests {
         let ast = parse("#{1, 2, 3}")?;
         let expected = AstNode::Set(
             Token::LBraceHash(Position::new(1, 1)),
-            SetNode { items: vec![int_literal!((1, 3), 1), int_literal!((1, 6), 2), int_literal!((1, 9), 3)] }
+            SetNode { items: vec![int_literal!((1, 3), 1), int_literal!((1, 6), 2), int_literal!((1, 9), 3)] },
         );
         assert_eq!(expected, ast[0]);
 
@@ -1891,16 +1955,16 @@ mod tests {
                         Token::LBraceHash(Position::new(1, 3)),
                         SetNode {
                             items: vec![int_literal!((1, 5), 1), int_literal!((1, 8), 2)]
-                        }
+                        },
                     ),
                     AstNode::Set(
                         Token::LBraceHash(Position::new(1, 12)),
                         SetNode {
                             items: vec![int_literal!((1, 14), 3), int_literal!((1, 17), 4)]
-                        }
+                        },
                     )
                 ]
-            }
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -1914,7 +1978,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
                     expr: None,
@@ -1923,14 +1987,16 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
                     expr: None,
                 },
             ),
         ];
-        Ok(assert_eq!(expected, ast))
+        assert_eq!(expected, ast);
+
+        Ok(())
     }
 
     #[test]
@@ -1940,7 +2006,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+                    binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
                     expr: Some(Box::new(
@@ -1958,14 +2024,143 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
-                    ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
+                    binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
                     expr: Some(Box::new(int_literal!((2, 11), 1))),
                 },
             ),
         ];
-        Ok(assert_eq!(expected, ast))
+        assert_eq!(expected, ast);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_binding_decls_destructuring() -> TestResult {
+        let cases = vec![
+            // Variable (aka non-destructuring)
+            ("val a", BindingPattern::Variable(ident_token!((1, 5), "a"))),
+            // Tuples
+            (
+                "val (a, b) = (1, 2)",
+                BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((1, 6), "a")),
+                        BindingPattern::Variable(ident_token!((1, 9), "b")),
+                    ],
+                )
+            ),
+            (
+                "val ((a, b), c) = ((1, 2), 3)",
+                BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Tuple(
+                            Token::LParen(Position::new(1, 6), false),
+                            vec![
+                                BindingPattern::Variable(ident_token!((1, 7), "a")),
+                                BindingPattern::Variable(ident_token!((1, 10), "b")),
+                            ],
+                        ),
+                        BindingPattern::Variable(ident_token!((1, 14), "c")),
+                    ],
+                )
+            ),
+            // Arrays
+            (
+                "val [a, b] = [1, 2]",
+                BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        (BindingPattern::Variable(ident_token!((1, 6), "a")), false),
+                        (BindingPattern::Variable(ident_token!((1, 9), "b")), false),
+                    ],
+                    false,
+                )
+            ),
+            (
+                "val [[a], b] = [[1], 2]",
+                BindingPattern::Array(
+                    Token::LBrack(Position::new(1, 5), false),
+                    vec![
+                        (
+                            BindingPattern::Array(
+                                Token::LBrack(Position::new(1, 6), false),
+                                vec![
+                                    (BindingPattern::Variable(ident_token!((1, 7), "a")), false),
+                                ],
+                                false,
+                            ),
+                            false
+                        ),
+                        (BindingPattern::Variable(ident_token!((1, 11), "b")), false),
+                    ],
+                    false,
+                )
+            ),
+            // Nested
+            (
+                "val ([a, b], [(c, d)]) = ([1, 2], [(3, 4)])",
+                BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Array(
+                            Token::LBrack(Position::new(1, 6), false),
+                            vec![
+                                (BindingPattern::Variable(ident_token!((1, 7), "a")), false, ),
+                                (BindingPattern::Variable(ident_token!((1, 10), "b")), false, ),
+                            ],
+                            false,
+                        ),
+                        BindingPattern::Array(
+                            Token::LBrack(Position::new(1, 14), false),
+                            vec![
+                                (
+                                    BindingPattern::Tuple(
+                                        Token::LParen(Position::new(1, 15), false),
+                                        vec![
+                                            BindingPattern::Variable(ident_token!((1, 16), "c")),
+                                            BindingPattern::Variable(ident_token!((1, 19), "d")),
+                                        ],
+                                    ),
+                                    false
+                                ),
+                            ],
+                            false,
+                        ),
+                    ],
+                )
+            ),
+        ];
+
+        for (input, pattern) in cases {
+            let ast = parse(input)?;
+            let actual = if let AstNode::BindingDecl(_, BindingDeclNode { binding, .. }) = ast.first().unwrap().clone() { binding } else { unreachable!() };
+            assert_eq!(pattern, actual);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_binding_decls_errors() {
+        let err = parse("val (a b) = (1, 2)").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::RParen, ident_token!((1, 8), "b"));
+        assert_eq!(expected, err);
+
+        let err = parse("val (1, b) = (1, 2)").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 6), 1));
+        assert_eq!(expected, err);
+
+        let err = parse("val (a, b = (1, 2)").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::RParen, Token::Assign(Position::new(1, 11)));
+        assert_eq!(expected, err);
+
+        let err = parse("val (a, b)\na + b").unwrap_err();
+        let expected = ParseError::ExpectedToken(TokenType::Assign, ident_token!((2, 1), "a"));
+        assert_eq!(expected, err);
     }
 
     #[test]
@@ -2299,8 +2494,8 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 14)),
                         BindingDeclNode {
+                            binding: BindingPattern::Variable(ident_token!((1, 18), "a")),
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 18), "a".to_string()),
                             type_ann: None,
                             expr: Some(Box::new(int_literal!((1, 22), 123))),
                         },
@@ -2431,7 +2626,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
-                            ident: ident_token!((2, 5), "a"),
+                            binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             type_ann: None,
                             expr: Some(Box::new(int_literal!((2, 9), 123))),
                             is_mutable: false,
@@ -3039,7 +3234,7 @@ mod tests {
         let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
         let expected = vec![
             AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
-                ident: Token::Ident(Position::new(1, 5), "a".to_string()),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 type_ann: None,
                 expr: Some(Box::new(AstNode::Binary(Token::Plus(Position::new(2, 1)), BinaryNode {
                     left: Box::new(int_literal!((1, 9), 1)),
@@ -3219,8 +3414,8 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
                         BindingDeclNode {
+                            binding: BindingPattern::Variable(ident_token!((1, 16), "a")),
                             is_mutable: false,
-                            ident: Token::Ident(Position::new(1, 16), "a".to_string()),
                             type_ann: None,
                             expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         },
@@ -3241,7 +3436,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             BindingDeclNode {
-                ident: Token::Ident(Position::new(1, 5), "str".to_string()),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "str")),
                 is_mutable: false,
                 type_ann: None,
                 expr: Some(Box::new(
@@ -3384,7 +3579,7 @@ mod tests {
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(identifier!((1, 4), "a")),
-                condition_binding: Some(ident_token!((1, 7), "item")),
+                condition_binding: Some(BindingPattern::Variable(ident_token!((1, 7), "item"))),
                 if_block: vec![
                     string_literal!((1, 13), "hello")
                 ],
@@ -3672,9 +3867,9 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             is_mutable: false,
                             type_ann: None,
-                            ident: ident_token!((2, 5), "a"),
                             expr: Some(Box::new(int_literal!((2, 9), 1))),
                         },
                     ),
@@ -3714,7 +3909,7 @@ mod tests {
         let expected = AstNode::ForLoop(
             Token::For(Position::new(1, 1)),
             ForLoopNode {
-                iteratee: ident_token!((1, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 index_ident: None,
                 iterator: Box::new(AstNode::Array(
                     Token::LBrack(Position::new(1, 10), false),
@@ -3734,7 +3929,7 @@ mod tests {
         let expected = AstNode::ForLoop(
             Token::For(Position::new(1, 1)),
             ForLoopNode {
-                iteratee: ident_token!((1, 5), "a"),
+                binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 index_ident: Some(ident_token!((1, 8), "i")),
                 iterator: Box::new(AstNode::Array(
                     Token::LBrack(Position::new(1, 13), false),
@@ -3750,13 +3945,39 @@ mod tests {
         );
         assert_eq!(expected, ast[0]);
 
+        let ast = parse("for (x, y), i in [a, b] { x }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                binding: BindingPattern::Tuple(
+                    Token::LParen(Position::new(1, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((1, 6), "x")),
+                        BindingPattern::Variable(ident_token!((1, 9), "y"))
+                    ],
+                ),
+                index_ident: Some(ident_token!((1, 13), "i")),
+                iterator: Box::new(AstNode::Array(
+                    Token::LBrack(Position::new(1, 18), false),
+                    ArrayNode {
+                        items: vec![
+                            identifier!((1, 19), "a"),
+                            identifier!((1, 22), "b")
+                        ]
+                    },
+                )),
+                body: vec![identifier!((1, 27), "x")],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
         Ok(())
     }
 
     #[test]
     fn parse_for_loop_error() {
         let error = parse("for 123 in [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 5), 123));
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
         assert_eq!(expected, error);
 
         let error = parse("for a [0, 1] { a }").unwrap_err();
@@ -3875,11 +4096,12 @@ mod tests {
                 target: Box::new(identifier!((1, 7), "a")),
                 branches: vec![
                     (
-                        MatchCase { match_type: MatchCaseType::Ident(ident_token!((2, 1), "Int")), case_binding: None, args: None },
+                        MatchCase { token: ident_token!((2, 1), "Int"), match_type: MatchCaseType::Ident(ident_token!((2, 1), "Int")), case_binding: None, args: None },
                         vec![int_literal!((2, 8), 123)]
                     ),
                     (
                         MatchCase {
+                            token: ident_token!((3, 1), "A"),
                             match_type: MatchCaseType::Compound(vec![ident_token!((3, 1), "A"), ident_token!((3, 3), "String")]),
                             case_binding: Some(ident_token!((3, 10), "a")),
                             args: None,
@@ -3888,31 +4110,33 @@ mod tests {
                     ),
                     (
                         MatchCase {
+                            token: Token::LParen(Position::new(4, 4), false),
                             match_type: MatchCaseType::Ident(ident_token!((4, 1), "Abc")),
                             case_binding: Some(ident_token!((4, 11), "abc")),
                             args: Some(vec![
-                                ident_token!((4, 5), "a"),
-                                ident_token!((4, 8), "b"),
+                                BindingPattern::Variable(ident_token!((4, 5), "a")),
+                                BindingPattern::Variable(ident_token!((4, 8), "b")),
                             ]),
                         },
                         vec![identifier!((4, 18), "a")]
                     ),
                     (
                         MatchCase {
+                            token: Token::LParen(Position::new(5, 6), false),
                             match_type: MatchCaseType::Compound(vec![ident_token!((5, 1), "A"), ident_token!((5, 3), "Bcd")]),
                             case_binding: None,
                             args: Some(vec![
-                                ident_token!((5, 7), "a"),
+                                BindingPattern::Variable(ident_token!((5, 7), "a")),
                             ]),
                         },
                         vec![identifier!((5, 13), "a")]
                     ),
                     (
-                        MatchCase { match_type: MatchCaseType::Wildcard(ident_token!((6, 1), "_")), case_binding: None, args: None },
+                        MatchCase { token: ident_token!((6, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((6, 1), "_")), case_binding: None, args: None },
                         vec![int_literal!((6, 6), 0)]
                     ),
                     (
-                        MatchCase { match_type: MatchCaseType::Wildcard(ident_token!((7, 1), "_")), case_binding: Some(ident_token!((7, 3), "x")), args: None },
+                        MatchCase { token: ident_token!((7, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((7, 1), "_")), case_binding: Some(ident_token!((7, 3), "x")), args: None },
                         vec![int_literal!((8, 1), 0), identifier!((9, 1), "x")]
                     )
                 ],

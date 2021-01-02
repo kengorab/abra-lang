@@ -24,6 +24,7 @@ type NativeString {
   func trimStart(self, pattern: String = " "): String {}
   func trimEnd(self, pattern: String = " "): String {}
   func split(self, splitter: String): String[] {}
+  func splitAt(self, index: Int): (String, String) {}
   func lines(self): String[] {}
   func chars(self): String[] {}
   func parseInt(self, radix: Int = 10): Int? {}
@@ -41,6 +42,7 @@ type NativeArray<T> {
   func push(self, item: T): Unit {}
   func pop(self): T? {}
   func popFront(self): T? {}
+  func splitAt(self, index: Int): (T[], T[]) {}
   func concat(self, other: T[]): T[] {}
   func map<U>(self, fn: (T) => U): U[] {}
   func filter(self, fn: (T) => Bool): T[] {}

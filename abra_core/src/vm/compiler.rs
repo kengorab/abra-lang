@@ -1,14 +1,13 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType, NativeString};
 use crate::common::util::random_string;
-use crate::common::compiler_util::get_anon_name;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +50,8 @@ pub struct Compiler {
     interrupt_handles: Vec<JumpHandle>,
     return_handles: Vec<JumpHandle>,
     metadata: Metadata,
+    anon_idx: usize,
+    temp_idx: usize,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -98,6 +99,8 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         interrupt_handles: Vec::new(),
         return_handles: Vec::new(),
         metadata,
+        anon_idx: 0,
+        temp_idx: 0,
     };
 
     compiler.hoist_fn_defs(&ast)?;
@@ -383,6 +386,18 @@ impl Compiler {
         }
     }
 
+    #[inline]
+    fn get_anon_name(&mut self) -> String {
+        self.anon_idx += 1;
+        format!("$anon_{}", self.anon_idx - 1)
+    }
+
+    #[inline]
+    fn get_temp_name(&mut self) -> String {
+        self.temp_idx += 1;
+        format!("$temp_{}", self.temp_idx - 1)
+    }
+
     fn get_fn_depth(&self) -> usize {
         self.scopes.iter().filter(|s| s.kind == ScopeKind::Func).count()
     }
@@ -555,7 +570,7 @@ impl Compiler {
     ) -> Result<FnValue, ()> {
         let func_name = match name {
             Some(name) => Token::get_ident_name(&name),
-            None => get_anon_name()
+            None => self.get_anon_name()
         };
 
         let line = token.get_position().line;
@@ -742,6 +757,148 @@ impl Compiler {
         }
         Ok(())
     }
+
+    // This is a pretty complex function; given a binding pattern, it will emit bytecode to destructure
+    // the TOS value according to that pattern. There may be intermediate $temp_X bindings (globals or
+    // locals, depending on context) created in scope in this process.
+    // Assumptions:
+    //   - For any pattern other than a plain Variable, the TOS must not be nil
+    fn visit_pattern(&mut self, binding: BindingPattern) {
+        #[inline]
+        fn store(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) -> Option<usize> {
+            if is_root_scope {
+                zelf.add_and_write_constant(Value::Str(ident), line);
+                zelf.write_opcode(Opcode::GStore, line);
+                None
+            } else {
+                zelf.push_local(ident.clone(), line, true);
+                let scope_depth = zelf.get_fn_depth();
+                let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                Some(temp_idx)
+            }
+        }
+
+        #[inline]
+        fn load(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) {
+            if is_root_scope {
+                let const_idx = zelf.get_constant_index(&Value::Str(ident)).unwrap();
+                zelf.write_constant(const_idx, line);
+                zelf.write_opcode(Opcode::GLoad, line);
+            } else {
+                let scope_depth = zelf.get_fn_depth();
+                let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                zelf.write_load_local_instr(temp_idx, line);
+                zelf.metadata.loads.push(ident);
+            }
+        }
+
+        let is_root_scope = self.current_scope().kind == ScopeKind::Root;
+
+        match binding {
+            BindingPattern::Variable(ident) => {
+                // If pattern is a variable, this is a root node in the tree; write store instruction
+                // (depending on whether it's a global or not) for top-of-stack.
+                let line = ident.get_position().line;
+                store(self, is_root_scope, Token::get_ident_name(&ident), line);
+            }
+            BindingPattern::Tuple(lparen_tok, patterns) => {
+                // Store tuple as temp variable, then we recursively destructure each element
+                let line = lparen_tok.get_position().line;
+                let temp_var_name = self.get_temp_name();
+                store(self, is_root_scope, temp_var_name.clone(), line);
+
+                for (idx, pat) in patterns.into_iter().enumerate() {
+                    load(self, is_root_scope, temp_var_name.clone(), line);
+                    self.write_int_constant(idx as u32, line);
+                    self.write_opcode(Opcode::TupleLoad, line);
+                    self.visit_pattern(pat);
+                }
+            }
+            BindingPattern::Array(lbrack_tok, patterns, is_string) => {
+                // Store array as temp variable, then we recursively destructure each element
+                let line = lbrack_tok.get_position().line;
+                let temp_var_name = self.get_temp_name();
+                store(self, is_root_scope, temp_var_name.clone(), line);
+
+                let mut idx = 0;
+                let num_pats = patterns.len();
+                let mut patterns_iter = patterns.into_iter();
+                while let Some((pat, is_splat)) = patterns_iter.next() {
+                    let is_last = idx == num_pats - 1;
+
+                    // If the element is a splat (and it's not the last element), push arguments for eventual splitAt invocation
+                    if is_splat && !is_last {
+                        let line = pat.get_token().get_position().line;
+
+                        self.write_opcode(Opcode::Nil, line);
+                        self.write_int_constant((num_pats - 1 - idx) as u32, line);
+                        self.write_opcode(Opcode::Invert, line);
+                    }
+
+                    load(self, is_root_scope, temp_var_name.clone(), line);
+
+                    // If the destructured pattern is a `*splat`, perform some special setup. Eg, for
+                    //   val $temp_0 = [1, 2, 3, 4, 5, 6, 7]
+                    //   val [v1, *mid, v2, v3] = $temp_0
+                    if is_splat {
+                        let line = pat.get_token().get_position().line;
+
+                        // Get the tail of the array from X until the end, where X is the number of elements in the
+                        // pattern before the `*splat`
+                        //   $temp_0[1:]
+                        self.write_int_constant(idx as u32, line);
+                        self.write_opcode(Opcode::Nil, line);
+                        self.write_opcode(Opcode::ArrSlc, line);
+
+                        // If the splat is the last element in the destructuring pattern, there's no need to run the splitting logic
+                        if is_last {
+                            self.visit_pattern(pat);
+                            continue;
+                        }
+
+                        // Call splitAt on that tail, passing in `-N`, where N is the
+                        // number of elements in the destructuring pattern following the `*splat`. From the example above:
+                        //   $temp_0[1:].splitAt(-2)
+                        let split_at_method_idx = if is_string {
+                            NativeString::get_field_idx("splitAt")
+                        } else {
+                            NativeArray::get_field_idx("splitAt")
+                        };
+                        self.write_opcode(Opcode::GetField, line);
+                        self.metadata.field_gets.push("splitAt".to_string());
+                        self.write_byte(split_at_method_idx as u8, line);
+                        self.write_opcode(Opcode::Invoke, line);
+                        self.write_byte(1, line);
+
+                        // Store that previous intermediate result (splitAt returns (T[], T[])); the first
+                        // element of that tuple gets stored as the splat ident...
+                        //   val $temp_1 = $temp_0[1:].splitAt(-2)
+                        //   val mid = $temp_1[0]
+                        let splat_temp_ident_name = self.get_temp_name();
+                        store(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        load(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        self.write_opcode(Opcode::IConst0, line);
+                        self.write_opcode(Opcode::TupleLoad, line);
+                        self.visit_pattern(pat);
+
+                        // ...and the second element of the tuple gets assigned to the original temporary binding,
+                        // so that the remaining patterns in the destructuring are applied wrt that now (hence setting idx = 0):
+                        //   $temp_0 = $temp_1[1]
+                        load(self, is_root_scope, splat_temp_ident_name.clone(), line);
+                        self.write_opcode(Opcode::IConst1, line);
+                        self.write_opcode(Opcode::TupleLoad, line);
+                        store(self, is_root_scope, temp_var_name.clone(), line);
+                        idx = 0;
+                    } else { // otherwise, it's a simple ArrLoad, then recurse into the pattern
+                        self.write_int_constant(idx as u32, line);
+                        self.write_opcode(Opcode::ArrLoad, line);
+                        self.visit_pattern(pat);
+                        idx += 1
+                    }
+                }
+            }
+        };
+    }
 }
 
 impl TypedAstVisitor<(), ()> for Compiler {
@@ -791,7 +948,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 TypedIfNode {
                     typ: Type::Placeholder, // Type doesn't matter
                     condition: Box::new(left),
-                    condition_binding: Some(Token::Ident(token.get_position(), name.clone())),
+                    condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), name.clone()))),
                     if_block: vec![
                         TypedAstNode::Identifier(
                             Token::Ident(token.get_position(), name.clone()),
@@ -947,26 +1104,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_binding_decl(&mut self, token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
+        let TypedBindingDeclNode { binding, expr, .. } = node;
 
-        let TypedBindingDeclNode { ident, expr, .. } = node;
-        let ident = Token::get_ident_name(&ident).clone();
-
-        if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.add_and_write_constant(Value::Str(ident), line);
-            self.write_opcode(Opcode::GStore, line);
-        } else { // ...otherwise, it's a local
-            if let Some(node) = expr {
-                self.visit(*node)?;
-            } else {
-                self.write_opcode(Opcode::Nil, line);
-            }
-            self.push_local(ident, line, true);
+        if let Some(node) = expr {
+            self.visit(*node)?;
+        } else {
+            self.write_opcode(Opcode::Nil, line);
         }
+
+        // Note: for assignments, binding patterns other than Variable are guaranteed to have an initializer.
+        // It will fail to parse without it.
+        self.visit_pattern(binding);
+
         Ok(())
     }
 
@@ -1315,12 +1464,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let if_block_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
 
         self.push_scope(ScopeKind::If);
-        if let Some(ident) = &condition_binding {
+        let has_cond_binding = condition_binding.is_some();
+        if let Some(pat) = condition_binding {
             // ...this value becomes the condition binding local. Since it's pushed within the If
             // scope, it'll be properly popped when the scope ends. Note that there is that value
             // floating on the stack, which is fine here since it's a local, but when we instead go
             // to the else branch...
-            self.push_local(Token::get_ident_name(ident), line, true);
+            self.visit_pattern(pat);
         }
         self.visit_block(if_block, is_stmt)?;
         self.pop_scope();
@@ -1334,7 +1484,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // else-block so the jumps are handled properly.
         let else_block = match else_block {
             Some(block) => Some(block),
-            None => if condition_binding.is_some() { Some(vec![]) } else { None }
+            None => if has_cond_binding { Some(vec![]) } else { None }
         };
         let else_block_jump_handle = if else_block.is_some() {
             Some(self.begin_jump(Opcode::Jump, line))
@@ -1346,7 +1496,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // Pop the floating condition binding value off the stack, if present. See comment above
             // for how we know we can always do this here (tl;dr there will _always_ be an else-block
             // if there is a condition binding).
-            if condition_binding.is_some() {
+            if has_cond_binding {
                 self.write_opcode(Opcode::Pop, line);
             }
 
@@ -1413,17 +1563,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // to facilitate destructuring (if destructured_args are present in this match case).
             let binding_name = binding.unwrap_or("$match_target".to_string());
             self.push_local(&binding_name, token.get_position().line, true);
-            if let Some(destructured_args) = &args {
+            if let Some(destructured_args) = args {
                 let depth = self.get_fn_depth();
-                for (idx, arg_tok) in destructured_args.iter().enumerate() {
+                for (idx, pat) in destructured_args.into_iter().enumerate() {
                     let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
                     self.write_load_local_instr(slot, token.get_position().line);
                     self.metadata.loads.push(binding_name.clone());
 
                     self.write_opcode(Opcode::GetField, token.get_position().line);
                     self.write_byte(idx as u8, token.get_position().line);
-                    let arg_name = Token::get_ident_name(arg_tok);
-                    self.push_local(arg_name, token.get_position().line, true);
+                    self.visit_pattern(pat);
                 }
             }
 
@@ -1563,7 +1712,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     TypedIfNode {
                         typ: Type::Placeholder, // Type doesn't matter
                         condition: Box::new(condition),
-                        condition_binding: Some(Token::Ident(token.get_position(), cond_binding_name.clone())),
+                        condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), cond_binding_name.clone()))),
                         if_block: vec![
                             match if_node {
                                 None => make_dummy_ident_node(&token, cond_binding_name),
@@ -1593,7 +1742,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<(), ()> {
         let line = token.get_position().line;
 
-        let TypedForLoopNode { iteratee, index_ident, iterator, body } = node;
+        let TypedForLoopNode { binding, index_ident, iterator, body } = node;
         let iterator_type = iterator.get_type();
 
         // Push intrinsic variable $idx, to track position in $iter
@@ -1646,13 +1795,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Insert iteratee and index bindings (if indexer expected) into loop scope
         //   $iter[$idx] is a tuple, of (<iteratee>, <index>)
         //   So, iteratee = $iter[$idx][0]
+        // This value will then be destructured, if a pattern is used
         self.push_scope(ScopeKind::Block);
         load_intrinsic(self, "$iter", line);
         load_intrinsic(self, "$idx", line);
         self.write_opcode(Opcode::ArrLoad, line);
         self.write_opcode(Opcode::IConst0, line);
         self.write_opcode(Opcode::TupleLoad, line);
-        self.push_local(Token::get_ident_name(&iteratee), line, true);
+        self.visit_pattern(binding);
         if let Some(ident) = index_ident {
             // If present, index = $iter[$idx][1]
             load_intrinsic(self, "$iter", line);
@@ -1787,7 +1937,6 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::parser::parser::parse;
     use crate::typechecker::typechecker::typecheck;
-    use crate::common::compiler_util::ANON_IDX;
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
 
@@ -1804,9 +1953,6 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
-        // Yuck: need to reset this global so tests will be repeatable. Gross
-        ANON_IDX.store(0, std::sync::atomic::Ordering::Relaxed);
-
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
@@ -2350,6 +2496,194 @@ mod tests {
                 Value::Int(29),
                 new_string_obj("Some Name"),
                 Value::Str("anAdult".to_string()),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_tuples() {
+        let chunk = compile("val (a, b) = (1, 2)");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::TupleMk as u8, 2,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::TupleLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          func abc() {\n\
+            val (a, b) = (1, 2)\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("abc".to_string()),
+                Value::Fn(FnValue {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::TupleMk as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst0 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 1,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::TupleLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: false,
+                }),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_arrays() {
+        let chunk = compile("val [a, b] = [1, 2]");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst1 as u8,
+                Opcode::IConst2 as u8,
+                Opcode::ArrMk as u8, 2,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
+            ]),
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = compile("\
+          func abc() {\n\
+            val [a, b] = [1, 2]\n\
+          }\
+        ");
+        let expected = Module {
+            code: vec![
+                Opcode::IConst0 as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::GStore as u8,
+                Opcode::Return as u8,
+            ],
+            constants: with_prelude_consts(vec![
+                Value::Str("abc".to_string()),
+                Value::Fn(FnValue {
+                    name: "abc".to_string(),
+                    code: vec![
+                        Opcode::IConst1 as u8,
+                        Opcode::IConst2 as u8,
+                        Opcode::ArrMk as u8, 2,
+                        Opcode::MarkLocal as u8, 0,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst0 as u8,
+                        Opcode::ArrLoad as u8,
+                        Opcode::MarkLocal as u8, 1,
+                        Opcode::LLoad0 as u8,
+                        Opcode::IConst1 as u8,
+                        Opcode::ArrLoad as u8,
+                        Opcode::MarkLocal as u8, 2,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Pop as u8,
+                        Opcode::Return as u8
+                    ],
+                    upvalues: vec![],
+                    receiver: None,
+                    has_return: false,
+                }),
+            ]),
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_binding_decl_destructuring_strings() {
+        let chunk = compile("val [a, b] = \"hello\"");
+        let expected = Module {
+            code: vec![
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GLoad as u8,
+                Opcode::IConst0 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::GStore as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                Opcode::GLoad as u8,
+                Opcode::IConst1 as u8,
+                Opcode::ArrLoad as u8,
+                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
+                Opcode::GStore as u8,
+                Opcode::Return as u8
+            ],
+            constants: with_prelude_consts(vec![
+                new_string_obj("hello"),
+                Value::Str("$temp_0".to_string()),
+                Value::Str("a".to_string()),
+                Value::Str("b".to_string())
             ]),
         };
         assert_eq!(expected, chunk);

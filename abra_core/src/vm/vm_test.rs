@@ -311,29 +311,49 @@ mod tests {
 
     #[test]
     fn interpret_bindings() {
-        let input = "\n\
-          val a = 123\n
-          val b = 456\n
-          var c = a + b > b - a\n
+        let input = r#"
+          val a = 123
+          val b = 456
+          var c = a + b > b - a
           c
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let input = "\n\
-          val a1 = 1\n
-          val a2 = 2\n
-          val a3 = 3\n
-          val a = [a1, a2 + a2, 3 * a3]\n
+        let input = r#"
+          val a1 = 1
+          val a2 = 2
+          val a3 = 3
+          val a = [a1, a2 + a2, 3 * a3]
           a
-        ";
+        "#;
         let result = interpret(input).unwrap();
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(4),
             Value::Int(9),
         ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val (a, b) = (1, 2)
+          a + b
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func manhattanDistance(p1: (Int, Int), p2: (Int, Int)): Int {
+            val (x1, y1) = p1
+            val (x2, y2) = p2
+            (x2 - x1).abs() + (y2 - y1).abs()
+          }
+          manhattanDistance((0, 0), (2, 2))
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
 
@@ -1740,7 +1760,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_recursive_func_in_lambda() {
+    fn interpret_recursive_func_in_lambda() {
         // This is an utterly pointless, super contrived example, but the main test case here is
         // whether a non-root-scope function will be correctly recognized as recursive if its only
         // usage is within a lambda
@@ -1764,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_u16_jump_offsets() {
+    fn interpret_u16_jump_offsets() {
         let input = r#"
           var total = 0
           for i in range(0, 1) {
@@ -1794,7 +1814,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interpret_return_statements() {
+    fn interpret_return_statements() {
         let input = r#"
           func contains(arr: Int[], item: Int): Bool {
             for i in arr {
@@ -1809,6 +1829,175 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = Value::Bool(true);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_destructuring_assignment() {
+        let input = r#"
+          val (a, b, c) = (1, 2, 3)
+          a + b + c
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val ((a, b), c) = ((1, 2), (3, 4))
+          a + b + c[0] + c[1]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(10);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [(x1, y1), (x2, y2), (x3, y3)] = [(1, 2), (3, 4)]
+          [x1, y1, x2, y2, x3, y3]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Nil,
+            Value::Nil,
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [(x1, y1), *mid, (x2, y2)] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+          (x1, y1, mid, x2, y2)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::new_array_obj(vec![
+                Value::new_tuple_obj(vec![Value::Int(3), Value::Int(4)]),
+                Value::new_tuple_obj(vec![Value::Int(5), Value::Int(6)]),
+            ]),
+            Value::Int(7),
+            Value::Int(8),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [h1, h2, *mid, t1, t2, t3, t4, t5] = [1, 2, 3, 4, 5, 6]
+          (h1, h2, mid, t1, t2, t3, t4, t5)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::new_array_obj(vec![]),
+            Value::Int(3),
+            Value::Int(4),
+            Value::Int(5),
+            Value::Int(6),
+            Value::Nil,
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [head, *tail] = [1, 2, 3]
+          tail
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![Value::Int(2), Value::Int(3)]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val [[a], [d], [g, *h]] = ["abc", "def", "ghi"]
+          (a, d, g, h)
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_tuple_obj(vec![
+            new_string_obj("a"),
+            new_string_obj("d"),
+            new_string_obj("g"),
+            new_string_obj("hi"),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func wrapper(): Int {
+            val ((a, b), c) = ((1, 2), (3, 4))
+            a + b + c[0] + c[1]
+          }
+          wrapper()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(10);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_destructuring_for_loop() {
+        let input = r#"
+          val coords = [(1, 2), (3, 4), (5, 6)]
+          var total = 0
+          for (x, y), i in coords {
+            total += (x + y + i)
+          }
+          total
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val arrays = [[1], [2, 3], [4, 5, 6]]
+          var total = 0
+          for [_, *r], i in arrays {
+            total += (r.length + i)
+          }
+          total
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_destructuring_match_expr() {
+        let input = r#"
+          enum Point { TwoD(coord: (Int, Int)), ThreeD(coord: (Int, Int, Int)) }
+
+          val p: Point = Point.ThreeD(coord: (1, 2, 3))
+          val s = match p {
+            Point.TwoD((x, y)) => x + y
+            Point.ThreeD((x, y, z)) => x + y + z
+          }
+          s
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(6);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_destructuring_if_expr() {
+        let input = r#"
+          val p: (Int, Int)? = (1, 2)
+          val r = if p |(x, y)| {
+            x + y
+          } else { 0 }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val a: Int[]? = [1, 2, 3, 4, 5]
+          val r = if a |[h, *r]| {
+            r.length
+          } else { 0 }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
 }

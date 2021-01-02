@@ -327,6 +327,16 @@ impl Type {
         }
     }
 
+    pub fn is_opt(&self) -> bool {
+        if let Type::Option(_) = self { true } else { false }
+    }
+
+    pub fn get_opt_unwrapped(&self) -> Type {
+        let mut typ = self.clone();
+        while let Type::Option(inner) = typ { typ = *inner }
+        typ
+    }
+
     pub fn extract_unbound_generics(&self) -> Vec<String> {
         match self {
             Type::Generic(name) => vec![name.clone()],
