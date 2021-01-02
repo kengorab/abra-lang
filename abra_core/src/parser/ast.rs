@@ -224,7 +224,7 @@ pub struct IndexingNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfNode {
     pub condition: Box<AstNode>,
-    pub condition_binding: Option<Token>,
+    pub condition_binding: Option<BindingPattern>,
     pub if_block: Vec<AstNode>,
     pub else_block: Option<Vec<AstNode>>,
 }

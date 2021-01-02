@@ -1975,4 +1975,29 @@ mod tests {
         let expected = Value::Int(6);
         assert_eq!(expected, result);
     }
+
+    #[test]
+    fn interpret_destructuring_if_expr() {
+        let input = r#"
+          val p: (Int, Int)? = (1, 2)
+          val r = if p |(x, y)| {
+            x + y
+          } else { 0 }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(3);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val a: Int[]? = [1, 2, 3, 4, 5]
+          val r = if a |[h, *r]| {
+            r.length
+          } else { 0 }
+          r
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Int(4);
+        assert_eq!(expected, result);
+    }
 }
