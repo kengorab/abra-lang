@@ -948,7 +948,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 TypedIfNode {
                     typ: Type::Placeholder, // Type doesn't matter
                     condition: Box::new(left),
-                    condition_binding: Some(Token::Ident(token.get_position(), name.clone())),
+                    condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), name.clone()))),
                     if_block: vec![
                         TypedAstNode::Identifier(
                             Token::Ident(token.get_position(), name.clone()),
@@ -1464,12 +1464,13 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let if_block_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
 
         self.push_scope(ScopeKind::If);
-        if let Some(ident) = &condition_binding {
+        let has_cond_binding = condition_binding.is_some();
+        if let Some(pat) = condition_binding {
             // ...this value becomes the condition binding local. Since it's pushed within the If
             // scope, it'll be properly popped when the scope ends. Note that there is that value
             // floating on the stack, which is fine here since it's a local, but when we instead go
             // to the else branch...
-            self.push_local(Token::get_ident_name(ident), line, true);
+            self.visit_pattern(pat);
         }
         self.visit_block(if_block, is_stmt)?;
         self.pop_scope();
@@ -1483,7 +1484,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // else-block so the jumps are handled properly.
         let else_block = match else_block {
             Some(block) => Some(block),
-            None => if condition_binding.is_some() { Some(vec![]) } else { None }
+            None => if has_cond_binding { Some(vec![]) } else { None }
         };
         let else_block_jump_handle = if else_block.is_some() {
             Some(self.begin_jump(Opcode::Jump, line))
@@ -1495,7 +1496,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // Pop the floating condition binding value off the stack, if present. See comment above
             // for how we know we can always do this here (tl;dr there will _always_ be an else-block
             // if there is a condition binding).
-            if condition_binding.is_some() {
+            if has_cond_binding {
                 self.write_opcode(Opcode::Pop, line);
             }
 
@@ -1711,7 +1712,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     TypedIfNode {
                         typ: Type::Placeholder, // Type doesn't matter
                         condition: Box::new(condition),
-                        condition_binding: Some(Token::Ident(token.get_position(), cond_binding_name.clone())),
+                        condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), cond_binding_name.clone()))),
                         if_block: vec![
                             match if_node {
                                 None => make_dummy_ident_node(&token, cond_binding_name),

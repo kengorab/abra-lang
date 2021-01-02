@@ -15,14 +15,24 @@
 //  println("(" + x + ", " + y + "): " + idx)
 //}
 
-enum Point {
-  TwoD(coord: (Int, Int))
-  ThreeD(coord: (Int, Int, Int))
+//enum Point {
+//  TwoD(coord: (Int, Int))
+//  ThreeD(coord: (Int, Int, Int))
+//}
+//
+////val p: Point = Point.TwoD(coord: (1, 2))
+//val p: Point = Point.ThreeD(coord: (1, 2, 3))
+//match p {
+//  Point.TwoD((x, y)) => println(x + y)
+//  Point.ThreeD((x, y, z)) => println(x + y + z)
+//}
+
+val p: (Int, Int)? = (1, 2)
+if p |(x, y)| {
+  println(x + y)
 }
 
-//val p: Point = Point.TwoD(coord: (1, 2))
-val p: Point = Point.ThreeD(coord: (1, 2, 3))
-match p {
-  Point.TwoD((x, y)) => println(x + y)
-  Point.ThreeD((x, y, z)) => println(x + y + z)
+val a: Int[]? = [1, 2, 3, 4, 5]
+if a |[h, *r]| {
+  println(r)
 }

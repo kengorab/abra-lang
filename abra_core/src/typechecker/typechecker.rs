@@ -383,7 +383,7 @@ impl Typechecker {
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
     fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
-        let IfNode { condition, condition_binding, if_block, else_block } = node;
+        let IfNode { condition, mut condition_binding, if_block, else_block } = node;
 
         let condition = self.visit(*condition)?;
         let is_valid_cond_type = match condition.get_type() {
@@ -396,17 +396,15 @@ impl Typechecker {
         }
         let condition = Box::new(condition);
 
-        let mut scope = Scope::new(ScopeKind::Block);
-        if let Some(ident) = &condition_binding {
-            let ident_name = Token::get_ident_name(ident).clone();
+        self.scopes.push(Scope::new(ScopeKind::Block));
+        if let Some(pat) = &mut condition_binding {
             let binding_type = match condition.get_type() {
                 Type::Bool => Type::Bool,
                 Type::Option(inner) => inner.get_opt_unwrapped(),
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
-            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
+            self.visit_binding_pattern(pat, &binding_type, false)?;
         }
-        self.scopes.push(scope);
         self.hoist_declarations_in_scope(&if_block)?;
         let if_block = self.visit_block(is_stmt, if_block)?;
         self.scopes.pop();
@@ -5820,7 +5818,7 @@ mod tests {
             TypedIfNode {
                 typ: Type::Unit,
                 condition: Box::new(identifier!((2, 4), "i", Type::Option(Box::new(Type::Int)), 0)),
-                condition_binding: Some(ident_token!((2, 7), "i")),
+                condition_binding: Some(BindingPattern::Variable(ident_token!((2, 7), "i"))),
                 if_block: vec![
                     identifier!((2, 10), "i", Type::Int, 1)
                 ],
@@ -5835,7 +5833,7 @@ mod tests {
             TypedIfNode {
                 typ: Type::Unit,
                 condition: Box::new(bool_literal!((1, 4), true)),
-                condition_binding: Some(ident_token!((1, 10), "v")),
+                condition_binding: Some(BindingPattern::Variable(ident_token!((1, 10), "v"))),
                 if_block: vec![
                     identifier!((1, 13), "v", Type::Bool, 1)
                 ],

@@ -250,7 +250,7 @@ pub struct TypedIndexingNode {
 pub struct TypedIfNode {
     pub typ: Type,
     pub condition: Box<TypedAstNode>,
-    pub condition_binding: Option<Token>,
+    pub condition_binding: Option<BindingPattern>,
     pub if_block: Vec<TypedAstNode>,
     pub else_block: Option<Vec<TypedAstNode>>,
 }

@@ -709,10 +709,10 @@ impl Parser {
 
         let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
             self.expect_next()?; // Consume '|'
-            let ident = self.expect_next_token(TokenType::Ident)?; // Expect binding ident
+            let pattern = self.parse_binding_pattern()?;
             self.expect_next_token(TokenType::Pipe)?; // Expect closing '|'
 
-            Some(ident)
+            Some(pattern)
         } else { None };
 
         let if_block = self.parse_expr_or_block()?;
@@ -3579,7 +3579,7 @@ mod tests {
             Token::If(Position::new(1, 1)),
             IfNode {
                 condition: Box::new(identifier!((1, 4), "a")),
-                condition_binding: Some(ident_token!((1, 7), "item")),
+                condition_binding: Some(BindingPattern::Variable(ident_token!((1, 7), "item"))),
                 if_block: vec![
                     string_literal!((1, 13), "hello")
                 ],
