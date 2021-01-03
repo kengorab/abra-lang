@@ -1398,6 +1398,57 @@ mod tests {
     }
 
     #[test]
+    fn interpret_invocation_opt_safe() {
+        let input = r#"
+          type Person { name: String? = None }
+          val ken = Person()
+          ken.name?.toLower()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::Nil;
+        assert_eq!(expected, result);
+
+        let input = r#"
+          type Person { name: String? = None }
+          val ken = Person(name: "Ken")
+          ken.name?.toLower()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("ken");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val arr = [[1, 2], [3, 4]]
+          func abc() {
+            arr[3]?.push(5)
+          }
+          abc()
+          arr
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::new_array_obj(vec![Value::Int(1), Value::Int(2)]),
+            Value::new_array_obj(vec![Value::Int(3), Value::Int(4)]),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val arr = [[1, 2], [3, 4]]
+          func abc() {
+            arr[1]?.push(5)
+          }
+          abc()
+          arr
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            Value::new_array_obj(vec![Value::Int(1), Value::Int(2)]),
+            Value::new_array_obj(vec![Value::Int(3), Value::Int(4), Value::Int(5)]),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_method_invocation_struct() {
         let input = "\
           type Person {\n\
