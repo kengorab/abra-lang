@@ -1468,7 +1468,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let ret_type = match &ret_ann_type {
             None => {
-                if !body_type.is_equivalent_to(&Type::Unit, &self.referencable_types) {
+                if !body_type.get_opt_unwrapped().is_equivalent_to(&Type::Unit, &self.referencable_types) {
                     let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
                     return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: true, bare_return: false, expected: Type::Unit, actual: body_type });
                 }
@@ -2217,17 +2217,29 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             Ok(typed_arg)
         }
 
-        match self.resolve_ref_type(&target_type) {
+        let mut target_type = self.resolve_ref_type(&target_type);
+        let mut is_opt = false;
+        match (&target_type, &target) {
+            (Type::Option(t), TypedAstNode::Accessor(_, TypedAccessorNode { is_opt_safe, .. })) if *is_opt_safe => {
+                if let Type::Fn(_) = &**t {
+                    is_opt = true;
+                    target_type = target_type.get_opt_unwrapped();
+                }
+            }
+            _ => {}
+        };
+        match target_type {
             t @ Type::Fn(_) | t @ Type::EnumVariant(_, _, false) => {
                 let (arg_types, type_args, ret_type) = match t {
                     Type::Fn(FnType { arg_types, type_args, ret_type }) => (arg_types, type_args, ret_type),
-                    Type::EnumVariant(enum_type, enum_variant_type, _) => {
+                    Type::EnumVariant(enum_type, enum_variant_type, is_constructed) => {
                         if let Some(arg_types) = &enum_variant_type.arg_types {
                             let arg_types = arg_types.clone();
                             let type_args = vec![];
                             let ret_type = Box::new(Type::EnumVariant(enum_type, enum_variant_type, true));
                             (arg_types, type_args, ret_type)
                         } else {
+                            let target_type = Type::EnumVariant(enum_type, enum_variant_type, is_constructed);
                             return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type });
                         }
                     }
@@ -2273,6 +2285,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 } else {
                     *ret_type
                 };
+                let ret_type = if is_opt { Type::Option(Box::new(ret_type)) } else { ret_type };
 
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: ret_type, target: Box::new(target), args: typed_args }))
             }

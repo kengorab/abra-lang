@@ -136,7 +136,7 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
         TypedAstNode::Break(_) | // This is here for completeness; the return type for this node should never matter
         TypedAstNode::ForLoop(_, _) |
         TypedAstNode::WhileLoop(_, _) => false,
-        TypedAstNode::Invocation(_, TypedInvocationNode { typ, .. }) => typ != &Type::Unit,
+        TypedAstNode::Invocation(_, TypedInvocationNode { typ, .. }) => typ.get_opt_unwrapped() != Type::Unit,
         _ => true
     }
 }
@@ -457,19 +457,19 @@ impl Compiler {
         JumpHandle { imm_slot }
     }
 
-    fn close_jump(&mut self, jump_holder: JumpHandle) {
+    fn close_jump(&mut self, jump_handle: JumpHandle) {
         let jump_offset = self.code.len()
-            .checked_sub(jump_holder.imm_slot)
+            .checked_sub(jump_handle.imm_slot)
             .expect("jump offset slot should be <= current position");
         let (b1, b2) = self.imm_to_bytes(jump_offset);
         let code = &mut self.code;
-        *code.get_mut(jump_holder.imm_slot - 2).unwrap() = b1;
-        *code.get_mut(jump_holder.imm_slot - 1).unwrap() = b2;
+        *code.get_mut(jump_handle.imm_slot - 2).unwrap() = b1;
+        *code.get_mut(jump_handle.imm_slot - 1).unwrap() = b2;
     }
 
-    fn close_jump_back(&mut self, jump_holder: JumpHandle, line: usize) {
+    fn close_jump_back(&mut self, jump_handle: JumpHandle, line: usize) {
         let jump_offset = self.code.len()
-            .checked_sub(jump_holder.imm_slot)
+            .checked_sub(jump_handle.imm_slot)
             .expect("jump offset slot should be <= current position");
         let jump_offset = jump_offset + 3; // Account for JumpB <imm1> <imm2>
         let (b1, b2) = self.imm_to_bytes(jump_offset);
@@ -1602,7 +1602,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let TypedInvocationNode { target, args, .. } = node;
 
         let typ = target.get_type();
-        let (arity, has_return) = match typ {
+        let (arity, has_return) = match typ.get_opt_unwrapped() {
             Type::Fn(FnType { arg_types, ret_type, .. }) => (arg_types.len(), *ret_type != Type::Unit),
             Type::EnumVariant(_, EnumVariantType { arg_types, .. }, _) => {
                 let arity = arg_types.as_ref().map(|ts| ts.len()).expect("Typechecking should have caught invocation of non-constructor enum variants");
@@ -1610,6 +1610,68 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
             _ => unreachable!() // This should have been caught during typechecking
         };
+
+        if typ.is_opt() {
+            #[inline]
+            fn store(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) -> Option<usize> {
+                if is_root_scope {
+                    zelf.add_and_write_constant(Value::Str(ident), line);
+                    zelf.write_opcode(Opcode::GStore, line);
+                    None
+                } else {
+                    zelf.push_local(ident.clone(), line, true);
+                    let scope_depth = zelf.get_fn_depth();
+                    let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                    Some(temp_idx)
+                }
+            }
+
+            #[inline]
+            fn load(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) {
+                if is_root_scope {
+                    let const_idx = zelf.get_constant_index(&Value::Str(ident)).unwrap();
+                    zelf.write_constant(const_idx, line);
+                    zelf.write_opcode(Opcode::GLoad, line);
+                } else {
+                    let scope_depth = zelf.get_fn_depth();
+                    let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
+                    zelf.write_load_local_instr(temp_idx, line);
+                    zelf.metadata.loads.push(ident);
+                }
+            }
+
+            self.visit(*target)?;
+            let tmp_name = self.get_temp_name();
+            let is_root_scope = self.current_scope().kind == ScopeKind::Root;
+            store(self, is_root_scope, tmp_name.clone(), line);
+            load(self, is_root_scope, tmp_name.clone(), line);
+            self.write_opcode(Opcode::Nil, line);
+            self.write_opcode(Opcode::Eq, line);
+            let else_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
+
+            self.write_opcode(Opcode::Nil, line);
+            let if_end_jump_handle = self.begin_jump(Opcode::Jump, line);
+
+            self.close_jump(else_jump_handle);
+            if has_return {
+                self.write_opcode(Opcode::Nil, line);
+            }
+
+            for arg in args {
+                match arg {
+                    None => self.write_opcode(Opcode::Nil, line),
+                    Some(arg) => self.visit(arg)?
+                }
+            }
+
+            load(self, is_root_scope, tmp_name, line);
+
+            self.write_opcode(Opcode::Invoke, line);
+            self.write_byte(arity as u8, line);
+            self.close_jump(if_end_jump_handle);
+
+            return Ok(())
+        }
 
         if has_return {
             self.write_opcode(Opcode::Nil, line);
