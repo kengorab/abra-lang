@@ -9,6 +9,7 @@ impl Default for Position {
     fn default() -> Self { Position { line: 0, col: 0 } }
 }
 
+#[derive(Debug)]
 pub struct Range {
     pub start: Position,
     pub end: Position,

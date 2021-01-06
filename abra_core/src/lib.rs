@@ -35,8 +35,8 @@ impl DisplayError for Error {
     }
 }
 
-pub fn typecheck(input: String) -> Result<Vec<TypedAstNode>, Error> {
-    match lexer::lexer::tokenize(&input) {
+pub fn typecheck(input: &String) -> Result<Vec<TypedAstNode>, Error> {
+    match lexer::lexer::tokenize(input) {
         Err(e) => Err(Error::LexerError(e)),
         Ok(tokens) => match parser::parser::parse(tokens) {
             Err(e) => Err(Error::ParseError(e)),
@@ -51,7 +51,7 @@ pub fn typecheck(input: String) -> Result<Vec<TypedAstNode>, Error> {
 }
 
 pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
-    let typed_ast_nodes = typecheck(input)?;
+    let typed_ast_nodes = typecheck(&input)?;
     let result = vm::compiler::compile(typed_ast_nodes).unwrap();
     Ok(result)
 }

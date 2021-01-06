@@ -2,6 +2,7 @@
 members = [
     "abra_cli",
     "abra_core",
+    "abra_lsp",
     "abra_wasm",
     "gen_native_types"
 ]

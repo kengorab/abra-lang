@@ -202,7 +202,7 @@ pub fn disassemble(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = typecheck)]
 pub fn typecheck_input(input: &str) -> JsValue {
-    let result = typecheck(input.to_string())
+    let result = typecheck(&input.to_string())
         .map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
