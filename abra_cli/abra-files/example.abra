@@ -1,13 +1,3 @@
-//val m: Map<String, () => Int> = {}
-//m["asdf"]?.()
-//m[9]?.[4]?.()
-
-func abc() {
-  val arr = [[1, 2], [3, 4]]
-  //val p = arr[1]?.push
-  //if p |p| p(5)
-  arr[1]?.push(5)
-  println(arr)
-}
-
-abc()
+val _ = 123
+val _ = "asdf"
+println(_)
