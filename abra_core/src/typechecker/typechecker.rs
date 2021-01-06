@@ -106,6 +106,8 @@ impl Typechecker {
     }
 
     fn add_binding(&mut self, name: &str, ident: &Token, typ: &Type, is_mutable: bool) {
+        if name == "_" { return; }
+
         let scope = self.scopes.last_mut().unwrap();
         let binding = ScopeBinding(ident.clone(), typ.clone(), is_mutable);
         scope.bindings.insert(name.to_string(), binding);
@@ -2428,7 +2430,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             self.scopes.push(Scope::new(ScopeKind::Block)); // Wrap loop in block where condition_binding variable will be stored
         }
 
-        let mut scope = Scope::new(ScopeKind::Loop);
+        self.scopes.push(Scope::new(ScopeKind::Loop));
         if let Some(ident) = &condition_binding {
             let ident_name = Token::get_ident_name(ident).clone();
             let binding_type = match condition.get_type() {
@@ -2436,9 +2438,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Option(inner) => inner.get_opt_unwrapped(),
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
-            scope.bindings.insert(ident_name, ScopeBinding(ident.clone(), binding_type, false));
+            self.add_binding(&ident_name, &ident, &binding_type, false);
         }
-        self.scopes.push(scope);
 
         self.hoist_declarations_in_scope(&body)?;
         let body = self.visit_block(true, body)?;
@@ -5342,6 +5343,12 @@ mod tests {
         let err = typecheck("abc").unwrap_err();
         let expected = TypecheckerError::UnknownIdentifier {
             ident: Token::Ident(Position::new(1, 1), "abc".to_string())
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("println(_)").unwrap_err();
+        let expected = TypecheckerError::UnknownIdentifier {
+            ident: Token::Ident(Position::new(1, 9), "_".to_string())
         };
         assert_eq!(expected, err);
 

@@ -267,7 +267,7 @@ impl DisplayError for TypecheckerError {
                 let ident = Token::get_ident_name(&ident);
                 format!(
                     "Expected assignment for variable '{}': ({}:{})\n{}\n\
-                    'val' bindings must be initialized",
+                    Variables declared with 'val' must be initialized",
                     ident, pos.line, pos.col, cursor_line
                 )
             }
@@ -328,11 +328,19 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerError::UnknownIdentifier { ident } => {
                 let ident = Token::get_ident_name(&ident);
-                format!(
-                    "Unknown identifier '{}': ({}:{})\n{}\n\
-                    No binding with that name is visible in current scope",
-                    ident, pos.line, pos.col, cursor_line
-                )
+                if &ident == "_" {
+                    format!(
+                        "Unknown identifier '{}': ({}:{})\n{}\n\
+                        The _ represents an anonymous identifier; please give the variable a name if you want to reference it",
+                        ident, pos.line, pos.col, cursor_line
+                    )
+                } else {
+                    format!(
+                        "Unknown identifier '{}': ({}:{})\n{}\n\
+                        No variable with that name is visible in current scope",
+                        ident, pos.line, pos.col, cursor_line
+                    )
+                }
             }
             TypecheckerError::InvalidAssignmentTarget { typ, reason, .. } => {
                 let msg = match reason {
@@ -355,9 +363,9 @@ impl DisplayError for TypecheckerError {
 
                 let pos = orig_ident.get_position();
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
-                let second_msg = format!("The binding has been declared in scope as immutable at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+                let second_msg = format!("The variable has been declared in scope as immutable at ({}:{})\n{}", pos.line, pos.col, cursor_line);
 
-                format!("{}\n{}\nUse 'var' instead of 'val' to create a mutable binding", first_msg, second_msg)
+                format!("{}\n{}\nUse 'var' instead of 'val' to create a mutable variable", first_msg, second_msg)
             }
             TypecheckerError::UnannotatedUninitialized { ident, is_mutable } => {
                 let ident = Token::get_ident_name(&ident);
@@ -749,7 +757,7 @@ No operator exists to satisfy Int - String"
 Expected assignment for variable 'abc': (1:5)
   |  val abc
          ^^^
-'val' bindings must be initialized"
+Variables declared with 'val' must be initialized"
         );
         assert_eq!(expected, err.get_message(&src));
     }
@@ -819,7 +827,20 @@ Duplicate type 'Int': (1:6)
 Unknown identifier 'abcd': (1:1)
   |  abcd
      ^^^^
-No binding with that name is visible in current scope"
+No variable with that name is visible in current scope"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "println(_)".to_string();
+        let err = TypecheckerError::UnknownIdentifier {
+            ident: Token::Ident(Position::new(1, 9), "_".to_string())
+        };
+
+        let expected = format!("\
+Unknown identifier '_': (1:9)
+  |  println(_)
+             ^
+The _ represents an anonymous identifier; please give the variable a name if you want to reference it"
         );
         assert_eq!(expected, err.get_message(&src));
     }
@@ -886,10 +907,10 @@ Left-hand side of assignment must be a valid identifier"
 Cannot assign to variable 'abc': (3:5)
   |  abc = 3
          ^
-The binding has been declared in scope as immutable at (1:5)
+The variable has been declared in scope as immutable at (1:5)
   |  val abc = 1
          ^^^
-Use 'var' instead of 'val' to create a mutable binding"
+Use 'var' instead of 'val' to create a mutable variable"
         );
 
         assert_eq!(expected, err.get_message(&src));
