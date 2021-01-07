@@ -64,6 +64,7 @@ pub enum TypecheckerError {
     DuplicateSplatDestructuring { token: Token },
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
+    InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
 }
 
 impl TypecheckerError {
@@ -119,6 +120,7 @@ impl TypecheckerError {
             TypecheckerError::DuplicateSplatDestructuring { token } => token,
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
+            TypecheckerError::InvalidProtocolMethod { token, .. } => token,
         }
     }
 }
@@ -689,6 +691,14 @@ impl DisplayError for TypecheckerError {
                     "Invalid return type: ({}:{})\n{}\n{}{}",
                     pos.line, pos.col, cursor_line,
                     msg, hint
+                )
+            }
+            TypecheckerError::InvalidProtocolMethod { fn_name, expected, actual, .. } => {
+                format!(
+                    "Invalid type for method: ({}:{})\n{}\n\
+                    Expected method {} to be of type {}, but instead got {}",
+                    pos.line, pos.col, cursor_line,
+                    fn_name, type_repr(expected), type_repr(actual)
                 )
             }
         }

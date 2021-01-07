@@ -7,6 +7,7 @@ use crate::vm::value::Value;
 use crate::vm::vm::VM;
 pub struct NativeFloat;
 pub trait NativeFloatMethodsAndFields {
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_floor(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_ceil(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_round(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -20,15 +21,15 @@ pub trait NativeFloatMethodsAndFields {
 impl NativeType for NativeFloat {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
-            "floor" => Some((
+            "toString" => Some((
                 0usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
-                    ret_type: Box::new(Type::Int),
+                    ret_type: Box::new(Type::String),
                 }),
             )),
-            "ceil" => Some((
+            "floor" => Some((
                 1usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -36,7 +37,7 @@ impl NativeType for NativeFloat {
                     ret_type: Box::new(Type::Int),
                 }),
             )),
-            "round" => Some((
+            "ceil" => Some((
                 2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -44,8 +45,16 @@ impl NativeType for NativeFloat {
                     ret_type: Box::new(Type::Int),
                 }),
             )),
-            "withPrecision" => Some((
+            "round" => Some((
                 3usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Int),
+                }),
+            )),
+            "withPrecision" => Some((
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("precision".to_string(), Type::Int, false)],
@@ -53,7 +62,7 @@ impl NativeType for NativeFloat {
                 }),
             )),
             "abs" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -69,30 +78,36 @@ impl NativeType for NativeFloat {
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            1usize => Value::NativeFn(NativeFn {
                 name: "floor",
                 receiver: Some(obj),
                 native_fn: Self::method_floor,
                 has_return: true,
             }),
-            1usize => Value::NativeFn(NativeFn {
+            2usize => Value::NativeFn(NativeFn {
                 name: "ceil",
                 receiver: Some(obj),
                 native_fn: Self::method_ceil,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "round",
                 receiver: Some(obj),
                 native_fn: Self::method_round,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "withPrecision",
                 receiver: Some(obj),
                 native_fn: Self::method_with_precision,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "abs",
                 receiver: Some(obj),
                 native_fn: Self::method_abs,
@@ -107,6 +122,7 @@ impl NativeType for NativeFloat {
 }
 pub struct NativeInt;
 pub trait NativeIntMethodsAndFields {
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_abs(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_as_base(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_even(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -116,8 +132,16 @@ pub trait NativeIntMethodsAndFields {
 impl NativeType for NativeInt {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
-            "abs" => Some((
+            "toString" => Some((
                 0usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "abs" => Some((
+                1usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -125,7 +149,7 @@ impl NativeType for NativeInt {
                 }),
             )),
             "asBase" => Some((
-                1usize,
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("base".to_string(), Type::Int, false)],
@@ -133,14 +157,6 @@ impl NativeType for NativeInt {
                 }),
             )),
             "isEven" => Some((
-                2usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![],
-                    ret_type: Box::new(Type::Bool),
-                }),
-            )),
-            "isOdd" => Some((
                 3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -148,8 +164,16 @@ impl NativeType for NativeInt {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
-            "isBetween" => Some((
+            "isOdd" => Some((
                 4usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "isBetween" => Some((
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -169,30 +193,36 @@ impl NativeType for NativeInt {
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
         match field_idx {
             0usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            1usize => Value::NativeFn(NativeFn {
                 name: "abs",
                 receiver: Some(obj),
                 native_fn: Self::method_abs,
                 has_return: true,
             }),
-            1usize => Value::NativeFn(NativeFn {
+            2usize => Value::NativeFn(NativeFn {
                 name: "asBase",
                 receiver: Some(obj),
                 native_fn: Self::method_as_base,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "isEven",
                 receiver: Some(obj),
                 native_fn: Self::method_is_even,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "isOdd",
                 receiver: Some(obj),
                 native_fn: Self::method_is_odd,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "isBetween",
                 receiver: Some(obj),
                 native_fn: Self::method_is_between,
@@ -208,6 +238,7 @@ impl NativeType for NativeInt {
 pub struct NativeString;
 pub trait NativeStringMethodsAndFields {
     fn field_length(obj: Box<Value>) -> Value;
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_to_lower(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_to_upper(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_pad_left(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -225,7 +256,7 @@ impl NativeType for NativeString {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "length" => Some((0usize, Type::Int)),
-            "toLower" => Some((
+            "toString" => Some((
                 1usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -233,7 +264,7 @@ impl NativeType for NativeString {
                     ret_type: Box::new(Type::String),
                 }),
             )),
-            "toUpper" => Some((
+            "toLower" => Some((
                 2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -241,8 +272,16 @@ impl NativeType for NativeString {
                     ret_type: Box::new(Type::String),
                 }),
             )),
-            "padLeft" => Some((
+            "toUpper" => Some((
                 3usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "padLeft" => Some((
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -253,7 +292,7 @@ impl NativeType for NativeString {
                 }),
             )),
             "trim" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -261,14 +300,6 @@ impl NativeType for NativeString {
                 }),
             )),
             "trimStart" => Some((
-                5usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![("pattern".to_string(), Type::String, true)],
-                    ret_type: Box::new(Type::String),
-                }),
-            )),
-            "trimEnd" => Some((
                 6usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -276,8 +307,16 @@ impl NativeType for NativeString {
                     ret_type: Box::new(Type::String),
                 }),
             )),
-            "split" => Some((
+            "trimEnd" => Some((
                 7usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("pattern".to_string(), Type::String, true)],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "split" => Some((
+                8usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("splitter".to_string(), Type::String, false)],
@@ -285,7 +324,7 @@ impl NativeType for NativeString {
                 }),
             )),
             "splitAt" => Some((
-                8usize,
+                9usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("index".to_string(), Type::Int, false)],
@@ -293,14 +332,6 @@ impl NativeType for NativeString {
                 }),
             )),
             "lines" => Some((
-                9usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![],
-                    ret_type: Box::new(Type::Array(Box::new(Type::String))),
-                }),
-            )),
-            "chars" => Some((
                 10usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -308,8 +339,16 @@ impl NativeType for NativeString {
                     ret_type: Box::new(Type::Array(Box::new(Type::String))),
                 }),
             )),
-            "parseInt" => Some((
+            "chars" => Some((
                 11usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                }),
+            )),
+            "parseInt" => Some((
+                12usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("radix".to_string(), Type::Int, true)],
@@ -317,7 +356,7 @@ impl NativeType for NativeString {
                 }),
             )),
             "parseFloat" => Some((
-                12usize,
+                13usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -334,72 +373,78 @@ impl NativeType for NativeString {
         match field_idx {
             0usize => Self::field_length(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "toLower",
                 receiver: Some(obj),
                 native_fn: Self::method_to_lower,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "toUpper",
                 receiver: Some(obj),
                 native_fn: Self::method_to_upper,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "padLeft",
                 receiver: Some(obj),
                 native_fn: Self::method_pad_left,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "trim",
                 receiver: Some(obj),
                 native_fn: Self::method_trim,
                 has_return: true,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "trimStart",
                 receiver: Some(obj),
                 native_fn: Self::method_trim_start,
                 has_return: true,
             }),
-            6usize => Value::NativeFn(NativeFn {
+            7usize => Value::NativeFn(NativeFn {
                 name: "trimEnd",
                 receiver: Some(obj),
                 native_fn: Self::method_trim_end,
                 has_return: true,
             }),
-            7usize => Value::NativeFn(NativeFn {
+            8usize => Value::NativeFn(NativeFn {
                 name: "split",
                 receiver: Some(obj),
                 native_fn: Self::method_split,
                 has_return: true,
             }),
-            8usize => Value::NativeFn(NativeFn {
+            9usize => Value::NativeFn(NativeFn {
                 name: "splitAt",
                 receiver: Some(obj),
                 native_fn: Self::method_split_at,
                 has_return: true,
             }),
-            9usize => Value::NativeFn(NativeFn {
+            10usize => Value::NativeFn(NativeFn {
                 name: "lines",
                 receiver: Some(obj),
                 native_fn: Self::method_lines,
                 has_return: true,
             }),
-            10usize => Value::NativeFn(NativeFn {
+            11usize => Value::NativeFn(NativeFn {
                 name: "chars",
                 receiver: Some(obj),
                 native_fn: Self::method_chars,
                 has_return: true,
             }),
-            11usize => Value::NativeFn(NativeFn {
+            12usize => Value::NativeFn(NativeFn {
                 name: "parseInt",
                 receiver: Some(obj),
                 native_fn: Self::method_parse_int,
                 has_return: true,
             }),
-            12usize => Value::NativeFn(NativeFn {
+            13usize => Value::NativeFn(NativeFn {
                 name: "parseFloat",
                 receiver: Some(obj),
                 native_fn: Self::method_parse_float,
@@ -422,6 +467,7 @@ pub trait NativeArrayMethodsAndFields {
         args: Vec<Value>,
         vm: &mut VM,
     ) -> Option<Value>;
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_enumerate(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_push(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -458,8 +504,16 @@ impl NativeType for NativeArray {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "length" => Some((0usize, Type::Int)),
-            "isEmpty" => Some((
+            "toString" => Some((
                 1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "isEmpty" => Some((
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -467,7 +521,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "enumerate" => Some((
-                2usize,
+                3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -478,7 +532,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "push" => Some((
-                3usize,
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
@@ -486,14 +540,6 @@ impl NativeType for NativeArray {
                 }),
             )),
             "pop" => Some((
-                4usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![],
-                    ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
-                }),
-            )),
-            "popFront" => Some((
                 5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -501,8 +547,16 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
                 }),
             )),
-            "splitAt" => Some((
+            "popFront" => Some((
                 6usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "splitAt" => Some((
+                7usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("index".to_string(), Type::Int, false)],
@@ -513,7 +567,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "concat" => Some((
-                7usize,
+                8usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -525,7 +579,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "map" => Some((
-                8usize,
+                9usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -545,7 +599,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "filter" => Some((
-                9usize,
+                10usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -565,7 +619,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "reduce" => Some((
-                10usize,
+                11usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![
@@ -591,7 +645,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "join" => Some((
-                11usize,
+                12usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("joiner".to_string(), Type::String, true)],
@@ -599,7 +653,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "contains" => Some((
-                12usize,
+                13usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
@@ -607,7 +661,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "find" => Some((
-                13usize,
+                14usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -630,7 +684,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "findIndex" => Some((
-                14usize,
+                15usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -656,29 +710,6 @@ impl NativeType for NativeArray {
                 }),
             )),
             "any" => Some((
-                15usize,
-                Type::Fn(FnType {
-                    type_args: vec!["U".to_string()],
-                    arg_types: vec![(
-                        "fn".to_string(),
-                        Type::Fn(FnType {
-                            type_args: vec![],
-                            arg_types: vec![(
-                                "_".to_string(),
-                                Type::Generic("T".to_string()),
-                                false,
-                            )],
-                            ret_type: Box::new(Type::Union(vec![
-                                Type::Bool,
-                                Type::Option(Box::new(Type::Generic("U".to_string()))),
-                            ])),
-                        }),
-                        false,
-                    )],
-                    ret_type: Box::new(Type::Bool),
-                }),
-            )),
-            "all" => Some((
                 16usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
@@ -701,7 +732,7 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
-            "none" => Some((
+            "all" => Some((
                 17usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
@@ -724,8 +755,31 @@ impl NativeType for NativeArray {
                     ret_type: Box::new(Type::Bool),
                 }),
             )),
-            "sortBy" => Some((
+            "none" => Some((
                 18usize,
+                Type::Fn(FnType {
+                    type_args: vec!["U".to_string()],
+                    arg_types: vec![(
+                        "fn".to_string(),
+                        Type::Fn(FnType {
+                            type_args: vec![],
+                            arg_types: vec![(
+                                "_".to_string(),
+                                Type::Generic("T".to_string()),
+                                false,
+                            )],
+                            ret_type: Box::new(Type::Union(vec![
+                                Type::Bool,
+                                Type::Option(Box::new(Type::Generic("U".to_string()))),
+                            ])),
+                        }),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Bool),
+                }),
+            )),
+            "sortBy" => Some((
+                19usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -748,7 +802,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "dedupe" => Some((
-                19usize,
+                20usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -756,7 +810,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "dedupeBy" => Some((
-                20usize,
+                21usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -776,7 +830,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "partition" => Some((
-                21usize,
+                22usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -799,7 +853,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "tally" => Some((
-                22usize,
+                23usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -810,7 +864,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "tallyBy" => Some((
-                23usize,
+                24usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -833,7 +887,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "asSet" => Some((
-                24usize,
+                25usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -841,7 +895,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "getOrDefault" => Some((
-                25usize,
+                26usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -852,7 +906,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "getOrElse" => Some((
-                26usize,
+                27usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -871,7 +925,7 @@ impl NativeType for NativeArray {
                 }),
             )),
             "update" => Some((
-                27usize,
+                28usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -935,162 +989,168 @@ impl NativeType for NativeArray {
         match field_idx {
             0usize => Self::field_length(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "isEmpty",
                 receiver: Some(obj),
                 native_fn: Self::method_is_empty,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "enumerate",
                 receiver: Some(obj),
                 native_fn: Self::method_enumerate,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "push",
                 receiver: Some(obj),
                 native_fn: Self::method_push,
                 has_return: false,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "pop",
                 receiver: Some(obj),
                 native_fn: Self::method_pop,
                 has_return: true,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "popFront",
                 receiver: Some(obj),
                 native_fn: Self::method_pop_front,
                 has_return: true,
             }),
-            6usize => Value::NativeFn(NativeFn {
+            7usize => Value::NativeFn(NativeFn {
                 name: "splitAt",
                 receiver: Some(obj),
                 native_fn: Self::method_split_at,
                 has_return: true,
             }),
-            7usize => Value::NativeFn(NativeFn {
+            8usize => Value::NativeFn(NativeFn {
                 name: "concat",
                 receiver: Some(obj),
                 native_fn: Self::method_concat,
                 has_return: true,
             }),
-            8usize => Value::NativeFn(NativeFn {
+            9usize => Value::NativeFn(NativeFn {
                 name: "map",
                 receiver: Some(obj),
                 native_fn: Self::method_map,
                 has_return: true,
             }),
-            9usize => Value::NativeFn(NativeFn {
+            10usize => Value::NativeFn(NativeFn {
                 name: "filter",
                 receiver: Some(obj),
                 native_fn: Self::method_filter,
                 has_return: true,
             }),
-            10usize => Value::NativeFn(NativeFn {
+            11usize => Value::NativeFn(NativeFn {
                 name: "reduce",
                 receiver: Some(obj),
                 native_fn: Self::method_reduce,
                 has_return: true,
             }),
-            11usize => Value::NativeFn(NativeFn {
+            12usize => Value::NativeFn(NativeFn {
                 name: "join",
                 receiver: Some(obj),
                 native_fn: Self::method_join,
                 has_return: true,
             }),
-            12usize => Value::NativeFn(NativeFn {
+            13usize => Value::NativeFn(NativeFn {
                 name: "contains",
                 receiver: Some(obj),
                 native_fn: Self::method_contains,
                 has_return: true,
             }),
-            13usize => Value::NativeFn(NativeFn {
+            14usize => Value::NativeFn(NativeFn {
                 name: "find",
                 receiver: Some(obj),
                 native_fn: Self::method_find,
                 has_return: true,
             }),
-            14usize => Value::NativeFn(NativeFn {
+            15usize => Value::NativeFn(NativeFn {
                 name: "findIndex",
                 receiver: Some(obj),
                 native_fn: Self::method_find_index,
                 has_return: true,
             }),
-            15usize => Value::NativeFn(NativeFn {
+            16usize => Value::NativeFn(NativeFn {
                 name: "any",
                 receiver: Some(obj),
                 native_fn: Self::method_any,
                 has_return: true,
             }),
-            16usize => Value::NativeFn(NativeFn {
+            17usize => Value::NativeFn(NativeFn {
                 name: "all",
                 receiver: Some(obj),
                 native_fn: Self::method_all,
                 has_return: true,
             }),
-            17usize => Value::NativeFn(NativeFn {
+            18usize => Value::NativeFn(NativeFn {
                 name: "none",
                 receiver: Some(obj),
                 native_fn: Self::method_none,
                 has_return: true,
             }),
-            18usize => Value::NativeFn(NativeFn {
+            19usize => Value::NativeFn(NativeFn {
                 name: "sortBy",
                 receiver: Some(obj),
                 native_fn: Self::method_sort_by,
                 has_return: true,
             }),
-            19usize => Value::NativeFn(NativeFn {
+            20usize => Value::NativeFn(NativeFn {
                 name: "dedupe",
                 receiver: Some(obj),
                 native_fn: Self::method_dedupe,
                 has_return: true,
             }),
-            20usize => Value::NativeFn(NativeFn {
+            21usize => Value::NativeFn(NativeFn {
                 name: "dedupeBy",
                 receiver: Some(obj),
                 native_fn: Self::method_dedupe_by,
                 has_return: true,
             }),
-            21usize => Value::NativeFn(NativeFn {
+            22usize => Value::NativeFn(NativeFn {
                 name: "partition",
                 receiver: Some(obj),
                 native_fn: Self::method_partition,
                 has_return: true,
             }),
-            22usize => Value::NativeFn(NativeFn {
+            23usize => Value::NativeFn(NativeFn {
                 name: "tally",
                 receiver: Some(obj),
                 native_fn: Self::method_tally,
                 has_return: true,
             }),
-            23usize => Value::NativeFn(NativeFn {
+            24usize => Value::NativeFn(NativeFn {
                 name: "tallyBy",
                 receiver: Some(obj),
                 native_fn: Self::method_tally_by,
                 has_return: true,
             }),
-            24usize => Value::NativeFn(NativeFn {
+            25usize => Value::NativeFn(NativeFn {
                 name: "asSet",
                 receiver: Some(obj),
                 native_fn: Self::method_as_set,
                 has_return: true,
             }),
-            25usize => Value::NativeFn(NativeFn {
+            26usize => Value::NativeFn(NativeFn {
                 name: "getOrDefault",
                 receiver: Some(obj),
                 native_fn: Self::method_get_or_default,
                 has_return: true,
             }),
-            26usize => Value::NativeFn(NativeFn {
+            27usize => Value::NativeFn(NativeFn {
                 name: "getOrElse",
                 receiver: Some(obj),
                 native_fn: Self::method_get_or_else,
                 has_return: true,
             }),
-            27usize => Value::NativeFn(NativeFn {
+            28usize => Value::NativeFn(NativeFn {
                 name: "update",
                 receiver: Some(obj),
                 native_fn: Self::method_update,
@@ -1130,6 +1190,7 @@ pub trait NativeMapMethodsAndFields {
         args: Vec<Value>,
         vm: &mut VM,
     ) -> Option<Value>;
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_enumerate(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_keys(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -1150,8 +1211,16 @@ impl NativeType for NativeMap {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "size" => Some((0usize, Type::Int)),
-            "isEmpty" => Some((
+            "toString" => Some((
                 1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "isEmpty" => Some((
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1159,7 +1228,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "enumerate" => Some((
-                2usize,
+                3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1170,7 +1239,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "keys" => Some((
-                3usize,
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1178,7 +1247,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "values" => Some((
-                4usize,
+                5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1186,7 +1255,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "entries" => Some((
-                5usize,
+                6usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1197,7 +1266,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "containsKey" => Some((
-                6usize,
+                7usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("key".to_string(), Type::Generic("K".to_string()), false)],
@@ -1205,7 +1274,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "mapValues" => Some((
-                7usize,
+                8usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -1227,7 +1296,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "getOrDefault" => Some((
-                8usize,
+                9usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -1238,7 +1307,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "getOrElse" => Some((
-                9usize,
+                10usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -1257,7 +1326,7 @@ impl NativeType for NativeMap {
                 }),
             )),
             "update" => Some((
-                10usize,
+                11usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![
@@ -1309,60 +1378,66 @@ impl NativeType for NativeMap {
         match field_idx {
             0usize => Self::field_size(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "isEmpty",
                 receiver: Some(obj),
                 native_fn: Self::method_is_empty,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "enumerate",
                 receiver: Some(obj),
                 native_fn: Self::method_enumerate,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "keys",
                 receiver: Some(obj),
                 native_fn: Self::method_keys,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "values",
                 receiver: Some(obj),
                 native_fn: Self::method_values,
                 has_return: true,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "entries",
                 receiver: Some(obj),
                 native_fn: Self::method_entries,
                 has_return: true,
             }),
-            6usize => Value::NativeFn(NativeFn {
+            7usize => Value::NativeFn(NativeFn {
                 name: "containsKey",
                 receiver: Some(obj),
                 native_fn: Self::method_contains_key,
                 has_return: true,
             }),
-            7usize => Value::NativeFn(NativeFn {
+            8usize => Value::NativeFn(NativeFn {
                 name: "mapValues",
                 receiver: Some(obj),
                 native_fn: Self::method_map_values,
                 has_return: true,
             }),
-            8usize => Value::NativeFn(NativeFn {
+            9usize => Value::NativeFn(NativeFn {
                 name: "getOrDefault",
                 receiver: Some(obj),
                 native_fn: Self::method_get_or_default,
                 has_return: true,
             }),
-            9usize => Value::NativeFn(NativeFn {
+            10usize => Value::NativeFn(NativeFn {
                 name: "getOrElse",
                 receiver: Some(obj),
                 native_fn: Self::method_get_or_else,
                 has_return: true,
             }),
-            10usize => Value::NativeFn(NativeFn {
+            11usize => Value::NativeFn(NativeFn {
                 name: "update",
                 receiver: Some(obj),
                 native_fn: Self::method_update,
@@ -1386,6 +1461,7 @@ impl NativeType for NativeMap {
 pub struct NativeSet;
 pub trait NativeSetMethodsAndFields {
     fn field_size(obj: Box<Value>) -> Value;
+    fn method_to_string(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_is_empty(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_enumerate(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_contains(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
@@ -1404,8 +1480,16 @@ impl NativeType for NativeSet {
     fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
         match name {
             "size" => Some((0usize, Type::Int)),
-            "isEmpty" => Some((
+            "toString" => Some((
                 1usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![],
+                    ret_type: Box::new(Type::String),
+                }),
+            )),
+            "isEmpty" => Some((
+                2usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1413,7 +1497,7 @@ impl NativeType for NativeSet {
                 }),
             )),
             "enumerate" => Some((
-                2usize,
+                3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1424,7 +1508,7 @@ impl NativeType for NativeSet {
                 }),
             )),
             "contains" => Some((
-                3usize,
+                4usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
@@ -1432,14 +1516,6 @@ impl NativeType for NativeSet {
                 }),
             )),
             "insert" => Some((
-                4usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
-                    ret_type: Box::new(Type::Unit),
-                }),
-            )),
-            "remove" => Some((
                 5usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -1447,8 +1523,16 @@ impl NativeType for NativeSet {
                     ret_type: Box::new(Type::Unit),
                 }),
             )),
-            "map" => Some((
+            "remove" => Some((
                 6usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
+                    ret_type: Box::new(Type::Unit),
+                }),
+            )),
+            "map" => Some((
+                7usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![(
@@ -1468,7 +1552,7 @@ impl NativeType for NativeSet {
                 }),
             )),
             "filter" => Some((
-                7usize,
+                8usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -1488,7 +1572,7 @@ impl NativeType for NativeSet {
                 }),
             )),
             "reduce" => Some((
-                8usize,
+                9usize,
                 Type::Fn(FnType {
                     type_args: vec!["U".to_string()],
                     arg_types: vec![
@@ -1514,7 +1598,7 @@ impl NativeType for NativeSet {
                 }),
             )),
             "asArray" => Some((
-                9usize,
+                10usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![],
@@ -1522,18 +1606,6 @@ impl NativeType for NativeSet {
                 }),
             )),
             "union" => Some((
-                10usize,
-                Type::Fn(FnType {
-                    type_args: vec![],
-                    arg_types: vec![(
-                        "other".to_string(),
-                        Type::Set(Box::new(Type::Generic("T".to_string()))),
-                        false,
-                    )],
-                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
-                }),
-            )),
-            "difference" => Some((
                 11usize,
                 Type::Fn(FnType {
                     type_args: vec![],
@@ -1545,8 +1617,20 @@ impl NativeType for NativeSet {
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
                 }),
             )),
-            "intersection" => Some((
+            "difference" => Some((
                 12usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![(
+                        "other".to_string(),
+                        Type::Set(Box::new(Type::Generic("T".to_string()))),
+                        false,
+                    )],
+                    ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                }),
+            )),
+            "intersection" => Some((
+                13usize,
                 Type::Fn(FnType {
                     type_args: vec![],
                     arg_types: vec![(
@@ -1567,72 +1651,78 @@ impl NativeType for NativeSet {
         match field_idx {
             0usize => Self::field_size(obj),
             1usize => Value::NativeFn(NativeFn {
+                name: "toString",
+                receiver: Some(obj),
+                native_fn: Self::method_to_string,
+                has_return: true,
+            }),
+            2usize => Value::NativeFn(NativeFn {
                 name: "isEmpty",
                 receiver: Some(obj),
                 native_fn: Self::method_is_empty,
                 has_return: true,
             }),
-            2usize => Value::NativeFn(NativeFn {
+            3usize => Value::NativeFn(NativeFn {
                 name: "enumerate",
                 receiver: Some(obj),
                 native_fn: Self::method_enumerate,
                 has_return: true,
             }),
-            3usize => Value::NativeFn(NativeFn {
+            4usize => Value::NativeFn(NativeFn {
                 name: "contains",
                 receiver: Some(obj),
                 native_fn: Self::method_contains,
                 has_return: true,
             }),
-            4usize => Value::NativeFn(NativeFn {
+            5usize => Value::NativeFn(NativeFn {
                 name: "insert",
                 receiver: Some(obj),
                 native_fn: Self::method_insert,
                 has_return: false,
             }),
-            5usize => Value::NativeFn(NativeFn {
+            6usize => Value::NativeFn(NativeFn {
                 name: "remove",
                 receiver: Some(obj),
                 native_fn: Self::method_remove,
                 has_return: false,
             }),
-            6usize => Value::NativeFn(NativeFn {
+            7usize => Value::NativeFn(NativeFn {
                 name: "map",
                 receiver: Some(obj),
                 native_fn: Self::method_map,
                 has_return: true,
             }),
-            7usize => Value::NativeFn(NativeFn {
+            8usize => Value::NativeFn(NativeFn {
                 name: "filter",
                 receiver: Some(obj),
                 native_fn: Self::method_filter,
                 has_return: true,
             }),
-            8usize => Value::NativeFn(NativeFn {
+            9usize => Value::NativeFn(NativeFn {
                 name: "reduce",
                 receiver: Some(obj),
                 native_fn: Self::method_reduce,
                 has_return: true,
             }),
-            9usize => Value::NativeFn(NativeFn {
+            10usize => Value::NativeFn(NativeFn {
                 name: "asArray",
                 receiver: Some(obj),
                 native_fn: Self::method_as_array,
                 has_return: true,
             }),
-            10usize => Value::NativeFn(NativeFn {
+            11usize => Value::NativeFn(NativeFn {
                 name: "union",
                 receiver: Some(obj),
                 native_fn: Self::method_union,
                 has_return: true,
             }),
-            11usize => Value::NativeFn(NativeFn {
+            12usize => Value::NativeFn(NativeFn {
                 name: "difference",
                 receiver: Some(obj),
                 native_fn: Self::method_difference,
                 has_return: true,
             }),
-            12usize => Value::NativeFn(NativeFn {
+            13usize => Value::NativeFn(NativeFn {
                 name: "intersection",
                 receiver: Some(obj),
                 native_fn: Self::method_intersection,

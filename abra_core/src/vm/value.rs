@@ -44,6 +44,7 @@ pub struct ClosureValue {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct TypeValue {
     pub name: String,
+    pub fields: Vec<String>,
     pub methods: Vec<(String, FnValue)>,
     pub static_fields: Vec<(String, Value)>,
 }
@@ -54,16 +55,6 @@ pub struct EnumValue {
     pub variants: Vec<(String, EnumVariantObj)>,
     pub methods: Vec<(String, FnValue)>,
     pub static_fields: Vec<(String, Value)>,
-}
-
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
-pub struct EnumVariantObj {
-    pub enum_name: String,
-    pub name: String,
-    pub idx: usize,
-    pub methods: Vec<Value>,
-    pub arity: usize,
-    pub values: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -85,22 +76,6 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn to_string(&self) -> String {
-        match self {
-            Value::Int(val) => format!("{}", val),
-            Value::Float(val) => format!("{}", val),
-            Value::Bool(val) => format!("{}", val),
-            Value::Str(val) => val.clone(),
-            Value::Obj(obj) => format!("{}", &obj.borrow().to_string()),
-            Value::Fn(FnValue { name, .. }) |
-            Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
-            Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
-            Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
-            Value::Enum(EnumValue { name, .. }) => format!("<enum {}>", name),
-            Value::Nil => format!("None"),
-        }
-    }
-
     pub fn new_string_obj(value: String) -> Value {
         let str = Obj::StringObj(value);
         Value::Obj(Arc::new(RefCell::new(str)))
@@ -144,10 +119,7 @@ impl Display for Value {
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
-            Value::Obj(o) => match &*o.borrow() {
-                Obj::StringObj(value) => write!(f, "\"{}\"", value),
-                o @ _ => write!(f, "{}", o.to_string()),
-            }
+            Value::Obj(o) => write!(f, "{}", &*o.borrow()),
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
@@ -212,6 +184,16 @@ pub struct InstanceObj {
     pub fields: Vec<Value>,
 }
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+pub struct EnumVariantObj {
+    pub enum_name: String,
+    pub name: String,
+    pub idx: usize,
+    pub methods: Vec<Value>,
+    pub arity: usize,
+    pub values: Option<Vec<Value>>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Obj {
     StringObj(String),
@@ -223,57 +205,38 @@ pub enum Obj {
     EnumVariantObj(EnumVariantObj),
 }
 
-impl Obj {
-    // TODO: Proper toString impl
-    pub fn to_string(&self) -> String {
+impl Display for Obj {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Obj::StringObj(value) => value.clone(),
+            Obj::StringObj(value) => write!(f, "\"{}\"", value),
             Obj::ArrayObj(value) => {
-                let items = value.iter()
-                    .map(|v| format!("{}", v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("[{}]", items)
+                let items = value.iter().map(|v| format!("{}", v)).join(", ");
+                write!(f, "[{}]", items)
             }
             Obj::SetObj(value) => {
-                let items = value.iter()
-                    .map(|v| format!("{}", v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("#{{{}}}", items)
+                let items = value.iter().map(|v| format!("{}", v)).join(", ");
+                write!(f, "#{{{}}}", items)
             }
             Obj::TupleObj(value) => {
-                let items = value.iter()
-                    .map(|v| format!("{}", v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("({})", items)
+                let items = value.iter().map(|v| format!("{}", v)).join(", ");
+                write!(f, "({})", items)
             }
             Obj::MapObj(map) => {
-                let fields = map.iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
-                    .collect::<Vec<_>>();
-                let one_liner = format!(
-                    "{{ {} }}",
-                    fields.iter().join(", ")
-                );
-                if one_liner.len() <= 80 {
-                    return one_liner;
-                }
-                format!("{{\n  {}\n}}", fields.join(",\n  "))
+                let fields = map.iter().map(|(k, v)| format!("{}: {}", k, v)).join(", ");
+                write!(f, "{{ {} }}", fields)
             }
             Obj::InstanceObj(inst) => {
                 match &*inst.typ {
-                    Value::Type(TypeValue { name, .. }) => format!("<instance {}>", name),
+                    Value::Type(TypeValue { name, .. }) => write!(f, "<instance {}>", name),
                     _ => unreachable!("Shouldn't have instances of non-struct types")
                 }
             }
             Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
                 match values {
-                    None => format!("{}.{}", enum_name, name),
+                    None => write!(f, "{}.{}", enum_name, name),
                     Some(values) => {
                         let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
-                        format!("{}.{}({})", enum_name, name, values)
+                        write!(f, "{}.{}({})", enum_name, name, values)
                     }
                 }
             }
@@ -302,7 +265,7 @@ impl PartialOrd for Obj {
                     Some(Ordering::Equal)
                 }
             }
-            (Obj::SetObj(s1), Obj::SetObj(s2)) =>{
+            (Obj::SetObj(s1), Obj::SetObj(s2)) => {
                 if s1.len() < s2.len() {
                     Some(Ordering::Less)
                 } else if s1.len() > s2.len() {
@@ -312,7 +275,6 @@ impl PartialOrd for Obj {
                 } else {
                     Some(Ordering::Less)
                 }
-
             }
             (Obj::EnumVariantObj(evv1), Obj::EnumVariantObj(evv2)) => {
                 match evv1.idx.cmp(&evv2.idx) {

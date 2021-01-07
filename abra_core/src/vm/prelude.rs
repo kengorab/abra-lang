@@ -62,6 +62,7 @@ impl Prelude {
                 typ: Type::Type(type_name.to_string(), Box::new(typ.clone()), false), // TODO: is_enum should not be hard-coded false
                 value: Value::Type(TypeValue {
                     name: type_name.to_string(),
+                    fields: vec![],
                     methods: vec![],
                     static_fields: static_fields.unwrap_or(vec![]),
                 }),

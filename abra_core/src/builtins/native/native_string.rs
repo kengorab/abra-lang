@@ -1,6 +1,7 @@
 use crate::builtins::gen_native_types::NativeStringMethodsAndFields;
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
+use crate::builtins::native::common::to_string;
 
 macro_rules! obj_as_string {
     ($obj:expr) => {
@@ -21,6 +22,12 @@ impl NativeStringMethodsAndFields for crate::builtins::gen_native_types::NativeS
                 Obj::StringObj(value) => Value::Int(value.len() as i64),
                 _ => unreachable!()
             }
+        } else { unreachable!() }
+    }
+
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
         } else { unreachable!() }
     }
 
@@ -213,9 +220,9 @@ mod test {
     }
 
     #[test]
-    fn test_string_to_upper() {
-        let result = interpret("\"Asdf Qwer\".toUpper()");
-        let expected = new_string_obj("ASDF QWER");
+    fn test_string_to_string() {
+        let result = interpret("\"hello\".toString()");
+        let expected = new_string_obj("hello");
         assert_eq!(Some(expected), result);
     }
 
@@ -223,6 +230,13 @@ mod test {
     fn test_string_to_lower() {
         let result = interpret("\"aSDF qWER\".toLower()");
         let expected = new_string_obj("asdf qwer");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_to_upper() {
+        let result = interpret("\"Asdf Qwer\".toUpper()");
+        let expected = new_string_obj("ASDF QWER");
         assert_eq!(Some(expected), result);
     }
 

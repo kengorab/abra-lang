@@ -1,10 +1,11 @@
 #[macro_use]
 extern crate clap;
 
-use abra_core::{compile_and_run, Error, compile_and_disassemble};
+use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
 use abra_core::vm::value::Value;
-use abra_core::vm::vm::VMContext;
+use abra_core::vm::vm::{VMContext, VM};
+use abra_core::builtins::native::to_string;
 
 #[derive(Clap)]
 #[clap(name = "abra", version = "0.0.1")]
@@ -48,14 +49,22 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
         print: |input| print!("{}\n", input)
     };
 
-    match compile_and_run(contents.clone(), ctx) {
-        Ok(Some(res)) if res != Value::Nil => println!("{}", res.to_string()),
-        Err(error) => match error {
-            Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::InterpretError(e) => eprintln!("{:?}", e),
+    let module = match compile(&contents) {
+        Ok((module, _)) => module,
+        Err(error) => {
+            match error {
+                Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
+                Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
+                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
+                Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
+            }
+            std::process::exit(1);
         }
+    };
+    let mut vm = VM::new(module, ctx);
+    match vm.run() {
+        Ok(Some(v)) if v != Value::Nil => println!("{}", to_string(&v, &mut vm)),
+        Err(e) => eprintln!("{:?}", e),
         _ => {}
     };
 
@@ -65,7 +74,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let contents = read_file(&opts.file_name)?;
 
-    match compile_and_disassemble(contents.clone()) {
+    match compile_and_disassemble(&contents) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),

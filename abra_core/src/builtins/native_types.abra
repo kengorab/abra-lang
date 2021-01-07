@@ -1,4 +1,5 @@
 type NativeFloat {
+  func toString(self): String {}
   func floor(self): Int {}
   func ceil(self): Int {}
   func round(self): Int {}
@@ -7,6 +8,7 @@ type NativeFloat {
 }
 
 type NativeInt {
+  func toString(self): String {}
   func abs(self): Int {}
   func asBase(self, base: Int): String {}
   func isEven(self): Bool {}
@@ -17,6 +19,7 @@ type NativeInt {
 type NativeString {
   length: Int
 
+  func toString(self): String {}
   func toLower(self): String {}
   func toUpper(self): String {}
   func padLeft(self, totalSize: Int, padding: String = " "): String {}
@@ -37,6 +40,7 @@ type NativeArray<T> {
   func fill<T1>(amount: Int, value: T1): T1[] {}
   func fillBy<T1>(amount: Int, fn: (Int) => T1): T1[] {}
 
+  func toString(self): String {}
   func isEmpty(self): Bool {}
   func enumerate(self): (T, Int)[] {}
   func push(self, item: T): Unit {}
@@ -71,6 +75,7 @@ type NativeMap<K, V> {
 
   func fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2> {}
 
+  func toString(self): String {}
   func isEmpty(self): Bool {}
   func enumerate(self): (K, V)[] {}
   func keys(self): Set<K> {}
@@ -86,6 +91,7 @@ type NativeMap<K, V> {
 type NativeSet<T> {
   size: Int
 
+  func toString(self): String {}
   func isEmpty(self): Bool {}
   func enumerate(self): (T, Int)[] {}
   func contains(self, value: T): Bool {}

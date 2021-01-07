@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -311,7 +311,7 @@ impl VM {
         let function = self.pop_expect()?;
         let (name, code, upvalues, receiver, has_return) = match function {
             Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => Ok((name, code, upvalues, receiver, has_return)),
-            v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
+            v @ _ => Err(InterpretError::TypeError("Function".to_string(), to_string(&v, self))),
         }?;
 
         let captures = upvalues.iter().map(|uv| {
@@ -555,8 +555,8 @@ impl VM {
                     let b = self.pop_expect()?;
                     let a = self.pop_expect()?;
 
-                    let a = a.to_string();
-                    let b = b.to_string();
+                    let a = to_string(&a, self);
+                    let b = to_string(&b, self);
                     let concat = a + &b;
                     self.push(Value::new_string_obj(concat))
                 }

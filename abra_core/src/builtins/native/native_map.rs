@@ -2,7 +2,7 @@ use crate::builtins::gen_native_types::NativeMapMethodsAndFields;
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
 use std::collections::HashMap;
-use crate::builtins::native::common::invoke_fn;
+use crate::builtins::native::common::{invoke_fn, to_string};
 
 pub type NativeMap = crate::builtins::gen_native_types::NativeMap;
 
@@ -40,6 +40,12 @@ impl NativeMapMethodsAndFields for NativeMap {
                 }
                 _ => unreachable!()
             }
+        } else { unreachable!() }
+    }
+
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
         } else { unreachable!() }
     }
 
@@ -224,6 +230,16 @@ mod test {
             new_string_obj("b") => Value::Int(456)
         };
         assert_eq!(result, Some(expected));
+    }
+
+    #[test]
+    fn test_map_to_string() {
+        let result = interpret("{ a: [1, 2], b: [3, 4] }.toString()");
+        let expecteds = vec![
+            new_string_obj("{ a: [1, 2], b: [3, 4] }"),
+            new_string_obj("{ b: [3, 4], a: [1, 2] }"),
+        ];
+        assert!(expecteds.contains(&result.unwrap()));
     }
 
     #[test]

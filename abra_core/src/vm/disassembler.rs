@@ -164,8 +164,8 @@ impl Disassembler {
                     let name = format!("fn {}", name.clone());
                     let values = (name, code.clone(), false);
                     Some(vec![values])
-                },
-                Value::Type(TypeValue { name, methods, static_fields }) |
+                }
+                Value::Type(TypeValue { name, methods, static_fields, .. }) |
                 Value::Enum(EnumValue { name, methods, static_fields, .. }) => {
                     let mut values = vec![];
 

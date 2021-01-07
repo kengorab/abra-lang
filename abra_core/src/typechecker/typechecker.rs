@@ -906,6 +906,16 @@ impl Typechecker {
             if is_static {
                 static_fields.push((fn_name, typ, true))
             } else {
+                if let Type::Fn(FnType { ret_type, .. }) = &typ {
+                    // TODO: Proper protocol/interface implementation
+                    if fn_name == "toString".to_string() {
+                        if **ret_type != Type::String {
+                            let expected = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) });
+                            return Err(TypecheckerError::InvalidProtocolMethod { token: name, fn_name, expected, actual: typ });
+                        }
+                    }
+                } else { unreachable!() }
+
                 typed_methods.push((fn_name, typ))
             }
         }
@@ -4526,6 +4536,20 @@ mod tests {
           }\
         ").unwrap_err();
         let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person {\n\
+            age: String\n\
+            func toString(self): Int = 16\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidProtocolMethod {
+            token: ident_token!((3, 6), "toString"),
+            fn_name: "toString".to_string(),
+            expected: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }),
+            actual: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int) }),
+        };
         assert_eq!(expected, error);
     }
 

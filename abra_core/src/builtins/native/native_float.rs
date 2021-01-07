@@ -1,10 +1,17 @@
 use crate::builtins::gen_native_types::NativeFloatMethodsAndFields;
 use crate::vm::value::Value;
 use crate::vm::vm::VM;
+use crate::builtins::native::common::to_string;
 
 pub type NativeFloat = crate::builtins::gen_native_types::NativeFloat;
 
 impl NativeFloatMethodsAndFields for crate::builtins::gen_native_types::NativeFloat {
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
+        } else { unreachable!() }
+    }
+
     fn method_floor(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         if let Value::Float(f) = receiver.unwrap() {
             Some(Value::Int(f.floor() as i64))
@@ -50,8 +57,15 @@ impl NativeFloatMethodsAndFields for crate::builtins::gen_native_types::NativeFl
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::interpret;
+    use crate::builtins::native::test_utils::{interpret, new_string_obj};
     use crate::vm::value::Value;
+
+    #[test]
+    fn test_float_to_string() {
+        let result = interpret("6.24.toString()");
+        let expected = new_string_obj("6.24");
+        assert_eq!(Some(expected), result);
+    }
 
     #[test]
     fn test_float_floor() {

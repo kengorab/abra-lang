@@ -1,7 +1,7 @@
 use crate::builtins::gen_native_types::NativeSetMethodsAndFields;
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
-use crate::builtins::native::common::invoke_fn;
+use crate::builtins::native::common::{invoke_fn, to_string};
 use std::collections::HashSet;
 
 pub type NativeSet = crate::builtins::gen_native_types::NativeSet;
@@ -13,6 +13,12 @@ impl NativeSetMethodsAndFields for NativeSet {
                 Obj::SetObj(value) => Value::Int(value.len() as i64),
                 _ => unreachable!()
             }
+        } else { unreachable!() }
+    }
+
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
         } else { unreachable!() }
     }
 
@@ -219,7 +225,7 @@ impl NativeSetMethodsAndFields for NativeSet {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::interpret;
+    use crate::builtins::native::test_utils::{interpret, new_string_obj};
     use crate::vm::value::Value;
 
     #[test]
@@ -235,6 +241,34 @@ mod test {
         let result = interpret("#{0, 1, 2, 1, 0}.size");
         let expected = Value::Int(3);
         assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_to_string() {
+        let result = interpret("#{1, 2, 3}.toString()");
+        let expecteds = vec![
+            new_string_obj("#{1, 2, 3}"),
+            new_string_obj("#{1, 3, 2}"),
+            new_string_obj("#{2, 3, 1}"),
+            new_string_obj("#{2, 1, 3}"),
+            new_string_obj("#{3, 2, 1}"),
+            new_string_obj("#{3, 1, 2}"),
+        ];
+        assert!(expecteds.contains(&result.unwrap()));
+
+        let result = interpret("#{[1, 2], [3, 4]}.toString()");
+        let expecteds = vec![
+            new_string_obj("#{[1, 2], [3, 4]}"),
+            new_string_obj("#{[3, 4], [1, 2]}"),
+        ];
+        assert!(expecteds.contains(&result.unwrap()));
+
+        let result = interpret("#{(1, 2), (3, 4)}.toString()");
+        let expecteds = vec![
+            new_string_obj("#{(1, 2), (3, 4)}"),
+            new_string_obj("#{(3, 4), (1, 2)}"),
+        ];
+        assert!(expecteds.contains(&result.unwrap()));
     }
 
     #[test]

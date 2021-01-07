@@ -1175,7 +1175,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
     fn visit_type_decl(&mut self, token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedTypeDeclNode { name, methods, static_fields, .. } = node;
+        let TypedTypeDeclNode { name, fields, methods, static_fields } = node;
 
         let type_name = Token::get_ident_name(&name);
 
@@ -1224,6 +1224,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let type_value = Value::Type(TypeValue {
             name: type_name.clone(),
+            fields: fields.iter().map(|f| Token::get_ident_name(&f.0)).collect(),
             methods: compiled_methods,
             static_fields: compiled_static_fields,
         });
@@ -1670,7 +1671,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_byte(arity as u8, line);
             self.close_jump(if_end_jump_handle);
 
-            return Ok(())
+            return Ok(());
         }
 
         if has_return {
@@ -2507,6 +2508,7 @@ mod tests {
                 Value::Str("Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    fields: vec!["name".to_string()],
                     methods: vec![],
                     static_fields: vec![],
                 }),
@@ -2552,7 +2554,12 @@ mod tests {
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
+                Value::Type(TypeValue {
+                    name: "Person".to_string(),
+                    fields: vec!["name".to_string(), "age".to_string()],
+                    methods: vec![],
+                    static_fields: vec![]
+                }),
                 new_string_obj("Unnamed"),
                 Value::Str("someBaby".to_string()),
                 Value::Int(29),
@@ -3174,7 +3181,12 @@ mod tests {
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
+                Value::Type(TypeValue {
+                    name: "Person".to_string(),
+                    fields: vec!["name".to_string()],
+                    methods: vec![],
+                    static_fields: vec![]
+                }),
                 new_string_obj("Ken"),
                 Value::Str("p".to_string()),
                 new_string_obj("Meg"),
@@ -3703,6 +3715,7 @@ mod tests {
                 Value::Str("Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    fields: vec!["name".to_string()],
                     methods: vec![
                         ("getName".to_string(), FnValue {
                             name: "getName".to_string(),
@@ -4057,7 +4070,7 @@ mod tests {
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::GLoad as u8,
-                Opcode::GetField as u8, 2, // .length
+                Opcode::GetField as u8, 3, // .length
                 Opcode::Invoke as u8, 0,
                 Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
@@ -4151,7 +4164,7 @@ mod tests {
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0, 1,
                 Opcode::Invoke as u8, 3,
-                Opcode::GetField as u8, 2,
+                Opcode::GetField as u8, 3,
                 Opcode::Invoke as u8, 0,
                 Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
@@ -4533,7 +4546,12 @@ mod tests {
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
-                Value::Type(TypeValue { name: "Person".to_string(), methods: vec![], static_fields: vec![] }),
+                Value::Type(TypeValue {
+                    name: "Person".to_string(),
+                    fields: vec!["name".to_string()],
+                    methods: vec![],
+                    static_fields: vec![]
+                }),
                 new_string_obj("Ken"),
                 Value::Str("ken".to_string()),
             ]),
@@ -4714,6 +4732,7 @@ mod tests {
                 Value::Str("Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    fields: vec!["name".to_string()],
                     methods: vec![],
                     static_fields: vec![],
                 }),
