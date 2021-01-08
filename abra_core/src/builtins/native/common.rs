@@ -1,6 +1,8 @@
 use crate::vm::vm::VM;
-use crate::vm::value::Value;
+use crate::vm::value::{Value, FnValue, ClosureValue, TypeValue, EnumValue, Obj, EnumVariantObj};
 use crate::typechecker::types::Type;
+use crate::builtins::native_fns::NativeFn;
+use itertools::Itertools;
 
 pub trait NativeType {
     fn get_field_type(name: &str) -> Option<(usize, Type)>;
@@ -50,5 +52,101 @@ pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
             eprintln!("Runtime error: {:?}", e);
             std::process::exit(1);
         }
+    }
+}
+
+pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+    let str_val = if let Value::Obj(obj) = receiver.unwrap() {
+        match &*(obj.borrow()) {
+            Obj::InstanceObj(obj) => {
+                let (type_name, field_names) = match &*obj.typ {
+                    Value::Type(t) => (&t.name, &t.fields),
+                    _ => unreachable!()
+                };
+                let values = field_names.iter().zip(&obj.fields)
+                    .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
+                    .join(", ");
+                format!("{}({})", type_name, values)
+            }
+            _ => unreachable!()
+        }
+    } else { unreachable!() };
+
+    Some(Value::new_string_obj(str_val))
+}
+
+pub fn to_string(value: &Value, vm: &mut VM) -> String {
+    match value {
+        Value::Int(val) => format!("{}", val),
+        Value::Float(val) => format!("{}", val),
+        Value::Bool(val) => format!("{}", val),
+        Value::Str(val) => val.clone(),
+        Value::Obj(obj) => {
+            match &*(obj.borrow()) {
+                Obj::StringObj(value) => value.clone(),
+                Obj::ArrayObj(value) => {
+                    let items = value.iter()
+                        .map(|v| to_string(v, vm))
+                        .join(", ");
+                    format!("[{}]", items)
+                }
+                Obj::SetObj(value) => {
+                    let items = value.iter()
+                        .map(|v| to_string(v, vm))
+                        .join(", ");
+                    format!("#{{{}}}", items)
+                }
+                Obj::TupleObj(value) => {
+                    let items = value.iter()
+                        .map(|v| to_string(v, vm))
+                        .join(", ");
+                    format!("({})", items)
+                }
+                Obj::MapObj(map) => {
+                    let fields = map.iter()
+                        .map(|(k, v)| {
+                            let k = to_string(k, vm);
+                            let v = to_string(v, vm);
+                            format!("{}: {}", k, v)
+                        })
+                        .join(", ");
+                    format!("{{ {} }}", fields)
+                }
+                Obj::InstanceObj(o) => {
+                    let tostring_method_idx = match &*o.typ {
+                        Value::Type(t) => {
+                            t.methods.iter()
+                                .position(|(name, _)| name == "toString")
+                                .map(|idx| idx)
+                        }
+                        _ => None
+                    };
+                    let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
+                    let ret = invoke_fn(vm, &o.methods[idx], vec![]);
+                    if let Value::Obj(o) = ret {
+                        if let Obj::StringObj(s) = &*(o.borrow()) {
+                            s.clone()
+                        } else { unreachable!() }
+                    } else { dbg!(ret); unreachable!() }
+                }
+                Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
+                    match values {
+                        None => format!("{}.{}", enum_name, name),
+                        Some(values) => {
+                            let values = values.iter()
+                                .map(|v| to_string(v, vm))
+                                .join(", ");
+                            format!("{}.{}({})", enum_name, name, values)
+                        }
+                    }
+                }
+            }
+        }
+        Value::Fn(FnValue { name, .. }) |
+        Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
+        Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
+        Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
+        Value::Enum(EnumValue { name, .. }) => format!("<enum {}>", name),
+        Value::Nil => format!("None"),
     }
 }

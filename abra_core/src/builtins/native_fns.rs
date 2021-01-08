@@ -1,3 +1,4 @@
+use crate::builtins::native::to_string;
 use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
@@ -122,7 +123,7 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
 fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
     let val = args.first().unwrap();
     let print_fn = vm.ctx.print;
-    print_fn(&format!("{}", val.to_string()));
+    print_fn(&format!("{}", to_string(val, vm)));
     None
 }
 

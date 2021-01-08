@@ -164,14 +164,18 @@ impl Disassembler {
                     let name = format!("fn {}", name.clone());
                     let values = (name, code.clone(), false);
                     Some(vec![values])
-                },
-                Value::Type(TypeValue { name, methods, static_fields }) |
+                }
+                Value::Type(TypeValue { name, methods, static_fields, .. }) |
                 Value::Enum(EnumValue { name, methods, static_fields, .. }) => {
                     let mut values = vec![];
 
-                    for (_, fn_value) in methods {
-                        let method_name = format!("fn {}#{}", name, fn_value.name);
-                        values.push((method_name, fn_value.code.clone(), false))
+                    for (fn_name, value) in methods {
+                        let method_name = format!("fn {}#{}", name, fn_name);
+                        match value {
+                            Value::Fn(FnValue { code, .. }) => values.push((method_name, code.clone(), false)),
+                            Value::NativeFn(_) => values.push((method_name, vec![], true)),
+                            _ => unreachable!()
+                        }
                     }
                     for (fn_name, value) in static_fields {
                         let static_method_name = format!("fn {}::{}", name, fn_name);

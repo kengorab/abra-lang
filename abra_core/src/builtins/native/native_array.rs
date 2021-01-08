@@ -1,8 +1,9 @@
-use crate::builtins::gen_native_types::NativeArrayMethodsAndFields;
+use crate::builtins::gen_native_types::{NativeArrayMethodsAndFields};
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
-use crate::builtins::native::common::invoke_fn;
+use crate::builtins::native::common::{invoke_fn, to_string};
 use std::collections::{HashSet, HashMap};
+use itertools::Itertools;
 
 pub type NativeArray = crate::builtins::gen_native_types::NativeArray;
 
@@ -45,6 +46,12 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         }
 
         Some(Value::new_array_obj(values))
+    }
+
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
+        } else { unreachable!() }
     }
 
     fn method_is_empty(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
@@ -232,7 +239,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
         } else { unreachable!() }
     }
 
-    fn method_join(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
+    fn method_join(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
         let joiner = args.into_iter().next().expect("Array::join requires 1 argument");
         let joiner = if let Value::Obj(obj) = joiner {
             match &(*obj.borrow()) {
@@ -247,8 +254,7 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
             match &*(obj.borrow()) {
                 Obj::ArrayObj(array) => {
                     let joined = array.iter()
-                        .map(|v| v.to_string())
-                        .collect::<Vec<String>>()
+                        .map(|v| to_string(v, vm))
                         .join(joiner.as_str());
                     Some(Value::new_string_obj(joined))
                 }
@@ -674,6 +680,21 @@ mod test {
           Array.fillBy(6, fib)
         "#);
         let expected = int_array!(1, 1, 2, 3, 5, 8);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_array_to_string() {
+        let result = interpret("[1, 2, 3].toString()");
+        let expected = new_string_obj("[1, 2, 3]");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[[1, 2], [3, 4], [5, 6]].toString()");
+        let expected = new_string_obj("[[1, 2], [3, 4], [5, 6]]");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("[{ a: 1 }, { b: 3 }].toString()");
+        let expected = new_string_obj("[{ a: 1 }, { b: 3 }]");
         assert_eq!(Some(expected), result);
     }
 

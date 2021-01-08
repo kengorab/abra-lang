@@ -1,10 +1,17 @@
 use crate::builtins::gen_native_types::NativeIntMethodsAndFields;
 use crate::vm::value::Value;
 use crate::vm::vm::VM;
+use crate::builtins::native::common::to_string;
 
 pub type NativeInt = crate::builtins::gen_native_types::NativeInt;
 
 impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt {
+    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        if let Some(obj) = receiver {
+            Some(Value::new_string_obj(to_string(&obj, vm)))
+        } else { unreachable!() }
+    }
+
     fn method_abs(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
         if let Value::Int(i) = receiver.unwrap() {
             Some(Value::Int(i.abs()))
@@ -79,6 +86,13 @@ impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt 
 mod test {
     use crate::vm::value::Value;
     use crate::builtins::native::test_utils::{interpret, new_string_obj};
+
+    #[test]
+    fn test_int_to_string() {
+        let result = interpret("24.toString()");
+        let expected = new_string_obj("24");
+        assert_eq!(Some(expected), result);
+    }
 
     #[test]
     fn test_int_abs() {

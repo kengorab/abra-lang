@@ -10,6 +10,7 @@ pub enum InvalidAssignmentTargetReason {
     IndexingMode,
     StringTarget,
     OptionalTarget,
+    MethodTarget
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,6 +65,7 @@ pub enum TypecheckerError {
     DuplicateSplatDestructuring { token: Token },
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
+    InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
 }
 
 impl TypecheckerError {
@@ -119,6 +121,7 @@ impl TypecheckerError {
             TypecheckerError::DuplicateSplatDestructuring { token } => token,
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
+            TypecheckerError::InvalidProtocolMethod { token, .. } => token,
         }
     }
 }
@@ -351,6 +354,7 @@ impl DisplayError for TypecheckerError {
                         "Cannot assign by indexing into type {}, which is potentially None",
                         type_repr(typ.as_ref().unwrap())
                     ),
+                    InvalidAssignmentTargetReason::MethodTarget => "Methods cannot be reassigned to".to_string(),
                 };
                 format!(
                     "Cannot perform assignment: ({}:{})\n{}\n{}",
@@ -689,6 +693,14 @@ impl DisplayError for TypecheckerError {
                     "Invalid return type: ({}:{})\n{}\n{}{}",
                     pos.line, pos.col, cursor_line,
                     msg, hint
+                )
+            }
+            TypecheckerError::InvalidProtocolMethod { fn_name, expected, actual, .. } => {
+                format!(
+                    "Invalid type for method: ({}:{})\n{}\n\
+                    Expected method {} to be of type {}, but instead got {}",
+                    pos.line, pos.col, cursor_line,
+                    fn_name, type_repr(expected), type_repr(actual)
                 )
             }
         }

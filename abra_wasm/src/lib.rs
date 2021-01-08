@@ -17,9 +17,9 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::{Error, typecheck, compile, compile_and_run, compile_and_disassemble};
+use abra_core::{Error, typecheck, compile, compile_and_disassemble};
 use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
-use abra_core::vm::vm::VMContext;
+use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
 
@@ -194,7 +194,7 @@ extern "C" {
 
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
-    let result = compile_and_disassemble(input.to_string());
+    let result = compile_and_disassemble(&input.to_string());
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -211,11 +211,21 @@ pub fn typecheck_input(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
-    let result = compile(input.to_string())
+    let result = compile(&input.to_string())
         .map(|(module, _)| module);
     let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
+}
+
+fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
+    let (module, _) = compile(&input)?;
+    let mut vm = VM::new(module, ctx);
+    match vm.run() {
+        Ok(Some(v)) => Ok(Some(v)),
+        Ok(None) => Ok(None),
+        Err(e) => Err(Error::InterpretError(e)),
+    }
 }
 
 #[wasm_bindgen(js_name = runSync)]

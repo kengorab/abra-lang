@@ -1482,16 +1482,69 @@ mod tests {
 
     #[test]
     fn interpret_static_method_invocation() {
-        let input = "\
-          type Person {\n\
-            name: String\n\
-            func introduce(name: String): String = \"I am \" + name\n\
-          }\n\
-          val ken = Person(name: \"Ken\")\n\
-          Person.introduce(ken.name)\
-        ";
+        let input = r#"
+          type Person {
+            name: String
+            func introduce(name: String): String = "I am " + name
+          }
+          val ken = Person(name: "Ken")
+          Person.introduce(ken.name)
+        "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("I am Ken");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_to_string() {
+        // Test the default implementation
+        let input = r#"
+          type Person { name: String }
+          val p = Person(name: "Ken")
+          p.toString()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Person(name: Ken)");
+        assert_eq!(expected, result);
+
+        // Test when there is an implementation specified
+        let input = r#"
+          type Person {
+            name: String
+            func toString(self): String = self.name
+          }
+          val p = Person(name: "Ken")
+          p.toString()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Ken");
+        assert_eq!(expected, result);
+
+        // Test that it gets called by other toString calls
+        let input = r#"
+          type Person {
+            name: String
+            func toString(self): String = self.name
+          }
+          val p = Person(name: "Ken")
+          [p].toString()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("[Ken]");
+        assert_eq!(expected, result);
+
+        // Test that it remembers its receiver
+        let input = r#"
+          type Person {
+            name: String
+          }
+          val p = Person(name: "Ken")
+          val toString = p.toString
+          p.name = "Meg"
+          toString()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("Person(name: Meg)");
         assert_eq!(expected, result);
     }
 

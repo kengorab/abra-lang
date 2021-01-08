@@ -4,8 +4,6 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
-use crate::vm::value::Value;
-use crate::vm::vm::VMContext;
 use crate::vm::compiler::{Metadata, Module};
 use crate::typechecker::typed_ast::TypedAstNode;
 use crate::common::display_error::DisplayError;
@@ -50,23 +48,13 @@ pub fn typecheck(input: &String) -> Result<Vec<TypedAstNode>, Error> {
     }
 }
 
-pub fn compile(input: String) -> Result<(Module, Metadata), Error> {
-    let typed_ast_nodes = typecheck(&input)?;
+pub fn compile(input: &String) -> Result<(Module, Metadata), Error> {
+    let typed_ast_nodes = typecheck(input)?;
     let result = vm::compiler::compile(typed_ast_nodes).unwrap();
     Ok(result)
 }
 
-pub fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
-    let (module, _) = compile(input)?;
-    let mut vm = vm::vm::VM::new(module, ctx);
-    match vm.run() {
-        Ok(Some(v)) => Ok(Some(v)),
-        Ok(None) => Ok(None),
-        Err(e) => Err(Error::InterpretError(e)),
-    }
-}
-
-pub fn compile_and_disassemble(input: String) -> Result<String, Error> {
+pub fn compile_and_disassemble(input: &String) -> Result<String, Error> {
     let (compiled_module, metadata) = compile(input)?;
     Ok(vm::disassembler::disassemble(compiled_module, metadata))
 }

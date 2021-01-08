@@ -1,34 +1,8 @@
-enum Color {
-  Red
-  Green
-  Blue
-  RGB(red: Int, green: Int, blue: Int)
+type Person {
+  name: String
 
-  func white(): Color = Color.RGB(red: 255, green: 255, blue: 255)
-
-  func black(): Color = Color.RGB(red: 0, green: 0, blue: 0)
-
-  func hex(self): String {
-    match self {
-    //  Color.Red => "0xff0000"
-    //  Color.Green => "0x00ff00"
-    //  Color.Blue => "0x0000ff"
-      Color.RGB c => {
-        val hexes = [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0"))
-        "0x" + hexes.join()
-      }
-      _ => "asdf"
-    }
-  }
+  func toString(self): String = self.name
 }
-
-Color.white()
-
-//[
-//  Color.Red,
-//  Color.Green,
-//  Color.Blue,
-//  Color.black(),
-//  Color.white(),
-//  Color.RGB(red: 128, green: 128, blue: 128)
-//].map(c => c.hex())
+val p1 = Person(name: "Ken")
+p1.toString = () => "Hello"
+println(p1)

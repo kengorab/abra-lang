@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -311,7 +311,7 @@ impl VM {
         let function = self.pop_expect()?;
         let (name, code, upvalues, receiver, has_return) = match function {
             Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => Ok((name, code, upvalues, receiver, has_return)),
-            v @ _ => Err(InterpretError::TypeError("Function".to_string(), v.to_string())),
+            v @ _ => Err(InterpretError::TypeError("Function".to_string(), to_string(&v, self))),
         }?;
 
         let captures = upvalues.iter().map(|uv| {
@@ -555,8 +555,8 @@ impl VM {
                     let b = self.pop_expect()?;
                     let a = self.pop_expect()?;
 
-                    let a = a.to_string();
-                    let b = b.to_string();
+                    let a = to_string(&a, self);
+                    let b = to_string(&b, self);
                     let concat = a + &b;
                     self.push(Value::new_string_obj(concat))
                 }
@@ -599,9 +599,13 @@ impl VM {
                     };
 
                     for (_, mut method_value) in type_value.methods {
-                        method_value.receiver = Some(instance_value.clone());
+                        match &mut method_value {
+                            Value::Fn(fn_value) => fn_value.receiver = Some(instance_value.clone()),
+                            Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(Value::Obj(instance_value.clone()))),
+                            _ => unreachable!()
+                        }
                         match *instance_value.borrow_mut() {
-                            Obj::InstanceObj(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
+                            Obj::InstanceObj(ref mut obj) => obj.methods.push(method_value),
                             _ => unreachable!()
                         }
                     }
@@ -671,9 +675,13 @@ impl VM {
                                 let (_, variant_value) = variants[idx].clone();
                                 let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {
                                     for (_, mut method_value) in methods {
-                                        method_value.receiver = Some(instance_value.clone());
+                                        match &mut method_value {
+                                            Value::Fn(fn_value) => fn_value.receiver = Some(instance_value.clone()),
+                                            Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(Value::Obj(instance_value.clone()))),
+                                            _ => unreachable!()
+                                        }
                                         match *instance_value.borrow_mut() {
-                                            Obj::EnumVariantObj(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
+                                            Obj::EnumVariantObj(ref mut obj) => obj.methods.push(method_value),
                                             _ => unreachable!()
                                         }
                                     }
@@ -774,7 +782,7 @@ impl VM {
                             self.push(Value::Nil);
                             continue;
                         }
-                        _ => unreachable!()
+                        v => {dbg!(v);unreachable!()}
                     };
                     let value = match &*obj.borrow() {
                         Obj::StringObj(values) => {

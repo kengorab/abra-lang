@@ -906,9 +906,27 @@ impl Typechecker {
             if is_static {
                 static_fields.push((fn_name, typ, true))
             } else {
+                if let Type::Fn(FnType { ret_type, .. }) = &typ {
+                    // TODO: Proper protocol/interface implementation
+                    if fn_name == "toString".to_string() {
+                        if **ret_type != Type::String {
+                            let expected = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) });
+                            return Err(TypecheckerError::InvalidProtocolMethod { token: name, fn_name, expected, actual: typ });
+                        }
+                    }
+                } else { unreachable!() }
+
                 typed_methods.push((fn_name, typ))
             }
         }
+        // TODO: Proper protocol/interface implementation; interface methods should come first in methods list
+        if typed_methods.iter().find(|(name, _)| name == "toString").is_none() {
+            typed_methods.insert(0, (
+                "toString".to_string(),
+                Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) })
+            ));
+        }
+
         Ok((static_fields, typed_methods))
     }
 
@@ -1896,6 +1914,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             AstNode::Accessor(tok, node) => {
                 let typed_target = self.visit_accessor(tok.clone(), node)?;
+                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, .. }) = &typed_target {
+                    if *is_method {
+                        return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
+                    }
+                } else { unreachable!() }
                 let mut typed_expr = self.visit(*expr)?;
 
                 let expr_type = typed_expr.get_type();
@@ -2761,6 +2784,10 @@ mod tests {
         let ast = parse(tokens).unwrap();
 
         super::typecheck(ast).unwrap()
+    }
+
+    fn to_string_method_type() -> (String, Type) {
+        ("toString".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }))
     }
 
     #[test]
@@ -4436,7 +4463,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -4464,7 +4491,7 @@ mod tests {
                 ("age".to_string(), Type::Int, true),
             ],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -4496,7 +4523,7 @@ mod tests {
                 ),
             ],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Node"]);
 
@@ -4523,6 +4550,20 @@ mod tests {
           }\
         ").unwrap_err();
         let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          type Person {\n\
+            age: String\n\
+            func toString(self): Int = 16\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidProtocolMethod {
+            token: ident_token!((3, 6), "toString"),
+            fn_name: "toString".to_string(),
+            expected: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }),
+            actual: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int) }),
+        };
         assert_eq!(expected, error);
     }
 
@@ -4622,7 +4663,7 @@ mod tests {
                                                             },
                                                         )),
                                                         field_name: "getName".to_string(),
-                                                        field_idx: 0,
+                                                        field_idx: 1,
                                                         is_opt_safe: false,
                                                         is_method: true,
                                                     },
@@ -4648,6 +4689,7 @@ mod tests {
             ],
             static_fields: vec![],
             methods: vec![
+                to_string_method_type(),
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) })),
                 ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }))
             ],
@@ -4703,7 +4745,7 @@ mod tests {
             static_fields: vec![
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }), true),
             ],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         Ok(assert_eq!(expected_type, typechecker.referencable_types["Person"]))
     }
@@ -4761,7 +4803,7 @@ mod tests {
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["List"]);
 
@@ -4981,7 +5023,7 @@ mod tests {
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         let input = "\
           type List<T> { items: T[] }\n\
@@ -5468,7 +5510,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -5532,6 +5574,21 @@ mod tests {
             token: Token::Int(Position::new(3, 10), 123),
             expected: Type::String,
             actual: Type::Int,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          type Person {\n\
+            name: String\n\
+            func foo(self): String = \"hello\"
+          }\n\
+          val a = Person(name: \"abc\")\n\
+          a.foo = () => \"ahoy\"\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentTarget {
+            token: Token::Assign(Position::new(6, 7)),
+            typ: None,
+            reason: InvalidAssignmentTargetReason::MethodTarget,
         };
         assert_eq!(expected, err);
     }
@@ -6167,7 +6224,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -6198,7 +6255,7 @@ mod tests {
                 ("age".to_string(), Type::Int, true),
             ],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -6681,7 +6738,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::String, false)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_typ, typechecker.referencable_types["Person"]);
 
@@ -6711,7 +6768,7 @@ mod tests {
                 ("age".to_string(), Type::Int, true),
             ],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -6782,7 +6839,7 @@ mod tests {
             type_args: vec![],
             fields: vec![],
             static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String) }), true)],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -6823,7 +6880,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::Option(Box::new(Type::String)), true)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
@@ -6850,7 +6907,7 @@ mod tests {
             type_args: vec![],
             fields: vec![("name".to_string(), Type::String, true)],
             static_fields: vec![],
-            methods: vec![],
+            methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
 
