@@ -127,7 +127,7 @@ impl Value {
     }
 
     pub fn new_instance_obj(typ: Value, fields: Vec<Value>) -> Value {
-        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields });
+        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields, methods: vec![] });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
@@ -210,6 +210,7 @@ impl Eq for Value {}
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
+    pub methods: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

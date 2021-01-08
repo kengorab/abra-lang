@@ -106,13 +106,12 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
     let trait_name_ident = format_ident!("{}MethodsAndFields", type_name);
 
     let mut field_idx: usize = 0;
-
-    let mut trait_field_methods_code = Vec::new();
-    let mut native_type_fields_and_methods_code = Vec::new();
+    let mut trait_fields_code = Vec::new();
+    let mut native_type_fields_code = Vec::new();
     let mut get_field_value_code = Vec::new();
     for (field_name, field_type, _) in fields {
         let field_method_name_ident = format_ident!("field_{}", field_name);
-        trait_field_methods_code.push(quote! {
+        trait_fields_code.push(quote! {
             fn #field_method_name_ident(obj: Box<Value>) -> Value;
         });
 
@@ -122,18 +121,20 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             #field_idx => Self::#field_method_name_ident(obj)
         });
 
-        native_type_fields_and_methods_code.push(quote! {
+        native_type_fields_code.push(quote! {
             #field_name => Some((#field_idx, #field_type_code))
         });
 
         field_idx += 1;
     }
 
-    let mut trait_method_methods_code = Vec::new();
+    let mut method_idx: usize = 0;
+    let mut trait_methods_code = Vec::new();
+    let mut native_type_methods_code = Vec::new();
     let mut get_method_value_code = Vec::new();
     for (method_name, method_type) in methods {
         let method_method_name_ident = format_ident!("method_{}", method_name.to_snake_case());
-        trait_method_methods_code.push(quote! {
+        trait_methods_code.push(quote! {
             fn #method_method_name_ident(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
         });
 
@@ -141,7 +142,7 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
 
         let has_return = **ret_type != Type::Unit;
         get_method_value_code.push(quote! {
-            #field_idx => Value::NativeFn(NativeFn {
+            #method_idx => Value::NativeFn(NativeFn {
                 name: #method_name,
                 receiver: Some(obj),
                 native_fn: Self::#method_method_name_ident,
@@ -150,14 +151,14 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
         });
 
         let method_type_code = generate_code_for_type(&method_type);
-        native_type_fields_and_methods_code.push(quote! {
-            #method_name => Some((#field_idx, #method_type_code))
+        native_type_methods_code.push(quote! {
+            #method_name => Some((#method_idx, #method_type_code))
         });
 
-        field_idx += 1;
+        method_idx += 1;
     }
 
-    field_idx = 0;
+    let mut static_field_idx: usize = 0;
     let mut trait_static_field_methods_code = Vec::new();
     let mut get_static_method_value_code = Vec::new();
     let mut native_type_static_fields_and_methods_code = Vec::new();
@@ -181,10 +182,10 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
 
         let static_method_type_code = generate_code_for_type(&typ);
         native_type_static_fields_and_methods_code.push(quote! {
-            #name => Some((#field_idx, #static_method_type_code))
+            #name => Some((#static_field_idx, #static_method_type_code))
         });
 
-        field_idx += 1;
+        static_field_idx += 1;
     }
 
     // For some reason I keep getting a warning on the for-loop above, which goes away when this line is here. Weird
@@ -219,15 +220,22 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
         pub struct #type_name_ident;
 
         pub trait #trait_name_ident {
-            #(#trait_field_methods_code)*
+            #(#trait_fields_code)*
             #(#trait_static_field_methods_code)*
-            #(#trait_method_methods_code)*
+            #(#trait_methods_code)*
         }
 
         impl NativeType for #type_name_ident {
-            fn get_field_or_method(name: &str) -> Option<(usize, Type)> {
+            fn get_field_type(name: &str) -> Option<(usize, Type)> {
                 match name {
-                    #(#native_type_fields_and_methods_code,)*
+                    #(#native_type_fields_code,)*
+                    _ => None
+                }
+            }
+
+            fn get_method_type(name: &str) -> Option<(usize, Type)> {
+                match name {
+                    #(#native_type_methods_code,)*
                     _ => None
                 }
             }
@@ -237,6 +245,12 @@ fn generate_code_for_typedef(typ: StructType) -> TokenStream {
             fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value {
                 match field_idx {
                     #(#get_field_value_code,)*
+                    _ => unreachable!()
+                }
+            }
+
+            fn get_method_value(obj: Box<Value>, method_idx: usize) -> Value {
+                match method_idx {
                     #(#get_method_value_code,)*
                     _ => unreachable!()
                 }

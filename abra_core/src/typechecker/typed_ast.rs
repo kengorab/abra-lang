@@ -291,6 +291,7 @@ pub struct TypedAccessorNode {
     pub field_name: String,
     pub field_idx: usize,
     pub is_opt_safe: bool,
+    pub is_method: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -601,7 +601,7 @@ impl VM {
                     for (_, mut method_value) in type_value.methods {
                         method_value.receiver = Some(instance_value.clone());
                         match *instance_value.borrow_mut() {
-                            Obj::InstanceObj(ref mut obj) => obj.fields.push(Value::Fn(method_value)),
+                            Obj::InstanceObj(ref mut obj) => obj.methods.push(Value::Fn(method_value)),
                             _ => unreachable!()
                         }
                     }
@@ -609,9 +609,12 @@ impl VM {
                     let initialized_inst = Value::Obj(instance_value);
                     self.push(initialized_inst);
                 }
-                Opcode::GetField => {
+                op @ Opcode::GetField |
+                op @ Opcode::GetMethod => {
+                    let is_method = op == Opcode::GetMethod;
+
                     let inst = self.pop_expect()?;
-                    let field_idx = self.read_byte_expect()?;
+                    let idx = self.read_byte_expect()?;
 
                     let value = match inst {
                         Value::Obj(ref obj) => {
@@ -621,17 +624,19 @@ impl VM {
                             let mut is_set = false;
                             let mut v = Value::Nil;
                             match &*obj.borrow() {
-                                Obj::InstanceObj(inst) => v = inst.fields[field_idx].clone(),
-                                Obj::EnumVariantObj(inst) => {
-                                    let num_methods = inst.methods.len();
-                                    v = if field_idx < num_methods {
-                                        inst.methods[field_idx].clone()
-                                    } else if let Some(values) = &inst.values {
-                                        values[field_idx - num_methods].clone()
+                                Obj::InstanceObj(inst) => {
+                                    v = if is_method {
+                                        inst.methods[idx].clone()
                                     } else {
-                                        // This _should_ be unreachable, but just in case
-                                        Value::Nil
+                                        inst.fields[idx].clone()
                                     }
+                                }
+                                Obj::EnumVariantObj(inst) => {
+                                    v = if is_method {
+                                        inst.methods[idx].clone()
+                                    } else if let Some(values) = &inst.values {
+                                        values[idx].clone()
+                                    } else { unreachable!() }
                                 }
                                 Obj::StringObj { .. } => is_str = true,
                                 Obj::ArrayObj { .. } => is_arr = true,
@@ -639,30 +644,31 @@ impl VM {
                                 Obj::SetObj(_) => is_set = true,
                                 _ => unreachable!()
                             };
+                            let inst = Box::new(inst);
                             if is_str {
-                                NativeString::get_field_value(Box::new(inst), field_idx)
+                                NativeString::get_field_or_method_value(is_method, inst, idx)
                             } else if is_arr {
-                                NativeArray::get_field_value(Box::new(inst), field_idx)
+                                NativeArray::get_field_or_method_value(is_method, inst, idx)
                             } else if is_map {
-                                NativeMap::get_field_value(Box::new(inst), field_idx)
+                                NativeMap::get_field_or_method_value(is_method, inst, idx)
                             } else if is_set {
-                                NativeSet::get_field_value(Box::new(inst), field_idx)
+                                NativeSet::get_field_or_method_value(is_method, inst, idx)
                             } else {
                                 v
                             }
                         }
-                        Value::Float(_) => NativeFloat::get_field_value(Box::new(inst), field_idx),
-                        Value::Int(_) => NativeInt::get_field_value(Box::new(inst), field_idx),
+                        Value::Float(_) => NativeFloat::get_field_or_method_value(is_method, Box::new(inst), idx),
+                        Value::Int(_) => NativeInt::get_field_or_method_value(is_method, Box::new(inst), idx),
                         Value::Type(TypeValue { static_fields, .. }) => {
-                            let (_, field_value) = static_fields[field_idx].clone();
+                            let (_, field_value) = static_fields[idx].clone();
                             field_value
                         }
                         Value::Enum(EnumValue { variants, static_fields, methods, .. }) => {
-                            if field_idx >= variants.len() {
-                                let (_, field_value) = static_fields[field_idx - variants.len()].clone();
+                            if is_method {
+                                let (_, field_value) = static_fields[idx].clone();
                                 field_value
                             } else {
-                                let (_, variant_value) = variants[field_idx].clone();
+                                let (_, variant_value) = variants[idx].clone();
                                 let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {
                                     for (_, mut method_value) in methods {
                                         method_value.receiver = Some(instance_value.clone());
@@ -887,12 +893,8 @@ impl VM {
                     let stack_slot = self.read_byte_expect()?;
                     self.load_local(stack_slot)?
                 }
-                Opcode::ULoad0 => {
-                    self.load_upvalue(0)?
-                },
-                Opcode::ULoad1 => {
-                    self.load_upvalue(1)?
-                },
+                Opcode::ULoad0 => self.load_upvalue(0)?,
+                Opcode::ULoad1 => self.load_upvalue(1)?,
                 Opcode::ULoad2 => self.load_upvalue(2)?,
                 Opcode::ULoad3 => self.load_upvalue(3)?,
                 Opcode::ULoad4 => self.load_upvalue(4)?,
