@@ -10,6 +10,7 @@ pub enum InvalidAssignmentTargetReason {
     IndexingMode,
     StringTarget,
     OptionalTarget,
+    MethodTarget
 }
 
 #[derive(Debug, PartialEq)]
@@ -353,6 +354,7 @@ impl DisplayError for TypecheckerError {
                         "Cannot assign by indexing into type {}, which is potentially None",
                         type_repr(typ.as_ref().unwrap())
                     ),
+                    InvalidAssignmentTargetReason::MethodTarget => "Methods cannot be reassigned to".to_string(),
                 };
                 format!(
                     "Cannot perform assignment: ({}:{})\n{}\n{}",

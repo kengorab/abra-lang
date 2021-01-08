@@ -1914,6 +1914,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             AstNode::Accessor(tok, node) => {
                 let typed_target = self.visit_accessor(tok.clone(), node)?;
+                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, .. }) = &typed_target {
+                    if *is_method {
+                        return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
+                    }
+                } else { unreachable!() }
                 let mut typed_expr = self.visit(*expr)?;
 
                 let expr_type = typed_expr.get_type();
@@ -5569,6 +5574,21 @@ mod tests {
             token: Token::Int(Position::new(3, 10), 123),
             expected: Type::String,
             actual: Type::Int,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          type Person {\n\
+            name: String\n\
+            func foo(self): String = \"hello\"
+          }\n\
+          val a = Person(name: \"abc\")\n\
+          a.foo = () => \"ahoy\"\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidAssignmentTarget {
+            token: Token::Assign(Position::new(6, 7)),
+            typ: None,
+            reason: InvalidAssignmentTargetReason::MethodTarget,
         };
         assert_eq!(expected, err);
     }
