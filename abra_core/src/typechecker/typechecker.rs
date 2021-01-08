@@ -2515,34 +2515,33 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             target_type: &Type,
             field_name: &String,
             token: &Token,
-        ) -> Result<(Option<(usize, Type)>, HashMap<String, Type>), TypecheckerError> {
+        ) -> Result<(Option<(/*idx:*/usize, /*typ:*/Type, /*is_method:*/bool)>, HashMap<String, Type>), TypecheckerError> {
             match zelf.resolve_ref_type(&target_type) {
                 Type::Struct(StructType { fields, methods, type_args, .. }) => {
                     let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
 
-                    let num_fields = fields.len();
                     let field_data = fields.iter().enumerate()
                         .find_map(|(idx, (name, typ, _))| {
-                            if field_name == name { Some((idx, typ.clone())) } else { None }
+                            if field_name == name { Some((idx, typ.clone(), false)) } else { None }
                         })
                         .or_else(|| {
                             methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                                if field_name == name { Some((idx + num_fields, typ.clone())) } else { None }
+                                if field_name == name { Some((idx, typ.clone(), true)) } else { None }
                             })
                         });
                     Ok((field_data, generics))
                 }
-                Type::String => Ok((NativeString::get_field_or_method(&field_name), HashMap::new())),
-                Type::Float => Ok((NativeFloat::get_field_or_method(&field_name), HashMap::new())),
-                Type::Int => Ok((NativeInt::get_field_or_method(&field_name), HashMap::new())),
+                Type::String => Ok((NativeString::get_field_or_method_type(&field_name), HashMap::new())),
+                Type::Float => Ok((NativeFloat::get_field_or_method_type(&field_name), HashMap::new())),
+                Type::Int => Ok((NativeInt::get_field_or_method_type(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeArray::get_field_or_method(&field_name);
+                    let field_data = NativeArray::get_field_or_method_type(&field_name);
                     Ok((field_data, generics))
                 }
                 Type::Set(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeSet::get_field_or_method(&field_name);
+                    let field_data = NativeSet::get_field_or_method_type(&field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {
@@ -2550,45 +2549,46 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         ("K".to_string(), *key_type.clone()),
                         ("V".to_string(), *value_type.clone()),
                     ].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeMap::get_field_or_method(&field_name);
+                    let field_data = NativeMap::get_field_or_method_type(&field_name);
                     Ok((field_data, generics))
                 }
                 Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()
                             .find(|(_, (name, _, _))| field_name == name)
-                            .map(|(idx, (_, typ, _))| (idx, typ.clone()));
+                            .map(|(idx, (_, typ, _))| (idx, typ.clone(), true)); // All static fields are methods at the moment
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Enum(enum_type) => {
                         let EnumType { name: enum_name, variants, static_fields, .. } = &enum_type;
-                        let num_variants = variants.len();
                         let field_data = variants.iter().enumerate()
                             .find(|(_, EnumVariantType { name, .. })| field_name == name)
                             .map(|(idx, variant_type)| {
                                 let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
-                                (idx, Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false))
+                                (idx, Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false), false)
                             })
                             .or_else(|| {
                                 static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
-                                    if field_name == name { Some((idx + num_variants, typ.clone())) } else { None }
+                                    if field_name == name { Some((idx, typ.clone(), true)) } else { None } // All static fields are methods at the moment
                                 })
                             });
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Array(_) => {
-                        let field_data = NativeArray::get_static_field_or_method(&field_name);
+                        let field_data = NativeArray::get_static_field_or_method(&field_name)
+                            .map(|(idx, typ)| (idx, typ, true)); // All static fields are methods at the moment
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Map(_, _) => {
-                        let field_data = NativeMap::get_static_field_or_method(&field_name);
+                        let field_data = NativeMap::get_static_field_or_method(&field_name)
+                            .map(|(idx, typ)| (idx, typ, true)); // All static fields are methods at the moment
                         Ok((field_data, HashMap::new()))
                     }
                     _ => unimplemented!()
                 }
                 Type::Enum(enum_type) => {
                     let field_data = enum_type.methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                        if field_name == name { Some((idx, typ.clone())) } else { None }
+                        if field_name == name { Some((idx, typ.clone(), true)) } else { None }
                     });
                     Ok((field_data, HashMap::new()))
                 }
@@ -2597,10 +2597,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         let variant_type = &enum_type.variants[variant_idx];
                         let field_data = if let Some(arg_types) = &variant_type.arg_types {
                             if is_constructed {
-                                let num_methods = enum_type.methods.len();
                                 arg_types.iter().enumerate()
                                     .find_map(|(idx, (arg_name, arg_type, _))| {
-                                        if field_name == arg_name { Some((idx + num_methods, arg_type.clone())) } else { None }
+                                        if field_name == arg_name { Some((idx, arg_type.clone(), false)) } else { None }
                                     })
                             } else {
                                 return Err(TypecheckerError::InvalidUninitializedEnumVariant { token: token.clone() });
@@ -2645,8 +2644,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
 
         let (field_data, mut generics) = get_field_data(&self, &target_type, &field_name, &token)?;
-        let (field_idx, mut typ) = match field_data {
-            Some((field_idx, typ)) => {
+        let (field_idx, mut typ, is_method) = match field_data {
+            Some((field_idx, typ, is_method)) => {
                 if let Some(ident_type_args) = &ident_type_args {
                     if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
                         if ident_type_args.len() != fn_type_args.len() {
@@ -2663,11 +2662,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }
                 }
-                (field_idx, Type::substitute_generics(&typ, &generics))
+                (field_idx, Type::substitute_generics(&typ, &generics), is_method)
             }
-            None => {
-                return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() });
-            }
+            None => return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() })
         };
         if is_opt {
             typ = Type::Option(Box::new(typ))
@@ -2679,7 +2676,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             } else { unreachable!() }
         } else { (token, is_opt_safe) };
 
-        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx, is_opt_safe }))
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx, is_opt_safe, is_method }))
     }
 
     fn visit_lambda(
@@ -4585,6 +4582,7 @@ mod tests {
                                             field_name: "name".to_string(),
                                             field_idx: 0,
                                             is_opt_safe: false,
+                                            is_method: false,
                                         },
                                     )
                                 ],
@@ -4624,8 +4622,9 @@ mod tests {
                                                             },
                                                         )),
                                                         field_name: "getName".to_string(),
-                                                        field_idx: 1,
+                                                        field_idx: 0,
                                                         is_opt_safe: false,
+                                                        is_method: true,
                                                     },
                                                 )
                                             ),
@@ -5132,6 +5131,7 @@ mod tests {
                                         field_idx: 0,
                                         field_name: "Red".to_string(),
                                         is_opt_safe: false,
+                                        is_method: false,
                                     },
                                 ))
                             ),
@@ -5456,6 +5456,7 @@ mod tests {
                         field_idx: 0,
                         field_name: "name".to_string(),
                         is_opt_safe: false,
+                        is_method: false,
                     },
                 )),
                 expr: Box::new(string_literal!((3, 10), "qwer")),
@@ -6671,6 +6672,7 @@ mod tests {
                 field_name: "name".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -6697,6 +6699,7 @@ mod tests {
                 field_name: "age".to_string(),
                 field_idx: 1,
                 is_opt_safe: false,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -6732,6 +6735,7 @@ mod tests {
                 field_name: "length".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -6746,6 +6750,7 @@ mod tests {
                 field_name: "length".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -6768,6 +6773,7 @@ mod tests {
                 field_name: "getName".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
+                is_method: true,
             },
         );
         assert_eq!(expected, typed_ast[1]);
@@ -6802,11 +6808,13 @@ mod tests {
                         field_name: "name".to_string(),
                         field_idx: 0,
                         is_opt_safe: false,
+                        is_method: false,
                     },
                 )),
                 field_name: "length".to_string(),
                 field_idx: 0,
                 is_opt_safe: true,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -6833,6 +6841,7 @@ mod tests {
                 field_name: "name".to_string(),
                 field_idx: 0,
                 is_opt_safe: false,
+                is_method: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);

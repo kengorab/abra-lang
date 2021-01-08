@@ -860,11 +860,11 @@ impl Compiler {
                         // number of elements in the destructuring pattern following the `*splat`. From the example above:
                         //   $temp_0[1:].splitAt(-2)
                         let split_at_method_idx = if is_string {
-                            NativeString::get_field_idx("splitAt")
+                            NativeString::get_method_idx("splitAt")
                         } else {
-                            NativeArray::get_field_idx("splitAt")
+                            NativeArray::get_method_idx("splitAt")
                         };
-                        self.write_opcode(Opcode::GetField, line);
+                        self.write_opcode(Opcode::GetMethod, line);
                         self.metadata.field_gets.push("splitAt".to_string());
                         self.write_byte(split_at_method_idx as u8, line);
                         self.write_opcode(Opcode::Invoke, line);
@@ -1670,7 +1670,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_byte(arity as u8, line);
             self.close_jump(if_end_jump_handle);
 
-            return Ok(())
+            return Ok(());
         }
 
         if has_return {
@@ -1762,7 +1762,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                         TypedAstNode::Accessor(tok, node) => {
                             let prev_cond_binding_name = format!("${}", layer_number - 1);
                             let target = Box::new(make_dummy_ident_node(&token, prev_cond_binding_name));
-                            TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_opt_safe: false })
+                            TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_method: node.is_method, is_opt_safe: false })
                         }
                         _ => unimplemented!()
                     }
@@ -1790,11 +1790,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             self.visit(if_node)?;
         } else {
-            let TypedAccessorNode { target, field_name, field_idx, .. } = node;
+            let TypedAccessorNode { target, field_name, field_idx, is_method, .. } = node;
             self.metadata.field_gets.push(field_name);
 
             self.visit(*target)?;
-            self.write_opcode(Opcode::GetField, line);
+            if is_method {
+                self.write_opcode(Opcode::GetMethod, line);
+            } else {
+                self.write_opcode(Opcode::GetField, line);
+            }
             self.write_byte(field_idx as u8, line);
         }
 
@@ -1816,12 +1820,12 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Nil, line);
         self.visit(*iterator)?;
         let enumerate_method_idx = match iterator_type {
-            Type::Array(_) => NativeArray::get_field_idx("enumerate"),
-            Type::Set(_) => NativeSet::get_field_idx("enumerate"),
-            Type::Map(_, _) => NativeMap::get_field_idx("enumerate"),
+            Type::Array(_) => NativeArray::get_method_idx("enumerate"),
+            Type::Set(_) => NativeSet::get_method_idx("enumerate"),
+            Type::Map(_, _) => NativeMap::get_method_idx("enumerate"),
             _ => unreachable!("Should have been caught during typechecking")
         };
-        self.write_opcode(Opcode::GetField, line);
+        self.write_opcode(Opcode::GetMethod, line);
         self.metadata.field_gets.push("enumerate".to_string());
         self.write_byte(enumerate_method_idx as u8, line);
         self.write_opcode(Opcode::Invoke, line);
@@ -3722,7 +3726,7 @@ mod tests {
                             code: vec![
                                 Opcode::Nil as u8,
                                 Opcode::LLoad1 as u8,
-                                Opcode::GetField as u8, 1,
+                                Opcode::GetMethod as u8, 0,
                                 Opcode::Invoke as u8, 0,
                                 Opcode::LStore0 as u8,
                                 Opcode::Pop as u8,
@@ -4057,12 +4061,12 @@ mod tests {
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::GLoad as u8,
-                Opcode::GetField as u8, 2, // .length
+                Opcode::GetMethod as u8, 1, // .enumerate
                 Opcode::Invoke as u8, 0,
                 Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
                 Opcode::LLoad1 as u8,
-                Opcode::GetField as u8, 0,
+                Opcode::GetField as u8, 0, // .length
                 Opcode::LT as u8,
                 Opcode::JumpIfF as u8, 0, 36,
 
@@ -4151,12 +4155,12 @@ mod tests {
                 Opcode::Nil as u8,
                 Opcode::Constant as u8, 0, 1,
                 Opcode::Invoke as u8, 3,
-                Opcode::GetField as u8, 2,
+                Opcode::GetMethod as u8, 1, // .enumerate
                 Opcode::Invoke as u8, 0,
                 Opcode::MarkLocal as u8, 1,
                 Opcode::LLoad0 as u8,
                 Opcode::LLoad1 as u8,
-                Opcode::GetField as u8, 0,
+                Opcode::GetField as u8, 0, // .length
                 Opcode::LT as u8,
                 Opcode::JumpIfF as u8, 1, 238,
                 Opcode::LLoad1 as u8,
