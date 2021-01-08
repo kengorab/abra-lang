@@ -1,8 +1,8 @@
 type Person {
   name: String
-  age: Int
 
-  //func toString(self): String = "16"
+  func toString(self): String = self.name
 }
-
-Person(name: "Ken", age: 29)
+val p1 = Person(name: "Ken")
+p1.toString = () => "Hello"
+println(p1)

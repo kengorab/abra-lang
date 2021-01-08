@@ -45,7 +45,7 @@ pub struct ClosureValue {
 pub struct TypeValue {
     pub name: String,
     pub fields: Vec<String>,
-    pub methods: Vec<(String, FnValue)>,
+    pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
 
@@ -53,7 +53,7 @@ pub struct TypeValue {
 pub struct EnumValue {
     pub name: String,
     pub variants: Vec<(String, EnumVariantObj)>,
-    pub methods: Vec<(String, FnValue)>,
+    pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
 
@@ -102,7 +102,7 @@ impl Value {
     }
 
     pub fn new_instance_obj(typ: Value, fields: Vec<Value>) -> Value {
-        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields });
+        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields, methods: vec![] });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
@@ -182,6 +182,7 @@ impl Eq for Value {}
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
+    pub methods: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
@@ -320,7 +321,10 @@ impl Hash for Obj {
                     v.hash(hasher);
                 }
             }
-            Obj::InstanceObj(i) => i.hash(hasher),
+            Obj::InstanceObj(i) => {
+                i.typ.hash(hasher);
+                i.fields.hash(hasher);
+            },
             Obj::EnumVariantObj(ev) => ev.hash(hasher),
         }
         hasher.finish();

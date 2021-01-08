@@ -240,6 +240,13 @@ mod test {
             new_string_obj("{ b: [3, 4], a: [1, 2] }"),
         ];
         assert!(expecteds.contains(&result.unwrap()));
+
+        let result = interpret("{ a: true, b: false }.toString()");
+        let expecteds = vec![
+            new_string_obj("{ a: true, b: false }"),
+            new_string_obj("{ b: false, a: true }"),
+        ];
+        assert!(expecteds.contains(&result.unwrap()));
     }
 
     #[test]

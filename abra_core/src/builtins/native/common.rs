@@ -5,15 +5,41 @@ use crate::builtins::native_fns::NativeFn;
 use itertools::Itertools;
 
 pub trait NativeType {
-    fn get_field_or_method(name: &str) -> Option<(usize, Type)>;
+    fn get_field_type(name: &str) -> Option<(usize, Type)>;
+    fn get_method_type(name: &str) -> Option<(usize, Type)>;
     fn get_static_field_or_method(name: &str) -> Option<(usize, Type)>;
     fn get_field_value(obj: Box<Value>, field_idx: usize) -> Value;
+    fn get_method_value(obj: Box<Value>, method_idx: usize) -> Value;
     fn get_static_field_values() -> Vec<(String, Value)>;
 
     fn get_field_idx(field_name: &str) -> usize {
-        match Self::get_field_or_method(field_name) {
+        match Self::get_field_type(field_name) {
             Some((idx, _)) => idx,
             None => unreachable!()
+        }
+    }
+
+    fn get_method_idx(field_name: &str) -> usize {
+        match Self::get_method_type(field_name) {
+            Some((idx, _)) => idx,
+            None => unreachable!()
+        }
+    }
+
+    fn get_field_or_method_type(field_name: &str) -> Option<(usize, Type, bool)> {
+        Self::get_field_type(field_name)
+            .map(|(idx, typ)| (idx, typ, false))
+            .or_else(|| {
+                Self::get_method_type(field_name)
+                    .map(|(idx, typ)| (idx, typ, true))
+            })
+    }
+
+    fn get_field_or_method_value(is_method: bool, inst: Box<Value>, idx: usize) -> Value {
+        if is_method {
+            Self::get_method_value(inst, idx)
+        } else {
+            Self::get_field_value(inst, idx)
         }
     }
 }
@@ -27,6 +53,26 @@ pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
             std::process::exit(1);
         }
     }
+}
+
+pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+    let str_val = if let Value::Obj(obj) = receiver.unwrap() {
+        match &*(obj.borrow()) {
+            Obj::InstanceObj(obj) => {
+                let (type_name, field_names) = match &*obj.typ {
+                    Value::Type(t) => (&t.name, &t.fields),
+                    _ => unreachable!()
+                };
+                let values = field_names.iter().zip(&obj.fields)
+                    .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
+                    .join(", ");
+                format!("{}({})", type_name, values)
+            }
+            _ => unreachable!()
+        }
+    } else { unreachable!() };
+
+    Some(Value::new_string_obj(str_val))
 }
 
 pub fn to_string(value: &Value, vm: &mut VM) -> String {
@@ -67,29 +113,21 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                     format!("{{ {} }}", fields)
                 }
                 Obj::InstanceObj(o) => {
-                    let (to_string_method, type_name, fields) = match &*o.typ {
+                    let tostring_method_idx = match &*o.typ {
                         Value::Type(t) => {
-                            let tostring_method_idx = t.methods.iter()
+                            t.methods.iter()
                                 .position(|(name, _)| name == "toString")
-                                .map(|idx| idx + t.fields.len());
-                            (tostring_method_idx, &t.name, &t.fields)
+                                .map(|idx| idx)
                         }
-                        _ => unreachable!()
+                        _ => None
                     };
-
-                    if let Some(method_idx) = to_string_method {
-                        let ret = invoke_fn(vm, &o.fields[method_idx], vec![]);
-                        if let Value::Obj(o) = ret {
-                            if let Obj::StringObj(s) = &*(o.borrow()) {
-                                s.clone()
-                            } else { unreachable!() }
+                    let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
+                    let ret = invoke_fn(vm, &o.methods[idx], vec![]);
+                    if let Value::Obj(o) = ret {
+                        if let Obj::StringObj(s) = &*(o.borrow()) {
+                            s.clone()
                         } else { unreachable!() }
-                    } else {
-                        let values = fields.iter().zip(&o.fields)
-                            .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
-                            .join(", ");
-                        format!("{}({})", type_name, values)
-                    }
+                    } else { dbg!(ret); unreachable!() }
                 }
                 Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
                     match values {
