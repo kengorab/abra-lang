@@ -564,7 +564,7 @@ impl Compiler {
         &mut self,
         token: Token,
         name: Option<Token>,
-        args: Vec<(Token, Type, Option<TypedAstNode>)>,
+        args: Vec<(Token, Type, bool, Option<TypedAstNode>)>,
         ret_type: Type,
         body: Vec<TypedAstNode>,
         scope_depth: usize,
@@ -596,7 +596,7 @@ impl Compiler {
 
         // Track function arguments in local bindings, also track # optional args.
         // Argument values will already be on the stack.
-        for (arg_token, _, default_value) in args.iter() {
+        for (arg_token, _, _is_vararg, default_value) in args.iter() {
             let ident = Token::get_ident_name(arg_token);
 
             // See comment above about not marking locals
@@ -1092,7 +1092,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let ret_type = if let Type::Fn(FnType { ret_type, .. }) = node.typ { *ret_type } else { unreachable!() };
         let body = node.typed_body.unwrap();
         let scope_depth = self.get_fn_depth();
-        let fn_value = self.compile_function_decl(token, None, node.args, ret_type, body, scope_depth)?;
+        let args = node.args.into_iter()
+            .map(|(tok, typ, default)| (tok, typ, false, default))
+            .collect();
+        let fn_value = self.compile_function_decl(token, None, args, ret_type, body, scope_depth)?;
 
         let has_upvalues = !&fn_value.upvalues.is_empty();
         self.add_and_write_constant(Value::Fn(fn_value), line);
@@ -1191,11 +1194,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
         if methods.iter().find(|(name, _)| name == "toString").is_none() {
-            let to_string_method = Value::NativeFn(NativeFn{
+            let to_string_method = Value::NativeFn(NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: default_to_string_method,
-                has_return: true
+                has_return: true,
             });
             compiled_methods.push(("toString".to_string(), to_string_method));
         }
@@ -1281,11 +1284,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
         if methods.iter().find(|(name, _)| name == "toString").is_none() {
-            let to_string_method = Value::NativeFn(NativeFn{
+            let to_string_method = Value::NativeFn(NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: default_to_string_method,
-                has_return: true
+                has_return: true,
             });
             compiled_methods.push(("toString".to_string(), to_string_method));
         }
@@ -1433,10 +1436,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             Type::Map(_, _) => Opcode::MapLoad,
             Type::Array(_) | Type::String => Opcode::ArrLoad,
             Type::Tuple(_) => Opcode::TupleLoad,
-            t @ _ => {
-                dbg!(t);
-                unreachable!()
-            }
+            _ => unreachable!()
         };
         self.visit(*target)?;
 
@@ -2053,7 +2053,7 @@ mod tests {
             name: "toString",
             receiver: None,
             native_fn: default_to_string_method,
-            has_return: false
+            has_return: false,
         }))
     }
 
@@ -2592,7 +2592,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string(), "age".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Unnamed"),
                 Value::Str("someBaby".to_string()),
@@ -3219,7 +3219,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Ken"),
                 Value::Str("p".to_string()),
@@ -4584,7 +4584,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Ken"),
                 Value::Str("ken".to_string()),

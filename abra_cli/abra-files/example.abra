@@ -1,8 +1,7 @@
-type Person {
-  name: String
+type Foo {
+  func abc(self, *a: Int[]) {
 
-  func toString(self): String = self.name
+  }
 }
-val p1 = Person(name: "Ken")
-p1.toString = () => "Hello"
-println(p1)
+
+val f: (Int[]) => Int = (*a) => 4

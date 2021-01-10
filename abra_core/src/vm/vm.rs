@@ -782,7 +782,7 @@ impl VM {
                             self.push(Value::Nil);
                             continue;
                         }
-                        v => {dbg!(v);unreachable!()}
+                        _ => unreachable!()
                     };
                     let value = match &*obj.borrow() {
                         Obj::StringObj(values) => {

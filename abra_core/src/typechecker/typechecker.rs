@@ -589,14 +589,16 @@ impl Typechecker {
 
     fn visit_fn_args(
         &mut self,
-        args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
+        args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
         allow_self_param: bool,
         allow_unknown_arg_types: bool,
-    ) -> Result<Vec<(Token, Type, Option<TypedAstNode>)>, TypecheckerError> {
-        let mut typed_args = Vec::<(Token, Type, Option<TypedAstNode>)>::with_capacity(args.len());
+        allow_varargs: bool,
+    ) -> Result<Vec<(Token, Type, bool, Option<TypedAstNode>)>, TypecheckerError> {
+        let num_args = args.len();
+        let mut typed_args = Vec::with_capacity(num_args);
         let mut arg_idents = HashMap::<String, Token>::new();
         let mut seen_optional_arg = false;
-        for (idx, (token, type_ident, default_value)) in args.into_iter().enumerate() {
+        for (idx, (token, type_ident, is_vararg, default_value)) in args.into_iter().enumerate() {
             let arg_name = Token::get_ident_name(&token).clone();
 
             if let Token::Self_(_) = &token {
@@ -613,7 +615,7 @@ impl Typechecker {
                 };
 
                 self.add_binding(&arg_name, &token, &arg_type, false);
-                typed_args.push((token.clone(), arg_type, None));
+                typed_args.push((token.clone(), arg_type, false, None));
 
                 continue;
             }
@@ -621,9 +623,17 @@ impl Typechecker {
             if let Some(arg_tok) = arg_idents.get(&arg_name) {
                 return Err(TypecheckerError::DuplicateBinding { orig_ident: arg_tok.clone(), ident: token.clone() });
             }
+            if is_vararg {
+                if !allow_varargs {
+                    return Err(TypecheckerError::InvalidVarargUsage(token));
+                }
+                if idx != num_args - 1 {
+                    return Err(TypecheckerError::InvalidVarargPosition(token));
+                }
+            }
             arg_idents.insert(arg_name, token.clone());
 
-            match type_ident {
+            let (arg_tok, arg_type, default_value) = match type_ident {
                 Some(type_ident) => {
                     let arg_type = self.type_from_type_ident(&type_ident)?;
                     match default_value {
@@ -633,7 +643,7 @@ impl Typechecker {
                             if self.are_types_equivalent(&mut default_value, &arg_type)? {
                                 let arg_name = Token::get_ident_name(&token);
                                 self.add_binding(&arg_name, &token, &arg_type, false);
-                                typed_args.push((token, arg_type, Some(default_value)));
+                                (token, arg_type, Some(default_value))
                             } else {
                                 return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
                             }
@@ -644,7 +654,7 @@ impl Typechecker {
                             }
                             let arg_name = Token::get_ident_name(&token);
                             self.add_binding(&arg_name, &token, &arg_type, false);
-                            typed_args.push((token, arg_type, None));
+                            (token, arg_type, None)
                         }
                     }
                 }
@@ -652,7 +662,7 @@ impl Typechecker {
                     match default_value {
                         None => {
                             if allow_unknown_arg_types {
-                                typed_args.push((token, Type::Unknown, None));
+                                (token, Type::Unknown, None)
                             } else { unreachable!() /* This should be caught during parsing */ }
                         }
                         Some(default_value) => {
@@ -661,11 +671,19 @@ impl Typechecker {
                             let arg_type = default_value.get_type();
                             let arg_name = Token::get_ident_name(&token);
                             self.add_binding(&arg_name, &token, &arg_type, false);
-                            typed_args.push((token, arg_type, Some(default_value)));
+                            (token, arg_type, Some(default_value))
                         }
                     }
                 }
+            };
+
+            if is_vararg {
+                match arg_type {
+                    Type::Array(_) => {}
+                    typ => return Err(TypecheckerError::VarargMismatch { token: arg_tok, typ })
+                }
             }
+            typed_args.push((arg_tok, arg_type, is_vararg, default_value));
         }
 
         Ok(typed_args)
@@ -808,7 +826,7 @@ impl Typechecker {
             .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
         let mut is_static = true;
         let mut arg_types = Vec::new();
-        for (ident, type_ident, default_value) in args {
+        for (ident, type_ident, _, default_value) in args {
             match ident {
                 Token::Self_(_) => is_static = false,
                 ident @ _ => {
@@ -959,7 +977,7 @@ impl Typechecker {
                 TypedAstNode::FunctionDecl(tok, TypedFunctionDeclNode { name, args, .. }) => {
                     let name = Token::get_ident_name(&name);
                     let is_static = args.iter()
-                        .find(|(ident, _, _)| if let Token::Self_(_) = ident { true } else { false })
+                        .find(|(ident, _, _, _)| if let Token::Self_(_) = ident { true } else { false })
                         .is_none();
                     if is_static {
                         let cur_typedef = match &self.cur_typedef {
@@ -1418,7 +1436,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
         self.scopes.push(scope);
 
-        let args = self.visit_fn_args(args, true, false)?;
+        let args = self.visit_fn_args(args, true, false, true)?;
 
         // Store a stub version of the function type, based on what we know so far. Recursive references
         // to the function within its body will be typed according to whatever is saved now. If we cannot
@@ -1430,7 +1448,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // Note also that we need to add this reference to the previous scope, so once we determine the
         // initial return type...
         let arg_types = args.iter()
-            .filter_map(|(ident, typ, default_value)| {
+            .filter_map(|(ident, typ, _, default_value)| {
                 match ident {
                     Token::Self_(_) => None,
                     ident @ _ => {
@@ -1445,7 +1463,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             // The valid type args for a return type are all of the generics available in scope, minus
             // the fn type args that aren't referenced in the arguments (and are thus unbound).
             let arg_type_args = args.iter()
-                .flat_map(|(_, t, _)| t.extract_unbound_generics().into_iter())
+                .flat_map(|(_, t, _, _)| t.extract_unbound_generics().into_iter())
                 .collect::<HashSet<_>>();
             let unresolvable_type_arg_names = type_args.iter()
                 .map(Token::get_ident_name)
@@ -1701,15 +1719,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     // we haven't finished typechecking variants yet, that will fail. This is a dirty hack
                     // to still reuse the `visit_fn_args` method while forcibly not checking args' default values.
                     let faked_args = args.clone().into_iter()
-                        .map(|(tok, ident, _)| (tok, ident, None))
+                        .map(|(tok, ident, is_vararg, _)| (tok, ident, is_vararg, None))
                         .collect();
-                    let faked_args = self.visit_fn_args(faked_args, false, false)?;
+                    let faked_args = self.visit_fn_args(faked_args, false, false, false)?;
                     EnumVariantType {
                         name: variant_name,
                         variant_idx,
                         arg_types: Some(
                             faked_args.iter().zip(args.iter())
-                                .map(|((arg_name, arg_type, _), (_, _, default_value_node))| {
+                                .map(|((arg_name, arg_type, _, _), (_, _, _, default_value_node))| {
                                     let arg_name = Token::get_ident_name(arg_name).clone();
                                     // Since we forced the default_value_node to be None in `faked_args`, we need to
                                     // obtain the `is_some` status from the original arg. This is gross
@@ -1741,7 +1759,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             let variant_node = match args {
                 None => EnumVariantKind::Basic,
                 Some(args) => {
-                    let args = self.visit_fn_args(args, false, false)?;
+                    let args = self.visit_fn_args(args, false, false, false)?
+                        .into_iter()
+                        .map(|(tok, typ, _, default)| (tok, typ, default))
+                        .collect();
                     EnumVariantKind::Constructor(args)
                 }
             };
@@ -1890,10 +1911,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             typ @ Type::Option(_) => {
                                 return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(typ), reason: InvalidAssignmentTargetReason::OptionalTarget });
                             }
-                            t @ _ => {
-                                dbg!(t);
-                                unreachable!()
-                            }
+                            _ => unreachable!()
                         }
                     }
                     _ => unreachable!()
@@ -2721,7 +2739,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             args
         } else {
-            self.visit_fn_args(args, false, true)?
+            self.visit_fn_args(args, false, true, false)?
+                .into_iter()
+                .map(|(tok, typ, _, default)| (tok, typ, default))
+                .collect()
         };
 
         let has_unknown = typed_args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
@@ -4006,7 +4027,7 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
-                args: vec![(ident_token!((1, 10), "a"), Type::Int, None)],
+                args: vec![(ident_token!((1, 10), "a"), Type::Int, false, None)],
                 ret_type: Type::Int,
                 body: vec![
                     TypedAstNode::Binary(
@@ -4106,7 +4127,7 @@ mod tests {
             _ => panic!("Node must be a FunctionDecl")
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Type::Int, None)
+            (ident_token!((1, 10), "a"), Type::Int, false, None)
         ];
         assert_eq!(&expected, args);
 
@@ -4116,9 +4137,9 @@ mod tests {
             _ => panic!("Node must be a FunctionDecl")
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Type::Int, None),
-            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool)), None),
-            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int)), None),
+            (ident_token!((1, 10), "a"), Type::Int, false, None),
+            (ident_token!((1, 18), "b"), Type::Option(Box::new(Type::Bool)), false, None),
+            (ident_token!((1, 28), "c"), Type::Array(Box::new(Type::Int)), false, None),
         ];
         assert_eq!(&expected, args);
 
@@ -4128,8 +4149,8 @@ mod tests {
             _ => panic!("Node must be a FunctionDecl")
         };
         let expected = vec![
-            (ident_token!((1, 10), "a"), Type::Int, Some(int_literal!((1, 19), 1))),
-            (ident_token!((1, 22), "b"), Type::Array(Box::new(Type::Int)), Some(
+            (ident_token!((1, 10), "a"), Type::Int, false, Some(int_literal!((1, 19), 1))),
+            (ident_token!((1, 22), "b"), Type::Array(Box::new(Type::Int)), false, Some(
                 TypedAstNode::Array(
                     Token::LBrack(Position::new(1, 26), false),
                     TypedArrayNode {
@@ -4180,6 +4201,35 @@ mod tests {
         let error = typecheck("func abc(self, a: Int, b = 1, c: Int) = 123").unwrap_err();
         let expected = TypecheckerError::InvalidSelfParam { token: Token::Self_(Position::new(1, 10)) };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_function_decl_varargs() -> TestResult {
+        let typed_ast = typecheck("func abc(*a: Int[]): Int = 123")?;
+        let args = match typed_ast.first().unwrap() {
+            TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
+            _ => panic!("Node must be a FunctionDecl")
+        };
+        let expected = vec![
+            (ident_token!((1, 11), "a"), Type::Array(Box::new(Type::Int)), true, None)
+        ];
+        assert_eq!(&expected, args);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_function_decl_varargs_errors() {
+        let err = typecheck("func abc(*a: Int): Int = 123").unwrap_err();
+        let expected = TypecheckerError::VarargMismatch {
+            token: ident_token!((1, 11), "a"),
+            typ: Type::Int,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("func abc(*a: Int[], b: Int): Int = 123").unwrap_err();
+        let expected = TypecheckerError::InvalidVarargPosition(ident_token!((1, 11), "a"));
+        assert_eq!(expected, err);
     }
 
     #[test]
@@ -4603,7 +4653,7 @@ mod tests {
                             TypedFunctionDeclNode {
                                 name: Token::Ident(Position::new(3, 6), "getName".to_string()),
                                 args: vec![
-                                    (Token::Self_(Position { line: 3, col: 14 }), person_type.clone(), None)
+                                    (Token::Self_(Position { line: 3, col: 14 }), person_type.clone(), false, None)
                                 ],
                                 ret_type: Type::String,
                                 body: vec![
@@ -4639,7 +4689,7 @@ mod tests {
                             TypedFunctionDeclNode {
                                 name: Token::Ident(Position::new(4, 6), "getName2".to_string()),
                                 args: vec![
-                                    (Token::Self_(Position { line: 4, col: 15 }), person_type.clone(), None)
+                                    (Token::Self_(Position { line: 4, col: 15 }), person_type.clone(), false, None)
                                 ],
                                 ret_type: Type::String,
                                 body: vec![
@@ -5228,6 +5278,12 @@ mod tests {
         let expected = TypecheckerError::InvalidSelfParam {
             token: Token::Self_(Position::new(1, 17))
         };
+        assert_eq!(expected, error);
+
+        let error = typecheck("\
+          enum Temp { Hot(*degs: Int[]), Cold }\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidVarargUsage(ident_token!((1, 18), "degs"));
         assert_eq!(expected, error);
     }
 
@@ -6958,7 +7014,7 @@ mod tests {
                 typed_body: None,
                 orig_node: Some((
                     LambdaNode {
-                        args: vec![(ident_token!((1, 1), "a"), None, None)],
+                        args: vec![(ident_token!((1, 1), "a"), None, false, None)],
                         body: vec![
                             AstNode::Literal(
                                 Token::String(Position::new(1, 6), "hello".to_string()),
@@ -6984,10 +7040,11 @@ mod tests {
                 orig_node: Some((
                     LambdaNode {
                         args: vec![
-                            (ident_token!((1, 2), "a"), None, None),
+                            (ident_token!((1, 2), "a"), None, false, None),
                             (
                                 ident_token!((1, 5), "b"),
                                 None,
+                                false,
                                 Some(AstNode::Literal(
                                     Token::String(Position::new(1, 9), "b".to_string()),
                                     AstLiteralNode::StringLiteral("b".to_string()),
@@ -7039,7 +7096,7 @@ mod tests {
             TypedFunctionDeclNode {
                 name: ident_token!((1, 6), "getAdder"),
                 args: vec![
-                    (ident_token!((1, 15), "x"), Type::Int, None)
+                    (ident_token!((1, 15), "x"), Type::Int, false, None)
                 ],
                 ret_type: Type::Fn(FnType { arg_types: vec![("y".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Int) }),
                 body: vec![
@@ -7085,6 +7142,10 @@ mod tests {
             token: ident_token!((1, 15), "toUpper"),
             target_type: Type::Int,
         };
+        assert_eq!(expected, error);
+
+        let error = typecheck("(*a: Int[]) => a.toUpper()").unwrap_err();
+        let expected = TypecheckerError::InvalidVarargUsage(ident_token!((1, 3), "a"));
         assert_eq!(expected, error);
     }
 

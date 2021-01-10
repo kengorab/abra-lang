@@ -122,12 +122,11 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                         _ => None
                     };
                     let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
-                    let ret = invoke_fn(vm, &o.methods[idx], vec![]);
-                    if let Value::Obj(o) = ret {
+                    if let Value::Obj(o) = invoke_fn(vm, &o.methods[idx], vec![]) {
                         if let Obj::StringObj(s) = &*(o.borrow()) {
                             s.clone()
                         } else { unreachable!() }
-                    } else { dbg!(ret); unreachable!() }
+                    } else { unreachable!() }
                 }
                 Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
                     match values {

@@ -10,7 +10,7 @@ pub enum InvalidAssignmentTargetReason {
     IndexingMode,
     StringTarget,
     OptionalTarget,
-    MethodTarget
+    MethodTarget,
 }
 
 #[derive(Debug, PartialEq)]
@@ -40,6 +40,8 @@ pub enum TypecheckerError {
     InvalidBreak(Token),
     InvalidReturn(Token),
     InvalidRequiredArgPosition(Token),
+    InvalidVarargPosition(Token),
+    InvalidVarargUsage(Token),
     InvalidIndexingTarget { token: Token, target_type: Type, index_mode: IndexingMode<AstNode> },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     InvalidTupleIndexingSelector { token: Token, types: Vec<Type>, non_constant: bool, index: i64 },
@@ -66,6 +68,7 @@ pub enum TypecheckerError {
     UnreachableCode { token: Token },
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
+    VarargMismatch { token: Token, typ: Type },
 }
 
 impl TypecheckerError {
@@ -96,6 +99,8 @@ impl TypecheckerError {
             TypecheckerError::InvalidBreak(token) => token,
             TypecheckerError::InvalidReturn(token) => token,
             TypecheckerError::InvalidRequiredArgPosition(token) => token,
+            TypecheckerError::InvalidVarargPosition(token) => token,
+            TypecheckerError::InvalidVarargUsage(token) => token,
             TypecheckerError::InvalidIndexingTarget { token, .. } => token,
             TypecheckerError::InvalidIndexingSelector { token, .. } => token,
             TypecheckerError::InvalidTupleIndexingSelector { token, .. } => token,
@@ -122,6 +127,7 @@ impl TypecheckerError {
             TypecheckerError::UnreachableCode { token } => token,
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
             TypecheckerError::InvalidProtocolMethod { token, .. } => token,
+            TypecheckerError::VarargMismatch { token, .. } => token,
         }
     }
 }
@@ -457,6 +463,20 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
+            TypecheckerError::InvalidVarargPosition(_token) => {
+                format!(
+                    "Invalid position for vararg parameter: ({}:{})\n{}\n\
+                    Vararg parameters must be the last in the parameter list",
+                    pos.line, pos.col, cursor_line
+                )
+            }
+            TypecheckerError::InvalidVarargUsage(_token) => {
+                format!(
+                    "Invalid usage of vararg parameter: ({}:{})\n{}\n\
+                    Vararg parameters cannot be used in this context",
+                    pos.line, pos.col, cursor_line
+                )
+            }
             TypecheckerError::InvalidIndexingTarget { target_type, index_mode, .. } => {
                 let context = if let IndexingMode::Range(_, _) = index_mode { " as a range" } else { "" };
                 format!(
@@ -701,6 +721,13 @@ impl DisplayError for TypecheckerError {
                     Expected method {} to be of type {}, but instead got {}",
                     pos.line, pos.col, cursor_line,
                     fn_name, type_repr(expected), type_repr(actual)
+                )
+            }
+            TypecheckerError::VarargMismatch { typ, .. } => {
+                format!(
+                    "Invalid type for vararg parameter: ({}:{})\n{}\n\
+                    Vararg parameters must be an Array type, but got {}",
+                    pos.line, pos.col, cursor_line, type_repr(typ)
                 )
             }
         }
