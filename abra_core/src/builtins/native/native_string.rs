@@ -2,6 +2,7 @@ use crate::builtins::gen_native_types::NativeStringMethodsAndFields;
 use crate::vm::value::{Value, Obj};
 use crate::vm::vm::VM;
 use crate::builtins::native::common::to_string;
+use itertools::Itertools;
 
 macro_rules! obj_as_string {
     ($obj:expr) => {
@@ -204,6 +205,27 @@ impl NativeStringMethodsAndFields for crate::builtins::gen_native_types::NativeS
             Ok(f) => Some(Value::Float(f)),
             Err(_) => Some(Value::Nil)
         }
+    }
+
+    fn method_concat(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+        let mut args = args.into_iter();
+        let first = args.next().expect("String::concat requires 2 arguments");
+        let first = to_string(&first, vm);
+
+        let others = args.next().expect("String::concat requires 2 arguments");
+        let others = if let Value::Obj(obj) = others {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(vals) => {
+                    vals.iter().map(|v| to_string(v, vm)).collect()
+                }
+                _ => unreachable!()
+            }
+        } else { vec![] };
+
+        let receiver = obj_as_string!(receiver);
+
+        let res = vec![receiver, first].into_iter().chain(others).join("");
+        Some(Value::new_string_obj(res))
     }
 }
 
@@ -464,6 +486,21 @@ mod test {
 
         let result = interpret("\"-123456\".parseFloat()");
         let expected = Value::Float(-123456.0);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_concat() {
+        let result = interpret("\"hello\".concat(\"!\")");
+        let expected = new_string_obj("hello!");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"hello\".concat(\" \", \"world\", \"!\")");
+        let expected = new_string_obj("hello world!");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".concat(true, [1, 2, 3], {a:1})");
+        let expected = new_string_obj("asdftrue[1, 2, 3]{ a: 1 }");
         assert_eq!(Some(expected), result);
     }
 }

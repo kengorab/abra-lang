@@ -831,11 +831,14 @@ impl Typechecker {
         let ret_type = ret_type.as_ref()
             .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
         let mut is_static = true;
+        let mut is_variadic = false;
         let mut arg_types = Vec::new();
-        for (ident, type_ident, _, default_value) in args {
+        for (ident, type_ident, is_vararg, default_value) in args {
             match ident {
                 Token::Self_(_) => is_static = false,
                 ident @ _ => {
+                    is_variadic = is_variadic || *is_vararg;
+
                     let arg_type = match type_ident {
                         None => match default_value {
                             None => unreachable!(), // This should be caught during parsing
@@ -849,12 +852,12 @@ impl Typechecker {
                     // Insert arg as binding in throwaway scope, to handle references in other variables' default values
                     let arg_name = Token::get_ident_name(ident);
                     self.add_binding(&arg_name, &ident, &arg_type, false);
-                    arg_types.push((arg_name, arg_type, default_value.is_some()));
+                    arg_types.push((arg_name, arg_type, *is_vararg || default_value.is_some()));
                 }
             }
         }
 
-        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()), is_variadic: false });
+        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()), is_variadic });
         let ret = if is_static {
             // TODO: Handle static methods referencing type's type_args
             (true, name.clone(), fn_type)

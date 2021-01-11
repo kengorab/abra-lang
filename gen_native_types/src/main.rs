@@ -44,6 +44,7 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
         Type::Float => "Float".to_string(),
         Type::String => "String".to_string(),
         Type::Unit => "Unit".to_string(),
+        Type::Any => "Any".to_string(),
         Type::Reference(ref_name, _) => ref_name.replace("Native", ""),
         Type::Array(inner_type) => {
             let inner_type_code = generate_code_for_type(inner_type);

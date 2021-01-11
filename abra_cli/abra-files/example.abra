@@ -1,6 +1,5 @@
-func abc(a: Int, *b: Int[]) {
-  println()
-  println(a, b)
-}
+println("abc".concat(true, [1, 2, 3], { a: 1 }))
 
-abc(a: 1, b: [3])
+val arr = [1, 2, 3]
+arr.push(4, 5, "6")
+arr
