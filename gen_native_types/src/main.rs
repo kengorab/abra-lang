@@ -79,7 +79,7 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
               Type::Tuple(vec![#(#types),*])
             };
         }
-        Type::Fn(FnType { type_args, arg_types, ret_type }) => {
+        Type::Fn(FnType { type_args, arg_types, ret_type, is_variadic }) => {
             let arg_types_code = arg_types.into_iter().map(|(name, typ, is_optional)| {
                 let arg_type_code = generate_code_for_type(typ);
                 quote! { (#name.to_string(), #arg_type_code, #is_optional)}
@@ -89,7 +89,8 @@ fn generate_code_for_type(typ: &Type) -> TokenStream {
                 Type::Fn(FnType {
                     type_args: vec![#(#type_args.to_string()),*],
                     arg_types: vec![#(#arg_types_code),*],
-                    ret_type: Box::new(#ret_type_code)
+                    ret_type: Box::new(#ret_type_code),
+                    is_variadic: #is_variadic
                 })
             };
         }

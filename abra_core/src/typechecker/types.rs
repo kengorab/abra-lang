@@ -74,6 +74,7 @@ pub struct FnType {
     pub arg_types: Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
     pub type_args: Vec<String>,
     pub ret_type: Box<Type>,
+    pub is_variadic: bool,
 }
 
 impl PartialEq for FnType {
@@ -387,14 +388,14 @@ impl Type {
                 Type::Map(key_type, value_type)
             }
             Type::Option(inner_type) => Type::Option(Box::new(Type::substitute_generics(inner_type, available_generics))),
-            Type::Fn(FnType { arg_types, type_args, ret_type }) => {
+            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic }) => {
                 let arg_types = arg_types.iter()
                     .map(|(name, typ, is_optional)| {
                         (name.clone(), Type::substitute_generics(typ, available_generics), is_optional.clone())
                     })
                     .collect();
                 let ret_type = Type::substitute_generics(ret_type, available_generics);
-                Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type) })
+                Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type), is_variadic: is_variadic.clone() })
             }
             Type::Reference(name, type_args) => {
                 let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();
@@ -561,7 +562,7 @@ impl Type {
                     .collect::<Result<Vec<_>, _>>();
                 let arg_types = arg_types?.into_iter().map(|arg_type| ("_".to_string(), arg_type, false)).collect();
                 let ret_type = Type::from_type_ident(ret, types)?;
-                Ok(Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(ret_type) }))
+                Ok(Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(ret_type), is_variadic: false }))
             }
             // TODO: Choice type ident, eg. Int | Float
         }
@@ -640,6 +641,7 @@ mod test {
                 ("_".to_string(), Union(vec![Int, Float]), false)
             ],
             ret_type: Box::new(Union(vec![Int, Float])),
+            is_variadic: false
         });
         assert_eq!(expected, parse_type_ident("(Int | Float) => Int | Float"));
 
@@ -786,8 +788,8 @@ mod test {
         assert_eq!(Some(expected), result);
 
         // Given: (T) => Int & (String) => Int; Expect: { T: String }
-        let t = Fn(FnType { arg_types: vec![("_".to_string(), String, false)], type_args: vec![], ret_type: Box::new(Int) });
-        let target = Fn(FnType { arg_types: vec![("_".to_string(), Generic("T".to_string()), false)], type_args: vec![], ret_type: Box::new(Int) });
+        let t = Fn(FnType { arg_types: vec![("_".to_string(), String, false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false });
+        let target = Fn(FnType { arg_types: vec![("_".to_string(), Generic("T".to_string()), false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), String)];
         assert_eq!(Some(expected), result);
@@ -797,11 +799,13 @@ mod test {
             arg_types: vec![("_".to_string(), Array(Box::new(Array(Box::new(Int)))), false), ("_".to_string(), Int, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Array(Box::new(Generic("T".to_string()))), false), ("_".to_string(), Int, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), Array(Box::new(Int)))];
@@ -812,11 +816,13 @@ mod test {
             arg_types: vec![("_".to_string(), Array(Box::new(Int)), false), ("_".to_string(), String, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false), ("_".to_string(), Generic("U".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![
@@ -830,11 +836,13 @@ mod test {
             arg_types: vec![("_".to_string(), Int, false), ("_".to_string(), String, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false), ("_".to_string(), Generic("T".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), Int)];
@@ -845,11 +853,13 @@ mod test {
             arg_types: vec![("_".to_string(), Int, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
+            is_variadic: false
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Generic("U".to_string())),
+            is_variadic: false
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![
@@ -865,11 +875,13 @@ mod test {
                     arg_types: vec![("_".to_string(), Int, false)],
                     type_args: vec![],
                     ret_type: Box::new(String),
+                    is_variadic: false
                 }),
                  false
                 )],
             type_args: vec![],
             ret_type: Box::new(String),
+            is_variadic: false
         });
         let target = Fn(FnType {
             arg_types: vec![
@@ -878,11 +890,13 @@ mod test {
                      arg_types: vec![("_".to_string(), Generic("T".to_string()), false)],
                      type_args: vec![],
                      ret_type: Box::new(Generic("U".to_string())),
+                     is_variadic: false
                  }),
                  false)
             ],
             type_args: vec![],
             ret_type: Box::new(Generic("U".to_string())),
+            is_variadic: false
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![
