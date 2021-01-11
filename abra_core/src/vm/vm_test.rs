@@ -1131,6 +1131,31 @@ mod tests {
     }
 
     #[test]
+    fn interpret_invocation_varargs() {
+        let input = r#"
+          func abc(a: Int, *b: Int[]): String = [a].concat(b).join(",")
+          [abc(1), abc(1, 2, 3, 4)]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("1"),
+            new_string_obj("1,2,3,4"),
+        ]);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func abc(a: Int, *b = [6, 24]): String = [a].concat(b).join(",")
+          [abc(1), abc(1, 2, 3, 4)]
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("1,6,24"),
+            new_string_obj("1,2,3,4"),
+        ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_while_loop() {
         let input = "\
           var a = 0\n\

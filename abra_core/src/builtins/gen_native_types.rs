@@ -32,6 +32,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "floor" => Some((
@@ -40,6 +41,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Int),
+                    is_variadic: false,
                 }),
             )),
             "ceil" => Some((
@@ -48,6 +50,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Int),
+                    is_variadic: false,
                 }),
             )),
             "round" => Some((
@@ -56,6 +59,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Int),
+                    is_variadic: false,
                 }),
             )),
             "withPrecision" => Some((
@@ -64,6 +68,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![("precision".to_string(), Type::Int, false)],
                     ret_type: Box::new(Type::Float),
+                    is_variadic: false,
                 }),
             )),
             "abs" => Some((
@@ -72,6 +77,7 @@ impl NativeType for NativeFloat {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Float),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -153,6 +159,7 @@ impl NativeType for NativeInt {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "abs" => Some((
@@ -161,6 +168,7 @@ impl NativeType for NativeInt {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Int),
+                    is_variadic: false,
                 }),
             )),
             "asBase" => Some((
@@ -169,6 +177,7 @@ impl NativeType for NativeInt {
                     type_args: vec![],
                     arg_types: vec![("base".to_string(), Type::Int, false)],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "isEven" => Some((
@@ -177,6 +186,7 @@ impl NativeType for NativeInt {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "isOdd" => Some((
@@ -185,6 +195,7 @@ impl NativeType for NativeInt {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "isBetween" => Some((
@@ -197,6 +208,7 @@ impl NativeType for NativeInt {
                         ("inclusive".to_string(), Type::Bool, true),
                     ],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -287,6 +299,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "toLower" => Some((
@@ -295,6 +308,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "toUpper" => Some((
@@ -303,6 +317,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "padLeft" => Some((
@@ -314,6 +329,7 @@ impl NativeType for NativeString {
                         ("padding".to_string(), Type::String, true),
                     ],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "trim" => Some((
@@ -322,6 +338,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "trimStart" => Some((
@@ -330,6 +347,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![("pattern".to_string(), Type::String, true)],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "trimEnd" => Some((
@@ -338,6 +356,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![("pattern".to_string(), Type::String, true)],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "split" => Some((
@@ -346,6 +365,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![("splitter".to_string(), Type::String, false)],
                     ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                    is_variadic: false,
                 }),
             )),
             "splitAt" => Some((
@@ -354,6 +374,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![("index".to_string(), Type::Int, false)],
                     ret_type: Box::new(Type::Tuple(vec![Type::String, Type::String])),
+                    is_variadic: false,
                 }),
             )),
             "lines" => Some((
@@ -362,6 +383,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                    is_variadic: false,
                 }),
             )),
             "chars" => Some((
@@ -370,6 +392,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Array(Box::new(Type::String))),
+                    is_variadic: false,
                 }),
             )),
             "parseInt" => Some((
@@ -378,6 +401,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![("radix".to_string(), Type::Int, true)],
                     ret_type: Box::new(Type::Option(Box::new(Type::Int))),
+                    is_variadic: false,
                 }),
             )),
             "parseFloat" => Some((
@@ -386,6 +410,7 @@ impl NativeType for NativeString {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Option(Box::new(Type::Float))),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -545,6 +570,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "isEmpty" => Some((
@@ -553,6 +579,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "enumerate" => Some((
@@ -564,6 +591,7 @@ impl NativeType for NativeArray {
                         Type::Generic("T".to_string()),
                         Type::Int,
                     ])))),
+                    is_variadic: false,
                 }),
             )),
             "push" => Some((
@@ -572,6 +600,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
                     ret_type: Box::new(Type::Unit),
+                    is_variadic: false,
                 }),
             )),
             "pop" => Some((
@@ -580,6 +609,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "popFront" => Some((
@@ -588,6 +618,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "splitAt" => Some((
@@ -599,6 +630,7 @@ impl NativeType for NativeArray {
                         Type::Array(Box::new(Type::Generic("T".to_string()))),
                         Type::Array(Box::new(Type::Generic("T".to_string()))),
                     ])),
+                    is_variadic: false,
                 }),
             )),
             "concat" => Some((
@@ -611,6 +643,7 @@ impl NativeType for NativeArray {
                         false,
                     )],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "map" => Some((
@@ -627,10 +660,12 @@ impl NativeType for NativeArray {
                                 false,
                             )],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("U".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "filter" => Some((
@@ -647,10 +682,12 @@ impl NativeType for NativeArray {
                                 false,
                             )],
                             ret_type: Box::new(Type::Bool),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "reduce" => Some((
@@ -672,11 +709,13 @@ impl NativeType for NativeArray {
                                     ("_".to_string(), Type::Generic("T".to_string()), false),
                                 ],
                                 ret_type: Box::new(Type::Generic("U".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Generic("U".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "join" => Some((
@@ -685,6 +724,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![("joiner".to_string(), Type::String, true)],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "contains" => Some((
@@ -693,6 +733,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "find" => Some((
@@ -712,10 +753,12 @@ impl NativeType for NativeArray {
                                 Type::Bool,
                                 Type::Option(Box::new(Type::Generic("U".to_string()))),
                             ])),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Option(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "findIndex" => Some((
@@ -735,6 +778,7 @@ impl NativeType for NativeArray {
                                 Type::Bool,
                                 Type::Option(Box::new(Type::Generic("U".to_string()))),
                             ])),
+                            is_variadic: false,
                         }),
                         false,
                     )],
@@ -742,6 +786,7 @@ impl NativeType for NativeArray {
                         Type::Generic("T".to_string()),
                         Type::Int,
                     ])))),
+                    is_variadic: false,
                 }),
             )),
             "any" => Some((
@@ -761,10 +806,12 @@ impl NativeType for NativeArray {
                                 Type::Bool,
                                 Type::Option(Box::new(Type::Generic("U".to_string()))),
                             ])),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "all" => Some((
@@ -784,10 +831,12 @@ impl NativeType for NativeArray {
                                 Type::Bool,
                                 Type::Option(Box::new(Type::Generic("U".to_string()))),
                             ])),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "none" => Some((
@@ -807,10 +856,12 @@ impl NativeType for NativeArray {
                                 Type::Bool,
                                 Type::Option(Box::new(Type::Generic("U".to_string()))),
                             ])),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "sortBy" => Some((
@@ -828,12 +879,14 @@ impl NativeType for NativeArray {
                                     false,
                                 )],
                                 ret_type: Box::new(Type::Int),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                         ("reverse".to_string(), Type::Bool, true),
                     ],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "dedupe" => Some((
@@ -842,6 +895,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "dedupeBy" => Some((
@@ -858,10 +912,12 @@ impl NativeType for NativeArray {
                                 false,
                             )],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "partition" => Some((
@@ -878,6 +934,7 @@ impl NativeType for NativeArray {
                                 false,
                             )],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
@@ -885,6 +942,7 @@ impl NativeType for NativeArray {
                         Box::new(Type::Generic("U".to_string())),
                         Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
                     )),
+                    is_variadic: false,
                 }),
             )),
             "tally" => Some((
@@ -896,6 +954,7 @@ impl NativeType for NativeArray {
                         Box::new(Type::Generic("T".to_string())),
                         Box::new(Type::Int),
                     )),
+                    is_variadic: false,
                 }),
             )),
             "tallyBy" => Some((
@@ -912,6 +971,7 @@ impl NativeType for NativeArray {
                                 false,
                             )],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
@@ -919,6 +979,7 @@ impl NativeType for NativeArray {
                         Box::new(Type::Generic("U".to_string())),
                         Box::new(Type::Int),
                     )),
+                    is_variadic: false,
                 }),
             )),
             "asSet" => Some((
@@ -927,6 +988,7 @@ impl NativeType for NativeArray {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "getOrDefault" => Some((
@@ -938,6 +1000,7 @@ impl NativeType for NativeArray {
                         ("default".to_string(), Type::Generic("T".to_string()), false),
                     ],
                     ret_type: Box::new(Type::Generic("T".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "getOrElse" => Some((
@@ -952,11 +1015,13 @@ impl NativeType for NativeArray {
                                 type_args: vec![],
                                 arg_types: vec![],
                                 ret_type: Box::new(Type::Generic("T".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Generic("T".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "update" => Some((
@@ -975,11 +1040,13 @@ impl NativeType for NativeArray {
                                     false,
                                 )],
                                 ret_type: Box::new(Type::Generic("T".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Unit),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -996,6 +1063,7 @@ impl NativeType for NativeArray {
                         ("value".to_string(), Type::Generic("T1".to_string()), false),
                     ],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T1".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "fillBy" => Some((
@@ -1010,11 +1078,13 @@ impl NativeType for NativeArray {
                                 type_args: vec![],
                                 arg_types: vec![("_".to_string(), Type::Int, false)],
                                 ret_type: Box::new(Type::Generic("T1".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T1".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -1262,6 +1332,7 @@ impl NativeType for NativeMap {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "isEmpty" => Some((
@@ -1270,6 +1341,7 @@ impl NativeType for NativeMap {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "enumerate" => Some((
@@ -1281,6 +1353,7 @@ impl NativeType for NativeMap {
                         Type::Generic("K".to_string()),
                         Type::Generic("V".to_string()),
                     ])))),
+                    is_variadic: false,
                 }),
             )),
             "keys" => Some((
@@ -1289,6 +1362,7 @@ impl NativeType for NativeMap {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("K".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "values" => Some((
@@ -1297,6 +1371,7 @@ impl NativeType for NativeMap {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("V".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "entries" => Some((
@@ -1308,6 +1383,7 @@ impl NativeType for NativeMap {
                         Type::Generic("K".to_string()),
                         Type::Generic("V".to_string()),
                     ])))),
+                    is_variadic: false,
                 }),
             )),
             "containsKey" => Some((
@@ -1316,6 +1392,7 @@ impl NativeType for NativeMap {
                     type_args: vec![],
                     arg_types: vec![("key".to_string(), Type::Generic("K".to_string()), false)],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "mapValues" => Some((
@@ -1331,6 +1408,7 @@ impl NativeType for NativeMap {
                                 ("_".to_string(), Type::Generic("V".to_string()), false),
                             ],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
@@ -1338,6 +1416,7 @@ impl NativeType for NativeMap {
                         Box::new(Type::Generic("K".to_string())),
                         Box::new(Type::Generic("U".to_string())),
                     )),
+                    is_variadic: false,
                 }),
             )),
             "getOrDefault" => Some((
@@ -1349,6 +1428,7 @@ impl NativeType for NativeMap {
                         ("default".to_string(), Type::Generic("V".to_string()), false),
                     ],
                     ret_type: Box::new(Type::Generic("V".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "getOrElse" => Some((
@@ -1363,11 +1443,13 @@ impl NativeType for NativeMap {
                                 type_args: vec![],
                                 arg_types: vec![],
                                 ret_type: Box::new(Type::Generic("V".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Generic("V".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "update" => Some((
@@ -1386,11 +1468,13 @@ impl NativeType for NativeMap {
                                     false,
                                 )],
                                 ret_type: Box::new(Type::Generic("V".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Unit),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -1414,6 +1498,7 @@ impl NativeType for NativeMap {
                         Box::new(Type::Generic("T1".to_string())),
                         Box::new(Type::Generic("T2".to_string())),
                     )),
+                    is_variadic: false,
                 }),
             )),
             _ => None,
@@ -1541,6 +1626,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::String),
+                    is_variadic: false,
                 }),
             )),
             "isEmpty" => Some((
@@ -1549,6 +1635,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "enumerate" => Some((
@@ -1560,6 +1647,7 @@ impl NativeType for NativeSet {
                         Type::Generic("T".to_string()),
                         Type::Int,
                     ])))),
+                    is_variadic: false,
                 }),
             )),
             "contains" => Some((
@@ -1568,6 +1656,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
                     ret_type: Box::new(Type::Bool),
+                    is_variadic: false,
                 }),
             )),
             "insert" => Some((
@@ -1576,6 +1665,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
                     ret_type: Box::new(Type::Unit),
+                    is_variadic: false,
                 }),
             )),
             "remove" => Some((
@@ -1584,6 +1674,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![("value".to_string(), Type::Generic("T".to_string()), false)],
                     ret_type: Box::new(Type::Unit),
+                    is_variadic: false,
                 }),
             )),
             "map" => Some((
@@ -1600,10 +1691,12 @@ impl NativeType for NativeSet {
                                 false,
                             )],
                             ret_type: Box::new(Type::Generic("U".to_string())),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("U".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "filter" => Some((
@@ -1620,10 +1713,12 @@ impl NativeType for NativeSet {
                                 false,
                             )],
                             ret_type: Box::new(Type::Bool),
+                            is_variadic: false,
                         }),
                         false,
                     )],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "reduce" => Some((
@@ -1645,11 +1740,13 @@ impl NativeType for NativeSet {
                                     ("_".to_string(), Type::Generic("T".to_string()), false),
                                 ],
                                 ret_type: Box::new(Type::Generic("U".to_string())),
+                                is_variadic: false,
                             }),
                             false,
                         ),
                     ],
                     ret_type: Box::new(Type::Generic("U".to_string())),
+                    is_variadic: false,
                 }),
             )),
             "asArray" => Some((
@@ -1658,6 +1755,7 @@ impl NativeType for NativeSet {
                     type_args: vec![],
                     arg_types: vec![],
                     ret_type: Box::new(Type::Array(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "union" => Some((
@@ -1670,6 +1768,7 @@ impl NativeType for NativeSet {
                         false,
                     )],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "difference" => Some((
@@ -1682,6 +1781,7 @@ impl NativeType for NativeSet {
                         false,
                     )],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             "intersection" => Some((
@@ -1694,6 +1794,7 @@ impl NativeType for NativeSet {
                         false,
                     )],
                     ret_type: Box::new(Type::Set(Box::new(Type::Generic("T".to_string())))),
+                    is_variadic: false,
                 }),
             )),
             _ => None,

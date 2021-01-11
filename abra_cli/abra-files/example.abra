@@ -1,7 +1,6 @@
-type Foo {
-  func abc(self, *a: Int[]) {
-
-  }
+func abc(a: Int, *b: Int[]) {
+  println(a)
+  println(b)
 }
 
-val f: (Int[]) => Int = (*a) => 4
+abc(a: 1, b: [3])
