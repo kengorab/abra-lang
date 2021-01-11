@@ -46,7 +46,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let contents = read_file(&opts.file_name)?;
 
     let ctx = VMContext {
-        print: |input| print!("{}\n", input)
+        print: |input| print!("{}", input)
     };
 
     let module = match compile(&contents) {

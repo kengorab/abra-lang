@@ -2322,7 +2322,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             let remaining_args = args_iter.map(|a| a.1).collect_vec();
                             if remaining_args.is_empty() {
                                 typed_args.push(None); // Push None so default value will be used
-                                break
+                                break;
                             }
 
                             let arg = AstNode::Array(
@@ -2331,7 +2331,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             );
                             let typed_arg = typecheck_arg(self, arg, &expected_arg_type, &mut generics)?;
                             typed_args.push(Some(typed_arg));
-                            break
+                            break;
                         } else if let Some((_, arg)) = args_iter.next() {
                             let typed_arg = typecheck_arg(self, arg, &expected_arg_type, &mut generics)?;
                             typed_args.push(Some(typed_arg));
@@ -6168,9 +6168,17 @@ mod tests {
                                 Token::LParen(Position::new(2, 18), false),
                                 TypedInvocationNode {
                                     typ: Type::Unit,
-                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Any, false)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: false }), 0)),
+                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Any)), true)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: true }), 0)),
                                     args: vec![
-                                        Some(string_literal!((2, 19), "hello"))
+                                        Some(TypedAstNode::Array(
+                                            Token::LBrack(Position::new(2, 19), false),
+                                            TypedArrayNode {
+                                                typ: Type::Array(Box::new(Type::String)),
+                                                items: vec![
+                                                    string_literal!((2, 19), "hello")
+                                                ],
+                                            },
+                                        ))
                                     ],
                                 },
                             )

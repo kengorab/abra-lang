@@ -78,10 +78,10 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
         NativeFnDesc {
             name: "println",
             type_args: vec![],
-            args: vec![("_", Type::Any)],
-            opt_args: vec![],
+            args: vec![],
+            opt_args: vec![("_", Type::Array(Box::new(Type::Any)))],
             return_type: Type::Unit,
-            is_variadic: false,
+            is_variadic: true,
         },
         NativeFn {
             name: "println",
@@ -127,9 +127,25 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
 }
 
 fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
-    let val = args.first().unwrap();
     let print_fn = vm.ctx.print;
-    print_fn(&format!("{}", to_string(val, vm)));
+
+    let mut args = args.into_iter();
+    if let Some(arg) = args.next() {
+        if let Value::Obj(obj) = arg {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(vals) => {
+                    let num_vals = vals.len();
+                    for (idx, val) in vals.into_iter().enumerate() {
+                        let sp = if idx == num_vals - 1 { "" } else { " " };
+                        print_fn(&format!("{}{}", to_string(val, vm), sp));
+                    }
+                }
+                _ => unreachable!()
+            }
+        } else if arg != Value::Nil { unreachable!() }
+    }
+    print_fn("\n");
+
     None
 }
 

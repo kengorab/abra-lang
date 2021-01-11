@@ -1,6 +1,6 @@
 func abc(a: Int, *b: Int[]) {
-  println(a)
-  println(b)
+  println()
+  println(a, b)
 }
 
 abc(a: 1, b: [3])
