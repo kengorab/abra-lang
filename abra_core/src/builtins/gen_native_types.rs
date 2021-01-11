@@ -283,6 +283,7 @@ pub trait NativeStringMethodsAndFields {
     fn method_chars(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_parse_int(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
     fn method_parse_float(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
+    fn method_concat(receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value>;
 }
 impl NativeType for NativeString {
     fn get_field_type(name: &str) -> Option<(usize, Type)> {
@@ -413,6 +414,18 @@ impl NativeType for NativeString {
                     is_variadic: false,
                 }),
             )),
+            "concat" => Some((
+                13usize,
+                Type::Fn(FnType {
+                    type_args: vec![],
+                    arg_types: vec![
+                        ("str".to_string(), Type::Any, false),
+                        ("others".to_string(), Type::Array(Box::new(Type::Any)), true),
+                    ],
+                    ret_type: Box::new(Type::String),
+                    is_variadic: true,
+                }),
+            )),
             _ => None,
         }
     }
@@ -503,6 +516,12 @@ impl NativeType for NativeString {
                 name: "parseFloat",
                 receiver: Some(obj),
                 native_fn: Self::method_parse_float,
+                has_return: true,
+            }),
+            13usize => Value::NativeFn(NativeFn {
+                name: "concat",
+                receiver: Some(obj),
+                native_fn: Self::method_concat,
                 has_return: true,
             }),
             _ => unreachable!(),
@@ -598,9 +617,16 @@ impl NativeType for NativeArray {
                 3usize,
                 Type::Fn(FnType {
                     type_args: vec![],
-                    arg_types: vec![("item".to_string(), Type::Generic("T".to_string()), false)],
+                    arg_types: vec![
+                        ("item".to_string(), Type::Generic("T".to_string()), false),
+                        (
+                            "others".to_string(),
+                            Type::Array(Box::new(Type::Generic("T".to_string()))),
+                            true,
+                        ),
+                    ],
                     ret_type: Box::new(Type::Unit),
-                    is_variadic: false,
+                    is_variadic: true,
                 }),
             )),
             "pop" => Some((
