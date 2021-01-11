@@ -1,8 +1,5 @@
-type Person {
-  name: String
+println("abc".concat(true, [1, 2, 3], { a: 1 }))
 
-  func toString(self): String = self.name
-}
-val p1 = Person(name: "Ken")
-p1.toString = () => "Hello"
-println(p1)
+val arr = [1, 2, 3]
+arr.push(4, 5, "6")
+arr

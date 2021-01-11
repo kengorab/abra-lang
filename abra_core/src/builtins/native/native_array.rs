@@ -79,14 +79,29 @@ impl NativeArrayMethodsAndFields for crate::builtins::gen_native_types::NativeAr
     }
 
     fn method_push(receiver: Option<Value>, args: Vec<Value>, _: &mut VM) -> Option<Value> {
-        let item = args.into_iter().next().expect("Array::push requires 1 argument");
+        let mut args = args.into_iter();
+        let item = args.next().expect("Array::push requires 2 arguments");
+
+        let others = args.next().expect("Array::push requires 2 arguments");
+        let others = if let Value::Obj(obj) = others {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(vals) => vals.clone(),
+                _ => unreachable!()
+            }
+        } else { vec![] };
 
         if let Value::Obj(obj) = receiver.unwrap() {
             match *obj.borrow_mut() {
-                Obj::ArrayObj(ref mut array) => array.push(item),
+                Obj::ArrayObj(ref mut array) => {
+                    array.push(item);
+                    for item in others {
+                        array.push(item);
+                    }
+                },
                 _ => unreachable!()
             }
         } else { unreachable!() }
+
         None
     }
 
@@ -718,6 +733,14 @@ mod test {
           arr
         "#);
         let expected = int_array!(1, 2, 3, 4, 5);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          arr.push(4, 5, 6)
+          arr
+        "#);
+        let expected = int_array!(1, 2, 3, 4, 5, 6);
         assert_eq!(Some(expected), result);
     }
 

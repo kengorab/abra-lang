@@ -50,6 +50,7 @@ pub struct NativeFnDesc {
     pub args: Vec<(&'static str, Type)>,
     pub opt_args: Vec<(&'static str, Type)>,
     pub return_type: Type,
+    pub is_variadic: bool,
 }
 
 impl NativeFnDesc {
@@ -63,8 +64,10 @@ impl NativeFnDesc {
         let opt_args = self.opt_args.iter()
             .map(|(name, typ)| (name.to_string(), typ.clone().clone(), true));
         let arg_types = req_args.chain(opt_args).collect();
+        let ret_type = Box::new(self.return_type.clone());
+        let is_variadic = self.is_variadic;
 
-        Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(self.return_type.clone()) })
+        Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic })
     }
 }
 
@@ -75,9 +78,10 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
         NativeFnDesc {
             name: "println",
             type_args: vec![],
-            args: vec![("_", Type::Any)],
-            opt_args: vec![],
+            args: vec![],
+            opt_args: vec![("_", Type::Array(Box::new(Type::Any)))],
             return_type: Type::Unit,
+            is_variadic: true,
         },
         NativeFn {
             name: "println",
@@ -93,6 +97,7 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
             args: vec![("from", Type::Int), ("to", Type::Int)],
             opt_args: vec![("increment", Type::Int)],
             return_type: Type::Array(Box::new(Type::Int)),
+            is_variadic: false,
         },
         NativeFn {
             name: "range",
@@ -108,6 +113,7 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
             args: vec![("path", Type::String)],
             opt_args: vec![],
             return_type: Type::Option(Box::new(Type::String)),
+            is_variadic: false,
         },
         NativeFn {
             name: "readFile",
@@ -121,9 +127,25 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
 }
 
 fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
-    let val = args.first().unwrap();
     let print_fn = vm.ctx.print;
-    print_fn(&format!("{}", to_string(val, vm)));
+
+    let mut args = args.into_iter();
+    if let Some(arg) = args.next() {
+        if let Value::Obj(obj) = arg {
+            match &*(obj.borrow()) {
+                Obj::ArrayObj(vals) => {
+                    let num_vals = vals.len();
+                    for (idx, val) in vals.into_iter().enumerate() {
+                        let sp = if idx == num_vals - 1 { "" } else { " " };
+                        print_fn(&format!("{}{}", to_string(val, vm), sp));
+                    }
+                }
+                _ => unreachable!()
+            }
+        } else if arg != Value::Nil { unreachable!() }
+    }
+    print_fn("\n");
+
     None
 }
 

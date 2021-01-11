@@ -170,14 +170,14 @@ pub struct FunctionDeclNode {
     // Must be a Token::Idents
     pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
-    pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
+    pub args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
     pub body: Vec<AstNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaNode {
-    pub args: Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>,
+    pub args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
     pub body: Vec<AstNode>,
 }
 
@@ -199,7 +199,7 @@ pub struct EnumDeclNode {
     // Must be Token::Idents
     pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
-    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(Token, Option<TypeIdentifier>, Option<AstNode>)>>)>,
+    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>>)>,
     pub methods: Vec<AstNode>,
 }
 

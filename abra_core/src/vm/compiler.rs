@@ -564,7 +564,7 @@ impl Compiler {
         &mut self,
         token: Token,
         name: Option<Token>,
-        args: Vec<(Token, Type, Option<TypedAstNode>)>,
+        args: Vec<(Token, Type, bool, Option<TypedAstNode>)>,
         ret_type: Type,
         body: Vec<TypedAstNode>,
         scope_depth: usize,
@@ -596,7 +596,7 @@ impl Compiler {
 
         // Track function arguments in local bindings, also track # optional args.
         // Argument values will already be on the stack.
-        for (arg_token, _, default_value) in args.iter() {
+        for (arg_token, _, _is_vararg, default_value) in args.iter() {
             let ident = Token::get_ident_name(arg_token);
 
             // See comment above about not marking locals
@@ -1092,7 +1092,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let ret_type = if let Type::Fn(FnType { ret_type, .. }) = node.typ { *ret_type } else { unreachable!() };
         let body = node.typed_body.unwrap();
         let scope_depth = self.get_fn_depth();
-        let fn_value = self.compile_function_decl(token, None, node.args, ret_type, body, scope_depth)?;
+        let args = node.args.into_iter()
+            .map(|(tok, typ, default)| (tok, typ, false, default))
+            .collect();
+        let fn_value = self.compile_function_decl(token, None, args, ret_type, body, scope_depth)?;
 
         let has_upvalues = !&fn_value.upvalues.is_empty();
         self.add_and_write_constant(Value::Fn(fn_value), line);
@@ -1191,11 +1194,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
         if methods.iter().find(|(name, _)| name == "toString").is_none() {
-            let to_string_method = Value::NativeFn(NativeFn{
+            let to_string_method = Value::NativeFn(NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: default_to_string_method,
-                has_return: true
+                has_return: true,
             });
             compiled_methods.push(("toString".to_string(), to_string_method));
         }
@@ -1281,11 +1284,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
         if methods.iter().find(|(name, _)| name == "toString").is_none() {
-            let to_string_method = Value::NativeFn(NativeFn{
+            let to_string_method = Value::NativeFn(NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: default_to_string_method,
-                has_return: true
+                has_return: true,
             });
             compiled_methods.push(("toString".to_string(), to_string_method));
         }
@@ -1433,10 +1436,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             Type::Map(_, _) => Opcode::MapLoad,
             Type::Array(_) | Type::String => Opcode::ArrLoad,
             Type::Tuple(_) => Opcode::TupleLoad,
-            t @ _ => {
-                dbg!(t);
-                unreachable!()
-            }
+            _ => unreachable!()
         };
         self.visit(*target)?;
 
@@ -2053,7 +2053,7 @@ mod tests {
             name: "toString",
             receiver: None,
             native_fn: default_to_string_method,
-            has_return: false
+            has_return: false,
         }))
     }
 
@@ -2592,7 +2592,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string(), "age".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Unnamed"),
                 Value::Str("someBaby".to_string()),
@@ -3219,7 +3219,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Ken"),
                 Value::Str("p".to_string()),
@@ -3587,6 +3587,7 @@ mod tests {
                         Opcode::IConst1 as u8,
                         Opcode::MarkLocal as u8, 0,
                         Opcode::Constant as u8, 0, with_prelude_const_offset(1),
+                        Opcode::ArrMk as u8, 1,
                         Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                         Opcode::Invoke as u8, 1,
                         Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
@@ -4111,7 +4112,7 @@ mod tests {
                 Opcode::LLoad1 as u8,
                 Opcode::GetField as u8, 0, // .length
                 Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 0, 36,
+                Opcode::JumpIfF as u8, 0, 38,
 
                 // a = $iter[$idx][0]
                 Opcode::LLoad1 as u8,
@@ -4143,10 +4144,11 @@ mod tests {
                 Opcode::StrConcat as u8,
                 Opcode::LLoad3 as u8,
                 Opcode::StrConcat as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::PopN as u8, 2,
-                Opcode::JumpB as u8, 0, 44,
+                Opcode::JumpB as u8, 0, 46,
 
                 // Cleanup/end
                 Opcode::Pop as u8,
@@ -4584,7 +4586,7 @@ mod tests {
                     name: "Person".to_string(),
                     fields: vec!["name".to_string()],
                     methods: vec![to_string_method()],
-                    static_fields: vec![]
+                    static_fields: vec![],
                 }),
                 new_string_obj("Ken"),
                 Value::Str("ken".to_string()),
@@ -4625,6 +4627,7 @@ mod tests {
                     name: "$anon_0".to_string(),
                     code: vec![
                         Opcode::Constant as u8, 0, with_prelude_const_offset(0),
+                        Opcode::ArrMk as u8, 1,
                         Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                         Opcode::Invoke as u8, 1,
                         Opcode::Return as u8,
@@ -4658,15 +4661,17 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 12,
+                Opcode::JumpIfF as u8, 0, 14,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 9,
+                Opcode::Jump as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
@@ -4696,15 +4701,17 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::Nil as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 12,
+                Opcode::JumpIfF as u8, 0, 14,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::IConst4 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 9,
+                Opcode::Jump as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
@@ -4742,20 +4749,22 @@ mod tests {
                 Opcode::Typeof as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(1),
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 12,
+                Opcode::JumpIfF as u8, 0, 14,
                 Opcode::MarkLocal as u8, 0, // p
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 21,
+                Opcode::Jump as u8, 0, 23,
                 Opcode::Dup as u8,
                 Opcode::Typeof as u8,
                 Opcode::Constant as u8, 0, PRELUDE_INT_INDEX,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 12,
+                Opcode::JumpIfF as u8, 0, 14,
                 Opcode::MarkLocal as u8, 0, // s
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
@@ -4802,15 +4811,17 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 14,
+                Opcode::JumpIfF as u8, 0, 16,
                 Opcode::MarkLocal as u8, 0,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 9,
+                Opcode::Jump as u8, 0, 11,
                 Opcode::MarkLocal as u8, 0, // x
                 Opcode::LLoad0 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::Pop as u8,
@@ -4881,12 +4892,13 @@ mod tests {
                 Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 18,
+                Opcode::JumpIfF as u8, 0, 20,
                 Opcode::MarkLocal as u8, 0, // $match_target
                 Opcode::LLoad0 as u8,
                 Opcode::GetField as u8, 0,
                 Opcode::MarkLocal as u8, 1, // baz
                 Opcode::LLoad1 as u8,
+                Opcode::ArrMk as u8, 1,
                 Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
                 Opcode::Invoke as u8, 1,
                 Opcode::PopN as u8, 2,

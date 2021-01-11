@@ -32,6 +32,7 @@ type NativeString {
   func chars(self): String[] {}
   func parseInt(self, radix: Int = 10): Int? {}
   func parseFloat(self): Float? {}
+  func concat(self, str: Any, *others: Any[]): String {}
 }
 
 type NativeArray<T> {
@@ -43,7 +44,7 @@ type NativeArray<T> {
   func toString(self): String {}
   func isEmpty(self): Bool {}
   func enumerate(self): (T, Int)[] {}
-  func push(self, item: T): Unit {}
+  func push(self, item: T, *others: T[]): Unit {}
   func pop(self): T? {}
   func popFront(self): T? {}
   func splitAt(self, index: Int): (T[], T[]) {}
