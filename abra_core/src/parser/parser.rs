@@ -130,6 +130,7 @@ impl Parser {
             Token::Int(_, _) |
             Token::Float(_, _) |
             Token::String(_, _) |
+            Token::StringInterp(_, _) |
             Token::Bool(_, _) => Some(Box::new(Parser::parse_literal)),
             Token::Minus(_) | Token::Bang(_) => Some(Box::new(Parser::parse_unary)),
             Token::LParen(_, _) => Some(Box::new(Parser::parse_grouped)),
@@ -897,13 +898,45 @@ impl Parser {
     }
 
     fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
-        match &token {
-            Token::Int(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::IntLiteral(*val))),
-            Token::Float(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::FloatLiteral(*val))),
-            Token::String(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::StringLiteral(val.clone()))),
-            Token::Bool(_, val) => Ok(AstNode::Literal(token.clone(), AstLiteralNode::BoolLiteral(*val))),
+        match token.clone() {
+            Token::Int(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::IntLiteral(val))),
+            Token::Float(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::FloatLiteral(val))),
+            Token::String(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::StringLiteral(val.clone()))),
+            Token::StringInterp(_, chunks) => Self::parse_string_interpolation(chunks),
+            Token::Bool(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::BoolLiteral(val))),
             _ => unreachable!()
         }
+    }
+
+    fn parse_string_interpolation(chunks: Vec<Token>) -> Result<AstNode, ParseError> {
+        let mut chunks = chunks.into_iter();
+
+        let first_chunk = chunks.next().expect("There should always be at least 1 chunk");
+        let base_node = if let Token::String(_, val) = first_chunk.clone() {
+            AstNode::Literal(first_chunk.clone(), AstLiteralNode::StringLiteral(val))
+        } else { unreachable!() };
+
+        let args = parse(chunks.collect())?;
+
+        Ok(AstNode::Invocation(
+            Token::LParen(first_chunk.get_position(), false),
+            InvocationNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::Dot(first_chunk.get_position()),
+                    AccessorNode {
+                        target: Box::new(base_node),
+                        field: Box::new(AstNode::Identifier(
+                            Token::Ident(first_chunk.get_position(), "concat".to_string()),
+                            None
+                        )),
+                        is_opt_safe: false
+                    }
+                )),
+                args: args.into_iter()
+                    .map(|arg| (None, arg))
+                    .collect()
+            }
+        ))
     }
 
     fn parse_unary(&mut self, token: Token) -> Result<AstNode, ParseError> {
@@ -1330,6 +1363,79 @@ mod tests {
             bool_literal!((1, 35), false),
         ];
         Ok(assert_eq!(expected, ast))
+    }
+
+    #[test]
+    fn parse_string_interpolation() -> TestResult {
+        let ast = parse("\"abc $def ghi\"")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 1), false),
+            InvocationNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::Dot(Position::new(1, 1)),
+                    AccessorNode {
+                        target: Box::new(AstNode::Literal(
+                            Token::String(Position::new(1, 1), "abc ".to_string()),
+                            AstLiteralNode::StringLiteral("abc ".to_string())
+                        )),
+                        field: Box::new(AstNode::Identifier(
+                            Token::Ident(Position::new(1, 1), "concat".to_string()),
+                            None
+                        )),
+                        is_opt_safe: false
+                    }
+                )),
+                args: vec![
+                    (None, AstNode::Identifier(
+                        Token::Ident(Position::new(1, 7), "def".to_string()),
+                        None
+                    )),
+                    (None, AstNode::Literal(
+                        Token::String(Position::new(1, 10), " ghi".to_string()),
+                        AstLiteralNode::StringLiteral(" ghi".to_string())
+                    ))
+                ]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("\"abc ${1 + 2} ghi\"")?;
+        let expected = AstNode::Invocation(
+            Token::LParen(Position::new(1, 1), false),
+            InvocationNode {
+                target: Box::new(AstNode::Accessor(
+                    Token::Dot(Position::new(1, 1)),
+                    AccessorNode {
+                        target: Box::new(AstNode::Literal(
+                            Token::String(Position::new(1, 1), "abc ".to_string()),
+                            AstLiteralNode::StringLiteral("abc ".to_string())
+                        )),
+                        field: Box::new(AstNode::Identifier(
+                            Token::Ident(Position::new(1, 1), "concat".to_string()),
+                            None
+                        )),
+                        is_opt_safe: false
+                    }
+                )),
+                args: vec![
+                    (None, AstNode::Binary(
+                        Token::Plus(Position::new(1, 10)),
+                        BinaryNode {
+                            left: Box::new(int_literal!((1, 8), 1)),
+                            op: BinaryOp::Add,
+                            right: Box::new(int_literal!((1, 12), 2)),
+                        }
+                    )),
+                    (None, AstNode::Literal(
+                        Token::String(Position::new(1, 14), " ghi".to_string()),
+                        AstLiteralNode::StringLiteral(" ghi".to_string())
+                    ))
+                ]
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 
     #[test]

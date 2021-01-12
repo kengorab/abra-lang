@@ -160,7 +160,9 @@ impl<'a> Lexer<'a> {
         }
 
         if ch == '"' {
-            let pos = Position::new(self.line, self.col);
+            let start_pos = Position::new(self.line, self.col);
+            let mut pos = Position::new(self.line, self.col);
+            let mut chunks = Vec::new();
             let mut chars: Vec<char> = vec![];
 
             loop {
@@ -181,6 +183,7 @@ impl<'a> Lexer<'a> {
                             't' => '\t',
                             '\'' => '\'',
                             '"' => '"',
+                            '$' => '$',
                             'u' => self.parse_unicode_escape(&pos)?,
                             ch @ _ => {
                                 let esc_seq = format!("\\{}", ch);
@@ -190,6 +193,48 @@ impl<'a> Lexer<'a> {
 
                         chars.push(ch);
                         continue;
+                    } else if ch == '$' {
+                        self.input.advance_cursor();
+                        if self.input.peek().map_or(false, |ch| ch.is_alphabetic() || *ch == '_') {
+                            let chunk = chars.into_iter().collect();
+                            chunks.push(Token::String(pos.clone(), chunk));
+                            chars = Vec::new();
+
+                            self.expect_next()?; // Consume '$'
+                            let next_tok = self.next_token()?.expect("There is at least 1 alphabetic character there");
+                            chunks.push(next_tok);
+
+                            pos = Position::new(self.line, self.col + 1);
+                            continue;
+                        } else if self.input.peek().map_or(false, |ch| *ch == '{') {
+                            let chunk = chars.into_iter().collect();
+                            chunks.push(Token::String(pos.clone(), chunk));
+                            chars = Vec::new();
+
+                            self.expect_next()?; // Consume '$'
+                            self.expect_next()?; // Consume '{'
+                            let mut num_braces = 1;
+
+                            loop {
+                                let next_tok = self.next_token()?;
+                                let next_tok = next_tok.ok_or(LexerError::UnexpectedEof(Position::new(self.line, self.col)))?;
+                                match &next_tok {
+                                    Token::LBrace(_) => num_braces += 1,
+                                    Token::RBrace(_) => num_braces -= 1,
+                                    _ => {}
+                                };
+                                if num_braces == 0 {
+                                    break
+                                } else {
+                                    chunks.push(next_tok);
+                                }
+                            }
+
+                            pos = Position::new(self.line, self.col + 1);
+                            continue;
+                        } else {
+                            self.input.reset_cursor();
+                        }
                     }
 
                     chars.push(self.expect_next()?);
@@ -198,8 +243,15 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            let s = chars.into_iter().collect();
-            return Ok(Some(Token::String(pos, s)));
+            let chunk = chars.into_iter().collect();
+            return if chunks.is_empty() {
+                Ok(Some(Token::String(start_pos, chunk)))
+            } else {
+                if !chunk.is_empty() {
+                    chunks.push(Token::String(pos, chunk));
+                }
+                Ok(Some(Token::StringInterp(start_pos, chunks)))
+            };
         }
 
         if ch.is_alphabetic() || ch == '_' {
@@ -235,7 +287,7 @@ impl<'a> Lexer<'a> {
                     let saw_newline = self.skip_whitespace();
                     let has_newline = saw_newline || self.peek().is_none();
                     Token::Return(pos, has_newline)
-                },
+                }
                 "None" => Token::None(pos),
                 s @ _ => Token::Ident(pos, s.to_string())
             };
@@ -606,10 +658,10 @@ mod tests {
 
     #[test]
     fn test_tokenize_strings_escape_sequence() {
-        let input = "\"a\\nb\\tc\\\\nd\\'e\\\"f\"";
+        let input = "\"a\\nb\\tc\\\\nd\\'e\\\"f\\$$\"";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
-            Token::String(Position::new(1, 1), "a\nb\tc\\nd'e\"f".to_string())
+            Token::String(Position::new(1, 1), "a\nb\tc\\nd'e\"f$$".to_string())
         ];
         assert_eq!(expected, tokens);
 
@@ -647,6 +699,61 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap_err();
         let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\u3".to_string(), true);
         assert_eq!(expected, tokens);
+    }
+
+    #[test]
+    fn test_tokenize_string_interpolation() {
+        let input = "\"abc $a def\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = Token::StringInterp(
+            Position::new(1, 1),
+            vec![
+                Token::String(Position::new(1, 1), "abc ".to_string()),
+                Token::Ident(Position::new(1, 7), "a".to_string()),
+                Token::String(Position::new(1, 8), " def".to_string()),
+            ]
+        );
+        assert_eq!(expected, tokens[0]);
+
+        let input = "\"abc $def ghi\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = Token::StringInterp(
+            Position::new(1, 1),
+            vec![
+                Token::String(Position::new(1, 1), "abc ".to_string()),
+                Token::Ident(Position::new(1, 7), "def".to_string()),
+                Token::String(Position::new(1, 10), " ghi".to_string()),
+            ]
+        );
+        assert_eq!(expected, tokens[0]);
+
+        let input = "\"abc ${1 + 2} ghi\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = Token::StringInterp(
+            Position::new(1, 1),
+            vec![
+                Token::String(Position::new(1, 1), "abc ".to_string()),
+                Token::Int(Position::new(1, 8), 1),
+                Token::Plus(Position::new(1, 10)),
+                Token::Int(Position::new(1, 12), 2),
+                Token::String(Position::new(1, 14), " ghi".to_string()),
+            ]
+        );
+        assert_eq!(expected, tokens[0]);
+
+        let input = "\"abc ${1 +\n 2} ghi\"";
+        let tokens = tokenize(&input.to_string()).unwrap();
+        let expected = Token::StringInterp(
+            Position::new(1, 1),
+            vec![
+                Token::String(Position::new(1, 1), "abc ".to_string()),
+                Token::Int(Position::new(1, 8), 1),
+                Token::Plus(Position::new(1, 10)),
+                Token::Int(Position::new(2, 2), 2),
+                Token::String(Position::new(2, 4), " ghi".to_string()),
+            ]
+        );
+        assert_eq!(expected, tokens[0]);
     }
 
     #[test]

@@ -269,6 +269,56 @@ mod tests {
         assert_eq!(expected, result);
     }
 
+    #[test]
+    fn interpret_string_interpolation() {
+        let input = r#"
+          val a = "def"
+          "abc $a ghi"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("abc def ghi");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func a(): String = "def"
+          "$a() ghi"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("<func a>() ghi");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          "abc $true ghi"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("abc true ghi");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func a(): String = "def"
+          "abc ${a()}"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("abc def");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          "abc ${[1, 2, 3, 4]
+                   .map(x => x + 2)
+                   .join(",")} ghi"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("abc 3,4,5,6 ghi");
+        assert_eq!(expected, result);
+
+        let input = r#"
+          "${"hello" + " " + "${"world" + "!"}"}"
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("hello world!");
+        assert_eq!(expected, result);
+    }
+
     #[inline]
     fn sorted_map_obj_values(value: Value) -> Vec<(Value, Value)> {
         if let Value::Obj(obj) = value {

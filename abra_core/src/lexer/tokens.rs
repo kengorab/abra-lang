@@ -31,6 +31,7 @@ pub enum Token {
     #[strum(to_string = "int", serialize = "Int")] Int(Position, i64),
     #[strum(to_string = "float", serialize = "Float")] Float(Position, f64),
     #[strum(to_string = "string", serialize = "String")] String(Position, String),
+    #[strum(to_string = "string", serialize = "StringInterp")] StringInterp(Position, Vec<Token>),
     #[strum(to_string = "boolean", serialize = "Bool")] Bool(Position, bool),
 
     // Keywords
@@ -104,6 +105,7 @@ impl Token {
             Token::Int(pos, _) |
             Token::Float(pos, _) |
             Token::String(pos, _) |
+            Token::StringInterp(pos, _) |
             Token::Bool(pos, _) |
 
             Token::Func(pos) |
@@ -174,6 +176,7 @@ impl Token {
             Token::Int(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
             Token::Float(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
             Token::String(pos, v) => Range::with_length(pos, format!("{}", v).len() + 1),
+            Token::StringInterp(pos, _) => Range::with_length(pos, 1), // TODO: Fix
             Token::Bool(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
 
             Token::Func(pos) => Range::with_length(pos, 3),
