@@ -1,5 +1,7 @@
-println("abc".concat(true, [1, 2, 3], { a: 1 }))
+val a = "def"
+//val b = "${1 + 1"
+val b = "$a abc
 
-val arr = [1, 2, 3]
-arr.push(4, 5, "6")
-arr
+//val b = "${[1, 2, 3]
+//           .map(x=>x + 1)} hello"
+b

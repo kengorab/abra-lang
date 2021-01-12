@@ -48,6 +48,15 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("val", &val)?;
                 obj.end()
             }
+            Token::StringInterp(pos, toks) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "stringInterp")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+
+                let chunks = toks.iter().map(|t| JsToken(t)).collect::<Vec<_>>();
+                obj.serialize_entry("chunks", &chunks)?;
+                obj.end()
+            }
             Token::Bool(pos, val) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "bool")?;
