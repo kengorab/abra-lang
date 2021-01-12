@@ -1,6 +1,6 @@
 val a = "def"
 //val b = "${1 + 1"
-val b = "$in abc"
+val b = "$a abc
 
 //val b = "${[1, 2, 3]
 //           .map(x=>x + 1)} hello"

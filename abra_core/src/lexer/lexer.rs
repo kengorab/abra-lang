@@ -168,7 +168,7 @@ impl<'a> Lexer<'a> {
             loop {
                 if let Some(&ch) = self.peek() {
                     if ch == '\n' {
-                        return Err(LexerError::UnterminatedString(pos, Position::new(self.line, self.col + 1)));
+                        return Err(LexerError::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
                     } else if ch == '"' {
                         // Consume closing quote
                         self.expect_next()?;
@@ -239,7 +239,7 @@ impl<'a> Lexer<'a> {
 
                     chars.push(self.expect_next()?);
                 } else {
-                    return Err(LexerError::UnterminatedString(pos, Position::new(self.line, self.col + 1)));
+                    return Err(LexerError::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
                 }
             }
 
@@ -754,6 +754,24 @@ mod tests {
             ]
         );
         assert_eq!(expected, tokens[0]);
+    }
+
+    #[test]
+    fn test_tokenize_string_interpolation_error() {
+        let input = "\"${1 +";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnexpectedEof(Position::new(1, 7));
+        assert_eq!(expected, tokens);
+
+        let input = "\"$a ";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
+        assert_eq!(expected, tokens);
+
+        let input = "\"$a \n";
+        let tokens = tokenize(&input.to_string()).unwrap_err();
+        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
+        assert_eq!(expected, tokens);
     }
 
     #[test]

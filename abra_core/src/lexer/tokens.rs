@@ -176,7 +176,12 @@ impl Token {
             Token::Int(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
             Token::Float(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
             Token::String(pos, v) => Range::with_length(pos, format!("{}", v).len() + 1),
-            Token::StringInterp(pos, _) => Range::with_length(pos, 1), // TODO: Fix
+            Token::StringInterp(pos, chunks) => {
+                let len_last = if let Some(Token::String(pos, v)) = chunks.last() {
+                    pos.col + v.len()
+                } else { unimplemented!() };
+                Range::with_length(pos, pos.col + len_last - 1)
+            },
             Token::Bool(pos, v) => Range::with_length(pos, format!("{}", v).len() - 1),
 
             Token::Func(pos) => Range::with_length(pos, 3),
