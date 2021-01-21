@@ -18,7 +18,7 @@ use wasm_bindgen_futures::future_to_promise;
 
 use abra_core::builtins::native_fns::NativeFn;
 use abra_core::{Error, typecheck, compile, compile_and_disassemble};
-use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
+use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj, NativeInstanceObj};
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
@@ -43,7 +43,7 @@ impl Serialize for RunResultValue {
             Value::Str(val) => serializer.serialize_str(val),
             Value::Obj(obj) => match &*obj.borrow() {
                 Obj::StringObj(value) => serializer.serialize_str(value),
-                Obj::ArrayObj(value) | Obj::TupleObj(value) => {
+                Obj::TupleObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
                         arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
@@ -71,6 +71,15 @@ impl Serialize for RunResultValue {
                         arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                     });
                     arr.end()
+                }
+                Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, .. }) => {
+                    let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
+
+                    for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
+                        obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
+                    }
+
+                    obj.end()
                 }
                 Obj::EnumVariantObj(EnumVariantObj { name, .. }) => serializer.serialize_str(name)
             }

@@ -155,7 +155,8 @@ impl NativeSetMethodsAndFields for NativeSet {
         if let Value::Obj(obj) = receiver.unwrap() {
             match &*(obj.borrow()) {
                 Obj::SetObj(set) => {
-                    Some(Value::new_array_obj(set.into_iter().map(|v| v.clone()).collect()))
+                    let items = set.into_iter().map(|v| v.clone()).collect();
+                    Some(Value::new_array_obj(items))
                 }
                 _ => unreachable!()
             }
@@ -279,6 +280,19 @@ mod test {
 
         let result = interpret("#{1, 2, \"3\"}.isEmpty()");
         let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_set_enumerate() {
+        let result = interpret("#{}.enumerate()");
+        let expected = Value::new_array_obj(vec![]);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("#{\"a\"}.enumerate()");
+        let expected = Value::new_array_obj(vec![
+            Value::new_tuple_obj(vec![new_string_obj("a"), Value::Int(0)]),
+        ]);
         assert_eq!(Some(expected), result);
     }
 

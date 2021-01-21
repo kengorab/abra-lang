@@ -215,7 +215,8 @@ impl NativeStringMethodsAndFields for crate::builtins::gen_native_types::NativeS
         let others = args.next().expect("String::concat requires 2 arguments");
         let others = if let Value::Obj(obj) = others {
             match &*(obj.borrow()) {
-                Obj::ArrayObj(vals) => {
+                Obj::NativeInstanceObj(i) => {
+                    let vals = &i.as_array().unwrap()._inner;
                     vals.iter().map(|v| to_string(v, vm)).collect()
                 }
                 _ => unreachable!()

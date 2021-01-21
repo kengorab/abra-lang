@@ -1,5 +1,7 @@
 use itertools::Itertools;
 use std::hash::{Hash, Hasher};
+use crate::builtins::native::Array;
+use crate::builtins::native_value_trait::NativeValue;
 use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
 use crate::vm::vm;
@@ -44,9 +46,20 @@ pub struct ClosureValue {
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
 pub struct TypeValue {
     pub name: String,
+    pub constructor: Option<fn(Vec<Value>) -> Value>,
     pub fields: Vec<String>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
+}
+
+impl TypeValue {
+    pub fn construct(self, args: Vec<Value>) -> Value {
+        if let Some(constructor) = self.constructor {
+            constructor(args)
+        } else {
+            Value::new_instance_obj(Value::Type(self), args)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
@@ -82,8 +95,7 @@ impl Value {
     }
 
     pub fn new_array_obj(values: Vec<Value>) -> Value {
-        let arr = Obj::ArrayObj(values);
-        Value::Obj(Arc::new(RefCell::new(arr)))
+        Array::new(values).init()
     }
 
     pub fn new_set_obj(values: HashSet<Value>) -> Value {
@@ -106,9 +118,26 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
+    pub fn new_native_instance_obj(typ: TypeValue, inst: Box<dyn NativeValue>) -> Value {
+        let inst = Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, methods: vec![] });
+        Value::Obj(Arc::new(RefCell::new(inst)))
+    }
+
     pub fn new_enum_variant_obj(evv: EnumVariantObj) -> Value {
         let inst = Obj::EnumVariantObj(evv);
         Value::Obj(Arc::new(RefCell::new(inst)))
+    }
+
+    pub fn as_int(&self) -> &i64 {
+        if let Value::Int(i) = self { i } else { unreachable!() }
+    }
+
+    pub fn as_float(&self) -> &f64 {
+        if let Value::Float(f) = self { f } else { unreachable!() }
+    }
+
+    pub fn as_bool(&self) -> &bool {
+        if let Value::Bool(b) = self { b } else { unreachable!() }
     }
 }
 
@@ -178,7 +207,7 @@ impl Hash for Value {
 
 impl Eq for Value {}
 
-#[derive(Debug, Clone, Hash, Eq, PartialOrd, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialOrd, PartialEq)]
 pub struct InstanceObj {
     pub typ: Box<Value>,
     pub fields: Vec<Value>,
@@ -195,25 +224,34 @@ pub struct EnumVariantObj {
     pub values: Option<Vec<Value>>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug)]
+pub struct NativeInstanceObj {
+    pub typ: TypeValue,
+    pub inst: Box<dyn NativeValue>,
+    pub methods: Vec<Value>,
+}
+
+impl NativeInstanceObj {
+    pub fn as_array(&self) -> Option<&Array> {
+        self.inst.downcast_ref::<Array>()
+    }
+}
+
+#[derive(Debug)]
 pub enum Obj {
     StringObj(String),
-    ArrayObj(Vec<Value>),
     SetObj(HashSet<Value>),
     TupleObj(Vec<Value>),
     MapObj(HashMap<Value, Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
+    NativeInstanceObj(NativeInstanceObj),
 }
 
 impl Display for Obj {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             Obj::StringObj(value) => write!(f, "\"{}\"", value),
-            Obj::ArrayObj(value) => {
-                let items = value.iter().map(|v| format!("{}", v)).join(", ");
-                write!(f, "[{}]", items)
-            }
             Obj::SetObj(value) => {
                 let items = value.iter().map(|v| format!("{}", v)).join(", ");
                 write!(f, "#{{{}}}", items)
@@ -241,6 +279,10 @@ impl Display for Obj {
                     }
                 }
             }
+            Obj::NativeInstanceObj(inst) => {
+                let TypeValue { name, .. } = &inst.typ;
+                write!(f, "<instance {}>", name)
+            }
         }
     }
 }
@@ -249,7 +291,6 @@ impl PartialOrd for Obj {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Obj::StringObj(v1), Obj::StringObj(v2)) => Some(v1.cmp(v2)),
-            (Obj::ArrayObj(v1), Obj::ArrayObj(v2)) |
             (Obj::TupleObj(v1), Obj::TupleObj(v2)) => {
                 if v1.len() < v2.len() {
                     Some(Ordering::Less)
@@ -299,16 +340,39 @@ impl PartialOrd for Obj {
                 }
                 Some(Ordering::Equal)
             }
+            (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => {
+                if v1.inst.is_equal(&v2.inst) {
+                    Some(Ordering::Equal)
+                } else {
+                    Some(Ordering::Less)
+                }
+            }
             (_, _) => None
         }
     }
 }
 
+impl PartialEq for Obj {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Obj::StringObj(v1), Obj::StringObj(v2)) => v1.eq(v2),
+            (Obj::SetObj(v1), Obj::SetObj(v2)) => v1.eq(v2),
+            (Obj::TupleObj(v1), Obj::TupleObj(v2)) => v1.eq(v2),
+            (Obj::MapObj(v1), Obj::MapObj(v2)) => v1.eq(v2),
+            (Obj::InstanceObj(v1), Obj::InstanceObj(v2)) => v1.eq(v2),
+            (Obj::EnumVariantObj(v1), Obj::EnumVariantObj(v2)) => v1.eq(v2),
+            (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => v1.inst.is_equal(&v2.inst),
+            _ => false
+        }
+    }
+}
+
+impl Eq for Obj {}
+
 impl Hash for Obj {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         match self {
             Obj::StringObj(s) => s.hash(hasher),
-            Obj::ArrayObj(a) |
             Obj::TupleObj(a) => a.hash(hasher),
             Obj::SetObj(s) => {
                 for item in s {
@@ -324,8 +388,9 @@ impl Hash for Obj {
             Obj::InstanceObj(i) => {
                 i.typ.hash(hasher);
                 i.fields.hash(hasher);
-            },
+            }
             Obj::EnumVariantObj(ev) => ev.hash(hasher),
+            Obj::NativeInstanceObj(i) => i.inst.hash(hasher),
         }
         hasher.finish();
     }

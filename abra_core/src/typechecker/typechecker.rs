@@ -1,4 +1,5 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
+use crate::builtins::native_value_trait::NativeTyp;
+use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -2388,7 +2389,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                 .filter_map(|(name, default_value)| default_value.map(|v| (name, v)))
                                 .collect::<HashMap<String, TypedAstNode>>()
                         }
-                        _ => unreachable!()
+                        _ => HashMap::new()
                     };
 
                     let fields = typed_args.into_iter().map(|(name, node)| {
@@ -2401,22 +2402,16 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }).collect();
 
-                    let typ = match *t {
-                        Type::Reference(name, _) => {
-                            let mut generics_iter = generics.into_iter();
-                            let mut struct_type_args_iter = type_args.iter();
-
-                            let mut pairs = Vec::new();
-                            loop {
-                                match (generics_iter.next(), struct_type_args_iter.next()) {
-                                    (Some((_, resolved_type_arg)), _) => pairs.push(resolved_type_arg),
-                                    (_, Some((_, unbound_generic))) => pairs.push(unbound_generic.clone()),
-                                    (None, None) => break
-                                }
+                    let typ = {
+                        let mut pairs = Vec::new();
+                        for (type_arg_name, unbound_generic) in type_args {
+                            if let Some(resolved_type_arg) = generics.get(type_arg_name) {
+                                pairs.push(resolved_type_arg.clone());
+                            } else {
+                                pairs.push(unbound_generic.clone())
                             }
-                            Type::Reference(name, pairs)
                         }
-                        _ => unreachable!(format!("Unexpected type {:?} used here", t))
+                        Type::Reference(name.clone(), pairs)
                     };
 
                     Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ, target: Box::new(target), fields }))
@@ -2606,7 +2601,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Int => Ok((NativeInt::get_field_or_method_type(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeArray::get_field_or_method_type(&field_name);
+                    let field_data = Array::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Set(inner_type) => {
@@ -2645,8 +2640,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Array(_) => {
-                        let field_data = NativeArray::get_static_field_or_method(&field_name)
-                            .map(|(idx, typ)| (idx, typ, true)); // All static fields are methods at the moment
+                        let field_data = Array::get_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Map(_, _) => {
@@ -7249,7 +7243,12 @@ mod tests {
             Token::Assign(Position::new(2, 4)),
             TypedAssignmentNode {
                 kind: AssignmentTargetKind::Identifier,
-                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                typ: Type::Fn(FnType {
+                    arg_types: vec![("a".to_string(), Type::String, false)],
+                    type_args: vec![],
+                    ret_type: Box::new(Type::String),
+                    is_variadic: false,
+                }),
                 target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), 0)),
                 expr: Box::new(TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 8)),

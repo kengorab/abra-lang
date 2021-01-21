@@ -84,12 +84,6 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::Obj(obj) => {
             match &*(obj.borrow()) {
                 Obj::StringObj(value) => value.clone(),
-                Obj::ArrayObj(value) => {
-                    let items = value.iter()
-                        .map(|v| to_string(v, vm))
-                        .join(", ");
-                    format!("[{}]", items)
-                }
                 Obj::SetObj(value) => {
                     let items = value.iter()
                         .map(|v| to_string(v, vm))
@@ -123,6 +117,14 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                     };
                     let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
                     if let Value::Obj(o) = invoke_fn(vm, &o.methods[idx], vec![]) {
+                        if let Obj::StringObj(s) = &*(o.borrow()) {
+                            s.clone()
+                        } else { unreachable!() }
+                    } else { unreachable!() }
+                }
+                Obj::NativeInstanceObj(i) => {
+                    let v = i.inst.method_to_string(vm);
+                    if let Value::Obj(o) = v {
                         if let Obj::StringObj(s) = &*(o.borrow()) {
                             s.clone()
                         } else { unreachable!() }
