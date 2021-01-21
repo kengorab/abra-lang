@@ -133,7 +133,8 @@ fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Va
     if let Some(arg) = args.next() {
         if let Value::Obj(obj) = arg {
             match &*(obj.borrow()) {
-                Obj::ArrayObj(vals) => {
+                Obj::NativeInstanceObj(i) => {
+                    let vals = &i.as_array().unwrap()._inner;
                     let num_vals = vals.len();
                     for (idx, val) in vals.into_iter().enumerate() {
                         let sp = if idx == num_vals - 1 { "" } else { " " };

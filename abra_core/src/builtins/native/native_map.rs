@@ -20,10 +20,10 @@ impl NativeMapMethodsAndFields for NativeMap {
         let pairs_array = args.into_iter().next().expect("Map::fromPairs requires 1 argument");
         if let Value::Obj(obj) = pairs_array {
             match &*(obj.borrow()) {
-                Obj::ArrayObj(items) => {
+                Obj::NativeInstanceObj(i) => {
                     let mut map = HashMap::new();
 
-                    for item in items {
+                    for item in &i.as_array().unwrap()._inner {
                         if let Value::Obj(obj) = item {
                             match &*(obj.borrow()) {
                                 Obj::TupleObj(items) => {
@@ -257,6 +257,19 @@ mod test {
 
         let result = interpret("{ a: 123, b: true }.isEmpty()");
         let expected = Value::Bool(false);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_map_enumerate() {
+        let result = interpret("{}.enumerate()");
+        let expected = Value::new_array_obj(vec![]);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("{ a: 123, }.enumerate()");
+        let expected = Value::new_array_obj(vec![
+            Value::new_tuple_obj(vec![new_string_obj("a"), Value::Int(123)]),
+        ]);
         assert_eq!(Some(expected), result);
     }
 

@@ -98,6 +98,37 @@ pub struct StructType {
     pub methods: Vec<(String, Type)>,
 }
 
+impl StructType {
+    pub fn get_field_or_method<S: AsRef<str>>(&self, name: S) -> Option<(usize, Type, /* is_method: */ bool)> {
+        self.fields.iter().enumerate()
+            .find(|(_, f)| f.0 == name.as_ref())
+            .map(|(idx, f)| (idx, f.1.clone(), false))
+            .or_else(|| {
+                self.methods.iter().enumerate()
+                    .find(|(_, f)| f.0 == name.as_ref())
+                    .map(|(idx, f)| (idx, f.1.clone(), true))
+            })
+    }
+
+    pub fn get_static_field_or_method<S: AsRef<str>>(&self, name: S) -> Option<(usize, Type, /* is_method: */ bool)> {
+        self.static_fields.iter().enumerate()
+            .find(|(_, f)| f.0 == name.as_ref())
+            .map(|(idx, f)| (idx, f.1.clone(), true)) // All static fields are methods atm
+    }
+
+    pub fn get_field_idx<S: AsRef<str>>(&self, name: S) -> Option<usize> {
+        self.fields.iter().enumerate()
+            .find(|(_, f)| f.0 == name.as_ref())
+            .map(|(idx, _)| idx)
+    }
+
+    pub fn get_method_idx<S: AsRef<str>>(&self, name: S) -> Option<usize> {
+        self.methods.iter().enumerate()
+            .find(|(_, f)| f.0 == name.as_ref())
+            .map(|(idx, _)| idx)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct EnumType {
     pub name: String,

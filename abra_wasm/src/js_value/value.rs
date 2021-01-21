@@ -90,13 +90,6 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
                 obj.serialize_entry("value", value)?;
                 obj.end()
             }
-            Obj::ArrayObj(value) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("kind", "arrayObj")?;
-                let value: Vec<JsWrappedValue> = value.iter().map(|i| JsWrappedValue(i)).collect();
-                obj.serialize_entry("value", &value)?;
-                obj.end()
-            }
             Obj::SetObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "setObj")?;
@@ -123,8 +116,18 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
             Obj::InstanceObj(inst) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "instanceObj")?;
-                obj.serialize_entry("type", &JsWrappedValue(&inst.typ))?;
+                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
                 let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("value", &value)?;
+                obj.end()
+            }
+            Obj::NativeInstanceObj(inst) => {
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "nativeInstanceObj")?;
+                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
+
+                let field_values = inst.inst.get_field_values();
+                let value: Vec<JsWrappedValue> = field_values.iter().map(|i| JsWrappedValue(i)).collect();
                 obj.serialize_entry("value", &value)?;
                 obj.end()
             }

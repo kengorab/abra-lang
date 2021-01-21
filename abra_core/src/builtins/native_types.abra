@@ -35,42 +35,6 @@ type NativeString {
   func concat(self, str: Any, *others: Any[]): String {}
 }
 
-type NativeArray<T> {
-  length: Int
-
-  func fill<T1>(amount: Int, value: T1): T1[] {}
-  func fillBy<T1>(amount: Int, fn: (Int) => T1): T1[] {}
-
-  func toString(self): String {}
-  func isEmpty(self): Bool {}
-  func enumerate(self): (T, Int)[] {}
-  func push(self, item: T, *others: T[]): Unit {}
-  func pop(self): T? {}
-  func popFront(self): T? {}
-  func splitAt(self, index: Int): (T[], T[]) {}
-  func concat(self, other: T[]): T[] {}
-  func map<U>(self, fn: (T) => U): U[] {}
-  func filter(self, fn: (T) => Bool): T[] {}
-  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
-  func join(self, joiner: String = ""): String {}
-  func contains(self, item: T): Bool {}
-  func find<U>(self, fn: (T) => (Bool | U?)): T? {}
-  func findIndex<U>(self, fn: (T) => (Bool | U?)): (T, Int)? {}
-  func any<U>(self, fn: (T) => (Bool | U?)): Bool {}
-  func all<U>(self, fn: (T) => (Bool | U?)): Bool {}
-  func none<U>(self, fn: (T) => (Bool | U?)): Bool {}
-  func sortBy(self, fn: (T) => Int, reverse: Bool = false): T[] {}
-  func dedupe(self): T[] {}
-  func dedupeBy<U>(self, fn: (T) => U): T[] {}
-  func partition<U>(self, fn: (T) => U): Map<U, T[]> {}
-  func tally(self): Map<T, Int> {}
-  func tallyBy<U>(self, fn: (T) => U): Map<U, Int> {}
-  func asSet(self): Set<T> {}
-  func getOrDefault(self, key: Int, default: T): T {}
-  func getOrElse(self, key: Int, fn: () => T): T {}
-  func update(self, key: Int, fn: (T) => T) {}
-}
-
 type NativeMap<K, V> {
   size: Int
 

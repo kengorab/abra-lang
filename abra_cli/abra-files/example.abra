@@ -1,7 +1,78 @@
-val a = "def"
-//val b = "${1 + 1"
-val b = "$a abc
+//type Person { name: String }
+//Person(name: "Ken")
 
-//val b = "${[1, 2, 3]
-//           .map(x=>x + 1)} hello"
-b
+//val d = Date(year: 2021, month: 1, day: 16)
+//val toString = d.toString
+//println(toString())
+//d.year = 2016
+//println(toString())
+//d.year
+
+//val d1 = Date(year: 2021, month: 1, day: 16)
+//val d2 = Date(year: 2021, month: 1, day: 16)
+//val d3 = Date(year: 2016, month: 6, day: 24)
+
+//val dates = #{d1, d2, d3}
+//val dates = [
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2021, month: 1, day: 16),
+//  Date(year: 2016, month: 6, day: 24)
+//].map(d => (d, d.isJanuary()))//.asSet()
+//dates
+
+//val d: Date? = Date(year: 2021, month: 1, day: 16)
+//match d {
+//  None => println("huh?"),
+//  Date d => println(d)
+//}
+
+//val d = Date(year: 2021, month: 1, day: 16)
+//println(d)
+//d.addDays(amt: 8)
+//println(d)
+//
+//Date.today()
+
+//type Date2<K, V> {
+//  k: K,
+//  v: V
+//}
+//
+//val D = Date2(k: "asdf", v: [1, 2, 3])
+//println(D)
+//D.k = 34
+
+//val d1 = Date(year: 2021, month: 1, day: 16, k: "asdf", v: [1])
+//val d2 = Date(year: 2021, month: 1, day: 16, k: ["asdf"], v: 1)
+////println(d)
+//////d.k = 34
+////d.addDays(1, 24)
+////println(d)
+////d1.add(d2)
+//
+//val arr = [d1, d2]
+//println(arr)
+
+//val a: Array<Int> = []
+//a.concat([1, 2, 3]).concat([4, 5, 6])
+
+//val [(x1, y1), *mid, (x2, y2)] = [(1, 2), (3, 4), (5, 6), (7, 8)]
+//(x1, y1, mid, x2, y2)
+//
+//println(mid)
+//mid.push((1, 2), (5, 6))
+//println(mid)
+
+//for i in range(0, 10) {
+//  println(i)
+//}
+
+val twelves = Array.fill(6, 12)
+twelves.push(6)
+twelves
+
