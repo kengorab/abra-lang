@@ -1041,13 +1041,13 @@ impl VM {
                         Value::Bool(_) => self.load_constant(self.type_constant_indexes["Bool"])?,
                         Value::Obj(obj) => match &*obj.borrow() {
                             Obj::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
-                            Obj::InstanceObj(inst) => self.push(*inst.typ.clone()),
+                            Obj::InstanceObj(i) => self.push(Value::Type(i.typ.clone())),
+                            Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
                             o @ Obj::MapObj(_) | o @ Obj::SetObj(_) | o @ Obj::TupleObj(_) => {
                                 dbg!(o);
                                 unimplemented!()
                             }
-                            Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                         }
                         Value::Nil => self.push(Value::Nil),
                         Value::Fn(_) |

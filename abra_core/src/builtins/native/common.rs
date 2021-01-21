@@ -59,10 +59,8 @@ pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: 
     let str_val = if let Value::Obj(obj) = receiver.unwrap() {
         match &*(obj.borrow()) {
             Obj::InstanceObj(obj) => {
-                let (type_name, field_names) = match &*obj.typ {
-                    Value::Type(t) => (&t.name, &t.fields),
-                    _ => unreachable!()
-                };
+                let type_name = &obj.typ.name;
+                let field_names = &obj.typ.fields;
                 let values = field_names.iter().zip(&obj.fields)
                     .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
                     .join(", ");
@@ -107,14 +105,9 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                     format!("{{ {} }}", fields)
                 }
                 Obj::InstanceObj(o) => {
-                    let tostring_method_idx = match &*o.typ {
-                        Value::Type(t) => {
-                            t.methods.iter()
-                                .position(|(name, _)| name == "toString")
-                                .map(|idx| idx)
-                        }
-                        _ => None
-                    };
+                    let tostring_method_idx = o.typ.methods.iter()
+                        .position(|(name, _)| name == "toString")
+                        .map(|idx| idx);
                     let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
                     if let Value::Obj(o) = invoke_fn(vm, &o.methods[idx], vec![]) {
                         if let Obj::StringObj(s) = &*(o.borrow()) {

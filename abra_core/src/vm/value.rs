@@ -57,7 +57,7 @@ impl TypeValue {
         if let Some(constructor) = self.constructor {
             constructor(args)
         } else {
-            Value::new_instance_obj(Value::Type(self), args)
+            Value::new_instance_obj(self, args)
         }
     }
 }
@@ -113,8 +113,8 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(map)))
     }
 
-    pub fn new_instance_obj(typ: Value, fields: Vec<Value>) -> Value {
-        let inst = Obj::InstanceObj(InstanceObj { typ: Box::new(typ), fields, methods: vec![] });
+    pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
+        let inst = Obj::InstanceObj(InstanceObj { typ, fields, methods: vec![] });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
@@ -209,7 +209,7 @@ impl Eq for Value {}
 
 #[derive(Debug, Hash, Eq, PartialOrd, PartialEq)]
 pub struct InstanceObj {
-    pub typ: Box<Value>,
+    pub typ: TypeValue,
     pub fields: Vec<Value>,
     pub methods: Vec<Value>,
 }
@@ -265,10 +265,12 @@ impl Display for Obj {
                 write!(f, "{{ {} }}", fields)
             }
             Obj::InstanceObj(inst) => {
-                match &*inst.typ {
-                    Value::Type(TypeValue { name, .. }) => write!(f, "<instance {}>", name),
-                    _ => unreachable!("Shouldn't have instances of non-struct types")
-                }
+                let TypeValue { name, .. } = &inst.typ;
+                write!(f, "<instance {}>", name)
+            }
+            Obj::NativeInstanceObj(inst) => {
+                let TypeValue { name, .. } = &inst.typ;
+                write!(f, "<instance {}>", name)
             }
             Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
                 match values {
@@ -278,10 +280,6 @@ impl Display for Obj {
                         write!(f, "{}.{}({})", enum_name, name, values)
                     }
                 }
-            }
-            Obj::NativeInstanceObj(inst) => {
-                let TypeValue { name, .. } = &inst.typ;
-                write!(f, "<instance {}>", name)
             }
         }
     }
