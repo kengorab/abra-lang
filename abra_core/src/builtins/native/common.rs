@@ -105,11 +105,17 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                     format!("{{ {} }}", fields)
                 }
                 Obj::InstanceObj(o) => {
-                    let tostring_method_idx = o.typ.methods.iter()
-                        .position(|(name, _)| name == "toString")
-                        .map(|idx| idx);
-                    let idx = tostring_method_idx.expect("Every instance should have at least the default toString method");
-                    if let Value::Obj(o) = invoke_fn(vm, &o.methods[idx], vec![]) {
+                    let mut tostring_method = o.typ.methods.iter()
+                        .find(|(name, _)| name == "toString")
+                        .map(|(_, m)| m)
+                        .expect("Every instance should have at least the default toString method")
+                        .clone();
+                    match &mut tostring_method {
+                        Value::Fn(fn_value) => fn_value.receiver = Some(Box::new(value.clone())),
+                        Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(value.clone())),
+                        _ => unreachable!()
+                    }
+                    if let Value::Obj(o) = invoke_fn(vm, &tostring_method, vec![]) {
                         if let Obj::StringObj(s) = &*(o.borrow()) {
                             s.clone()
                         } else { unreachable!() }

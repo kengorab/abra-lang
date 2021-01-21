@@ -14,11 +14,10 @@ pub trait NativeValue: NativeTyp + DynHash + Debug + Downcast {
     fn get_type_value() -> TypeValue where Self: Sized;
 
     fn init(self) -> Value where Self: Sized {
-        let inst = Value::new_native_instance_obj(
+        Value::new_native_instance_obj(
             Self::get_type_value(),
             Box::new(self),
-        );
-        VM::init_instance_obj(inst, Self::get_type_value())
+        )
     }
 
     fn is_equal(&self, other: &Box<dyn NativeValue>) -> bool;
