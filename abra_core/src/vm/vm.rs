@@ -432,7 +432,7 @@ impl VM {
         match receiver {
             Some(receiver) => {
                 let mut args = self.stack.split_off(self.stack.len() - arity);
-                self.stack.push(Value::Obj(receiver));
+                self.stack.push(*receiver);
                 self.stack.append(&mut args);
                 arity += 1;
             }
@@ -486,28 +486,6 @@ impl VM {
             }
             Ok(None)
         }
-    }
-
-    pub fn init_instance_obj(instance_value: Value, type_value: TypeValue) -> Value {
-        let instance_value = match instance_value {
-            Value::Obj(obj) => obj,
-            _ => unreachable!()
-        };
-
-        for (_, mut method_value) in type_value.methods {
-            match &mut method_value {
-                Value::Fn(fn_value) => fn_value.receiver = Some(instance_value.clone()),
-                Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(Value::Obj(instance_value.clone()))),
-                _ => unreachable!()
-            }
-            match *instance_value.borrow_mut() {
-                Obj::InstanceObj(ref mut obj) => obj.methods.push(method_value),
-                Obj::NativeInstanceObj(ref mut obj) => obj.methods.push(method_value),
-                _ => unreachable!()
-            }
-        }
-
-        Value::Obj(instance_value)
     }
 
     pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
@@ -613,16 +591,6 @@ impl VM {
 
                     self.push(inst);
                 }
-                Opcode::Init => {
-                    let instance_value = self.pop_expect()?;
-                    let type_value = match self.pop_expect()? {
-                        Value::Type(type_value) => type_value,
-                        _ => unreachable!()
-                    };
-
-                    let inst = Self::init_instance_obj(instance_value, type_value);
-                    self.push(inst);
-                }
                 op @ Opcode::GetField |
                 op @ Opcode::GetMethod => {
                     let is_method = op == Opcode::GetMethod;
@@ -636,12 +604,22 @@ impl VM {
                             let mut is_map = false;
                             let mut is_set = false;
                             let mut v = Value::Nil;
+                            let mut m = None;
                             match &*obj.borrow() {
                                 Obj::InstanceObj(inst) => {
-                                    v = if is_method {
-                                        inst.methods[idx].clone()
+                                    if is_method {
+                                        let (_, method) = inst.typ.methods[idx].clone();
+                                        m = Some(method);
                                     } else {
-                                        inst.fields[idx].clone()
+                                        v = inst.fields[idx].clone();
+                                    }
+                                }
+                                Obj::NativeInstanceObj(i) => {
+                                    if is_method {
+                                        let (_, method) = i.typ.methods[idx].clone();
+                                        m = Some(method);
+                                    } else {
+                                        v = i.inst.get_field_value(idx);
                                     }
                                 }
                                 Obj::EnumVariantObj(inst) => {
@@ -654,24 +632,22 @@ impl VM {
                                 Obj::StringObj { .. } => is_str = true,
                                 Obj::MapObj(_) => is_map = true,
                                 Obj::SetObj(_) => is_set = true,
-                                Obj::NativeInstanceObj(i) => {
-                                    v = if is_method {
-                                        i.methods[idx].clone()
-                                    } else {
-                                        i.inst.get_field_value(idx)
-                                    }
-                                }
                                 _ => unreachable!()
                             };
-                            let inst = Box::new(inst);
-                            if is_str {
-                                NativeString::get_field_or_method_value(is_method, inst, idx)
-                            } else if is_map {
-                                NativeMap::get_field_or_method_value(is_method, inst, idx)
-                            } else if is_set {
-                                NativeSet::get_field_or_method_value(is_method, inst, idx)
+                            if let Some(mut m) = m {
+                                m.bind_fn_value(inst);
+                                m
                             } else {
-                                v
+                                let inst = Box::new(inst);
+                                if is_str {
+                                    NativeString::get_field_or_method_value(is_method, inst, idx)
+                                } else if is_map {
+                                    NativeMap::get_field_or_method_value(is_method, inst, idx)
+                                } else if is_set {
+                                    NativeSet::get_field_or_method_value(is_method, inst, idx)
+                                } else {
+                                    v
+                                }
                             }
                         }
                         Value::Float(_) => NativeFloat::get_field_or_method_value(is_method, Box::new(inst), idx),
@@ -686,13 +662,12 @@ impl VM {
                                 field_value
                             } else {
                                 let (_, variant_value) = variants[idx].clone();
+                                // TODO: Don't eagerly bind method values
                                 let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {
                                     for (_, mut method_value) in methods {
-                                        match &mut method_value {
-                                            Value::Fn(fn_value) => fn_value.receiver = Some(instance_value.clone()),
-                                            Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(Value::Obj(instance_value.clone()))),
-                                            _ => unreachable!()
-                                        }
+                                        let inst = Value::Obj(instance_value.clone());
+                                        method_value.bind_fn_value(inst);
+
                                         match *instance_value.borrow_mut() {
                                             Obj::EnumVariantObj(ref mut obj) => obj.methods.push(method_value),
                                             _ => unreachable!()

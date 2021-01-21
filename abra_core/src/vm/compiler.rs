@@ -1720,7 +1720,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let TypedInstantiationNode { target, fields, .. } = node;
 
         self.visit(*target)?;
-        self.write_opcode(Opcode::Dup, line);
 
         let num_fields = fields.len();
         for (_, field_value) in fields.into_iter().rev() {
@@ -1729,8 +1728,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.write_opcode(Opcode::New, line);
         self.write_byte(num_fields as u8, line);
-
-        self.write_opcode(Opcode::Init, line);
 
         Ok(())
     }
@@ -2533,10 +2530,8 @@ mod tests {
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::New as u8, 1,
-                Opcode::Init as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),
                 Opcode::GStore as u8,
                 Opcode::Return as u8
@@ -2572,20 +2567,16 @@ mod tests {
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::IConst0 as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::New as u8, 2,
-                Opcode::Init as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(4),
                 Opcode::Constant as u8, 0, with_prelude_const_offset(5),
                 Opcode::New as u8, 2,
-                Opcode::Init as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(6),
                 Opcode::GStore as u8,
                 Opcode::Return as u8
@@ -3206,10 +3197,8 @@ mod tests {
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::New as u8, 1,
-                Opcode::Init as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(4),
@@ -4571,10 +4560,8 @@ mod tests {
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::GLoad as u8,
-                Opcode::Dup as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(2),
                 Opcode::New as u8, 1,
-                Opcode::Init as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(3),

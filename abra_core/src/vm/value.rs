@@ -17,7 +17,7 @@ pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
     pub upvalues: Vec<Upvalue>,
-    pub receiver: Option<Arc<RefCell<Obj>>>,
+    pub receiver: Option<Box<Value>>,
     pub has_return: bool,
 }
 
@@ -26,9 +26,7 @@ impl Hash for FnValue {
         self.name.hash(hasher);
         self.code.hash(hasher);
         self.upvalues.hash(hasher);
-        if let Some(receiver) = &self.receiver {
-            (&*receiver.borrow()).hash(hasher);
-        }
+        self.receiver.hash(hasher);
         self.has_return.hash(hasher);
         hasher.finish();
     }
@@ -39,8 +37,22 @@ pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
-    pub receiver: Option<Arc<RefCell<Obj>>>,
+    pub receiver: Option<Box<Value>>,
     pub has_return: bool,
+}
+
+impl Hash for ClosureValue {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.name.hash(hasher);
+        self.code.hash(hasher);
+        for capture in &self.captures {
+            let uv = &*capture.borrow();
+            uv.hash(hasher);
+        }
+        self.receiver.hash(hasher);
+        self.has_return.hash(hasher);
+        hasher.finish();
+    }
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
@@ -114,18 +126,26 @@ impl Value {
     }
 
     pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
-        let inst = Obj::InstanceObj(InstanceObj { typ, fields, methods: vec![] });
+        let inst = Obj::InstanceObj(InstanceObj { typ, fields });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn new_native_instance_obj(typ: TypeValue, inst: Box<dyn NativeValue>) -> Value {
-        let inst = Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, methods: vec![] });
+        let inst = Obj::NativeInstanceObj(NativeInstanceObj { typ, inst });
         Value::Obj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn new_enum_variant_obj(evv: EnumVariantObj) -> Value {
         let inst = Obj::EnumVariantObj(evv);
         Value::Obj(Arc::new(RefCell::new(inst)))
+    }
+
+    pub fn bind_fn_value(&mut self, instance: Value) {
+        match self {
+            Value::Fn(fn_value) => fn_value.receiver = Some(Box::new(instance)),
+            Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(instance)),
+            _ => unreachable!()
+        }
     }
 
     pub fn as_int(&self) -> &i64 {
@@ -167,29 +187,8 @@ impl Hash for Value {
             Value::Bool(b) => b.hash(hasher),
             Value::Str(s) => s.hash(hasher),
             Value::Obj(o) => (&*o.borrow()).hash(hasher),
-            Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => {
-                name.hash(hasher);
-                code.hash(hasher);
-                upvalues.hash(hasher);
-                if let Some(obj) = receiver {
-                    let obj = &*obj.borrow();
-                    obj.hash(hasher);
-                }
-                has_return.hash(hasher);
-            }
-            Value::Closure(ClosureValue { name, code, captures, receiver, has_return }) => {
-                name.hash(hasher);
-                code.hash(hasher);
-                for capture in captures {
-                    let uv = &*capture.borrow();
-                    uv.hash(hasher);
-                }
-                if let Some(obj) = receiver {
-                    let obj = &*obj.borrow();
-                    obj.hash(hasher);
-                }
-                has_return.hash(hasher);
-            }
+            Value::Fn(f) => f.hash(hasher),
+            Value::Closure(c) => c.hash(hasher),
             Value::NativeFn(NativeFn { name, receiver, has_return, .. }) => {
                 name.hash(hasher);
                 if let Some(receiver) = receiver {
@@ -211,7 +210,6 @@ impl Eq for Value {}
 pub struct InstanceObj {
     pub typ: TypeValue,
     pub fields: Vec<Value>,
-    pub methods: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
@@ -228,7 +226,6 @@ pub struct EnumVariantObj {
 pub struct NativeInstanceObj {
     pub typ: TypeValue,
     pub inst: Box<dyn NativeValue>,
-    pub methods: Vec<Value>,
 }
 
 impl NativeInstanceObj {

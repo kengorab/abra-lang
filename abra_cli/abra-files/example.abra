@@ -72,7 +72,10 @@
 //  println(i)
 //}
 
-val twelves = Array.fill(6, 12)
-twelves.push(6)
-twelves
-
+val twelves = [1, 2, 3]
+val p = twelves.push
+p(4, 5, 6)
+println(twelves)
+p(7, 8, 9)
+println(twelves)
+println(p)
