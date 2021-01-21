@@ -14,7 +14,7 @@ use crate::builtins::arguments::Arguments;
 #[abra_type(generics = "T")]
 pub struct Array {
     // This field needs to be public so vararg handlers can access the received array's values
-    pub(crate) _inner: Vec<Value>,
+    pub _inner: Vec<Value>,
 
     #[abra_field(name = "length", field_type = "Int")]
     length: usize,

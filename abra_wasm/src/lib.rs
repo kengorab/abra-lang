@@ -22,6 +22,7 @@ use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumVal
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
+use abra_core::builtins::native::Array;
 
 pub struct RunResultValue(Option<Value>);
 
@@ -73,13 +74,23 @@ impl Serialize for RunResultValue {
                     arr.end()
                 }
                 Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, .. }) => {
-                    let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
+                    if let Some(arr) = inst.downcast_ref::<Array>() {
+                        let array = &arr._inner;
 
-                    for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
-                        obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
+                        let mut arr = serializer.serialize_seq(Some((*array).len()))?;
+                        array.iter().for_each(|val| {
+                            arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                        });
+                        arr.end()
+                    } else {
+                        let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
+
+                        for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
+                            obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
+                        }
+
+                        obj.end()
                     }
-
-                    obj.end()
                 }
                 Obj::EnumVariantObj(EnumVariantObj { name, .. }) => serializer.serialize_str(name)
             }
