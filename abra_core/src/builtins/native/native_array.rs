@@ -11,8 +11,8 @@ use std::collections::{HashSet, HashMap};
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(generics = "T")]
-pub struct Array {
+#[abra_type(signature = "Array<T>")]
+pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,
 
@@ -21,7 +21,7 @@ pub struct Array {
 }
 
 #[abra_methods]
-impl Array {
+impl NativeArray {
     #[abra_constructor]
     pub(crate) fn new(args: Vec<Value>) -> Self {
         Self { _inner: args, length: 0 }

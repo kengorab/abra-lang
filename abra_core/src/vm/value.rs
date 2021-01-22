@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::hash::{Hash, Hasher};
-use crate::builtins::native::{Array, Map, Set};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet};
 use crate::builtins::native_value_trait::NativeValue;
 use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
@@ -106,11 +106,11 @@ impl Value {
     }
 
     pub fn new_array_obj(values: Vec<Value>) -> Value {
-        Array::new(values).init()
+        NativeArray::new(values).init()
     }
 
     pub fn new_set_obj(values: Vec<Value>) -> Value {
-        Set::new(values).init()
+        NativeSet::new(values).init()
     }
 
     pub fn new_tuple_obj(values: Vec<Value>) -> Value {
@@ -119,7 +119,7 @@ impl Value {
     }
 
     pub fn new_map_obj(items: Vec<Value>) -> Value {
-        Map::new(items).init()
+        NativeMap::new(items).init()
     }
 
     pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
@@ -226,20 +226,20 @@ pub struct NativeInstanceObj {
 }
 
 impl NativeInstanceObj {
-    pub fn as_array(&self) -> Option<&Array> {
-        self.inst.downcast_ref::<Array>()
+    pub fn as_array(&self) -> Option<&NativeArray> {
+        self.inst.downcast_ref::<NativeArray>()
     }
 
-    pub fn as_set(&self) -> Option<&Set> {
-        self.inst.downcast_ref::<Set>()
+    pub fn as_set(&self) -> Option<&NativeSet> {
+        self.inst.downcast_ref::<NativeSet>()
     }
 
-    pub fn as_map(&self) -> Option<&Map> {
-        self.inst.downcast_ref::<Map>()
+    pub fn as_map(&self) -> Option<&NativeMap> {
+        self.inst.downcast_ref::<NativeMap>()
     }
 
-    pub fn as_map_mut(&mut self) -> Option<&mut Map> {
-        self.inst.downcast_mut::<Map>()
+    pub fn as_map_mut(&mut self) -> Option<&mut NativeMap> {
+        self.inst.downcast_mut::<NativeMap>()
     }
 }
 

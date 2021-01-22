@@ -1,4 +1,4 @@
-use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeString, NativeType, to_string};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeString, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -824,7 +824,7 @@ impl VM {
                             }
                         }
                         Obj::NativeInstanceObj(ref mut i) => {
-                            let values = &mut i.inst.downcast_mut::<Array>().unwrap()._inner;
+                            let values = &mut i.inst.downcast_mut::<NativeArray>().unwrap()._inner;
                             if values.len() < idx {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
@@ -866,7 +866,7 @@ impl VM {
                             Value::new_string_obj(value)
                         }
                         Obj::NativeInstanceObj(i) => {
-                            let arr: &Array = i.as_array().unwrap();
+                            let arr: &NativeArray = i.as_array().unwrap();
                             let value = &arr._inner;
                             let (start, len) = get_range_endpoints(value.len(), start, end);
                             let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();

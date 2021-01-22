@@ -35,10 +35,10 @@ pub fn parse_fn_signature(parent_type_name: Option<&String>, type_args: &Vec<Str
     SignatureParser::new(parent_type_name, type_args, &input).parse()
 }
 
-pub fn parse_type(type_name: &String, generics: &Vec<String>, input: &String) -> Result<TypeRepr, String> {
+pub fn parse_type(type_name: Option<&String>, generics: &Vec<String>, input: &String) -> Result<TypeRepr, String> {
     let input = input.chars().filter(|ch| !ch.is_whitespace()).collect::<String>();
 
-    let mut parser = SignatureParser::new(Some(type_name), generics, &input);
+    let mut parser = SignatureParser::new(type_name, generics, &input);
     let type_repr = parser.parse_type_ident()?;
     parser.assert_consumed_all()?;
 
@@ -534,7 +534,7 @@ mod test {
     #[test]
     fn test_parse_type_union() {
         let type_repr = parse_type(
-            &"".to_string(),
+            Some(&"".to_string()),
             &vec![],
             &"Int | Float | String[]".to_string(),
         ).unwrap();

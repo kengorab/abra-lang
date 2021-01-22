@@ -11,6 +11,7 @@ mod signature;
 
 #[derive(Debug)]
 struct TypeSpec {
+    native_type_name: String,
     name: String,
     type_args: Vec<String>,
     constructor: ConstructorSpec,
@@ -59,6 +60,7 @@ struct SetterSpec {
 
 #[derive(Debug)]
 struct FirstPass {
+    type_name: String,
     type_args: Vec<String>,
     field_specs: Vec<FieldSpec>,
 }
@@ -70,14 +72,13 @@ thread_local! {
 #[proc_macro_derive(AbraType, attributes(abra_type, abra_field))]
 pub fn abra_type(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemStruct);
-    let type_name = input.ident.to_string();
+    let native_type_name = input.ident.to_string();
 
-    let type_args = if let Some((_, attr)) = find_attr(&input.attrs, "abra_type") {
-        let attr = parse_attr(attr);
-        attr.get("generics").map_or(vec![], |s| {
-            s.split(",").map(|g| g.trim().to_string()).collect::<Vec<String>>()
-        })
-    } else { vec![] };
+    let (type_name, type_args) = match parse_abra_type_attr(&input.attrs) {
+        Ok(Some(res)) => res,
+        Ok(None) => (native_type_name.clone(), vec![]),
+        Err(e) => return e.to_compile_error().into()
+    };
 
     let field_specs = input.fields.iter()
         .map(|f| parse_abra_field_attr(&type_name, &input, &type_args, f))
@@ -89,9 +90,9 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into()
     };
 
-    let first_pass = FirstPass { type_args, field_specs };
+    let first_pass = FirstPass { type_name, type_args, field_specs };
     TYPES.with(|types| {
-        types.borrow_mut().insert(type_name, first_pass)
+        types.borrow_mut().insert(native_type_name, first_pass)
     });
 
     (quote! {}).into()
@@ -115,7 +116,7 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
 
     let typ = match field_attr.get("field_type") {
         Some(typ) => {
-            match parse_type(type_name, type_args, typ) {
+            match parse_type(Some(type_name), type_args, typ) {
                 Ok(t) => t,
                 Err(e) => {
                     let msg = format!("Invalid `field_type` provided to #[abra_field]: {}", e);
@@ -139,24 +140,58 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
     }))
 }
 
+fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>)>, syn::Error> {
+    match find_attr(attrs, "abra_type") {
+        Some((_, attr)) => {
+            let attr_span = attr.span();
+            let attr = parse_attr(attr);
+            match attr.get("signature") {
+                Some(signature) => match parse_type(None, &vec![], signature) {
+                    Ok(repr) => match repr {
+                        TypeRepr::Ident(type_name, type_args) => {
+                            let type_args = type_args.into_iter()
+                                .map(|t| match t {
+                                    TypeRepr::Ident(n, _) => n,
+                                    r => unreachable!(format!("Unexpected type {:?}", r))
+                                })
+                                .collect();
+                            Ok(Some((type_name, type_args)))
+                        }
+                        r => unreachable!(format!("Unexpected type {:?}", r))
+                    },
+                    Err(e) => {
+                        let msg = format!("Invalid signature provided to #[abra_type]: {}", e);
+                        Err(syn::Error::new(attr_span, msg))
+                    }
+                }
+                None => {
+                    let msg = "Missing required parameter `signature` in #[abra_type] attribute".to_string();
+                    Err(syn::Error::new(attr_span, msg))
+                }
+            }
+        }
+        None => Ok(None)
+    }
+}
+
 #[proc_macro_attribute]
 pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as syn::ItemImpl);
 
-    let type_name = match &*input.self_ty {
+    let native_type_name = match &*input.self_ty {
         Type::Path(p) => p.path.segments[0].ident.to_string(),
         _ => unimplemented!()
     };
 
     let first_pass_data = TYPES.with(|types| {
         let mut types = types.borrow_mut();
-        types.remove(&type_name)
+        types.remove(&native_type_name)
     });
-    let (type_args, mut field_specs) = if let Some(first_pass_data) = first_pass_data {
-        let FirstPass { type_args, field_specs } = first_pass_data;
-        (type_args, field_specs)
+    let (type_name, type_args, mut field_specs) = if let Some(first_pass_data) = first_pass_data {
+        let FirstPass { type_name, type_args, field_specs } = first_pass_data;
+        (type_name, type_args, field_specs)
     } else {
-        let msg = format!("Cannot implement methods for struct {}, which does not derive AbraType", type_name);
+        let msg = format!("Cannot implement methods for struct {}, which does not derive AbraType", native_type_name);
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     };
 
@@ -296,6 +331,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let type_spec = TypeSpec {
+        native_type_name,
         name: type_name,
         type_args,
         constructor,
@@ -622,7 +658,6 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
 
 fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     let type_name = &type_spec.name;
-    let type_name_ident = format_ident!("{}", &type_name);
 
     let type_args = type_spec.type_args.iter().map(|type_arg_name| {
         quote! {
@@ -688,8 +723,9 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
         }
     });
 
+    let native_type_name_ident = format_ident!("{}", &type_spec.native_type_name);
     let ts = quote! {
-        impl crate::builtins::native_value_trait::NativeTyp for #type_name_ident {
+        impl crate::builtins::native_value_trait::NativeTyp for #native_type_name_ident {
             fn get_type() -> crate::typechecker::types::StructType where Self: Sized {
                 crate::typechecker::types::StructType {
                     name: #type_name.to_string(),
@@ -714,9 +750,6 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 }
 
 fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
-    let type_name = &type_spec.name;
-    let type_name_ident = format_ident!("{}", &type_name);
-
     let constructor_fn_name = &type_spec.constructor.native_fn_name;
     let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
 
@@ -726,8 +759,9 @@ fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
     let get_field_value_method_code = gen_get_field_value_method_code(type_spec);
     let set_field_value_method_code = gen_set_field_value_method_code(type_spec);
 
+    let native_type_name_ident = format_ident!("{}", &type_spec.native_type_name);
     let ts = quote! {
-        impl crate::builtins::native_value_trait::NativeValue for #type_name_ident {
+        impl crate::builtins::native_value_trait::NativeValue for #native_type_name_ident {
             fn construct(args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
                 let inst = Self::#constructor_fn_name_ident(args);
                 crate::vm::value::Value::new_native_instance_obj(

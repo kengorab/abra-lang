@@ -10,9 +10,8 @@ use std::collections::HashSet;
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(generics = "T")]
-pub struct Set {
-    // This field needs to be public so vararg handlers can access the received array's values
+#[abra_type(signature = "Set<T>")]
+pub struct NativeSet {
     pub _inner: HashSet<Value>,
 
     #[abra_field(name = "size", field_type = "Int")]
@@ -20,7 +19,7 @@ pub struct Set {
 }
 
 #[abra_methods]
-impl Set {
+impl NativeSet {
     #[abra_constructor]
     pub(crate) fn new(args: Vec<Value>) -> Self {
         Self { _inner: args.into_iter().collect(), size: 0 }
@@ -149,7 +148,7 @@ impl Set {
     }
 }
 
-impl Hash for Set {
+impl Hash for NativeSet {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         for item in &self._inner {
             item.hash(hasher);

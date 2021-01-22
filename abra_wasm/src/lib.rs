@@ -22,7 +22,7 @@ use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumVal
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
-use abra_core::builtins::native::{Array, Map, Set};
+use abra_core::builtins::native::{NativeArray, NativeMap, NativeSet};
 
 pub struct RunResultValue(Option<Value>);
 
@@ -60,7 +60,7 @@ impl Serialize for RunResultValue {
                     arr.end()
                 }
                 Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, .. }) => {
-                    if let Some(arr) = inst.downcast_ref::<Array>() {
+                    if let Some(arr) = inst.downcast_ref::<NativeArray>() {
                         let array = &arr._inner;
 
                         let mut arr = serializer.serialize_seq(Some((*array).len()))?;
@@ -68,7 +68,7 @@ impl Serialize for RunResultValue {
                             arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                         });
                         arr.end()
-                    } else if let Some(map) = inst.downcast_ref::<Map>() {
+                    } else if let Some(map) = inst.downcast_ref::<NativeMap>() {
                         let map = &map._inner;
 
                         let mut obj = serializer.serialize_map(Some((*map).len()))?;
@@ -76,7 +76,7 @@ impl Serialize for RunResultValue {
                             obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
                         });
                         obj.end()
-                    } else if let Some(set) = inst.downcast_ref::<Set>() {
+                    } else if let Some(set) = inst.downcast_ref::<NativeSet>() {
                         let set = &set._inner;
 
                         let mut arr = serializer.serialize_seq(Some((*set).len()))?;

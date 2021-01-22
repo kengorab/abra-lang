@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{Array, Map, Set, NativeFloat, NativeInt, NativeString, NativeType};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString, NativeType};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -2601,12 +2601,12 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Int => Ok((NativeInt::get_field_or_method_type(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = Array::get_type().get_field_or_method(field_name);
+                    let field_data = NativeArray::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Set(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = Set::get_type().get_field_or_method(field_name);
+                    let field_data = NativeSet::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {
@@ -2614,7 +2614,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         ("K".to_string(), *key_type.clone()),
                         ("V".to_string(), *value_type.clone()),
                     ].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = Map::get_type().get_field_or_method(field_name);
+                    let field_data = NativeMap::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
@@ -2640,11 +2640,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Array(_) => {
-                        let field_data = Array::get_type().get_static_field_or_method(field_name);
+                        let field_data = NativeArray::get_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Map(_, _) => {
-                        let field_data = Map::get_type().get_static_field_or_method(field_name);
+                        let field_data = NativeMap::get_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     _ => unimplemented!()
