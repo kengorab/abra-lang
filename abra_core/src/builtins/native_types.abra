@@ -15,22 +15,3 @@ type NativeInt {
   func isOdd(self): Bool {}
   func isBetween(self, lower: Int, upper: Int, inclusive: Bool = false): Bool {}
 }
-
-type NativeString {
-  length: Int
-
-  func toString(self): String {}
-  func toLower(self): String {}
-  func toUpper(self): String {}
-  func padLeft(self, totalSize: Int, padding: String = " "): String {}
-  func trim(self): String {}
-  func trimStart(self, pattern: String = " "): String {}
-  func trimEnd(self, pattern: String = " "): String {}
-  func split(self, splitter: String): String[] {}
-  func splitAt(self, index: Int): (String, String) {}
-  func lines(self): String[] {}
-  func chars(self): String[] {}
-  func parseInt(self, radix: Int = 10): Int? {}
-  func parseFloat(self): Float? {}
-  func concat(self, str: Any, *others: Any[]): String {}
-}

@@ -84,12 +84,6 @@ impl<'a> Serialize for JsWrappedObjValue<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
-            Obj::StringObj(value) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("kind", "stringObj")?;
-                obj.serialize_entry("value", value)?;
-                obj.end()
-            }
             Obj::TupleObj(value) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "tupleObj")?;

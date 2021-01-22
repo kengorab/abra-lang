@@ -9,8 +9,8 @@ use crate::builtins::arguments::Arguments;
 use crate::builtins::native::common::invoke_fn;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(generics = "K, V")]
-pub struct Map {
+#[abra_type(signature = "Map<K, V>")]
+pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 
     #[abra_field(name = "size", field_type = "Int")]
@@ -18,7 +18,7 @@ pub struct Map {
 }
 
 #[abra_methods]
-impl Map {
+impl NativeMap {
     #[abra_constructor]
     pub(crate) fn new(values: Vec<Value>) -> Self {
         let mut _inner = HashMap::new();
@@ -163,7 +163,7 @@ impl Map {
     }
 }
 
-impl Hash for Map {
+impl Hash for NativeMap {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         for (k, v) in &self._inner {
             k.hash(hasher);

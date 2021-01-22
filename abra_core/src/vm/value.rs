@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::hash::{Hash, Hasher};
-use crate::builtins::native::{Array, Map, Set};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
 use crate::builtins::native_value_trait::NativeValue;
 use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
@@ -101,16 +101,15 @@ pub enum Value {
 
 impl Value {
     pub fn new_string_obj(value: String) -> Value {
-        let str = Obj::StringObj(value);
-        Value::Obj(Arc::new(RefCell::new(str)))
+        NativeString::create(value).init()
     }
 
     pub fn new_array_obj(values: Vec<Value>) -> Value {
-        Array::new(values).init()
+        NativeArray::new(values).init()
     }
 
     pub fn new_set_obj(values: Vec<Value>) -> Value {
-        Set::new(values).init()
+        NativeSet::new(values).init()
     }
 
     pub fn new_tuple_obj(values: Vec<Value>) -> Value {
@@ -119,7 +118,7 @@ impl Value {
     }
 
     pub fn new_map_obj(items: Vec<Value>) -> Value {
-        Map::new(items).init()
+        NativeMap::new(items).init()
     }
 
     pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
@@ -226,26 +225,29 @@ pub struct NativeInstanceObj {
 }
 
 impl NativeInstanceObj {
-    pub fn as_array(&self) -> Option<&Array> {
-        self.inst.downcast_ref::<Array>()
+    pub fn as_string(&self) -> Option<&NativeString> {
+        self.inst.downcast_ref::<NativeString>()
     }
 
-    pub fn as_set(&self) -> Option<&Set> {
-        self.inst.downcast_ref::<Set>()
+    pub fn as_array(&self) -> Option<&NativeArray> {
+        self.inst.downcast_ref::<NativeArray>()
     }
 
-    pub fn as_map(&self) -> Option<&Map> {
-        self.inst.downcast_ref::<Map>()
+    pub fn as_set(&self) -> Option<&NativeSet> {
+        self.inst.downcast_ref::<NativeSet>()
     }
 
-    pub fn as_map_mut(&mut self) -> Option<&mut Map> {
-        self.inst.downcast_mut::<Map>()
+    pub fn as_map(&self) -> Option<&NativeMap> {
+        self.inst.downcast_ref::<NativeMap>()
+    }
+
+    pub fn as_map_mut(&mut self) -> Option<&mut NativeMap> {
+        self.inst.downcast_mut::<NativeMap>()
     }
 }
 
 #[derive(Debug)]
 pub enum Obj {
-    StringObj(String),
     TupleObj(Vec<Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
@@ -255,7 +257,6 @@ pub enum Obj {
 impl Display for Obj {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Obj::StringObj(value) => write!(f, "\"{}\"", value),
             Obj::TupleObj(value) => {
                 let items = value.iter().map(|v| format!("{}", v)).join(", ");
                 write!(f, "({})", items)
@@ -284,7 +285,6 @@ impl Display for Obj {
 impl PartialOrd for Obj {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
-            (Obj::StringObj(v1), Obj::StringObj(v2)) => Some(v1.cmp(v2)),
             (Obj::TupleObj(v1), Obj::TupleObj(v2)) => {
                 if v1.len() < v2.len() {
                     Some(Ordering::Less)
@@ -324,10 +324,17 @@ impl PartialOrd for Obj {
                 Some(Ordering::Equal)
             }
             (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => {
-                if v1.inst.is_equal(&v2.inst) {
-                    Some(Ordering::Equal)
-                } else {
-                    Some(Ordering::Less)
+                match (v1.as_string(), v2.as_string()) {
+                    (Some(s1), Some(s2)) => {
+                        s1._inner.partial_cmp(&s2._inner)
+                    }
+                    _ => {
+                        if v1.inst.is_equal(&v2.inst) {
+                            Some(Ordering::Equal)
+                        } else {
+                            Some(Ordering::Less)
+                        }
+                    }
                 }
             }
             (_, _) => None
@@ -338,7 +345,6 @@ impl PartialOrd for Obj {
 impl PartialEq for Obj {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Obj::StringObj(v1), Obj::StringObj(v2)) => v1.eq(v2),
             (Obj::TupleObj(v1), Obj::TupleObj(v2)) => v1.eq(v2),
             (Obj::InstanceObj(v1), Obj::InstanceObj(v2)) => v1.eq(v2),
             (Obj::EnumVariantObj(v1), Obj::EnumVariantObj(v2)) => v1.eq(v2),
@@ -353,7 +359,6 @@ impl Eq for Obj {}
 impl Hash for Obj {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         match self {
-            Obj::StringObj(s) => s.hash(hasher),
             Obj::TupleObj(a) => a.hash(hasher),
             Obj::InstanceObj(i) => {
                 i.typ.hash(hasher);

@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{Array, Map, Set, NativeType, NativeString, default_to_string_method};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, default_to_string_method};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
@@ -862,9 +862,9 @@ impl Compiler {
                         // number of elements in the destructuring pattern following the `*splat`. From the example above:
                         //   $temp_0[1:].splitAt(-2)
                         let split_at_method_idx = if is_string {
-                            NativeString::get_method_idx("splitAt")
+                            NativeString::get_type().get_method_idx("splitAt").expect("String is missing required splitAt method")
                         } else {
-                            Array::get_type().get_method_idx("splitAt").expect("Array is missing required splitAt method")
+                            NativeArray::get_type().get_method_idx("splitAt").expect("Array is missing required splitAt method")
                         };
                         self.write_opcode(Opcode::GetMethod, line);
                         self.metadata.field_gets.push("splitAt".to_string());
@@ -1841,9 +1841,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_opcode(Opcode::Nil, line);
         self.visit(*iterator)?;
         let enumerate_method_idx = match iterator_type {
-            Type::Array(_) => Array::get_type().get_method_idx("enumerate").expect("Array is missing required enumerate method"),
-            Type::Set(_) => Set::get_type().get_method_idx("enumerate").expect("Set is missing required enumerate method"),
-            Type::Map(_, _) => Map::get_type().get_method_idx("enumerate").expect("Map is missing required enumerate method"),
+            Type::Array(_) => NativeArray::get_type().get_method_idx("enumerate").expect("Array is missing required enumerate method"),
+            Type::Set(_) => NativeSet::get_type().get_method_idx("enumerate").expect("Set is missing required enumerate method"),
+            Type::Map(_, _) => NativeMap::get_type().get_method_idx("enumerate").expect("Map is missing required enumerate method"),
             _ => unreachable!("Should have been caught during typechecking")
         };
         self.write_opcode(Opcode::GetMethod, line);
@@ -1875,7 +1875,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         load_intrinsic(self, "$iter", line);
         self.write_opcode(Opcode::GetField, line);
         self.metadata.field_gets.push("length".to_string());
-        let length_idx = Array::get_type().get_field_idx("length").expect("Array is missing required length field") as u8;
+        let length_idx = NativeArray::get_type().get_field_idx("length").expect("Array is missing required length field") as u8;
         self.write_byte(length_idx, line);
         self.write_opcode(Opcode::LT, line);
         let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF, line);

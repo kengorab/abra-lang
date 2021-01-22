@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native::{Array, Map, Set};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
 use crate::builtins::native_fns::native_fns;
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, TypeValue};
@@ -50,12 +50,12 @@ impl Prelude {
             ("Int", Type::Int, None),
             ("Float", Type::Float, None),
             ("Bool", Type::Bool, None),
-            ("String", Type::String, None),
+            ("String", Type::String, Some(NativeString::get_type_value())),
             ("Unit", Type::Unit, None),
             ("Any", Type::Any, None),
-            ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(Array::get_type_value())),
-            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(Map::get_type_value())),
-            ("Set", Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), Some(Set::get_type_value())),
+            ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeArray::get_type_value())),
+            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(NativeMap::get_type_value())),
+            ("Set", Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeSet::get_type_value())),
         ];
         for (type_name, typ, type_value) in prelude_types {
             let value = match type_value {
