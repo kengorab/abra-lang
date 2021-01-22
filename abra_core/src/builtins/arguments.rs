@@ -1,6 +1,6 @@
 use crate::vm::value::{Value, Obj};
 use std::vec::IntoIter;
-use downcast_rs::__std::collections::HashSet;
+use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct Arguments<'a> {
