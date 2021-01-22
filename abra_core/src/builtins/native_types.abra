@@ -35,24 +35,6 @@ type NativeString {
   func concat(self, str: Any, *others: Any[]): String {}
 }
 
-type NativeMap<K, V> {
-  size: Int
-
-  func fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2> {}
-
-  func toString(self): String {}
-  func isEmpty(self): Bool {}
-  func enumerate(self): (K, V)[] {}
-  func keys(self): Set<K> {}
-  func values(self): Set<V> {}
-  func entries(self): Set<(K, V)> {}
-  func containsKey(self, key: K): Bool {}
-  func mapValues<U>(self, fn: (K, V) => U): Map<K, U> {}
-  func getOrDefault(self, key: K, default: V): V {}
-  func getOrElse(self, key: K, fn: () => V): V {}
-  func update(self, key: K, fn: (V) => V) {}
-}
-
 type NativeSet<T> {
   size: Int
 

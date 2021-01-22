@@ -11,7 +11,6 @@ mod tests {
     use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
-    use std::collections::HashMap;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
@@ -323,15 +322,18 @@ mod tests {
     fn sorted_map_obj_values(value: Value) -> Vec<(Value, Value)> {
         if let Value::Obj(obj) = value {
             match &*obj.borrow() {
-                Obj::MapObj(value) => {
-                    let mut pairs = value.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<(Value, Value)>>();
+                Obj::NativeInstanceObj(i) => {
+                    let mut pairs = i.as_map().unwrap()._inner
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect::<Vec<(Value, Value)>>();
                     pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
                     pairs
                 }
                 _ => unreachable!()
             }
         } else {
-            panic!("Result should be a MapObj")
+            panic!("Result should be a Map instance")
         }
     }
 
@@ -349,11 +351,9 @@ mod tests {
         let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
         let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
-            (new_string_obj("a"), Value::new_map_obj({
-                let mut items = HashMap::new();
-                items.insert(new_string_obj("b"), new_string_obj("hello"));
-                items
-            })),
+            (new_string_obj("a"), Value::new_map_obj(vec![
+                new_string_obj("b"), new_string_obj("hello")
+            ])),
             (new_string_obj("c"), Value::new_array_obj(vec![Value::Int(1), Value::Int(2)])),
         ];
         assert_eq!(expected_pairs, result_pairs);

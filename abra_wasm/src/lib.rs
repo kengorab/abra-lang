@@ -22,7 +22,7 @@ use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumVal
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
-use abra_core::builtins::native::Array;
+use abra_core::builtins::native::{Array, Map};
 
 pub struct RunResultValue(Option<Value>);
 
@@ -58,13 +58,6 @@ impl Serialize for RunResultValue {
                     });
                     arr.end()
                 }
-                Obj::MapObj(value) => {
-                    let mut obj = serializer.serialize_map(Some((*value).len()))?;
-                    value.into_iter().for_each(|(key, val)| {
-                        obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
-                    });
-                    obj.end()
-                }
                 Obj::InstanceObj(inst) => {
                     let fields = &inst.fields;
                     let mut arr = serializer.serialize_seq(Some(fields.len()))?;
@@ -82,6 +75,14 @@ impl Serialize for RunResultValue {
                             arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                         });
                         arr.end()
+                    } else if let Some(map) = inst.downcast_ref::<Map>() {
+                        let map = &map._inner;
+
+                        let mut obj = serializer.serialize_map(Some((*map).len()))?;
+                        map.into_iter().for_each(|(key, val)| {
+                            obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
+                        });
+                        obj.end()
                     } else {
                         let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
 

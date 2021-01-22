@@ -72,12 +72,12 @@ impl Array {
     }
 
     #[abra_method(signature = "enumerate(): (T, Int)[]")]
-    fn enumerate(&self) -> Value {
+    fn enumerate(&self) -> Self {
         let tuples = self._inner.iter().enumerate()
             .map(|(idx, value)| {
                 Value::new_tuple_obj(vec![value.clone(), Value::Int(idx as i64)])
             }).collect();
-        Self::new(tuples).init()
+        Self::new(tuples)
     }
 
     #[abra_method(signature = "push(item: T, *others: T[])")]
@@ -125,17 +125,16 @@ impl Array {
     }
 
     #[abra_method(signature = "concat(other: T[]): T[]")]
-    fn concat(&self, mut args: Arguments) -> Value {
+    fn concat(&self, mut args: Arguments) -> Self {
         let other = args.next_array();
 
         let new_array = vec![self._inner.clone(), other].concat();
 
-        Self::new(new_array).init()
+        Self::new(new_array)
     }
 
-
     #[abra_method(signature = "map<U>(fn: (T) => U): U[]")]
-    fn map(&self, mut args: Arguments, vm: &mut VM) -> Value {
+    fn map(&self, mut args: Arguments, vm: &mut VM) -> Self {
         let callback = args.next_value();
 
         let mut new_array_items = Vec::new();
@@ -145,11 +144,11 @@ impl Array {
             new_array_items.push(value);
         }
 
-        Self::new(new_array_items).init()
+        Self::new(new_array_items)
     }
 
     #[abra_method(signature = "filter(fn: (T) => Bool): T[]")]
-    fn filter(&self, mut args: Arguments, vm: &mut VM) -> Value {
+    fn filter(&self, mut args: Arguments, vm: &mut VM) -> Self {
         let callback = args.next_value();
 
         let mut new_array_items = Vec::new();
@@ -162,7 +161,7 @@ impl Array {
             }
         }
 
-        Self::new(new_array_items).init()
+        Self::new(new_array_items)
     }
 
     #[abra_method(signature = "reduce<U>(initialValue: U, fn: (U, T) => U): U")]
@@ -298,7 +297,7 @@ impl Array {
     }
 
     #[abra_method(signature = "sortBy(fn: (T) => Int, reverse?: Bool): T[]")]
-    fn sort_by(&self, mut args: Arguments, vm: &mut VM) -> Value {
+    fn sort_by(&self, mut args: Arguments, vm: &mut VM) -> Self {
         let callback = args.next_value();
         let reverse = args.next_bool_or_default(false);
 
@@ -322,11 +321,11 @@ impl Array {
         let items = sort_values.iter()
             .map(|(_, idx)| self._inner[*idx].clone())
             .collect();
-        Self::new(items).init()
+        Self::new(items)
     }
 
     #[abra_method(signature = "dedupe(): T[]")]
-    fn dedupe(&self) -> Value {
+    fn dedupe(&self) -> Self {
         let mut new_array_items = vec![];
         let mut seen = HashSet::new();
 
@@ -338,11 +337,11 @@ impl Array {
             new_array_items.push(item.clone())
         }
 
-        Self::new(new_array_items).init()
+        Self::new(new_array_items)
     }
 
     #[abra_method(signature = "dedupeBy<U>(fn: (T) => U): T[]")]
-    fn dedupe_by(&self, mut args: Arguments, vm: &mut VM) -> Value {
+    fn dedupe_by(&self, mut args: Arguments, vm: &mut VM) -> Self {
         let callback = args.next_value();
 
         let mut new_array_items = vec![];
@@ -359,7 +358,7 @@ impl Array {
             new_array_items.push(item.clone())
         }
 
-        Self::new(new_array_items).init()
+        Self::new(new_array_items)
     }
 
     #[abra_method(signature = "partition<U>(fn: (T) => U): Map<U, T[]>")]
@@ -375,10 +374,10 @@ impl Array {
             map.entry(value).or_insert(vec![]).push(item.clone());
         }
 
-        let map = map.into_iter()
-            .map(|(k, v)| (k, Self::new(v).init()))
+        let items = map.into_iter()
+            .flat_map(|(k, v)| vec![k, Self::new(v).init()])
             .collect();
-        Value::new_map_obj(map)
+        Value::new_map_obj(items)
     }
 
     #[abra_method(signature = "tally(): Map<T, Int>")]
@@ -389,10 +388,10 @@ impl Array {
             *map.entry(item.clone()).or_insert(0) += 1;
         }
 
-        let map = map.into_iter()
-            .map(|(k, v)| (k, Value::Int(v)))
+        let items = map.into_iter()
+            .flat_map(|(k, v)| vec![k, Value::Int(v)])
             .collect();
-        Value::new_map_obj(map)
+        Value::new_map_obj(items)
     }
 
     #[abra_method(signature = "tallyBy<U>(fn: (T) => U): Map<U, Int>")]
@@ -408,10 +407,10 @@ impl Array {
             *map.entry(value).or_insert(0) += 1;
         }
 
-        let map = map.into_iter()
-            .map(|(k, v)| (k, Value::Int(v)))
+        let items = map.into_iter()
+            .flat_map(|(k, v)| vec![k, Value::Int(v)])
             .collect();
-        Value::new_map_obj(map)
+        Value::new_map_obj(items)
     }
 
     #[abra_method(signature = "asSet(): Set<T>")]

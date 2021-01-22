@@ -205,7 +205,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
                                 }
                                 to_string_method_name = m;
                                 continue;
-                            },
+                            }
                             Err(e) => return e.to_compile_error().into()
                         }
                     }
@@ -361,6 +361,19 @@ fn parse_method(type_name: &String, type_args: &Vec<String>, method: &mut syn::I
         let msg = format!("The function bound via #[abra_method] has no return type in its signature, and therefore must not have a return value");
         return Err(syn::Error::new(method.sig.output.span(), msg));
     }
+    if let TypeRepr::SelfType(_) = &signature.return_type {
+        let is_invalid = if let ReturnType::Type(_, t) = &method.sig.output {
+            if let syn::Type::Path(type_path) = &**t {
+                if let Some(seg) = type_path.path.segments.last() {
+                    seg.ident.to_string() != "Self"
+                } else { unreachable!() }
+            } else { true }
+        } else { true };
+        if is_invalid {
+            let msg = format!("The function bound via #[abra_method] has a signature which returns '{}', so it must return Self", type_name);
+            return Err(syn::Error::new(method.sig.span(), msg));
+        }
+    }
 
     let is_variadic = signature.args.iter().any(|arg| arg.is_variadic);
 
@@ -416,15 +429,16 @@ fn parse_static_method(type_name: &String, type_args: &Vec<String>, method: &mut
         return Err(syn::Error::new(method.sig.output.span(), msg));
     }
     if let TypeRepr::SelfType(_) = &return_type {
-        if let ReturnType::Type(_, t) = &method.sig.output {
+        let is_invalid = if let ReturnType::Type(_, t) = &method.sig.output {
             if let syn::Type::Path(type_path) = &**t {
                 if let Some(seg) = type_path.path.segments.last() {
-                    if seg.ident.to_string() != "Self" {
-                        let msg = format!("The function bound via #[abra_static_method] has a signature which returns '{}', so it must return Self", type_name);
-                        return Err(syn::Error::new(method.sig.output.span(), msg));
-                    }
-                }
-            }
+                    seg.ident.to_string() != "Self"
+                } else { unreachable!() }
+            } else { true }
+        } else { true };
+        if is_invalid {
+            let msg = format!("The function bound via #[abra_static_method] has a signature which returns '{}', so it must return Self", type_name);
+            return Err(syn::Error::new(method.sig.span(), msg));
         }
     }
 
@@ -529,6 +543,18 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
             if type_ref_name == "Array" {
                 let arr_type_repr = TypeRepr::Array(Box::new(type_args[0].clone()));
                 gen_rust_type_path(&arr_type_repr, type_ref_name)
+            } else if type_ref_name == "Map" {
+                let key_type = type_args.get(0).expect("Maps require K value");
+                let key_type_repr = gen_rust_type_path(key_type, type_ref_name);
+                let val_type = type_args.get(1).expect("Maps require V value");
+                let val_type_repr = gen_rust_type_path(val_type, type_ref_name);
+
+                quote! {
+                    crate::typechecker::types::Type::Map(
+                        std::boxed::Box::new(#key_type_repr),
+                        std::boxed::Box::new(#val_type_repr)
+                    )
+                }
             } else {
                 let type_args = type_args.iter().map(|type_arg| {
                     gen_rust_type_path(type_arg, type_ref_name)
@@ -745,7 +771,14 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         let body_return = if has_return {
-            quote! { Some(inst.#native_name_ident(#arguments)) }
+            if let TypeRepr::SelfType(_) = &method.return_type {
+                quote! {
+                    let inst = inst.#native_name_ident(#arguments);
+                    Some(inst.init())
+                }
+            } else {
+                quote! { Some(inst.#native_name_ident(#arguments)) }
+            }
         } else {
             quote! {
                 inst.#native_name_ident(#arguments);

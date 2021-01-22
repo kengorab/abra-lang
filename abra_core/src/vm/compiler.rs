@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{Array, NativeMap, NativeSet, NativeType, NativeString, default_to_string_method};
+use crate::builtins::native::{Array, Map, NativeSet, NativeType, NativeString, default_to_string_method};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
@@ -1065,7 +1065,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let num_items = node.items.len();
         for (key, value) in node.items {
             let key = Token::get_ident_name(&key).clone();
-            self.add_and_write_constant(Value::Str(key), line);
+            self.add_and_write_constant(Value::new_string_obj(key), line);
             self.visit(value)?;
         }
 
@@ -1843,7 +1843,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let enumerate_method_idx = match iterator_type {
             Type::Array(_) => Array::get_type().get_method_idx("enumerate").expect("Array is missing required enumerate method"),
             Type::Set(_) => NativeSet::get_method_idx("enumerate"),
-            Type::Map(_, _) => NativeMap::get_method_idx("enumerate"),
+            Type::Map(_, _) => Map::get_type().get_method_idx("enumerate").expect("Map is missing required enumerate method"),
             _ => unreachable!("Should have been caught during typechecking")
         };
         self.write_opcode(Opcode::GetMethod, line);
@@ -2449,10 +2449,10 @@ mod tests {
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
-                Value::Str("a".to_string()),
-                Value::Str("b".to_string()),
+                new_string_obj("a"),
+                new_string_obj("b"),
                 new_string_obj("c"),
-                Value::Str("d".to_string()),
+                new_string_obj("d"),
             ]),
         };
         assert_eq!(expected, chunk);
@@ -3145,15 +3145,14 @@ mod tests {
                 Opcode::GStore as u8,
                 Opcode::Constant as u8, 0, with_prelude_const_offset(1),
                 Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::IConst0 as u8,
                 Opcode::MapStore as u8,
                 Opcode::Return as u8,
             ],
             constants: with_prelude_consts(vec![
-                Value::Str("b".to_string()),
+                new_string_obj("b"),
                 Value::Str("a".to_string()),
-                new_string_obj("b")
             ]),
         };
         assert_eq!(expected, chunk);
@@ -3303,14 +3302,13 @@ mod tests {
                 Opcode::Constant as u8, 0, with_prelude_const_offset(1),
                 Opcode::IConst2 as u8,
                 Opcode::MapMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
+                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
                 Opcode::MapLoad as u8,
                 Opcode::Return as u8
             ],
             constants: with_prelude_consts(vec![
-                Value::Str("a".to_string()),
-                Value::Str("b".to_string()),
                 new_string_obj("a"),
+                new_string_obj("b"),
             ]),
         };
         assert_eq!(expected, chunk);
@@ -4529,7 +4527,12 @@ mod tests {
                         Opcode::GStore as u8
                     ])
                     .collect(),
-                (0..58).step_by(2).into_iter()
+                vec![
+                    Opcode::Constant as u8, 0, 255 as u8,
+                    Opcode::Constant as u8, 1, 0 as u8,
+                    Opcode::GStore as u8
+                ],
+                (1..56).step_by(2).into_iter()
                     .flat_map(|i| vec![
                         Opcode::Constant as u8, 1, i as u8,
                         Opcode::Constant as u8, 1, (i + 1) as u8,

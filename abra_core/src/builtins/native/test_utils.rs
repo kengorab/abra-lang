@@ -18,9 +18,7 @@ macro_rules! set {
 }
 
 macro_rules! map {
-    ($($k:expr => $v:expr),*) => {
-        Value::new_map_obj(vec![$(($k, $v)),+].into_iter().collect())
-    };
+    ($($k:expr => $v:expr),*) => { Value::new_map_obj(vec![$($k, $v),+]) };
 }
 
 macro_rules! tuple {

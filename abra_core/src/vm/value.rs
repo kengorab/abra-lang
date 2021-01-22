@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::hash::{Hash, Hasher};
-use crate::builtins::native::Array;
+use crate::builtins::native::{Array, Map};
 use crate::builtins::native_value_trait::NativeValue;
 use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
@@ -8,7 +8,7 @@ use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -120,9 +120,8 @@ impl Value {
         Value::Obj(Arc::new(RefCell::new(arr)))
     }
 
-    pub fn new_map_obj(items: HashMap<Value, Value>) -> Value {
-        let map = Obj::MapObj(items);
-        Value::Obj(Arc::new(RefCell::new(map)))
+    pub fn new_map_obj(items: Vec<Value>) -> Value {
+        Map::new(items).init()
     }
 
     pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
@@ -232,6 +231,14 @@ impl NativeInstanceObj {
     pub fn as_array(&self) -> Option<&Array> {
         self.inst.downcast_ref::<Array>()
     }
+
+    pub fn as_map(&self) -> Option<&Map> {
+        self.inst.downcast_ref::<Map>()
+    }
+
+    pub fn as_map_mut(&mut self) -> Option<&mut Map> {
+        self.inst.downcast_mut::<Map>()
+    }
 }
 
 #[derive(Debug)]
@@ -239,7 +246,6 @@ pub enum Obj {
     StringObj(String),
     SetObj(HashSet<Value>),
     TupleObj(Vec<Value>),
-    MapObj(HashMap<Value, Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
     NativeInstanceObj(NativeInstanceObj),
@@ -256,10 +262,6 @@ impl Display for Obj {
             Obj::TupleObj(value) => {
                 let items = value.iter().map(|v| format!("{}", v)).join(", ");
                 write!(f, "({})", items)
-            }
-            Obj::MapObj(map) => {
-                let fields = map.iter().map(|(k, v)| format!("{}: {}", k, v)).join(", ");
-                write!(f, "{{ {} }}", fields)
             }
             Obj::InstanceObj(inst) => {
                 let TypeValue { name, .. } = &inst.typ;
@@ -353,7 +355,6 @@ impl PartialEq for Obj {
             (Obj::StringObj(v1), Obj::StringObj(v2)) => v1.eq(v2),
             (Obj::SetObj(v1), Obj::SetObj(v2)) => v1.eq(v2),
             (Obj::TupleObj(v1), Obj::TupleObj(v2)) => v1.eq(v2),
-            (Obj::MapObj(v1), Obj::MapObj(v2)) => v1.eq(v2),
             (Obj::InstanceObj(v1), Obj::InstanceObj(v2)) => v1.eq(v2),
             (Obj::EnumVariantObj(v1), Obj::EnumVariantObj(v2)) => v1.eq(v2),
             (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => v1.inst.is_equal(&v2.inst),
@@ -372,12 +373,6 @@ impl Hash for Obj {
             Obj::SetObj(s) => {
                 for item in s {
                     item.hash(hasher);
-                }
-            }
-            Obj::MapObj(m) => {
-                for (k, v) in m {
-                    k.hash(hasher);
-                    v.hash(hasher);
                 }
             }
             Obj::InstanceObj(i) => {
