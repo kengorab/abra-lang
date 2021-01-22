@@ -4527,7 +4527,12 @@ mod tests {
                         Opcode::GStore as u8
                     ])
                     .collect(),
-                (0..58).step_by(2).into_iter()
+                vec![
+                    Opcode::Constant as u8, 0, 255 as u8,
+                    Opcode::Constant as u8, 1, 0 as u8,
+                    Opcode::GStore as u8
+                ],
+                (1..56).step_by(2).into_iter()
                     .flat_map(|i| vec![
                         Opcode::Constant as u8, 1, i as u8,
                         Opcode::Constant as u8, 1, (i + 1) as u8,
