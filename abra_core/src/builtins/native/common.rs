@@ -94,16 +94,6 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                         .join(", ");
                     format!("({})", items)
                 }
-                Obj::MapObj(map) => {
-                    let fields = map.iter()
-                        .map(|(k, v)| {
-                            let k = to_string(k, vm);
-                            let v = to_string(v, vm);
-                            format!("{}: {}", k, v)
-                        })
-                        .join(", ");
-                    format!("{{ {} }}", fields)
-                }
                 Obj::InstanceObj(o) => {
                     let mut tostring_method = o.typ.methods.iter()
                         .find(|(name, _)| name == "toString")

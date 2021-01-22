@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native::{Array, NativeMap, NativeSet, NativeType};
+use crate::builtins::native::{Array, Map, NativeSet, NativeType};
 use crate::builtins::native_fns::native_fns;
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, TypeValue};
@@ -54,9 +54,8 @@ impl Prelude {
             ("Unit", Type::Unit, None, None),
             ("Any", Type::Any, None, None),
             ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(Array::get_type_value()), None),
-            ("Map", Type::Reference("Map".to_string(), vec![]), None, Some(NativeMap::get_static_field_values())),
+            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(Map::get_type_value()), None),
             ("Set", Type::Reference("Set".to_string(), vec![]), None, Some(NativeSet::get_static_field_values())),
-            ("Date", Type::Reference("Date".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), None, None)
         ];
         for (type_name, typ, type_value, static_fields) in prelude_types {
             let value = match type_value {

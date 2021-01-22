@@ -1,4 +1,4 @@
-use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType, to_string};
+use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeSet, NativeString, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -601,7 +601,6 @@ impl VM {
                     let value = match inst {
                         Value::Obj(ref obj) => {
                             let mut is_str = false;
-                            let mut is_map = false;
                             let mut is_set = false;
                             let mut v = Value::Nil;
                             let mut m = None;
@@ -630,7 +629,6 @@ impl VM {
                                     } else { unreachable!() }
                                 }
                                 Obj::StringObj { .. } => is_str = true,
-                                Obj::MapObj(_) => is_map = true,
                                 Obj::SetObj(_) => is_set = true,
                                 _ => unreachable!()
                             };
@@ -641,8 +639,6 @@ impl VM {
                                 let inst = Box::new(inst);
                                 if is_str {
                                     NativeString::get_field_or_method_value(is_method, inst, idx)
-                                } else if is_map {
-                                    NativeMap::get_field_or_method_value(is_method, inst, idx)
                                 } else if is_set {
                                     NativeSet::get_field_or_method_value(is_method, inst, idx)
                                 } else {
@@ -706,11 +702,12 @@ impl VM {
                 }
                 Opcode::MapMk => {
                     let size = self.read_byte_expect()?;
-                    let mut items = HashMap::with_capacity(size);
+                    let mut items = Vec::with_capacity(size * 2);
                     for _ in 0..size {
                         let value = self.pop_expect()?;
-                        let key = pop_expect_string!(self)?;
-                        items.insert(Value::new_string_obj(key), value);
+                        let key = self.pop_expect()?;
+                        items.push(key);
+                        items.push(value);
                     }
                     self.push(Value::new_map_obj(items));
                 }
@@ -725,9 +722,11 @@ impl VM {
                         _ => unreachable!()
                     };
                     let val = match &*obj.borrow() {
-                        Obj::MapObj(value) => match value.get(&key) {
-                            Some(val) => val.clone(),
-                            None => Value::Nil
+                        Obj::NativeInstanceObj(i) => {
+                            match i.as_map().unwrap()._inner.get(&key) {
+                                Some(value) => value.clone(),
+                                None => Value::Nil
+                            }
                         }
                         _ => unreachable!()
                     };
@@ -735,11 +734,13 @@ impl VM {
                 }
                 Opcode::MapStore => {
                     let value = self.pop_expect()?;
-                    let idx = self.pop_expect()?;
+                    let key = self.pop_expect()?;
 
                     let obj = pop_expect_obj!(self)?;
                     match *obj.borrow_mut() {
-                        Obj::MapObj(ref mut values) => values.insert(idx, value),
+                        Obj::NativeInstanceObj(ref mut i) => {
+                            i.as_map_mut().unwrap()._inner.insert(key, value)
+                        }
                         _ => unreachable!()
                     };
                     self.push(Value::Obj(obj));
@@ -1019,7 +1020,7 @@ impl VM {
                             Obj::InstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
-                            o @ Obj::MapObj(_) | o @ Obj::SetObj(_) | o @ Obj::TupleObj(_) => {
+                            o @ Obj::SetObj(_) | o @ Obj::TupleObj(_) => {
                                 dbg!(o);
                                 unimplemented!()
                             }

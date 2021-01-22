@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeMap, NativeSet, NativeString, NativeType};
+use crate::builtins::native::{Array, Map, NativeFloat, NativeInt, NativeSet, NativeString, NativeType};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -2614,7 +2614,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         ("K".to_string(), *key_type.clone()),
                         ("V".to_string(), *value_type.clone()),
                     ].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeMap::get_field_or_method_type(&field_name);
+                    let field_data = Map::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
@@ -2644,8 +2644,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Map(_, _) => {
-                        let field_data = NativeMap::get_static_field_or_method(&field_name)
-                            .map(|(idx, typ)| (idx, typ, true)); // All static fields are methods at the moment
+                        let field_data = Map::get_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     _ => unimplemented!()
