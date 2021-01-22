@@ -34,21 +34,3 @@ type NativeString {
   func parseFloat(self): Float? {}
   func concat(self, str: Any, *others: Any[]): String {}
 }
-
-type NativeSet<T> {
-  size: Int
-
-  func toString(self): String {}
-  func isEmpty(self): Bool {}
-  func enumerate(self): (T, Int)[] {}
-  func contains(self, value: T): Bool {}
-  func insert(self, value: T) {}
-  func remove(self, value: T) {}
-  func map<U>(self, fn: (T) => U): U[] {}
-  func filter(self, fn: (T) => Bool): Set<T> {}
-  func reduce<U>(self, initialValue: U, fn: (U, T) => U): U {}
-  func asArray(self): T[] {}
-  func union(self, other: Set<T>): Set<T> {}
-  func difference(self, other: Set<T>): Set<T> {}
-  func intersection(self, other: Set<T>): Set<T> {}
-}

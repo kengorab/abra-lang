@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{Array, Map, NativeSet, NativeType, NativeString, default_to_string_method};
+use crate::builtins::native::{Array, Map, Set, NativeType, NativeString, default_to_string_method};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
@@ -1842,7 +1842,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.visit(*iterator)?;
         let enumerate_method_idx = match iterator_type {
             Type::Array(_) => Array::get_type().get_method_idx("enumerate").expect("Array is missing required enumerate method"),
-            Type::Set(_) => NativeSet::get_method_idx("enumerate"),
+            Type::Set(_) => Set::get_type().get_method_idx("enumerate").expect("Set is missing required enumerate method"),
             Type::Map(_, _) => Map::get_type().get_method_idx("enumerate").expect("Map is missing required enumerate method"),
             _ => unreachable!("Should have been caught during typechecking")
         };

@@ -1,5 +1,6 @@
 use crate::vm::value::{Value, Obj};
 use std::vec::IntoIter;
+use downcast_rs::__std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct Arguments<'a> {
@@ -100,6 +101,19 @@ impl<'a> Arguments<'a> {
                 }
             }
             Some(v) => unreachable!(format!("Expected Array, received {}", v)),
+            None => unreachable!(self.error_str()),
+        }
+    }
+
+    pub fn next_set(&mut self) -> HashSet<Value> {
+        match self.args.next() {
+            Some(Value::Obj(obj)) => {
+                match &*(obj.borrow()) {
+                    Obj::NativeInstanceObj(i) => i.as_set().unwrap()._inner.clone(),
+                    _ => unreachable!()
+                }
+            }
+            Some(v) => unreachable!(format!("Expected Set, received {}", v)),
             None => unreachable!(self.error_str()),
         }
     }
