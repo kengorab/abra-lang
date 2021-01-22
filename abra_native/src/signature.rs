@@ -104,6 +104,9 @@ impl<'a> SignatureParser<'a> {
                 TypeRepr::Array(inner) if self.parent_type_name == Some(&"Array".to_string()) => {
                     TypeRepr::SelfType(vec![*inner])
                 }
+                TypeRepr::Ident(s, _) if self.parent_type_name == Some(&"String".to_string()) && s == "String" => {
+                    TypeRepr::SelfType(vec![])
+                }
                 t => t
             }
         } else {

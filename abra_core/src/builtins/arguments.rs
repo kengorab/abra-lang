@@ -69,7 +69,7 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::Obj(obj)) => {
                 match &*(obj.borrow()) {
-                    Obj::StringObj(s) => s.clone(),
+                    Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
                     _ => unreachable!()
                 }
             }
@@ -82,7 +82,7 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::Obj(obj)) => {
                 match &*(obj.borrow()) {
-                    Obj::StringObj(s) => s.clone(),
+                    Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
                     _ => unreachable!()
                 }
             }

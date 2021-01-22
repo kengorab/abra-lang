@@ -81,7 +81,6 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::Str(val) => val.clone(),
         Value::Obj(obj) => {
             match &*(obj.borrow()) {
-                Obj::StringObj(value) => value.clone(),
                 Obj::TupleObj(value) => {
                     let items = value.iter()
                         .map(|v| to_string(v, vm))
@@ -100,17 +99,19 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                         _ => unreachable!()
                     }
                     if let Value::Obj(o) = invoke_fn(vm, &tostring_method, vec![]) {
-                        if let Obj::StringObj(s) = &*(o.borrow()) {
-                            s.clone()
-                        } else { unreachable!() }
+                        match &*o.borrow() {
+                            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
+                            _ => unreachable!()
+                        }
                     } else { unreachable!() }
                 }
                 Obj::NativeInstanceObj(i) => {
                     let v = i.inst.method_to_string(vm);
                     if let Value::Obj(o) = v {
-                        if let Obj::StringObj(s) = &*(o.borrow()) {
-                            s.clone()
-                        } else { unreachable!() }
+                        match &*o.borrow() {
+                            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
+                            _ => unreachable!()
+                        }
                     } else { unreachable!() }
                 }
                 Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {

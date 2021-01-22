@@ -11,6 +11,7 @@ mod tests {
     use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, Obj, FnValue};
     use crate::vm::vm::{VM, VMContext};
+    use itertools::Itertools;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
@@ -124,19 +125,21 @@ mod tests {
           }\n\
         ";
 
-        let input = format!("{}\n\
-          val res = true || getTrue()
-          res + \" \" + called",
-          preface
+        let input = format!(
+            "{}\n\
+            val res = true || getTrue()
+            res + \" \" + called",
+            preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("true false");
         assert_eq!(expected, result);
 
-        let input = format!("{}\n\
-          val res = false && getTrue()
-          res + \" \" + called",
-          preface
+        let input = format!(
+            "{}\n\
+            val res = false && getTrue()
+            res + \" \" + called",
+            preface
         );
         let result = interpret(&input).unwrap();
         let expected = new_string_obj("false false");
@@ -319,44 +322,42 @@ mod tests {
     }
 
     #[inline]
-    fn sorted_map_obj_values(value: Value) -> Vec<(Value, Value)> {
-        if let Value::Obj(obj) = value {
+    fn assert_maps_eq(expected: Vec<(Value, Value)>, map_value: Value) {
+        let actual = if let Value::Obj(obj) = map_value {
             match &*obj.borrow() {
                 Obj::NativeInstanceObj(i) => {
-                    let mut pairs = i.as_map().unwrap()._inner
+                    i.as_map().unwrap()._inner
                         .iter()
                         .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect::<Vec<(Value, Value)>>();
-                    pairs.sort_by(|(a, _), (b, _)| a.partial_cmp(b).unwrap());
-                    pairs
+                        .collect::<Vec<(Value, Value)>>()
                 }
                 _ => unreachable!()
             }
-        } else {
-            panic!("Result should be a Map instance")
-        }
+        } else { panic!("Result should be a Map instance") };
+
+        let len = expected.len();
+        let perms = expected.into_iter().permutations(len).collect::<Vec<_>>();
+        assert!(perms.contains(&actual));
     }
 
     #[test]
     fn interpret_map() {
         let result = interpret("{ a: 1, b: \"hello\", c: true }").unwrap();
-        let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
             (new_string_obj("a"), Value::Int(1)),
             (new_string_obj("b"), new_string_obj("hello")),
             (new_string_obj("c"), Value::Bool(true)),
         ];
-        assert_eq!(expected_pairs, result_pairs);
+        assert_maps_eq(expected_pairs, result);
 
         let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
-        let result_pairs = sorted_map_obj_values(result);
         let expected_pairs = vec![
             (new_string_obj("a"), Value::new_map_obj(vec![
                 new_string_obj("b"), new_string_obj("hello")
             ])),
             (new_string_obj("c"), Value::new_array_obj(vec![Value::Int(1), Value::Int(2)])),
         ];
-        assert_eq!(expected_pairs, result_pairs);
+        assert_maps_eq(expected_pairs, result);
     }
 
     #[test]

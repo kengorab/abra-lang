@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeString, NativeType, to_string};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -600,47 +600,36 @@ impl VM {
 
                     let value = match inst {
                         Value::Obj(ref obj) => {
-                            let mut is_str = false;
-                            let mut v = Value::Nil;
-                            let mut m = None;
-                            match &*obj.borrow() {
-                                Obj::InstanceObj(inst) => {
+                            let mut v = match &*obj.borrow() {
+                                Obj::InstanceObj(i) => {
                                     if is_method {
-                                        let (_, method) = inst.typ.methods[idx].clone();
-                                        m = Some(method);
+                                        let (_, method) = i.typ.methods[idx].clone();
+                                        method
                                     } else {
-                                        v = inst.fields[idx].clone();
+                                        i.fields[idx].clone()
                                     }
                                 }
                                 Obj::NativeInstanceObj(i) => {
                                     if is_method {
                                         let (_, method) = i.typ.methods[idx].clone();
-                                        m = Some(method);
+                                        method
                                     } else {
-                                        v = i.inst.get_field_value(idx);
+                                        i.inst.get_field_value(idx)
                                     }
                                 }
                                 Obj::EnumVariantObj(inst) => {
-                                    v = if is_method {
+                                    if is_method {
                                         inst.methods[idx].clone()
                                     } else if let Some(values) = &inst.values {
                                         values[idx].clone()
                                     } else { unreachable!() }
                                 }
-                                Obj::StringObj { .. } => is_str = true,
                                 _ => unreachable!()
                             };
-                            if let Some(mut m) = m {
-                                m.bind_fn_value(inst);
-                                m
-                            } else {
-                                let inst = Box::new(inst);
-                                if is_str {
-                                    NativeString::get_field_or_method_value(is_method, inst, idx)
-                                } else {
-                                    v
-                                }
+                            if is_method {
+                                v.bind_fn_value(inst);
                             }
+                            v
                         }
                         Value::Float(_) => NativeFloat::get_field_or_method_value(is_method, Box::new(inst), idx),
                         Value::Int(_) => NativeInt::get_field_or_method_value(is_method, Box::new(inst), idx),
@@ -773,15 +762,6 @@ impl VM {
                         _ => unreachable!()
                     };
                     let value = match &*obj.borrow() {
-                        Obj::StringObj(values) => {
-                            let len = values.len() as i64;
-                            let idx = if idx < 0 { idx + len } else { idx };
-
-                            match (*values).chars().nth(idx as usize) {
-                                Some(ch) => Value::new_string_obj(ch.to_string()),
-                                None => Value::Nil
-                            }
-                        }
                         Obj::TupleObj(values) => {
                             let len = values.len() as i64;
                             if idx < -len || idx >= len {
@@ -792,13 +772,26 @@ impl VM {
                             }
                         }
                         Obj::NativeInstanceObj(i) => {
-                            let values = &i.as_array().unwrap()._inner;
-                            let len = values.len() as i64;
-                            if idx < -len || idx >= len {
-                                Value::Nil
-                            } else {
+                            if let Some(array) = i.as_array() {
+                                let values = &array._inner;
+                                let len = values.len() as i64;
+                                if idx < -len || idx >= len {
+                                    Value::Nil
+                                } else {
+                                    let idx = if idx < 0 { idx + len } else { idx };
+                                    values[idx as usize].clone()
+                                }
+                            } else if let Some(string) = i.as_string() {
+                                let string = &string._inner;
+                                let len = string.len() as i64;
                                 let idx = if idx < 0 { idx + len } else { idx };
-                                values[idx as usize].clone()
+
+                                match (*string).chars().nth(idx as usize) {
+                                    Some(ch) => Value::new_string_obj(ch.to_string()),
+                                    None => Value::Nil
+                                }
+                            } else {
+                                unreachable!()
                             }
                         }
                         _ => unreachable!()
@@ -860,17 +853,18 @@ impl VM {
 
                     let obj = pop_expect_obj!(self)?;
                     let value = match &*obj.borrow() {
-                        Obj::StringObj(value) => {
-                            let (start, len) = get_range_endpoints(value.len(), start, end);
-                            let value = (*value).chars().skip(start).take(len).collect::<String>();
-                            Value::new_string_obj(value)
-                        }
                         Obj::NativeInstanceObj(i) => {
-                            let arr: &NativeArray = i.as_array().unwrap();
-                            let value = &arr._inner;
-                            let (start, len) = get_range_endpoints(value.len(), start, end);
-                            let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
-                            Value::new_array_obj(values)
+                            if let Some(arr) = i.as_array() {
+                                let value = &arr._inner;
+                                let (start, len) = get_range_endpoints(value.len(), start, end);
+                                let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
+                                Value::new_array_obj(values)
+                            } else if let Some(string) = i.as_string() {
+                                let string = &string._inner;
+                                let (start, len) = get_range_endpoints(string.len(), start, end);
+                                let value = (*string).chars().skip(start).take(len).collect::<String>();
+                                Value::new_string_obj(value)
+                            } else { unreachable!() }
                         }
                         _ => unreachable!()
                     };
@@ -1012,7 +1006,6 @@ impl VM {
                         Value::Float(_) => self.load_constant(self.type_constant_indexes["Float"])?,
                         Value::Bool(_) => self.load_constant(self.type_constant_indexes["Bool"])?,
                         Value::Obj(obj) => match &*obj.borrow() {
-                            Obj::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
                             Obj::InstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,

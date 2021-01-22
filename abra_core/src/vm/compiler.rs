@@ -6,7 +6,7 @@ use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNo
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
 use crate::vm::prelude::{PRELUDE_BINDINGS, PRELUDE_BINDING_VALUES};
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeType, NativeString, default_to_string_method};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, default_to_string_method};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
@@ -862,7 +862,7 @@ impl Compiler {
                         // number of elements in the destructuring pattern following the `*splat`. From the example above:
                         //   $temp_0[1:].splitAt(-2)
                         let split_at_method_idx = if is_string {
-                            NativeString::get_method_idx("splitAt")
+                            NativeString::get_type().get_method_idx("splitAt").expect("String is missing required splitAt method")
                         } else {
                             NativeArray::get_type().get_method_idx("splitAt").expect("Array is missing required splitAt method")
                         };

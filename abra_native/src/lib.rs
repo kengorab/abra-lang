@@ -579,6 +579,8 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
             if type_ref_name == "Array" {
                 let arr_type_repr = TypeRepr::Array(Box::new(type_args[0].clone()));
                 gen_rust_type_path(&arr_type_repr, type_ref_name)
+            } else if type_ref_name == "String" {
+                quote! { crate::typechecker::types::Type::String }
             } else if type_ref_name == "Set" {
                 let inner_type = type_args.get(0).expect("Sets require T value");
                 let inner_type_repr = gen_rust_type_path(inner_type, type_ref_name);

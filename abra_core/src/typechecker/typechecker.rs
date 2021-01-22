@@ -2596,7 +2596,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         });
                     Ok((field_data, generics))
                 }
-                Type::String => Ok((NativeString::get_field_or_method_type(&field_name), HashMap::new())),
+                Type::String => Ok((NativeString::get_type().get_field_or_method(&field_name), HashMap::new())),
                 Type::Float => Ok((NativeFloat::get_field_or_method_type(&field_name), HashMap::new())),
                 Type::Int => Ok((NativeInt::get_field_or_method_type(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {

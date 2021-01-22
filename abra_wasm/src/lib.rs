@@ -22,7 +22,7 @@ use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumVal
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
-use abra_core::builtins::native::{NativeArray, NativeMap, NativeSet};
+use abra_core::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
 
 pub struct RunResultValue(Option<Value>);
 
@@ -43,7 +43,6 @@ impl Serialize for RunResultValue {
             Value::Bool(val) => serializer.serialize_bool(*val),
             Value::Str(val) => serializer.serialize_str(val),
             Value::Obj(obj) => match &*obj.borrow() {
-                Obj::StringObj(value) => serializer.serialize_str(value),
                 Obj::TupleObj(value) => {
                     let mut arr = serializer.serialize_seq(Some((*value).len()))?;
                     value.into_iter().for_each(|val| {
@@ -84,6 +83,8 @@ impl Serialize for RunResultValue {
                             arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                         });
                         arr.end()
+                    } else if let Some(string) = inst.downcast_ref::<NativeString>() {
+                        serializer.serialize_str(&string._inner)
                     } else {
                         let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
 

@@ -178,7 +178,7 @@ fn read_file(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option
     let file_name = args.into_iter().next().expect("readFile requires 1 argument");
     let file_name = if let Value::Obj(obj) = file_name {
         match &(*obj.borrow()) {
-            Obj::StringObj(s) => s.clone(),
+            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
             _ => unreachable!()
         }
     } else {

@@ -1,5 +1,4 @@
 use abra_native::{AbraType, abra_methods};
-use crate::builtins::native_value_trait::NativeValue;
 use crate::vm::value::Value;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -112,14 +111,14 @@ impl NativeArray {
         let (p1, p2) = if index >= self._inner.len() as i64 {
             (self._inner.clone(), vec![])
         } else if index < -(self._inner.len() as i64) {
-            (vec![], self._inner.clone(), )
+            (vec![], self._inner.clone())
         } else {
             let split_idx = ((self._inner.len() as i64 + index) % self._inner.len() as i64) as usize;
             let (h1, h2) = self._inner.split_at(split_idx);
-            (h1.to_vec().clone(), h2.to_vec().clone(), )
+            (h1.to_vec().clone(), h2.to_vec().clone())
         };
-        let p1 = Self::new(p1).init();
-        let p2 = Self::new(p2).init();
+        let p1 = Value::new_array_obj(p1);
+        let p2 = Value::new_array_obj(p2);
 
         Value::new_tuple_obj(vec![p1, p2])
     }
@@ -373,7 +372,7 @@ impl NativeArray {
         }
 
         let items = map.into_iter()
-            .flat_map(|(k, v)| vec![k, Self::new(v).init()])
+            .flat_map(|(k, v)| vec![k, Value::new_array_obj(v)])
             .collect();
         Value::new_map_obj(items)
     }
