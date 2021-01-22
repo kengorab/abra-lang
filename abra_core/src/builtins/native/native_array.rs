@@ -152,7 +152,6 @@ impl Array {
         let callback = args.next_value();
 
         let mut new_array_items = Vec::new();
-
         for value in &self._inner {
             let args = vec![value.clone()];
             let ret_val = invoke_fn(vm, &callback, args);
@@ -170,7 +169,6 @@ impl Array {
         let callback = args.next_value();
 
         let mut accumulator = initial_value;
-
         for value in &self._inner {
             let args = vec![accumulator, value.clone()];
             accumulator = invoke_fn(vm, &callback, args);

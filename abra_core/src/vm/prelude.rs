@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native::{Array, Map, NativeSet, NativeType};
+use crate::builtins::native::{Array, Map, Set};
 use crate::builtins::native_fns::native_fns;
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, TypeValue};
@@ -47,17 +47,17 @@ impl Prelude {
         bindings.push(PreludeBinding { name: "None".to_string(), typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
 
         let prelude_types = vec![
-            ("Int", Type::Int, None, None),
-            ("Float", Type::Float, None, None),
-            ("Bool", Type::Bool, None, None),
-            ("String", Type::String, None, None),
-            ("Unit", Type::Unit, None, None),
-            ("Any", Type::Any, None, None),
-            ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(Array::get_type_value()), None),
-            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(Map::get_type_value()), None),
-            ("Set", Type::Reference("Set".to_string(), vec![]), None, Some(NativeSet::get_static_field_values())),
+            ("Int", Type::Int, None),
+            ("Float", Type::Float, None),
+            ("Bool", Type::Bool, None),
+            ("String", Type::String, None),
+            ("Unit", Type::Unit, None),
+            ("Any", Type::Any, None),
+            ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(Array::get_type_value())),
+            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(Map::get_type_value())),
+            ("Set", Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), Some(Set::get_type_value())),
         ];
-        for (type_name, typ, type_value, static_fields) in prelude_types {
+        for (type_name, typ, type_value) in prelude_types {
             let value = match type_value {
                 Some(type_value) => Value::Type(type_value),
                 None => Value::Type(TypeValue {
@@ -65,7 +65,7 @@ impl Prelude {
                     fields: vec![],
                     constructor: None,
                     methods: vec![],
-                    static_fields: static_fields.unwrap_or(vec![]),
+                    static_fields: vec![],
                 })
             };
 

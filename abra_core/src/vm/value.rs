@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use std::hash::{Hash, Hasher};
-use crate::builtins::native::{Array, Map};
+use crate::builtins::native::{Array, Map, Set};
 use crate::builtins::native_value_trait::NativeValue;
 use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
@@ -8,7 +8,6 @@ use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -110,9 +109,8 @@ impl Value {
         Array::new(values).init()
     }
 
-    pub fn new_set_obj(values: HashSet<Value>) -> Value {
-        let arr = Obj::SetObj(values);
-        Value::Obj(Arc::new(RefCell::new(arr)))
+    pub fn new_set_obj(values: Vec<Value>) -> Value {
+        Set::new(values).init()
     }
 
     pub fn new_tuple_obj(values: Vec<Value>) -> Value {
@@ -232,6 +230,10 @@ impl NativeInstanceObj {
         self.inst.downcast_ref::<Array>()
     }
 
+    pub fn as_set(&self) -> Option<&Set> {
+        self.inst.downcast_ref::<Set>()
+    }
+
     pub fn as_map(&self) -> Option<&Map> {
         self.inst.downcast_ref::<Map>()
     }
@@ -244,7 +246,6 @@ impl NativeInstanceObj {
 #[derive(Debug)]
 pub enum Obj {
     StringObj(String),
-    SetObj(HashSet<Value>),
     TupleObj(Vec<Value>),
     InstanceObj(InstanceObj),
     EnumVariantObj(EnumVariantObj),
@@ -255,10 +256,6 @@ impl Display for Obj {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             Obj::StringObj(value) => write!(f, "\"{}\"", value),
-            Obj::SetObj(value) => {
-                let items = value.iter().map(|v| format!("{}", v)).join(", ");
-                write!(f, "#{{{}}}", items)
-            }
             Obj::TupleObj(value) => {
                 let items = value.iter().map(|v| format!("{}", v)).join(", ");
                 write!(f, "({})", items)
@@ -304,17 +301,6 @@ impl PartialOrd for Obj {
                     Some(Ordering::Equal)
                 }
             }
-            (Obj::SetObj(s1), Obj::SetObj(s2)) => {
-                if s1.len() < s2.len() {
-                    Some(Ordering::Less)
-                } else if s1.len() > s2.len() {
-                    Some(Ordering::Greater)
-                } else if s1.difference(&s2).count() == 0 {
-                    Some(Ordering::Equal)
-                } else {
-                    Some(Ordering::Less)
-                }
-            }
             (Obj::EnumVariantObj(evv1), Obj::EnumVariantObj(evv2)) => {
                 match evv1.idx.cmp(&evv2.idx) {
                     Ordering::Equal => {}
@@ -353,7 +339,6 @@ impl PartialEq for Obj {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Obj::StringObj(v1), Obj::StringObj(v2)) => v1.eq(v2),
-            (Obj::SetObj(v1), Obj::SetObj(v2)) => v1.eq(v2),
             (Obj::TupleObj(v1), Obj::TupleObj(v2)) => v1.eq(v2),
             (Obj::InstanceObj(v1), Obj::InstanceObj(v2)) => v1.eq(v2),
             (Obj::EnumVariantObj(v1), Obj::EnumVariantObj(v2)) => v1.eq(v2),
@@ -370,11 +355,6 @@ impl Hash for Obj {
         match self {
             Obj::StringObj(s) => s.hash(hasher),
             Obj::TupleObj(a) => a.hash(hasher),
-            Obj::SetObj(s) => {
-                for item in s {
-                    item.hash(hasher);
-                }
-            }
             Obj::InstanceObj(i) => {
                 i.typ.hash(hasher);
                 i.fields.hash(hasher);

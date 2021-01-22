@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{Array, Map, NativeFloat, NativeInt, NativeSet, NativeString, NativeType};
+use crate::builtins::native::{Array, Map, Set, NativeFloat, NativeInt, NativeString, NativeType};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -2606,7 +2606,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
                 Type::Set(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeSet::get_field_or_method_type(&field_name);
+                    let field_data = Set::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {

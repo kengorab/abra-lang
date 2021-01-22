@@ -82,12 +82,6 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::Obj(obj) => {
             match &*(obj.borrow()) {
                 Obj::StringObj(value) => value.clone(),
-                Obj::SetObj(value) => {
-                    let items = value.iter()
-                        .map(|v| to_string(v, vm))
-                        .join(", ");
-                    format!("#{{{}}}", items)
-                }
                 Obj::TupleObj(value) => {
                     let items = value.iter()
                         .map(|v| to_string(v, vm))

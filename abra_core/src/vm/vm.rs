@@ -1,4 +1,4 @@
-use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeSet, NativeString, NativeType, to_string};
+use crate::builtins::native::{Array, NativeFloat, NativeInt, NativeString, NativeType, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -601,7 +601,6 @@ impl VM {
                     let value = match inst {
                         Value::Obj(ref obj) => {
                             let mut is_str = false;
-                            let mut is_set = false;
                             let mut v = Value::Nil;
                             let mut m = None;
                             match &*obj.borrow() {
@@ -629,7 +628,6 @@ impl VM {
                                     } else { unreachable!() }
                                 }
                                 Obj::StringObj { .. } => is_str = true,
-                                Obj::SetObj(_) => is_set = true,
                                 _ => unreachable!()
                             };
                             if let Some(mut m) = m {
@@ -639,8 +637,6 @@ impl VM {
                                 let inst = Box::new(inst);
                                 if is_str {
                                     NativeString::get_field_or_method_value(is_method, inst, idx)
-                                } else if is_set {
-                                    NativeSet::get_field_or_method_value(is_method, inst, idx)
                                 } else {
                                     v
                                 }
@@ -1020,7 +1016,7 @@ impl VM {
                             Obj::InstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
                             Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
-                            o @ Obj::SetObj(_) | o @ Obj::TupleObj(_) => {
+                            o @ Obj::TupleObj(_) => {
                                 dbg!(o);
                                 unimplemented!()
                             }
