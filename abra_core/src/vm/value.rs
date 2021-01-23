@@ -88,7 +88,7 @@ pub enum Value {
     Bool(bool),
     /// Represents a compile-time string constant (ie. the name of a function, or the key of a map).
     /// These are only transient values and should not remain on the stack. Compare to an actual,
-    /// heap-allocated, run-time Value::Obj(Obj::StringObj) value.
+    /// heap-allocated, run-time String value.
     Str(String),
     Obj(Arc<RefCell<Obj>>),
     Fn(FnValue),

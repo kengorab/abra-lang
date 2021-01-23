@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, NativeType, to_string};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, to_string};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -8,6 +8,7 @@ use std::collections::vec_deque::VecDeque;
 use std::cell::RefCell;
 use std::sync::Arc;
 use crate::builtins::native_fns::NativeFn;
+use crate::builtins::native_value_trait::NativeValue;
 
 // Helper macros
 macro_rules! pop_expect_string {
@@ -631,8 +632,20 @@ impl VM {
                             }
                             v
                         }
-                        Value::Float(_) => NativeFloat::get_field_or_method_value(is_method, Box::new(inst), idx),
-                        Value::Int(_) => NativeInt::get_field_or_method_value(is_method, Box::new(inst), idx),
+                        Value::Float(_) => {
+                            if is_method {
+                                let (_, mut m) = NativeFloat::get_type_value().methods[idx].clone();
+                                m.bind_fn_value(inst);
+                                m
+                            } else { unreachable!("Float values have no fields to access") }
+                        },
+                        Value::Int(_) => {
+                            if is_method {
+                                let (_, mut m) = NativeInt::get_type_value().methods[idx].clone();
+                                m.bind_fn_value(inst);
+                                m
+                            } else { unreachable!("Int values have no fields to access") }
+                        }
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[idx].clone();
                             field_value

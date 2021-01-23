@@ -1,84 +1,67 @@
-use crate::builtins::gen_native_types::NativeIntMethodsAndFields;
+use abra_native::{AbraType, abra_methods};
 use crate::vm::value::Value;
-use crate::vm::vm::VM;
-use crate::builtins::native::common::to_string;
+use std::fmt::Debug;
+use std::hash::Hash;
+use crate::builtins::arguments::Arguments;
 
-pub type NativeInt = crate::builtins::gen_native_types::NativeInt;
+#[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
+#[abra_type(signature = "Int", pseudotype = true, noconstruct = true)]
+pub struct NativeInt;
 
-impl NativeIntMethodsAndFields for crate::builtins::gen_native_types::NativeInt {
-    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
-        if let Some(obj) = receiver {
-            Some(Value::new_string_obj(to_string(&obj, vm)))
-        } else { unreachable!() }
+#[abra_methods]
+impl NativeInt {
+    #[abra_pseudomethod(signature = "abs(): Int")]
+    fn abs(rcv: Value) -> Value {
+        Value::Int(rcv.as_int().abs())
     }
 
-    fn method_abs(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Int(i) = receiver.unwrap() {
-            Some(Value::Int(i.abs()))
-        } else { unimplemented!() }
-    }
+    #[abra_pseudomethod(signature = "asBase(base: Int): String")]
+    fn _as_base(rcv: Value, mut args: Arguments) -> Value {
+        let base = args.next_int();
 
-    fn method_as_base(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let base = args.into_iter().next().expect("Int::asBase requires 1 argument");
-        let base = if let Value::Int(base) = base { base } else { unreachable!() };
+        let rcv = *rcv.as_int();
 
-        if let Value::Int(i) = receiver.unwrap() {
-            if base <= 1 || base >= 37 || i <= 0 {
-                return Some(Value::new_string_obj(i.to_string()));
+        if base <= 1 || base >= 37 || rcv <= 0 {
+            return Value::new_string_obj(rcv.to_string());
+        }
+
+        let base = base as u32;
+        let mut i = rcv as u32;
+        let mut digits = Vec::new();
+        while i > 0 {
+            if let Some(ch) = std::char::from_digit(i % base, base) {
+                digits.push(ch);
             }
 
-            let base = base as u32;
-            let mut i = i as u32;
-            let mut digits = Vec::new();
-            while i > 0 {
-                if let Some(ch) = std::char::from_digit(i % base, base) {
-                    digits.push(ch);
-                }
+            i = i / base;
+        }
 
-                i = i / base;
-            }
-
-            let str_val = digits.into_iter().rev().collect::<String>();
-            Some(Value::new_string_obj(str_val))
-        } else { unimplemented!() }
+        let str_val = digits.into_iter().rev().collect::<String>();
+        Value::new_string_obj(str_val)
     }
 
-    fn method_is_even(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Int(i) = receiver.unwrap() {
-            Some(Value::Bool(i % 2 == 0))
-        } else { unreachable!() }
+    #[abra_pseudomethod(signature = "isEven(): Bool")]
+    fn is_even(rcv: Value) -> Value {
+        Value::Bool(rcv.as_int() % 2 == 0)
     }
 
-    fn method_is_odd(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Int(i) = receiver.unwrap() {
-            Some(Value::Bool(i % 2 != 0))
-        } else { unreachable!() }
+    #[abra_pseudomethod(signature = "isOdd(): Bool")]
+    fn is_odd(rcv: Value) -> Value {
+        Value::Bool(rcv.as_int() % 2 != 0)
     }
 
-    fn method_is_between(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let mut args = args.into_iter();
-        let lower = args.next().expect("Int::isBetween requires 2 arguments");
-        let lower = if let Value::Int(lower) = lower { lower } else { unreachable!() };
+    #[abra_pseudomethod(signature = "isBetween(lower: Int, upper: Int, inclusive?: Bool): Bool")]
+    fn is_between(rcv: Value, mut args: Arguments) -> Value {
+        let lower = args.next_int();
+        let upper = args.next_int();
+        let is_inclusive = args.next_bool_or_default(false);
 
-        let upper = args.next().expect("Int::isBetween requires 2 arguments");
-        let upper = if let Value::Int(upper) = upper { upper } else { unreachable!() };
-
-        let is_inclusive = match args.next() {
-            None => false,
-            Some(val) => match val {
-                Value::Bool(val) => val,
-                Value::Nil => false,
-                _ => unreachable!()
-            }
-        };
-
-        if let Value::Int(i) = receiver.unwrap() {
-            if is_inclusive {
-                Some(Value::Bool(lower <= i && i <= upper))
-            } else {
-                Some(Value::Bool(lower < i && i < upper))
-            }
-        } else { unreachable!() }
+        let rcv = *rcv.as_int();
+        if is_inclusive {
+            Value::Bool(lower <= rcv && rcv <= upper)
+        } else {
+            Value::Bool(lower < rcv && rcv < upper)
+        }
     }
 }
 

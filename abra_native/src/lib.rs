@@ -14,11 +14,14 @@ struct TypeSpec {
     native_type_name: String,
     name: String,
     type_args: Vec<String>,
-    constructor: ConstructorSpec,
+    constructor: Option<ConstructorSpec>,
     to_string_method: Option<String>,
     fields: Vec<FieldSpec>,
     methods: Vec<MethodSpec>,
+    pseudo_methods: Vec<MethodSpec>,
     static_methods: Vec<MethodSpec>,
+    is_pseudotype: bool,
+    is_noconstruct: bool,
 }
 
 #[derive(Debug)]
@@ -46,6 +49,7 @@ struct MethodSpec {
     is_static: bool,
     is_mut: bool,
     is_variadic: bool,
+    is_pseudomethod: bool,
 }
 
 #[derive(Debug)]
@@ -63,6 +67,8 @@ struct FirstPass {
     type_name: String,
     type_args: Vec<String>,
     field_specs: Vec<FieldSpec>,
+    is_pseudotype: bool,
+    is_noconstruct: bool,
 }
 
 thread_local! {
@@ -74,9 +80,9 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemStruct);
     let native_type_name = input.ident.to_string();
 
-    let (type_name, type_args) = match parse_abra_type_attr(&input.attrs) {
+    let (type_name, type_args, is_pseudotype, is_noconstruct) = match parse_abra_type_attr(&input.attrs) {
         Ok(Some(res)) => res,
-        Ok(None) => (native_type_name.clone(), vec![]),
+        Ok(None) => (native_type_name.clone(), vec![], false, false),
         Err(e) => return e.to_compile_error().into()
     };
 
@@ -90,7 +96,7 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into()
     };
 
-    let first_pass = FirstPass { type_name, type_args, field_specs };
+    let first_pass = FirstPass { type_name, type_args, field_specs, is_pseudotype, is_noconstruct };
     TYPES.with(|types| {
         types.borrow_mut().insert(native_type_name, first_pass)
     });
@@ -140,11 +146,14 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
     }))
 }
 
-fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>)>, syn::Error> {
+fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>, bool, bool)>, syn::Error> {
     match find_attr(attrs, "abra_type") {
         Some((_, attr)) => {
             let attr_span = attr.span();
             let attr = parse_attr(attr);
+            let is_pseudotype = attr.get("pseudotype").map(|v| v == "true").unwrap_or(false);
+            let is_noconstruct = attr.get("noconstruct").map(|v| v == "true").unwrap_or(false);
+
             match attr.get("signature") {
                 Some(signature) => match parse_type(None, &vec![], signature) {
                     Ok(repr) => match repr {
@@ -155,7 +164,7 @@ fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, V
                                     r => unreachable!(format!("Unexpected type {:?}", r))
                                 })
                                 .collect();
-                            Ok(Some((type_name, type_args)))
+                            Ok(Some((type_name, type_args, is_pseudotype, is_noconstruct)))
                         }
                         r => unreachable!(format!("Unexpected type {:?}", r))
                     },
@@ -187,16 +196,17 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         let mut types = types.borrow_mut();
         types.remove(&native_type_name)
     });
-    let (type_name, type_args, mut field_specs) = if let Some(first_pass_data) = first_pass_data {
-        let FirstPass { type_name, type_args, field_specs } = first_pass_data;
-        (type_name, type_args, field_specs)
+    let first_pass_data = if let Some(first_pass_data) = first_pass_data {
+        first_pass_data
     } else {
         let msg = format!("Cannot implement methods for struct {}, which does not derive AbraType", native_type_name);
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     };
+    let FirstPass { type_name, type_args, mut field_specs, is_pseudotype, is_noconstruct } = first_pass_data;
 
     let mut methods = Vec::new();
     let mut static_methods = Vec::new();
+    let mut pseudo_methods = Vec::new();
     let mut constructor: Option<ConstructorSpec> = None;
     let mut to_string_method_name: Option<String> = None;
     for item in &mut input.items {
@@ -205,6 +215,11 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
                 match find_attr(&m.attrs, "abra_constructor") {
                     None => {}
                     Some((_, attr)) => {
+                        if is_noconstruct {
+                            let msg = format!("This type has `noconstruct = true` in its #[abra_type] attribute, and cannot have a function bound via #[abra_constructor]");
+                            return syn::Error::new(attr.span(), msg).to_compile_error().into();
+                        }
+
                         if constructor.is_some() {
                             let msg = format!("Duplicate constructor function. A type may only have 1 function with the #[abra_constructor] attribute");
                             return syn::Error::new(attr.span(), msg).to_compile_error().into();
@@ -290,6 +305,22 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
                     }
                 }
 
+                match find_attr(&m.attrs, "abra_pseudomethod") {
+                    None => {}
+                    Some((_, attr)) => {
+                        if !is_pseudotype {
+                            let msg = "Pseudomethods not allowed unless pseudotype = true in #[abra_type] attribute".to_string();
+                            return syn::Error::new(attr.span(), msg).to_compile_error().into();
+                        }
+
+                        match parse_pseudomethod(m) {
+                            Ok(Some(m)) => pseudo_methods.push(m),
+                            Err(e) => return e.to_compile_error().into(),
+                            _ => continue
+                        }
+                    }
+                }
+
                 match parse_method(&type_name, &type_args, m) {
                     Ok(Some(m)) => methods.push(m),
                     Err(e) => return e.to_compile_error().into(),
@@ -300,17 +331,15 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    let constructor = match constructor {
-        Some(c) => c,
-        None => {
-            let msg = format!(
-                "Missing required constructor function binding for struct {}.\n\
-                Please add the #[abra_constructor] attribute to a function of type (Vec<Value>) -> Self",
-                type_name
-            );
-            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        }
-    };
+    if constructor.is_none() && !is_noconstruct {
+        let msg = format!(
+            "Missing required constructor function binding for struct {}.\n\
+            Please add the #[abra_constructor] attribute to a function of type (Vec<Value>) -> Self.\n\
+            You can also add `noconstruct = true` to the #[abra_type] attribute if you don't want to provide an explicit constructor",
+            type_name
+        );
+        return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
+    }
 
     for FieldSpec { name, getter, setter, .. } in &field_specs {
         if getter.is_none() {
@@ -338,7 +367,10 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         to_string_method: to_string_method_name,
         fields: field_specs,
         methods,
+        pseudo_methods,
         static_methods,
+        is_pseudotype,
+        is_noconstruct,
     };
 
     let native_type_code = gen_native_type_code(&type_spec);
@@ -423,6 +455,61 @@ fn parse_method(type_name: &String, type_args: &Vec<String>, method: &mut syn::I
         is_static: false,
         is_mut,
         is_variadic,
+        is_pseudomethod: false,
+    }))
+}
+
+fn parse_pseudomethod(method: &mut syn::ImplItemMethod) -> Result<Option<MethodSpec>, syn::Error> {
+    let (idx, abra_method_attr) = match find_attr(&method.attrs, "abra_pseudomethod") {
+        Some(attr) => attr,
+        None => return Ok(None)
+    };
+    let attr_span = abra_method_attr.span();
+    let attr = parse_attr(abra_method_attr);
+    method.attrs.remove(idx);
+
+    let signature = match attr.get("signature") {
+        Some(signature) => match parse_fn_signature(None, &vec![], signature) {
+            Ok(s) => s,
+            Err(e) => {
+                let msg = format!("Invalid signature provided to #[abra_pseudomethod]: {}", e);
+                return Err(syn::Error::new(attr_span, msg));
+            }
+        }
+        None => {
+            let msg = "Missing required parameter `signature` in #[abra_pseudomethod] attribute".to_string();
+            return Err(syn::Error::new(attr_span, msg));
+        }
+    };
+
+    if let Some(FnArg::Receiver(_)) = method.sig.inputs.first() {
+        let msg = format!("The function bound via #[abra_pseudomethod] must not receive self");
+        return Err(syn::Error::new(method.span(), msg));
+    }
+    let native_method_arity = method.sig.inputs.len() - 1; // -1 to account for rcv
+    if native_method_arity > 2 {
+        let msg = format!("The function bound via #[abra_pseudomethod] receives too many parameters; bound functions can only receive up to 2 parameters (Arguments and VM)");
+        return Err(syn::Error::new(method.sig.inputs.span(), msg));
+    }
+
+    if signature.return_type == TypeRepr::Unit && method.sig.output != syn::ReturnType::Default {
+        let msg = format!("The function bound via #[abra_pseudomethod] has no return type in its signature, and therefore must not have a return value");
+        return Err(syn::Error::new(method.sig.output.span(), msg));
+    }
+
+    let is_variadic = signature.args.iter().any(|arg| arg.is_variadic);
+
+    let method_name = method.sig.ident.to_string();
+    Ok(Some(MethodSpec {
+        native_method_name: method_name.clone(),
+        native_method_arity,
+        name: signature.func_name,
+        args: signature.args,
+        return_type: signature.return_type,
+        is_static: false,
+        is_mut: false,
+        is_variadic,
+        is_pseudomethod: true,
     }))
 }
 
@@ -490,6 +577,7 @@ fn parse_static_method(type_name: &String, type_args: &Vec<String>, method: &mut
         is_static: true,
         is_mut: false,
         is_variadic,
+        is_pseudomethod: false,
     }))
 }
 
@@ -674,7 +762,8 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
         quote! { (#name.to_string(), #typ, #has_default) }
     });
 
-    let methods = type_spec.methods.iter().map(|method| {
+    let all_methods = type_spec.methods.iter().chain(type_spec.pseudo_methods.iter());
+    let methods = all_methods.map(|method| {
         let MethodSpec { name, args, return_type, is_variadic, .. } = method;
 
         let args = args.iter().map(|arg| {
@@ -752,9 +841,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 }
 
 fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
-    let constructor_fn_name = &type_spec.constructor.native_fn_name;
-    let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
-
+    let construct_method_code = gen_construct_code(type_spec);
     let get_type_value_method_code = gen_get_type_value_method_code(type_spec);
     let to_string_method_code = gen_to_string_method_code(&type_spec.to_string_method);
     let get_field_values_method_code = gen_get_field_values_method_code(type_spec);
@@ -764,13 +851,7 @@ fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
     let native_type_name_ident = format_ident!("{}", &type_spec.native_type_name);
     let ts = quote! {
         impl crate::builtins::native_value_trait::NativeValue for #native_type_name_ident {
-            fn construct(args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
-                let inst = Self::#constructor_fn_name_ident(args);
-                crate::vm::value::Value::new_native_instance_obj(
-                    Self::get_type_value(),
-                    std::boxed::Box::new(inst)
-                )
-            }
+            #construct_method_code
             #get_type_value_method_code
             fn is_equal(&self, other: &std::boxed::Box<dyn crate::builtins::native_value_trait::NativeValue>) -> bool {
                 let other = other.downcast_ref::<Self>();
@@ -785,6 +866,34 @@ fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
     ts.into()
 }
 
+fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
+    let body = match &type_spec.constructor {
+        Some(spec) => {
+            let constructor_fn_name = &spec.native_fn_name;
+            let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
+            quote! {
+                let inst = Self::#constructor_fn_name_ident(args);
+                crate::vm::value::Value::new_native_instance_obj(
+                    Self::get_type_value(),
+                    std::boxed::Box::new(inst)
+                )
+            }
+        }
+        None => {
+            quote! {
+                unreachable!("The type bound to #type_name has not bound a function via #[abra_constructor]. \
+                You were probably never intended to construct this type")
+            }
+        }
+    };
+
+    quote! {
+        fn construct(args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
+            #body
+        }
+    }
+}
+
 fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     let type_name = &type_spec.name;
 
@@ -793,7 +902,8 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         quote! { #name.to_string() }
     });
 
-    let methods = type_spec.methods.iter().map(|method| {
+    let all_methods = type_spec.methods.iter().chain(type_spec.pseudo_methods.iter());
+    let methods = all_methods.map(|method| {
         let name = &method.name;
         let num_args = method.args.len();
         let has_return = method.return_type != TypeRepr::Unit;
@@ -811,40 +921,48 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             _ => unreachable!()
         };
 
-        let body_return = if has_return {
-            if let TypeRepr::SelfType(_) = &method.return_type {
-                quote! {
-                    let inst = inst.#native_name_ident(#arguments);
-                    Some(inst.init())
+        let body = if method.is_pseudomethod {
+            quote! { Some(Self::#native_name_ident(rcv.unwrap(), #arguments)) }
+        } else {
+            let body_return = if has_return {
+                if let TypeRepr::SelfType(_) = &method.return_type {
+                    quote! {
+                        let inst = inst.#native_name_ident(#arguments);
+                        Some(inst.init())
+                    }
+                } else {
+                    quote! { Some(inst.#native_name_ident(#arguments)) }
                 }
             } else {
-                quote! { Some(inst.#native_name_ident(#arguments)) }
-            }
-        } else {
-            quote! {
-                inst.#native_name_ident(#arguments);
-                None
-            }
-        };
-        let body = if method.is_mut {
-            quote! {
-                match *rcv_obj.borrow_mut() {
-                    crate::vm::value::Obj::NativeInstanceObj(ref mut rcv) => {
-                        let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
-                        #body_return
-                    }
-                    _ => unreachable!()
+                quote! {
+                    inst.#native_name_ident(#arguments);
+                    None
                 }
-            }
-        } else {
-            quote! {
-                match &*rcv_obj.borrow() {
-                    crate::vm::value::Obj::NativeInstanceObj(rcv) => {
-                        let inst = rcv.inst.downcast_ref::<Self>().unwrap();
-                        #body_return
+            };
+            let invocation = if method.is_mut {
+                quote! {
+                    match *rcv_obj.borrow_mut() {
+                        crate::vm::value::Obj::NativeInstanceObj(ref mut rcv) => {
+                            let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
+                            #body_return
+                        }
+                        _ => unreachable!()
                     }
-                    _ => unreachable!()
                 }
+            } else {
+                quote! {
+                    match &*rcv_obj.borrow() {
+                        crate::vm::value::Obj::NativeInstanceObj(rcv) => {
+                            let inst = rcv.inst.downcast_ref::<Self>().unwrap();
+                            #body_return
+                        }
+                        _ => unreachable!()
+                    }
+                }
+            };
+
+            quote! {
+                if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv { #invocation } else { unreachable!() }
             }
         };
 
@@ -852,7 +970,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
                 name: #name,
                 receiver: None,
-                native_fn: |rcv, args, vm| if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv { #body } else { unreachable!() },
+                native_fn: |rcv, args, vm| #body,
                 has_return: #has_return,
             }))
         }
@@ -902,6 +1020,39 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         }
     });
 
+    let to_string_method_code = if type_spec.is_pseudotype {
+        quote! {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+                name: "toString",
+                receiver: None,
+                native_fn: |rcv, _args, vm| {
+                    Some(Value::new_string_obj(
+                        crate::builtins::native::common::to_string(&rcv.unwrap(), vm))
+                    )
+                },
+                has_return: true,
+            })),
+        }
+    } else {
+        quote! {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+                name: "toString",
+                receiver: None,
+                native_fn: |rcv, _args, vm| {
+                    if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv {
+                        match &*rcv_obj.borrow() {
+                            crate::vm::value::Obj::NativeInstanceObj(rcv) => {
+                                Some(rcv.inst.method_to_string(vm))
+                            }
+                            _ => unreachable!()
+                        }
+                    } else { unreachable!() }
+                },
+                has_return: true,
+            })),
+        }
+    };
+
     quote! {
         fn get_type_value() -> crate::vm::value::TypeValue where Self: core::marker::Sized {
             crate::vm::value::TypeValue {
@@ -909,21 +1060,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 fields: vec![ #(#fields),* ],
                 constructor: Some(Self::construct),
                 methods: vec![
-                    ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
-                        name: "toString",
-                        receiver: None,
-                        native_fn: |rcv, _args, vm| {
-                            if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv {
-                                match &*rcv_obj.borrow() {
-                                    crate::vm::value::Obj::NativeInstanceObj(rcv) => {
-                                        Some(rcv.inst.method_to_string(vm))
-                                    }
-                                    _ => unreachable!()
-                                }
-                            } else { unreachable!() }
-                        },
-                        has_return: true,
-                    })),
+                    #to_string_method_code
                     #(#methods),*
                 ],
                 static_fields: vec![ #(#static_methods),* ],

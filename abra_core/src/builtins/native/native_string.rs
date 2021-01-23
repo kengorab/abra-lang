@@ -8,7 +8,7 @@ use crate::builtins::arguments::Arguments;
 use crate::builtins::native::to_string;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "String")]
+#[abra_type(signature = "String", noconstruct = true)]
 pub struct NativeString {
     pub _inner: String,
 
@@ -18,12 +18,9 @@ pub struct NativeString {
 
 #[abra_methods]
 impl NativeString {
-    #[abra_constructor]
-    fn new(_args: Vec<Value>) -> Self {
-        unreachable!("This constructor should never be called, neither programmatically nor directly. Instead, Self::create should be used")
-    }
-
-    // This is the actual constructor for an abra String object, which lifts a rust String into abra-space
+    // This is the actual constructor function for an abra String object, which lifts a rust String
+    // into abra-space. There is no language-level constructor for a string, aside from making a
+    // string literal.
     pub(crate) fn create(raw: String) -> Self {
         Self { _inner: raw, length: 0 }
     }

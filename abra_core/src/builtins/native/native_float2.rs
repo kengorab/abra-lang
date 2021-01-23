@@ -1,57 +1,50 @@
-use crate::builtins::gen_native_types::NativeFloatMethodsAndFields;
+use abra_native::{AbraType, abra_methods};
 use crate::vm::value::Value;
-use crate::vm::vm::VM;
-use crate::builtins::native::common::to_string;
+use std::fmt::Debug;
+use std::hash::Hash;
+use crate::builtins::arguments::Arguments;
 
-pub type NativeFloat = crate::builtins::gen_native_types::NativeFloat;
+#[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
+#[abra_type(signature = "Float", pseudotype = true, noconstruct = true)]
+pub struct NativeFloat;
 
-impl NativeFloatMethodsAndFields for crate::builtins::gen_native_types::NativeFloat {
-    fn method_to_string(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
-        if let Some(obj) = receiver {
-            Some(Value::new_string_obj(to_string(&obj, vm)))
-        } else { unreachable!() }
+#[abra_methods]
+impl NativeFloat {
+    #[abra_pseudomethod(signature = "floor(): Int")]
+    fn floor(rcv: Value) -> Value {
+        Value::Int(rcv.as_float().floor() as i64)
     }
 
-    fn method_floor(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Float(f) = receiver.unwrap() {
-            Some(Value::Int(f.floor() as i64))
-        } else { unreachable!() }
+    #[abra_pseudomethod(signature = "ceil(): Int")]
+    fn ceil(rcv: Value) -> Value {
+        Value::Int(rcv.as_float().ceil() as i64)
     }
 
-    fn method_ceil(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Float(f) = receiver.unwrap() {
-            Some(Value::Int(f.ceil() as i64))
-        } else { unreachable!() }
+    #[abra_pseudomethod(signature = "round(): Int")]
+    fn round(rcv: Value) -> Value {
+        Value::Int(rcv.as_float().round() as i64)
     }
 
-    fn method_round(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Float(f) = receiver.unwrap() {
-            Some(Value::Int(f.round() as i64))
-        } else { unreachable!() }
-    }
-
-    fn method_with_precision(receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        let precision = args.into_iter().next().expect("Float::withPrecision requires 1 argument");
-        let precision = if let Value::Int(precision) = precision { precision } else { unreachable!() };
+    #[abra_pseudomethod(signature = "withPrecision(precision: Int): Float")]
+    fn with_precision(rcv: Value, mut args: Arguments) -> Value {
+        let precision = args.next_int();
 
         if precision < 0 {
-            return receiver;
+            return rcv;
         } else if precision >= 10 {
-            return receiver;
+            return rcv;
         }
 
-        if let Value::Float(f) = receiver.unwrap() {
-            let power = 10_i32.pow(precision as u32);
-            let i = (f * (power as f64)).trunc();
+        let rcv = rcv.as_float();
+        let power = 10_i32.pow(precision as u32);
+        let i = (rcv * (power as f64)).trunc();
 
-            Some(Value::Float(i / (power as f64)))
-        } else { unreachable!() }
+        Value::Float(i / (power as f64))
     }
 
-    fn method_abs(receiver: Option<Value>, _args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-        if let Value::Float(f) = receiver.unwrap() {
-            Some(Value::Float(f.abs()))
-        } else { unreachable!() }
+    #[abra_pseudomethod(signature = "abs(): Int")]
+    fn abs(rcv: Value) -> Value {
+        Value::Float(rcv.as_float().abs())
     }
 }
 

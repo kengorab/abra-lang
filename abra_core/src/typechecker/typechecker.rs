@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString, NativeType};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -2597,8 +2597,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Ok((field_data, generics))
                 }
                 Type::String => Ok((NativeString::get_type().get_field_or_method(&field_name), HashMap::new())),
-                Type::Float => Ok((NativeFloat::get_field_or_method_type(&field_name), HashMap::new())),
-                Type::Int => Ok((NativeInt::get_field_or_method_type(&field_name), HashMap::new())),
+                Type::Float => Ok((NativeFloat::get_type().get_field_or_method(&field_name), HashMap::new())),
+                Type::Int => Ok((NativeInt::get_type().get_field_or_method(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
                     let field_data = NativeArray::get_type().get_field_or_method(field_name);
