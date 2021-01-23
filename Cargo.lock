@@ -354,16 +354,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gen_native_types"
-version = "0.0.1"
-dependencies = [
- "abra_core",
- "heck",
- "proc-macro2 1.0.24",
- "quote 1.0.8",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
