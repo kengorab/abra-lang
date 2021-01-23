@@ -5,5 +5,4 @@ members = [
     "abra_lsp",
     "abra_native",
     "abra_wasm",
-    "gen_native_types"
 ]
