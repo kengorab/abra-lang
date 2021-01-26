@@ -9,7 +9,7 @@ mod tests {
     use crate::vm::compiler::compile;
     use crate::vm::prelude::PRELUDE_NUM_CONSTS;
     use crate::vm::opcode::Opcode;
-    use crate::vm::value::{Value, Obj, FnValue};
+    use crate::vm::value::{Value, FnValue};
     use crate::vm::vm::{VM, VMContext};
     use itertools::Itertools;
 
@@ -323,17 +323,11 @@ mod tests {
 
     #[inline]
     fn assert_maps_eq(expected: Vec<(Value, Value)>, map_value: Value) {
-        let actual = if let Value::Obj(obj) = map_value {
-            match &*obj.borrow() {
-                Obj::NativeInstanceObj(i) => {
-                    i.as_map().unwrap()._inner
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect::<Vec<(Value, Value)>>()
-                }
-                _ => unreachable!()
-            }
-        } else { panic!("Result should be a Map instance") };
+        let map = &*map_value.as_map().borrow();
+        let actual = map._inner
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<(Value, Value)>>();
 
         let len = expected.len();
         let perms = expected.into_iter().permutations(len).collect::<Vec<_>>();

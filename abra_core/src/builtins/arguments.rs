@@ -1,4 +1,4 @@
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::Value;
 use std::vec::IntoIter;
 use std::collections::HashSet;
 
@@ -67,12 +67,7 @@ impl<'a> Arguments<'a> {
 
     pub fn next_string(&mut self) -> String {
         match self.args.next() {
-            Some(Value::Obj(obj)) => {
-                match &*(obj.borrow()) {
-                    Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
-                    _ => unreachable!()
-                }
-            }
+            Some(Value::StringObj(o)) => o.borrow()._inner.clone(),
             Some(v) => unreachable!(format!("Expected String, received {}", v)),
             None => unreachable!(self.error_str()),
         }
@@ -80,12 +75,7 @@ impl<'a> Arguments<'a> {
 
     pub fn next_string_or_default<S: AsRef<str>>(&mut self, default: S) -> String {
         match self.args.next() {
-            Some(Value::Obj(obj)) => {
-                match &*(obj.borrow()) {
-                    Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
-                    _ => unreachable!()
-                }
-            }
+            Some(Value::StringObj(o)) => o.borrow()._inner.clone(),
             Some(Value::Nil) => default.as_ref().to_string(),
             Some(v) => unreachable!(format!("Expected String, received {}", v)),
             None => unreachable!(self.error_str()),
@@ -94,12 +84,7 @@ impl<'a> Arguments<'a> {
 
     pub fn next_array(&mut self) -> Vec<Value> {
         match self.args.next() {
-            Some(Value::Obj(obj)) => {
-                match &*(obj.borrow()) {
-                    Obj::NativeInstanceObj(i) => i.as_array().unwrap()._inner.clone(),
-                    _ => unreachable!()
-                }
-            }
+            Some(Value::ArrayObj(o)) => (&*o.borrow())._inner.clone(),
             Some(v) => unreachable!(format!("Expected Array, received {}", v)),
             None => unreachable!(self.error_str()),
         }
@@ -107,12 +92,7 @@ impl<'a> Arguments<'a> {
 
     pub fn next_set(&mut self) -> HashSet<Value> {
         match self.args.next() {
-            Some(Value::Obj(obj)) => {
-                match &*(obj.borrow()) {
-                    Obj::NativeInstanceObj(i) => i.as_set().unwrap()._inner.clone(),
-                    _ => unreachable!()
-                }
-            }
+            Some(Value::SetObj(o)) => (&*o.borrow())._inner.clone(),
             Some(v) => unreachable!(format!("Expected Set, received {}", v)),
             None => unreachable!(self.error_str()),
         }
@@ -128,12 +108,7 @@ impl<'a> Arguments<'a> {
     pub fn varargs(mut self) -> Vec<Value> {
         // Note:   ^ consumes self, since no other args can be accessed after varargs
         match self.args.next() {
-            Some(Value::Obj(obj)) => {
-                match &*(obj.borrow()) {
-                    Obj::NativeInstanceObj(i) => i.as_array().unwrap()._inner.clone(),
-                    _ => unreachable!()
-                }
-            }
+            Some(Value::ArrayObj(o)) => (*o.borrow())._inner.clone(),
             Some(Value::Nil) => vec![],
             Some(v) => unreachable!(format!("Expected Array, received {}", v)),
             None => unreachable!(self.error_str()),

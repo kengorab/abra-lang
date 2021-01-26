@@ -1,5 +1,5 @@
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
+use abra_core::vm::value::{Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
 use serde::{Serializer, Serialize};
 
 pub struct JsWrappedValue<'a>(pub &'a Value);
@@ -35,10 +35,76 @@ impl<'a> Serialize for JsWrappedValue<'a> {
                 obj.serialize_entry("value", &val)?;
                 obj.end()
             }
-            Value::Obj(o) => {
+            Value::StringObj(o) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("kind", "obj")?;
-                obj.serialize_entry("value", &JsWrappedObjValue(&*o.borrow()))?;
+                obj.serialize_entry("kind", "stringObj")?;
+                obj.serialize_entry("value", &*o.borrow()._inner)?;
+                obj.end()
+            }
+            Value::ArrayObj(o) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "arrayObj")?;
+
+                let values = &*o.borrow()._inner;
+                let values: Vec<JsWrappedValue> = values.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("values", &values)?;
+                obj.end()
+            }
+            Value::TupleObj(o) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "tupleObj")?;
+
+                let values = &*o.borrow();
+                let values: Vec<JsWrappedValue> = values.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("values", &values)?;
+                obj.end()
+            }
+            Value::SetObj(o) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "setObj")?;
+
+                let values = &(*o.borrow())._inner;
+                let values: Vec<JsWrappedValue> = values.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("values", &values)?;
+                obj.end()
+            }
+            Value::MapObj(o) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "mapObj")?;
+
+                let values = &(*o.borrow())._inner;
+                let values: Vec<(JsWrappedValue, JsWrappedValue)> = values.iter().map(|(k, v)| (JsWrappedValue(k), JsWrappedValue(v))).collect();
+                obj.serialize_entry("values", &values)?;
+                obj.end()
+            }
+            Value::InstanceObj(o) => {
+                let inst = &*o.borrow();
+
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "instanceObj")?;
+                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
+                let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("value", &value)?;
+                obj.end()
+            }
+            Value::NativeInstanceObj(o) => {
+                let inst = &*o.borrow();
+
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "nativeInstanceObj")?;
+                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
+
+                let field_values = inst.inst.get_field_values();
+                let value: Vec<JsWrappedValue> = field_values.iter().map(|i| JsWrappedValue(i)).collect();
+                obj.serialize_entry("value", &value)?;
+                obj.end()
+            }
+            Value::EnumVariantObj(o) => {
+                let EnumVariantObj { enum_name, name, .. } = &*o.borrow();
+                let mut obj = serializer.serialize_map(Some(3))?;
+                obj.serialize_entry("kind", "type")?;
+                obj.serialize_entry("enumName", &enum_name)?;
+                obj.serialize_entry("name", &name)?;
                 obj.end()
             }
             Value::Fn(FnValue { name: fn_name, .. }) |
@@ -75,47 +141,40 @@ impl<'a> Serialize for JsWrappedValue<'a> {
     }
 }
 
-pub struct JsWrappedObjValue<'a>(pub &'a Obj);
-
-impl<'a> Serialize for JsWrappedObjValue<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        use serde::ser::SerializeMap;
-
-        match &self.0 {
-            Obj::TupleObj(value) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("kind", "tupleObj")?;
-                let value: Vec<JsWrappedValue> = value.iter().map(|i| JsWrappedValue(i)).collect();
-                obj.serialize_entry("value", &value)?;
-                obj.end()
-            }
-            Obj::InstanceObj(inst) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
-                obj.serialize_entry("kind", "instanceObj")?;
-                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
-                let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
-                obj.serialize_entry("value", &value)?;
-                obj.end()
-            }
-            Obj::NativeInstanceObj(inst) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
-                obj.serialize_entry("kind", "nativeInstanceObj")?;
-                obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
-
-                let field_values = inst.inst.get_field_values();
-                let value: Vec<JsWrappedValue> = field_values.iter().map(|i| JsWrappedValue(i)).collect();
-                obj.serialize_entry("value", &value)?;
-                obj.end()
-            }
-            Obj::EnumVariantObj(EnumVariantObj { enum_name, name, .. }) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
-                obj.serialize_entry("kind", "type")?;
-                obj.serialize_entry("enumName", &enum_name)?;
-                obj.serialize_entry("name", &name)?;
-                obj.end()
-            }
-        }
-    }
-}
+// pub struct JsWrappedObjValue<'a>(pub &'a Obj);
+//
+// impl<'a> Serialize for JsWrappedObjValue<'a> {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//         where S: Serializer
+//     {
+//         use serde::ser::SerializeMap;
+//
+//         match &self.0 {
+//             // Obj::InstanceObj(inst) => {
+//             //     let mut obj = serializer.serialize_map(Some(3))?;
+//             //     obj.serialize_entry("kind", "instanceObj")?;
+//             //     obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
+//             //     let value: Vec<JsWrappedValue> = inst.fields.iter().map(|i| JsWrappedValue(i)).collect();
+//             //     obj.serialize_entry("value", &value)?;
+//             //     obj.end()
+//             // }
+//             // Obj::NativeInstanceObj(inst) => {
+//             //     let mut obj = serializer.serialize_map(Some(3))?;
+//             //     obj.serialize_entry("kind", "nativeInstanceObj")?;
+//             //     obj.serialize_entry("type", &JsWrappedValue(&Value::Type(inst.typ.clone())))?;
+//             //
+//             //     let field_values = inst.inst.get_field_values();
+//             //     let value: Vec<JsWrappedValue> = field_values.iter().map(|i| JsWrappedValue(i)).collect();
+//             //     obj.serialize_entry("value", &value)?;
+//             //     obj.end()
+//             // }
+//             // Obj::EnumVariantObj(EnumVariantObj { enum_name, name, .. }) => {
+//             //     let mut obj = serializer.serialize_map(Some(3))?;
+//             //     obj.serialize_entry("kind", "type")?;
+//             //     obj.serialize_entry("enumName", &enum_name)?;
+//             //     obj.serialize_entry("name", &name)?;
+//             //     obj.end()
+//             // }
+//         }
+//     }
+// }

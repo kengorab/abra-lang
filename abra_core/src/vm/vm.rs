@@ -1,7 +1,7 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, to_string};
+use crate::builtins::native::to_string;
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
+use crate::vm::value::{Value, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -47,15 +47,6 @@ macro_rules! pop_expect_bool {
     );
 }
 
-macro_rules! pop_expect_obj {
-    ($self: expr) => (
-        match $self.pop_expect()? {
-            Value::Obj(value) => Ok(value),
-            v @ _ => Err(InterpretError::TypeError("Obj".to_string(), v.to_string()))
-        }
-    );
-}
-
 // Helper to get the current frame, without having to worry about lifetimes
 macro_rules! current_frame {
     ($self: expr) => { $self.call_stack.last_mut().expect("There needs to be at least 1 active call stack member") };
@@ -70,7 +61,7 @@ pub enum InterpretError {
     StackOverflow,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Upvalue {
     pub slot_idx: usize,
     pub is_closed: bool,
@@ -382,16 +373,21 @@ impl VM {
         // Rust can't natively compare floats and ints, so we provide that logic here via
         // partial_cmp, deferring to normal implementation of PartialOrd for non-float comparison.
         let ord = match (a, b) {
+            (Value::Int(a), Value::Int(b)) => a.partial_cmp(&b),
             (Value::Int(a), Value::Float(b)) => (a as f64).partial_cmp(&b),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
             (Value::Type(TypeValue { name: name1, .. }), Value::Type(TypeValue { name: name2, .. })) => name1.partial_cmp(&name2),
-            (Value::Obj(obj), Value::Int(b)) => {
-                if let Obj::EnumVariantObj(evv) = &*obj.borrow() {
-                    evv.idx.partial_cmp(&(b as usize))
-                } else { Some(Ordering::Less) }
+            (Value::EnumVariantObj(o), Value::Int(b)) => {
+                let evv = &*o.borrow();
+                evv.idx.partial_cmp(&(b as usize))
             }
-            (a @ _, b @ _) => a.partial_cmp(&b),
+            (Value::StringObj(s1), Value::StringObj(s2)) => {
+                s1.borrow()._inner.partial_cmp(&s2.borrow()._inner)
+            }
+            (a, b) => {
+                if a.eq(&b) { Some(Ordering::Equal) } else { Some(Ordering::Less) }
+            }
         };
 
         // If the partial_cmp call above returns None, treat that as an equivalence value of false
@@ -600,53 +596,105 @@ impl VM {
                     let idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Obj(ref obj) => {
-                            let mut v = match &*obj.borrow() {
-                                Obj::InstanceObj(i) => {
-                                    if is_method {
-                                        let (_, method) = i.typ.methods[idx].clone();
-                                        method
-                                    } else {
-                                        i.fields[idx].clone()
-                                    }
-                                }
-                                Obj::NativeInstanceObj(i) => {
-                                    if is_method {
-                                        let (_, method) = i.typ.methods[idx].clone();
-                                        method
-                                    } else {
-                                        i.inst.get_field_value(idx)
-                                    }
-                                }
-                                Obj::EnumVariantObj(inst) => {
-                                    if is_method {
-                                        inst.methods[idx].clone()
-                                    } else if let Some(values) = &inst.values {
-                                        values[idx].clone()
-                                    } else { unreachable!() }
-                                }
-                                _ => unreachable!()
-                            };
-                            if is_method {
-                                v.bind_fn_value(inst);
-                            }
-                            v
-                        }
-                        Value::Float(_) => {
-                            if is_method {
-                                let (_, mut m) = NativeFloat::get_type_value().methods[idx].clone();
-                                m.bind_fn_value(inst);
-                                m
-                            } else { unreachable!("Float values have no fields to access") }
-                        },
                         Value::Int(_) => {
                             if is_method {
-                                let (_, mut m) = NativeInt::get_type_value().methods[idx].clone();
-                                m.bind_fn_value(inst);
-                                m
+                                let type_idx = self.type_constant_indexes["Int"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(inst);
+                                    m
+                                } else { unreachable!("Int type somehow not loaded") }
                             } else { unreachable!("Int values have no fields to access") }
                         }
+                        Value::Float(_) => {
+                            let type_idx = self.type_constant_indexes["Float"];
+                            if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                let (_, mut m) = tv.methods[idx].clone();
+                                m.bind_fn_value(inst);
+                                m
+                            } else { unreachable!("Float type somehow not loaded") }
+                        }
+                        Value::ArrayObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Array"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::ArrayObj(o));
+                                    m
+                                } else { unreachable!("Array type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::StringObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["String"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::StringObj(o));
+                                    m
+                                } else { unreachable!("String type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::SetObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Set"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::SetObj(o));
+                                    m
+                                } else { unreachable!("Set type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::MapObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Map"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::MapObj(o));
+                                    m
+                                } else { unreachable!("Map type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::InstanceObj(o) => {
+                            let i = &*o.borrow();
+                            if is_method {
+                                let (_, mut m) = i.typ.methods[idx].clone();
+                                m.bind_fn_value(Value::InstanceObj(o.clone()));
+                                m
+                            } else {
+                                i.fields[idx].clone()
+                            }
+                        }
+                        Value::NativeInstanceObj(o) => {
+                            let i = &*o.borrow();
+                            if is_method {
+                                let (_, mut m) = i.typ.methods[idx].clone();
+                                m.bind_fn_value(Value::NativeInstanceObj(o.clone()));
+                                m
+                            } else {
+                                i.inst.get_field_value(idx)
+                            }
+                        }
+                        Value::EnumVariantObj(o) => {
+                            let inst = &*o.borrow();
+                            if is_method {
+                                let mut v = inst.methods[idx].clone();
+                                v.bind_fn_value(Value::EnumVariantObj(o.clone()));
+                                v
+                            } else if let Some(values) = &inst.values {
+                                values[idx].clone()
+                            } else { unreachable!() }
+                        }
                         Value::Type(TypeValue { static_fields, .. }) => {
+                            debug_assert!(is_method);
+
                             let (_, field_value) = static_fields[idx].clone();
                             field_value
                         }
@@ -656,20 +704,15 @@ impl VM {
                                 field_value
                             } else {
                                 let (_, variant_value) = variants[idx].clone();
-                                // TODO: Don't eagerly bind method values
-                                let instance_value = if let Value::Obj(instance_value) = Value::new_enum_variant_obj(variant_value) {
-                                    for (_, mut method_value) in methods {
-                                        let inst = Value::Obj(instance_value.clone());
-                                        method_value.bind_fn_value(inst);
+                                let instance_value = Value::new_enum_variant_obj(variant_value);
 
-                                        match *instance_value.borrow_mut() {
-                                            Obj::EnumVariantObj(ref mut obj) => obj.methods.push(method_value),
-                                            _ => unreachable!()
-                                        }
-                                    }
-                                    instance_value
-                                } else { unreachable!() };
-                                Value::Obj(instance_value)
+                                // TODO: Don't eagerly bind method values
+                                for (_, mut method_value) in methods {
+                                    method_value.bind_fn_value(instance_value.clone());
+
+                                    instance_value.as_enum_variant().borrow_mut().methods.push(method_value);
+                                }
+                                instance_value
                             }
                         }
                         _ => unreachable!()
@@ -678,24 +721,28 @@ impl VM {
                 }
                 Opcode::SetField => {
                     let field_idx = self.read_byte_expect()?;
-                    let inst = pop_expect_obj!(self)?;
+                    let target = self.pop_expect()?;
                     let value = self.pop_expect()?;
 
-                    match *inst.borrow_mut() {
-                        Obj::InstanceObj(InstanceObj { ref mut fields, .. }) => {
+                    match target {
+                        Value::InstanceObj(o) => {
+                            let InstanceObj { ref mut fields, .. } = &mut *o.borrow_mut();
                             fields[field_idx] = value.clone();
                         }
-                        Obj::EnumVariantObj(EnumVariantObj { ref mut values, .. }) => {
+                        Value::NativeInstanceObj(o) => {
+                            let inst = &mut *o.borrow_mut();
+                            inst.inst.set_field_value(field_idx, value.clone())
+                        }
+                        Value::EnumVariantObj(o) => {
+                            let EnumVariantObj { ref mut values, .. } = &mut *o.borrow_mut();
                             match values {
                                 Some(values) => values[field_idx] = value.clone(),
                                 None => unreachable!()
                             }
                         }
-                        Obj::NativeInstanceObj(ref mut inst) => {
-                            inst.inst.set_field_value(field_idx, value.clone())
-                        }
-                        _ => unimplemented!()
-                    };
+                        _ => unimplemented!("No builtin types have mutable fields")
+                    }
+
                     self.push(value);
                 }
                 Opcode::MapMk => {
@@ -711,21 +758,15 @@ impl VM {
                 }
                 Opcode::MapLoad => {
                     let key = self.pop_expect()?;
-                    let obj = match self.pop_expect()? {
-                        Value::Obj(value) => value,
-                        Value::Nil => {
-                            self.push(Value::Nil);
-                            continue;
-                        }
-                        _ => unreachable!()
-                    };
-                    let val = match &*obj.borrow() {
-                        Obj::NativeInstanceObj(i) => {
-                            match i.as_map().unwrap()._inner.get(&key) {
+                    let val = match self.pop_expect()? {
+                        Value::MapObj(o) => {
+                            let map = &*o.borrow();
+                            match map._inner.get(&key) {
                                 Some(value) => value.clone(),
                                 None => Value::Nil
                             }
                         }
+                        Value::Nil => Value::Nil,
                         _ => unreachable!()
                     };
                     self.push(val)
@@ -734,14 +775,15 @@ impl VM {
                     let value = self.pop_expect()?;
                     let key = self.pop_expect()?;
 
-                    let obj = pop_expect_obj!(self)?;
-                    match *obj.borrow_mut() {
-                        Obj::NativeInstanceObj(ref mut i) => {
-                            i.as_map_mut().unwrap()._inner.insert(key, value)
+                    let map = self.pop_expect()?;
+                    match &map {
+                        Value::MapObj(o) => {
+                            let map = &mut *o.borrow_mut();
+                            map._inner.insert(key, value)
                         }
                         _ => unreachable!()
                     };
-                    self.push(Value::Obj(obj));
+                    self.push(map);
                 }
                 o @ Opcode::ArrMk | o @ Opcode::TupleMk => {
                     let size = self.read_byte_expect()?;
@@ -766,16 +808,10 @@ impl VM {
                 }
                 Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let obj = match self.pop_expect()? {
-                        Value::Obj(value) => value,
-                        Value::Nil => {
-                            self.push(Value::Nil);
-                            continue;
-                        }
-                        _ => unreachable!()
-                    };
-                    let value = match &*obj.borrow() {
-                        Obj::TupleObj(values) => {
+                    let target = self.pop_expect()?;
+                    let value = match &target {
+                        Value::ArrayObj(o) => {
+                            let values = &(*o.borrow())._inner;
                             let len = values.len() as i64;
                             if idx < -len || idx >= len {
                                 Value::Nil
@@ -784,29 +820,27 @@ impl VM {
                                 values[idx as usize].clone()
                             }
                         }
-                        Obj::NativeInstanceObj(i) => {
-                            if let Some(array) = i.as_array() {
-                                let values = &array._inner;
-                                let len = values.len() as i64;
-                                if idx < -len || idx >= len {
-                                    Value::Nil
-                                } else {
-                                    let idx = if idx < 0 { idx + len } else { idx };
-                                    values[idx as usize].clone()
-                                }
-                            } else if let Some(string) = i.as_string() {
-                                let string = &string._inner;
-                                let len = string.len() as i64;
-                                let idx = if idx < 0 { idx + len } else { idx };
-
-                                match (*string).chars().nth(idx as usize) {
-                                    Some(ch) => Value::new_string_obj(ch.to_string()),
-                                    None => Value::Nil
-                                }
+                        Value::TupleObj(o) => {
+                            let values = &*o.borrow();
+                            let len = values.len() as i64;
+                            if idx < -len || idx >= len {
+                                Value::Nil
                             } else {
-                                unreachable!()
+                                let idx = if idx < 0 { idx + len } else { idx };
+                                values[idx as usize].clone()
                             }
                         }
+                        Value::StringObj(o) => {
+                            let string = &(*o.borrow())._inner;
+                            let len = string.len() as i64;
+                            let idx = if idx < 0 { idx + len } else { idx };
+
+                            match (*string).chars().nth(idx as usize) {
+                                Some(ch) => Value::new_string_obj(ch.to_string()),
+                                None => Value::Nil
+                            }
+                        }
+                        Value::Nil => Value::Nil,
                         _ => unreachable!()
                     };
                     self.push(value);
@@ -814,9 +848,11 @@ impl VM {
                 Opcode::ArrStore | Opcode::TupleStore => {
                     let value = self.pop_expect()?;
                     let idx = pop_expect_int!(self)? as usize;
-                    let obj = pop_expect_obj!(self)?;
-                    match *obj.borrow_mut() {
-                        Obj::TupleObj(ref mut values) => {
+
+                    let target = self.pop_expect()?;
+                    match &target {
+                        Value::ArrayObj(o) => {
+                            let values = &mut (*o.borrow_mut())._inner;
                             if values.len() < idx {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
@@ -829,8 +865,8 @@ impl VM {
                                 values[idx] = value;
                             }
                         }
-                        Obj::NativeInstanceObj(ref mut i) => {
-                            let values = &mut i.inst.downcast_mut::<NativeArray>().unwrap()._inner;
+                        Value::TupleObj(o) => {
+                            let values = &mut *o.borrow_mut();
                             if values.len() < idx {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
@@ -845,7 +881,7 @@ impl VM {
                         }
                         _ => unreachable!()
                     }
-                    self.push(Value::Obj(obj));
+                    self.push(target);
                 }
                 Opcode::ArrSlc => {
                     #[inline]
@@ -864,20 +900,19 @@ impl VM {
                     let end = self.pop_expect()?;
                     let start = pop_expect_int!(self)?;
 
-                    let obj = pop_expect_obj!(self)?;
-                    let value = match &*obj.borrow() {
-                        Obj::NativeInstanceObj(i) => {
-                            if let Some(arr) = i.as_array() {
-                                let value = &arr._inner;
-                                let (start, len) = get_range_endpoints(value.len(), start, end);
-                                let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
-                                Value::new_array_obj(values)
-                            } else if let Some(string) = i.as_string() {
-                                let string = &string._inner;
-                                let (start, len) = get_range_endpoints(string.len(), start, end);
-                                let value = (*string).chars().skip(start).take(len).collect::<String>();
-                                Value::new_string_obj(value)
-                            } else { unreachable!() }
+                    let target = self.pop_expect()?;
+                    let value = match &target {
+                        Value::ArrayObj(o) => {
+                            let value = &(*o.borrow())._inner;
+                            let (start, len) = get_range_endpoints(value.len(), start, end);
+                            let slc = &value[start..(start + len)];
+                            Value::new_array_obj(slc.to_vec())
+                        }
+                        Value::StringObj(o) => {
+                            let string = &(*o.borrow())._inner;
+                            let (start, len) = get_range_endpoints(string.len(), start, end);
+                            let value = (*string).chars().skip(start).take(len).collect::<String>();
+                            Value::new_string_obj(value)
                         }
                         _ => unreachable!()
                     };
@@ -960,19 +995,14 @@ impl VM {
                             }
                             continue;
                         }
-                        Value::Obj(obj) => {
-                            let mut obj = (*obj).borrow_mut();
-                            match *obj {
-                                Obj::EnumVariantObj(ref mut evv) => {
-                                    let arity = evv.arity;
-                                    let num_args = self.stack.len() - arity;
-                                    let args = self.stack.split_off(num_args);
-                                    self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
+                        Value::EnumVariantObj(o) => {
+                            let evv = &mut *o.borrow_mut();
+                            let arity = evv.arity;
+                            let num_args = self.stack.len() - arity;
+                            let args = self.stack.split_off(num_args);
+                            self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
 
-                                    evv.values = Some(args);
-                                }
-                                _ => unreachable!()
-                            };
+                            evv.values = Some(args);
                         }
                         _ => {
                             self.start_call_frame(arity, target)?;
@@ -1018,16 +1048,21 @@ impl VM {
                         Value::Int(_) => self.load_constant(self.type_constant_indexes["Int"])?,
                         Value::Float(_) => self.load_constant(self.type_constant_indexes["Float"])?,
                         Value::Bool(_) => self.load_constant(self.type_constant_indexes["Bool"])?,
-                        Value::Obj(obj) => match &*obj.borrow() {
-                            Obj::InstanceObj(i) => self.push(Value::Type(i.typ.clone())),
-                            Obj::NativeInstanceObj(i) => self.push(Value::Type(i.typ.clone())),
-                            Obj::EnumVariantObj(variant) => self.load_constant(self.type_constant_indexes[&variant.enum_name])?,
-                            o @ Obj::TupleObj(_) => {
-                                dbg!(o);
-                                unimplemented!()
-                            }
-                        }
+                        Value::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
+                        Value::ArrayObj(_) => self.load_constant(self.type_constant_indexes["Array"])?,
+                        Value::SetObj(_) => self.load_constant(self.type_constant_indexes["Set"])?,
+                        Value::MapObj(_) => self.load_constant(self.type_constant_indexes["Map"])?,
+                        Value::InstanceObj(o) => {
+                            let i = &*o.borrow();
+                            self.push(Value::Type(i.typ.clone()))
+                        },
+                        Value::NativeInstanceObj(o) => {
+                            let i = &*o.borrow();
+                            self.push(Value::Type(i.typ.clone()))
+                        },
+                        Value::EnumVariantObj(o) => self.load_constant(self.type_constant_indexes[&*o.borrow().enum_name])?,
                         Value::Nil => self.push(Value::Nil),
+                        Value::TupleObj(_) |
                         Value::Fn(_) |
                         Value::Closure(_) |
                         Value::NativeFn(_) |

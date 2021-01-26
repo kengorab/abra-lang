@@ -1,1 +1,2 @@
-(-6).toString()
+val arr = [1, 2, 3]
+arr.length = 4

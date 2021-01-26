@@ -8,7 +8,7 @@ use crate::builtins::arguments::Arguments;
 use crate::builtins::native::to_string;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "String", noconstruct = true)]
+#[abra_type(signature = "String", noconstruct = true, variant = "StringObj")]
 pub struct NativeString {
     pub _inner: String,
 
@@ -33,11 +33,6 @@ impl NativeString {
     #[abra_setter(field = "length")]
     fn set_length(&mut self, value: Value) {
         self.length = *value.as_int() as usize;
-    }
-
-    #[abra_to_string]
-    fn to_string(&self, _vm: &mut VM) -> String {
-        self._inner.clone()
     }
 
     #[abra_method(signature = "toLower(): String")]
@@ -179,278 +174,278 @@ impl NativeString {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use crate::builtins::native::test_utils::{interpret, new_string_obj};
-//     use crate::vm::value::Value;
-//
-//     #[test]
-//     fn test_string_length() {
-//         let result = interpret("\"asdf qwer\".length");
-//         let expected = Value::Int(9);
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_to_string() {
-//         let result = interpret("\"hello\".toString()");
-//         let expected = new_string_obj("hello");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_to_lower() {
-//         let result = interpret("\"aSDF qWER\".toLower()");
-//         let expected = new_string_obj("asdf qwer");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_to_upper() {
-//         let result = interpret("\"Asdf Qwer\".toUpper()");
-//         let expected = new_string_obj("ASDF QWER");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_pad_left() {
-//         let result = interpret("\"asdf\".padLeft(7, \"!\")");
-//         let expected = new_string_obj("!!!asdf");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"asdf\".padLeft(4, \"!\")");
-//         let expected = new_string_obj("asdf");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"asdf\".padLeft(-14, \"!\")");
-//         let expected = new_string_obj("asdf");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_trim() {
-//         let result = interpret("\"  asdf   \".trim()");
-//         let expected = new_string_obj("asdf");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_trim_start() {
-//         let result = interpret("\"  asdf   \".trimStart()");
-//         let expected = new_string_obj("asdf   ");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"!!asdf   \".trimStart(pattern: \"!\")");
-//         let expected = new_string_obj("asdf   ");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"!!!asdf   \".trimStart(\"!!\")");
-//         let expected = new_string_obj("!asdf   ");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_trim_end() {
-//         let result = interpret("\"  asdf   \".trimEnd()");
-//         let expected = new_string_obj("  asdf");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"  asdf!!\".trimEnd(pattern: \"!\")");
-//         let expected = new_string_obj("  asdf");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"  asdf!!!\".trimEnd(\"!!\")");
-//         let expected = new_string_obj("  asdf!");
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_split() {
-//         let result = interpret("\"a s d f\".split(splitter: \" \")");
-//         let expected = array![
-//           new_string_obj("a"),
-//           new_string_obj("s"),
-//           new_string_obj("d"),
-//           new_string_obj("f")
-//         ];
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"  a  b  c d\".split(\"  \")");
-//         let expected = array![
-//           new_string_obj(""),
-//           new_string_obj("a"),
-//           new_string_obj("b"),
-//           new_string_obj("c d")
-//         ];
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"asdf\".split(\"qwer\")");
-//         let expected = array![
-//           new_string_obj("asdf")
-//         ];
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"asdf\".split(\"\")");
-//         let expected = array![
-//           new_string_obj("a"),
-//           new_string_obj("s"),
-//           new_string_obj("d"),
-//           new_string_obj("f")
-//         ];
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"a\\ns\\nd\\nf\".split(\"\\n\")");
-//         let expected = array![
-//           new_string_obj("a"),
-//           new_string_obj("s"),
-//           new_string_obj("d"),
-//           new_string_obj("f")
-//         ];
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_split_at() {
-//         let result = interpret(r#"
-//           val arr = "hello!"
-//           arr.splitAt(0)
-//         "#);
-//         let expected = tuple!(
-//             new_string_obj(""),
-//             new_string_obj("hello!")
-//         );
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret(r#"
-//           val arr = "hello!"
-//           arr.splitAt(1)
-//         "#);
-//         let expected = tuple!(
-//             new_string_obj("h"),
-//             new_string_obj("ello!")
-//         );
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret(r#"
-//           val arr = "hello!"
-//           arr.splitAt(-1)
-//         "#);
-//         let expected = tuple!(
-//             new_string_obj("hello"),
-//             new_string_obj("!")
-//         );
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret(r#"
-//           val arr = "hello!"
-//           arr.splitAt(-8)
-//         "#);
-//         let expected = tuple!(
-//             new_string_obj(""),
-//             new_string_obj("hello!")
-//         );
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret(r#"
-//           val arr = "hello!"
-//           arr.splitAt(10)
-//         "#);
-//         let expected = tuple!(
-//             new_string_obj("hello!"),
-//             new_string_obj("")
-//         );
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_lines() {
-//         let result = interpret("\"asdf\\nqwer\\nzxcv\".lines()");
-//         let expected = array![
-//           new_string_obj("asdf"),
-//           new_string_obj("qwer"),
-//           new_string_obj("zxcv")
-//         ];
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_chars() {
-//         let result = interpret("\"asdf\".chars()");
-//         let expected = array![
-//           new_string_obj("a"),
-//           new_string_obj("s"),
-//           new_string_obj("d"),
-//           new_string_obj("f")
-//         ];
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_parse_int() {
-//         let result = interpret("\"hello\".parseInt()");
-//         let expected = Value::Nil;
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123 456\".parseInt()");
-//         let expected = Value::Nil;
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123456.7\".parseInt()");
-//         let expected = Value::Nil;
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123456\".parseInt()");
-//         let expected = Value::Int(123456);
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"-123456\".parseInt()");
-//         let expected = Value::Int(-123456);
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"ba55\".parseInt(radix: 16)");
-//         let expected = Value::Int(47701);
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_parse_float() {
-//         let result = interpret("\"hello\".parseFloat()");
-//         let expected = Value::Nil;
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123 456\".parseFloat()");
-//         let expected = Value::Nil;
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123456.7\".parseFloat()");
-//         let expected = Value::Float(123456.7);
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"-123456.7\".parseFloat()");
-//         let expected = Value::Float(-123456.7);
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"123456\".parseFloat()");
-//         let expected = Value::Float(123456.0);
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"-123456\".parseFloat()");
-//         let expected = Value::Float(-123456.0);
-//         assert_eq!(Some(expected), result);
-//     }
-//
-//     #[test]
-//     fn test_string_concat() {
-//         let result = interpret("\"hello\".concat(\"!\")");
-//         let expected = new_string_obj("hello!");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"hello\".concat(\" \", \"world\", \"!\")");
-//         let expected = new_string_obj("hello world!");
-//         assert_eq!(Some(expected), result);
-//
-//         let result = interpret("\"asdf\".concat(true, [1, 2, 3], {a:1})");
-//         let expected = new_string_obj("asdftrue[1, 2, 3]{ a: 1 }");
-//         assert_eq!(Some(expected), result);
-//     }
-// }
+#[cfg(test)]
+mod test {
+    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::vm::value::Value;
+
+    #[test]
+    fn test_string_length() {
+        let result = interpret("\"asdf qwer\".length");
+        let expected = Value::Int(9);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_to_string() {
+        let result = interpret("\"hello\".toString()");
+        let expected = new_string_obj("hello");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_to_lower() {
+        let result = interpret("\"aSDF qWER\".toLower()");
+        let expected = new_string_obj("asdf qwer");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_to_upper() {
+        let result = interpret("\"Asdf Qwer\".toUpper()");
+        let expected = new_string_obj("ASDF QWER");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_pad_left() {
+        let result = interpret("\"asdf\".padLeft(7, \"!\")");
+        let expected = new_string_obj("!!!asdf");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".padLeft(4, \"!\")");
+        let expected = new_string_obj("asdf");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".padLeft(-14, \"!\")");
+        let expected = new_string_obj("asdf");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_trim() {
+        let result = interpret("\"  asdf   \".trim()");
+        let expected = new_string_obj("asdf");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_trim_start() {
+        let result = interpret("\"  asdf   \".trimStart()");
+        let expected = new_string_obj("asdf   ");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"!!asdf   \".trimStart(pattern: \"!\")");
+        let expected = new_string_obj("asdf   ");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"!!!asdf   \".trimStart(\"!!\")");
+        let expected = new_string_obj("!asdf   ");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_trim_end() {
+        let result = interpret("\"  asdf   \".trimEnd()");
+        let expected = new_string_obj("  asdf");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"  asdf!!\".trimEnd(pattern: \"!\")");
+        let expected = new_string_obj("  asdf");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"  asdf!!!\".trimEnd(\"!!\")");
+        let expected = new_string_obj("  asdf!");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_split() {
+        let result = interpret("\"a s d f\".split(splitter: \" \")");
+        let expected = array![
+          new_string_obj("a"),
+          new_string_obj("s"),
+          new_string_obj("d"),
+          new_string_obj("f")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"  a  b  c d\".split(\"  \")");
+        let expected = array![
+          new_string_obj(""),
+          new_string_obj("a"),
+          new_string_obj("b"),
+          new_string_obj("c d")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".split(\"qwer\")");
+        let expected = array![
+          new_string_obj("asdf")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".split(\"\")");
+        let expected = array![
+          new_string_obj("a"),
+          new_string_obj("s"),
+          new_string_obj("d"),
+          new_string_obj("f")
+        ];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"a\\ns\\nd\\nf\".split(\"\\n\")");
+        let expected = array![
+          new_string_obj("a"),
+          new_string_obj("s"),
+          new_string_obj("d"),
+          new_string_obj("f")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_split_at() {
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(0)
+        "#);
+        let expected = tuple!(
+            new_string_obj(""),
+            new_string_obj("hello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(1)
+        "#);
+        let expected = tuple!(
+            new_string_obj("h"),
+            new_string_obj("ello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(-1)
+        "#);
+        let expected = tuple!(
+            new_string_obj("hello"),
+            new_string_obj("!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(-8)
+        "#);
+        let expected = tuple!(
+            new_string_obj(""),
+            new_string_obj("hello!")
+        );
+        assert_eq!(Some(expected), result);
+
+        let result = interpret(r#"
+          val arr = "hello!"
+          arr.splitAt(10)
+        "#);
+        let expected = tuple!(
+            new_string_obj("hello!"),
+            new_string_obj("")
+        );
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_lines() {
+        let result = interpret("\"asdf\\nqwer\\nzxcv\".lines()");
+        let expected = array![
+          new_string_obj("asdf"),
+          new_string_obj("qwer"),
+          new_string_obj("zxcv")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_chars() {
+        let result = interpret("\"asdf\".chars()");
+        let expected = array![
+          new_string_obj("a"),
+          new_string_obj("s"),
+          new_string_obj("d"),
+          new_string_obj("f")
+        ];
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_parse_int() {
+        let result = interpret("\"hello\".parseInt()");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123 456\".parseInt()");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123456.7\".parseInt()");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123456\".parseInt()");
+        let expected = Value::Int(123456);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"-123456\".parseInt()");
+        let expected = Value::Int(-123456);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"ba55\".parseInt(radix: 16)");
+        let expected = Value::Int(47701);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_parse_float() {
+        let result = interpret("\"hello\".parseFloat()");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123 456\".parseFloat()");
+        let expected = Value::Nil;
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123456.7\".parseFloat()");
+        let expected = Value::Float(123456.7);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"-123456.7\".parseFloat()");
+        let expected = Value::Float(-123456.7);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"123456\".parseFloat()");
+        let expected = Value::Float(123456.0);
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"-123456\".parseFloat()");
+        let expected = Value::Float(-123456.0);
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_string_concat() {
+        let result = interpret("\"hello\".concat(\"!\")");
+        let expected = new_string_obj("hello!");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"hello\".concat(\" \", \"world\", \"!\")");
+        let expected = new_string_obj("hello world!");
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("\"asdf\".concat(true, [1, 2, 3], {a:1})");
+        let expected = new_string_obj("asdftrue[1, 2, 3]{ a: 1 }");
+        assert_eq!(Some(expected), result);
+    }
+}
