@@ -3,14 +3,12 @@ use crate::vm::value::Value;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use crate::vm::vm::VM;
-use crate::builtins::native::to_string;
-use itertools::Itertools;
 use crate::builtins::native::common::invoke_fn;
 use std::collections::HashSet;
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(signature = "Set<T>")]
+#[abra_type(signature = "Set<T>", variant = "SetObj")]
 pub struct NativeSet {
     pub _inner: HashSet<Value>,
 
@@ -33,12 +31,6 @@ impl NativeSet {
     #[abra_setter(field = "size")]
     fn set_size(&mut self, value: Value) {
         self.size = *value.as_int() as usize;
-    }
-
-    #[abra_to_string]
-    fn to_string(&self, vm: &mut VM) -> String {
-        let items = self._inner.iter().map(|v| to_string(v, vm)).join(", ");
-        format!("#{{{}}}", items)
     }
 
     #[abra_method(signature = "isEmpty(): Bool")]

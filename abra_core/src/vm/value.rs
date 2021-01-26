@@ -7,11 +7,10 @@ use crate::common::util::integer_decode;
 use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
-use std::cmp::Ordering;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FnValue {
     pub name: String,
     pub code: Vec<u8>,
@@ -31,7 +30,7 @@ impl Hash for FnValue {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ClosureValue {
     pub name: String,
     pub code: Vec<u8>,
@@ -54,7 +53,7 @@ impl Hash for ClosureValue {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeValue {
     pub name: String,
     pub constructor: Option<fn(Vec<Value>) -> Value>,
@@ -73,7 +72,7 @@ impl TypeValue {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct EnumValue {
     pub name: String,
     pub variants: Vec<(String, EnumVariantObj)>,
@@ -81,15 +80,18 @@ pub struct EnumValue {
     pub static_fields: Vec<(String, Value)>,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
     /// Represents a compile-time string constant (ie. the name of a function, or the key of a map).
     /// These are only transient values and should not remain on the stack. Compare to an actual,
-    /// heap-allocated, run-time String value.
+    /// heap-allocated, run-time StringObj value.
     Str(String),
+    StringObj(Arc<RefCell<NativeString>>),
+    ArrayObj(Arc<RefCell<NativeArray>>),
+    SetObj(Arc<RefCell<NativeSet>>),
     Obj(Arc<RefCell<Obj>>),
     Fn(FnValue),
     Closure(ClosureValue),
@@ -101,15 +103,15 @@ pub enum Value {
 
 impl Value {
     pub fn new_string_obj(value: String) -> Value {
-        NativeString::create(value).init()
+        Value::StringObj(Arc::new(RefCell::new(NativeString::create(value))))
     }
 
     pub fn new_array_obj(values: Vec<Value>) -> Value {
-        NativeArray::new(values).init()
+        Value::ArrayObj(Arc::new(RefCell::new(NativeArray::new(values))))
     }
 
     pub fn new_set_obj(values: Vec<Value>) -> Value {
-        NativeSet::new(values).init()
+        Value::SetObj(Arc::new(RefCell::new(NativeSet::new(values))))
     }
 
     pub fn new_tuple_obj(values: Vec<Value>) -> Value {
@@ -164,6 +166,9 @@ impl Display for Value {
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
+            Value::StringObj(_) => write!(f, "<string>"),
+            Value::ArrayObj(_) => write!(f, "<array>"),
+            Value::SetObj(_) => write!(f, "<set>"),
             Value::Obj(o) => write!(f, "{}", &*o.borrow()),
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
@@ -182,6 +187,9 @@ impl Hash for Value {
             Value::Float(f) => integer_decode(*f).hash(hasher),
             Value::Bool(b) => b.hash(hasher),
             Value::Str(s) => s.hash(hasher),
+            Value::StringObj(o) => (&*o.borrow()).hash(hasher),
+            Value::ArrayObj(o) => (&*o.borrow()).hash(hasher),
+            Value::SetObj(o) => (&*o.borrow()).hash(hasher),
             Value::Obj(o) => (&*o.borrow()).hash(hasher),
             Value::Fn(f) => f.hash(hasher),
             Value::Closure(c) => c.hash(hasher),
@@ -202,13 +210,13 @@ impl Hash for Value {
 
 impl Eq for Value {}
 
-#[derive(Debug, Hash, Eq, PartialOrd, PartialEq)]
+#[derive(Debug, Hash, Eq, PartialEq)]
 pub struct InstanceObj {
     pub typ: TypeValue,
     pub fields: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct EnumVariantObj {
     pub enum_name: String,
     pub name: String,
@@ -225,18 +233,6 @@ pub struct NativeInstanceObj {
 }
 
 impl NativeInstanceObj {
-    pub fn as_string(&self) -> Option<&NativeString> {
-        self.inst.downcast_ref::<NativeString>()
-    }
-
-    pub fn as_array(&self) -> Option<&NativeArray> {
-        self.inst.downcast_ref::<NativeArray>()
-    }
-
-    pub fn as_set(&self) -> Option<&NativeSet> {
-        self.inst.downcast_ref::<NativeSet>()
-    }
-
     pub fn as_map(&self) -> Option<&NativeMap> {
         self.inst.downcast_ref::<NativeMap>()
     }
@@ -278,66 +274,6 @@ impl Display for Obj {
                     }
                 }
             }
-        }
-    }
-}
-
-impl PartialOrd for Obj {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self, other) {
-            (Obj::TupleObj(v1), Obj::TupleObj(v2)) => {
-                if v1.len() < v2.len() {
-                    Some(Ordering::Less)
-                } else if v1.len() > v2.len() {
-                    Some(Ordering::Greater)
-                } else {
-                    for (i1, i2) in v1.iter().zip(v2.iter()) {
-                        if let Some(o) = i1.partial_cmp(&i2) {
-                            if o != Ordering::Equal {
-                                return Some(o);
-                            }
-                        }
-                    }
-                    Some(Ordering::Equal)
-                }
-            }
-            (Obj::EnumVariantObj(evv1), Obj::EnumVariantObj(evv2)) => {
-                match evv1.idx.cmp(&evv2.idx) {
-                    Ordering::Equal => {}
-                    v @ _ => return Some(v)
-                };
-                match evv1.enum_name.cmp(&evv2.enum_name) {
-                    Ordering::Equal => {}
-                    v @ _ => return Some(v)
-                };
-                if evv1.arity > 0 { // evv2.arity should also be 0
-                    let evv1_values = evv1.values.as_ref().expect("If it has an arity > 0, it should have values");
-                    let evv2_values = evv2.values.as_ref().expect("If it has an arity > 0, it should have values");
-                    for (v1, v2) in evv1_values.iter().zip(evv2_values.iter()) {
-                        if let Some(o) = v1.partial_cmp(&v2) {
-                            if o != Ordering::Equal {
-                                return Some(o);
-                            }
-                        }
-                    }
-                }
-                Some(Ordering::Equal)
-            }
-            (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => {
-                match (v1.as_string(), v2.as_string()) {
-                    (Some(s1), Some(s2)) => {
-                        s1._inner.partial_cmp(&s2._inner)
-                    }
-                    _ => {
-                        if v1.inst.is_equal(&v2.inst) {
-                            Some(Ordering::Equal)
-                        } else {
-                            Some(Ordering::Less)
-                        }
-                    }
-                }
-            }
-            (_, _) => None
         }
     }
 }

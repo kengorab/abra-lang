@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, to_string};
+use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, to_string, NativeSet, NativeString};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -70,7 +70,7 @@ pub enum InterpretError {
     StackOverflow,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Upvalue {
     pub slot_idx: usize,
     pub is_closed: bool,
@@ -111,6 +111,10 @@ pub struct VM {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
     open_upvalues: HashMap<usize, Arc<RefCell<Upvalue>>>,
+    // TODO: Clean this up
+    array_type: TypeValue,
+    string_type: TypeValue,
+    set_type: TypeValue,
 }
 
 const STACK_LIMIT: usize = 1024;
@@ -139,6 +143,9 @@ impl VM {
             stack: Vec::new(),
             globals: HashMap::new(),
             open_upvalues: HashMap::new(),
+            array_type: NativeArray::get_type_value(),
+            string_type: NativeString::get_type_value(),
+            set_type: NativeSet::get_type_value(),
         }
     }
 
@@ -382,6 +389,7 @@ impl VM {
         // Rust can't natively compare floats and ints, so we provide that logic here via
         // partial_cmp, deferring to normal implementation of PartialOrd for non-float comparison.
         let ord = match (a, b) {
+            (Value::Int(a), Value::Int(b)) => a.partial_cmp(&b),
             (Value::Int(a), Value::Float(b)) => (a as f64).partial_cmp(&b),
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
@@ -391,7 +399,12 @@ impl VM {
                     evv.idx.partial_cmp(&(b as usize))
                 } else { Some(Ordering::Less) }
             }
-            (a @ _, b @ _) => a.partial_cmp(&b),
+            (Value::StringObj(s1), Value::StringObj(s2)) => {
+                s1.borrow()._inner.partial_cmp(&s2.borrow()._inner)
+            }
+            (a, b) => {
+                if a.eq(&b) { Some(Ordering::Equal) } else { Some(Ordering::Less) }
+            }
         };
 
         // If the partial_cmp call above returns None, treat that as an equivalence value of false
@@ -600,6 +613,42 @@ impl VM {
                     let idx = self.read_byte_expect()?;
 
                     let value = match inst {
+                        Value::ArrayObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Array"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::ArrayObj(o));
+                                    m
+                                } else { unreachable!("Array type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::StringObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["String"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::StringObj(o));
+                                    m
+                                } else { unreachable!("String type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
+                        Value::SetObj(o) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Set"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(Value::SetObj(o));
+                                    m
+                                } else { unreachable!("Set type somehow not loaded") }
+                            } else {
+                                (*o.borrow()).get_field_value(idx)
+                            }
+                        }
                         Value::Obj(ref obj) => {
                             let mut v = match &*obj.borrow() {
                                 Obj::InstanceObj(i) => {
@@ -638,7 +687,7 @@ impl VM {
                                 m.bind_fn_value(inst);
                                 m
                             } else { unreachable!("Float values have no fields to access") }
-                        },
+                        }
                         Value::Int(_) => {
                             if is_method {
                                 let (_, mut m) = NativeInt::get_type_value().methods[idx].clone();
@@ -766,16 +815,10 @@ impl VM {
                 }
                 Opcode::ArrLoad | Opcode::TupleLoad => {
                     let idx = pop_expect_int!(self)?;
-                    let obj = match self.pop_expect()? {
-                        Value::Obj(value) => value,
-                        Value::Nil => {
-                            self.push(Value::Nil);
-                            continue;
-                        }
-                        _ => unreachable!()
-                    };
-                    let value = match &*obj.borrow() {
-                        Obj::TupleObj(values) => {
+                    let target = self.pop_expect()?;
+                    let value = match &target {
+                        Value::ArrayObj(o) => {
+                            let values = &(*o.borrow())._inner;
                             let len = values.len() as i64;
                             if idx < -len || idx >= len {
                                 Value::Nil
@@ -784,27 +827,29 @@ impl VM {
                                 values[idx as usize].clone()
                             }
                         }
-                        Obj::NativeInstanceObj(i) => {
-                            if let Some(array) = i.as_array() {
-                                let values = &array._inner;
-                                let len = values.len() as i64;
-                                if idx < -len || idx >= len {
-                                    Value::Nil
-                                } else {
-                                    let idx = if idx < 0 { idx + len } else { idx };
-                                    values[idx as usize].clone()
-                                }
-                            } else if let Some(string) = i.as_string() {
-                                let string = &string._inner;
-                                let len = string.len() as i64;
-                                let idx = if idx < 0 { idx + len } else { idx };
+                        Value::StringObj(o) => {
+                            let string = &(*o.borrow())._inner;
+                            let len = string.len() as i64;
+                            let idx = if idx < 0 { idx + len } else { idx };
 
-                                match (*string).chars().nth(idx as usize) {
-                                    Some(ch) => Value::new_string_obj(ch.to_string()),
-                                    None => Value::Nil
+                            match (*string).chars().nth(idx as usize) {
+                                Some(ch) => Value::new_string_obj(ch.to_string()),
+                                None => Value::Nil
+                            }
+                        }
+                        Value::Nil => Value::Nil,
+                        Value::Obj(obj) => {
+                            match &*obj.borrow() {
+                                Obj::TupleObj(values) => {
+                                    let len = values.len() as i64;
+                                    if idx < -len || idx >= len {
+                                        Value::Nil
+                                    } else {
+                                        let idx = if idx < 0 { idx + len } else { idx };
+                                        values[idx as usize].clone()
+                                    }
                                 }
-                            } else {
-                                unreachable!()
+                                _ => unreachable!()
                             }
                         }
                         _ => unreachable!()
@@ -814,9 +859,11 @@ impl VM {
                 Opcode::ArrStore | Opcode::TupleStore => {
                     let value = self.pop_expect()?;
                     let idx = pop_expect_int!(self)? as usize;
-                    let obj = pop_expect_obj!(self)?;
-                    match *obj.borrow_mut() {
-                        Obj::TupleObj(ref mut values) => {
+
+                    let target = self.pop_expect()?;
+                    match &target {
+                        Value::ArrayObj(o) => {
+                            let values = &mut (*o.borrow_mut())._inner;
                             if values.len() < idx {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
@@ -829,23 +876,27 @@ impl VM {
                                 values[idx] = value;
                             }
                         }
-                        Obj::NativeInstanceObj(ref mut i) => {
-                            let values = &mut i.inst.downcast_mut::<NativeArray>().unwrap()._inner;
-                            if values.len() < idx {
-                                let mut padding = std::iter::repeat(Value::Nil)
-                                    .take(idx - values.len())
-                                    .collect::<Vec<Value>>();
-                                values.append(&mut padding);
-                                values.push(value);
-                            } else if values.len() == idx {
-                                values.push(value);
-                            } else {
-                                values[idx] = value;
+                        Value::Obj(obj) => {
+                            match *obj.borrow_mut() {
+                                Obj::TupleObj(ref mut values) => {
+                                    if values.len() < idx {
+                                        let mut padding = std::iter::repeat(Value::Nil)
+                                            .take(idx - values.len())
+                                            .collect::<Vec<Value>>();
+                                        values.append(&mut padding);
+                                        values.push(value);
+                                    } else if values.len() == idx {
+                                        values.push(value);
+                                    } else {
+                                        values[idx] = value;
+                                    }
+                                }
+                                _ => unreachable!()
                             }
                         }
                         _ => unreachable!()
                     }
-                    self.push(Value::Obj(obj));
+                    self.push(target);
                 }
                 Opcode::ArrSlc => {
                     #[inline]
@@ -864,20 +915,19 @@ impl VM {
                     let end = self.pop_expect()?;
                     let start = pop_expect_int!(self)?;
 
-                    let obj = pop_expect_obj!(self)?;
-                    let value = match &*obj.borrow() {
-                        Obj::NativeInstanceObj(i) => {
-                            if let Some(arr) = i.as_array() {
-                                let value = &arr._inner;
-                                let (start, len) = get_range_endpoints(value.len(), start, end);
-                                let values = value.iter().skip(start).take(len).map(|i| i.clone()).collect::<Vec<Value>>();
-                                Value::new_array_obj(values)
-                            } else if let Some(string) = i.as_string() {
-                                let string = &string._inner;
-                                let (start, len) = get_range_endpoints(string.len(), start, end);
-                                let value = (*string).chars().skip(start).take(len).collect::<String>();
-                                Value::new_string_obj(value)
-                            } else { unreachable!() }
+                    let target = self.pop_expect()?;
+                    let value = match &target {
+                        Value::ArrayObj(o) => {
+                            let value = &(*o.borrow())._inner;
+                            let (start, len) = get_range_endpoints(value.len(), start, end);
+                            let slc = &value[start..(start + len)];
+                            Value::new_array_obj(slc.to_vec())
+                        }
+                        Value::StringObj(o) => {
+                            let string = &(*o.borrow())._inner;
+                            let (start, len) = get_range_endpoints(string.len(), start, end);
+                            let value = (*string).chars().skip(start).take(len).collect::<String>();
+                            Value::new_string_obj(value)
                         }
                         _ => unreachable!()
                     };
@@ -1027,6 +1077,9 @@ impl VM {
                                 unimplemented!()
                             }
                         }
+                        Value::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
+                        Value::ArrayObj(_) => self.load_constant(self.type_constant_indexes["Array"])?,
+                        Value::SetObj(_) => self.load_constant(self.type_constant_indexes["Set"])?,
                         Value::Nil => self.push(Value::Nil),
                         Value::Fn(_) |
                         Value::Closure(_) |

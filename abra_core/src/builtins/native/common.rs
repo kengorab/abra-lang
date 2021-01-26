@@ -79,6 +79,20 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::Float(val) => format!("{}", val),
         Value::Bool(val) => format!("{}", val),
         Value::Str(val) => val.clone(),
+        Value::StringObj(o) => {
+            let str = &*o.borrow()._inner;
+            format!("{}", str)
+        }
+        Value::ArrayObj(o) => {
+            let arr = &*o.borrow();
+            let items = arr._inner.iter().map(|v| to_string(v, vm)).join(", ");
+            format!("[{}]", items)
+        }
+        Value::SetObj(o) => {
+            let set = &*o.borrow();
+            let items = set._inner.iter().map(|v| to_string(v, vm)).join(", ");
+            format!("#{{{}}}", items)
+        }
         Value::Obj(obj) => {
             match &*(obj.borrow()) {
                 Obj::TupleObj(value) => {
@@ -98,20 +112,14 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                         Value::NativeFn(native_fn_value) => native_fn_value.receiver = Some(Box::new(value.clone())),
                         _ => unreachable!()
                     }
-                    if let Value::Obj(o) = invoke_fn(vm, &tostring_method, vec![]) {
-                        match &*o.borrow() {
-                            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
-                            _ => unreachable!()
-                        }
+                    if let Value::StringObj(o) = invoke_fn(vm, &tostring_method, vec![]) {
+                        o.borrow()._inner.clone()
                     } else { unreachable!() }
                 }
                 Obj::NativeInstanceObj(i) => {
                     let v = i.inst.method_to_string(vm);
-                    if let Value::Obj(o) = v {
-                        match &*o.borrow() {
-                            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
-                            _ => unreachable!()
-                        }
+                    if let Value::StringObj(o) = v {
+                        o.borrow()._inner.clone()
                     } else { unreachable!() }
                 }
                 Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {

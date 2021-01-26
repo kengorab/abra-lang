@@ -1,6 +1,6 @@
 use crate::builtins::native::to_string;
 use crate::typechecker::types::{Type, FnType};
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::Value;
 use crate::vm::vm::VM;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
@@ -131,17 +131,12 @@ fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Va
 
     let mut args = args.into_iter();
     if let Some(arg) = args.next() {
-        if let Value::Obj(obj) = arg {
-            match &*(obj.borrow()) {
-                Obj::NativeInstanceObj(i) => {
-                    let vals = &i.as_array().unwrap()._inner;
-                    let num_vals = vals.len();
-                    for (idx, val) in vals.into_iter().enumerate() {
-                        let sp = if idx == num_vals - 1 { "" } else { " " };
-                        print_fn(&format!("{}{}", to_string(val, vm), sp));
-                    }
-                }
-                _ => unreachable!()
+        if let Value::ArrayObj(o) = arg {
+            let vals = &*o.borrow()._inner;
+            let num_vals = vals.len();
+            for (idx, val) in vals.into_iter().enumerate() {
+                let sp = if idx == num_vals - 1 { "" } else { " " };
+                print_fn(&format!("{}{}", to_string(val, vm), sp));
             }
         } else if arg != Value::Nil { unreachable!() }
     }
@@ -176,11 +171,8 @@ fn range(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Val
 
 fn read_file(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
     let file_name = args.into_iter().next().expect("readFile requires 1 argument");
-    let file_name = if let Value::Obj(obj) = file_name {
-        match &(*obj.borrow()) {
-            Obj::NativeInstanceObj(i) => i.as_string().unwrap()._inner.clone(),
-            _ => unreachable!()
-        }
+    let file_name = if let Value::StringObj(obj) = file_name {
+        obj.borrow()._inner.clone()
     } else {
         panic!("readFile requires a String as first argument")
     };

@@ -22,6 +22,7 @@ struct TypeSpec {
     static_methods: Vec<MethodSpec>,
     is_pseudotype: bool,
     is_noconstruct: bool,
+    value_variant: Option<String>,
 }
 
 #[derive(Debug)]
@@ -69,6 +70,7 @@ struct FirstPass {
     field_specs: Vec<FieldSpec>,
     is_pseudotype: bool,
     is_noconstruct: bool,
+    value_variant: Option<String>,
 }
 
 thread_local! {
@@ -80,9 +82,9 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemStruct);
     let native_type_name = input.ident.to_string();
 
-    let (type_name, type_args, is_pseudotype, is_noconstruct) = match parse_abra_type_attr(&input.attrs) {
+    let (type_name, type_args, is_pseudotype, is_noconstruct, value_variant) = match parse_abra_type_attr(&input.attrs) {
         Ok(Some(res)) => res,
-        Ok(None) => (native_type_name.clone(), vec![], false, false),
+        Ok(None) => (native_type_name.clone(), vec![], false, false, None),
         Err(e) => return e.to_compile_error().into()
     };
 
@@ -96,7 +98,7 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into()
     };
 
-    let first_pass = FirstPass { type_name, type_args, field_specs, is_pseudotype, is_noconstruct };
+    let first_pass = FirstPass { type_name, type_args, field_specs, is_pseudotype, is_noconstruct, value_variant };
     TYPES.with(|types| {
         types.borrow_mut().insert(native_type_name, first_pass)
     });
@@ -146,13 +148,14 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
     }))
 }
 
-fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>, bool, bool)>, syn::Error> {
+fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>, bool, bool, Option<String>)>, syn::Error> {
     match find_attr(attrs, "abra_type") {
         Some((_, attr)) => {
             let attr_span = attr.span();
             let attr = parse_attr(attr);
             let is_pseudotype = attr.get("pseudotype").map(|v| v == "true").unwrap_or(false);
             let is_noconstruct = attr.get("noconstruct").map(|v| v == "true").unwrap_or(false);
+            let value_variant = attr.get("variant").map(|v| v.clone());
 
             match attr.get("signature") {
                 Some(signature) => match parse_type(None, &vec![], signature) {
@@ -164,7 +167,7 @@ fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, V
                                     r => unreachable!(format!("Unexpected type {:?}", r))
                                 })
                                 .collect();
-                            Ok(Some((type_name, type_args, is_pseudotype, is_noconstruct)))
+                            Ok(Some((type_name, type_args, is_pseudotype, is_noconstruct, value_variant)))
                         }
                         r => unreachable!(format!("Unexpected type {:?}", r))
                     },
@@ -202,7 +205,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         let msg = format!("Cannot implement methods for struct {}, which does not derive AbraType", native_type_name);
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     };
-    let FirstPass { type_name, type_args, mut field_specs, is_pseudotype, is_noconstruct } = first_pass_data;
+    let FirstPass { type_name, type_args, mut field_specs, is_pseudotype, is_noconstruct, value_variant } = first_pass_data;
 
     let mut methods = Vec::new();
     let mut static_methods = Vec::new();
@@ -313,7 +316,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
                             return syn::Error::new(attr.span(), msg).to_compile_error().into();
                         }
 
-                        match parse_pseudomethod(m) {
+                        match parse_pseudomethod(&type_args, m) {
                             Ok(Some(m)) => pseudo_methods.push(m),
                             Err(e) => return e.to_compile_error().into(),
                             _ => continue
@@ -371,6 +374,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         static_methods,
         is_pseudotype,
         is_noconstruct,
+        value_variant,
     };
 
     let native_type_code = gen_native_type_code(&type_spec);
@@ -459,7 +463,7 @@ fn parse_method(type_name: &String, type_args: &Vec<String>, method: &mut syn::I
     }))
 }
 
-fn parse_pseudomethod(method: &mut syn::ImplItemMethod) -> Result<Option<MethodSpec>, syn::Error> {
+fn parse_pseudomethod(type_args: &Vec<String>, method: &mut syn::ImplItemMethod) -> Result<Option<MethodSpec>, syn::Error> {
     let (idx, abra_method_attr) = match find_attr(&method.attrs, "abra_pseudomethod") {
         Some(attr) => attr,
         None => return Ok(None)
@@ -469,7 +473,7 @@ fn parse_pseudomethod(method: &mut syn::ImplItemMethod) -> Result<Option<MethodS
     method.attrs.remove(idx);
 
     let signature = match attr.get("signature") {
-        Some(signature) => match parse_fn_signature(None, &vec![], signature) {
+        Some(signature) => match parse_fn_signature(None, type_args, signature) {
             Ok(s) => s,
             Err(e) => {
                 let msg = format!("Invalid signature provided to #[abra_pseudomethod]: {}", e);
@@ -922,13 +926,30 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         let body = if method.is_pseudomethod {
-            quote! { Some(Self::#native_name_ident(rcv.unwrap(), #arguments)) }
+            if type_spec.value_variant.is_some() {
+                quote! { Self::#native_name_ident }
+            } else {
+                quote! { |rcv, args, vm| Some(Self::#native_name_ident(rcv.unwrap(), #arguments)) }
+            }
         } else {
             let body_return = if has_return {
                 if let TypeRepr::SelfType(_) = &method.return_type {
-                    quote! {
-                        let inst = inst.#native_name_ident(#arguments);
-                        Some(inst.init())
+                    match &type_spec.value_variant {
+                        Some(variant) => {
+                            let variant = format_ident!("{}", variant);
+                            quote! {
+                                let inst = inst.#native_name_ident(#arguments);
+                                Some(crate::vm::value::Value::#variant(
+                                    std::sync::Arc::new(std::cell::RefCell::new(inst))
+                                ))
+                            }
+                        }
+                        None => {
+                            quote! {
+                                let inst = inst.#native_name_ident(#arguments);
+                                Some(inst.init())
+                            }
+                        }
                     }
                 } else {
                     quote! { Some(inst.#native_name_ident(#arguments)) }
@@ -940,29 +961,57 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 }
             };
             let invocation = if method.is_mut {
-                quote! {
-                    match *rcv_obj.borrow_mut() {
-                        crate::vm::value::Obj::NativeInstanceObj(ref mut rcv) => {
-                            let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
-                            #body_return
+                if type_spec.value_variant.is_some() {
+                    quote! {
+                        let inst = &mut *rcv_obj.borrow_mut();
+                        #body_return
+                    }
+                } else {
+                    quote! {
+                        match *rcv_obj.borrow_mut() {
+                            crate::vm::value::Obj::NativeInstanceObj(ref mut rcv) => {
+                                let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
+                                #body_return
+                            }
+                            _ => unreachable!()
                         }
-                        _ => unreachable!()
                     }
                 }
             } else {
-                quote! {
-                    match &*rcv_obj.borrow() {
-                        crate::vm::value::Obj::NativeInstanceObj(rcv) => {
-                            let inst = rcv.inst.downcast_ref::<Self>().unwrap();
-                            #body_return
+                if type_spec.value_variant.is_some() {
+                    quote! {
+                        let inst = &*rcv_obj.borrow();
+                        #body_return
+                    }
+                } else {
+                    quote! {
+                        match &*rcv_obj.borrow() {
+                            crate::vm::value::Obj::NativeInstanceObj(rcv) => {
+                                let inst = rcv.inst.downcast_ref::<Self>().unwrap();
+                                #body_return
+                            }
+                            _ => unreachable!()
                         }
-                        _ => unreachable!()
+                    }
+                }
+            };
+
+            let b = match &type_spec.value_variant {
+                Some(variant) => {
+                    let variant = format_ident!("{}", variant);
+                    quote! {
+                        if let Some(crate::vm::value::Value::#variant(rcv_obj)) = rcv { #invocation } else { unreachable!() }
+                    }
+                }
+                None => {
+                    quote! {
+                        if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv { #invocation } else { unreachable!() }
                     }
                 }
             };
 
             quote! {
-                if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv { #invocation } else { unreachable!() }
+                |rcv, args, vm| #b
             }
         };
 
@@ -970,7 +1019,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
                 name: #name,
                 receiver: None,
-                native_fn: |rcv, args, vm| #body,
+                native_fn: #body,
                 has_return: #has_return,
             }))
         }
@@ -995,13 +1044,26 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         let body = if has_return {
-            if let TypeRepr::SelfType(_) = &static_method.return_type {
-                quote! {
-                    let inst = Self::#native_name_ident(#arguments);
-                    Some(inst.init())
+            match &type_spec.value_variant {
+                Some(variant) => {
+                    let variant = format_ident!("{}", variant);
+                    quote! {
+                        let inst = Self::#native_name_ident(#arguments);
+                        Some(crate::vm::value::Value::#variant(
+                            std::sync::Arc::new(std::cell::RefCell::new(inst))
+                        ))
+                    }
                 }
-            } else {
-                quote! { Some(Self::#native_name_ident(#arguments)) }
+                None => {
+                    if let TypeRepr::SelfType(_) = &static_method.return_type {
+                        quote! {
+                            let inst = Self::#native_name_ident(#arguments);
+                            Some(inst.init())
+                        }
+                    } else {
+                        quote! { Some(Self::#native_name_ident(#arguments)) }
+                    }
+                }
             }
         } else {
             quote! {
@@ -1020,7 +1082,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         }
     });
 
-    let to_string_method_code = if type_spec.is_pseudotype {
+    let to_string_method_code = if type_spec.is_pseudotype || type_spec.value_variant.is_some() {
         quote! {
             ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
                 name: "toString",

@@ -10,7 +10,7 @@ use std::collections::{HashSet, HashMap};
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "Array<T>")]
+#[abra_type(signature = "Array<T>", variant = "ArrayObj")]
 pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,
@@ -34,12 +34,6 @@ impl NativeArray {
     #[abra_setter(field = "length")]
     fn set_length(&mut self, value: Value) {
         self.length = *value.as_int() as usize;
-    }
-
-    #[abra_to_string]
-    fn to_string(&self, vm: &mut VM) -> String {
-        let items = self._inner.iter().map(|v| to_string(v, vm)).join(", ");
-        format!("[{}]", items)
     }
 
     #[abra_static_method(signature = "fill<T1>(amount: Int, value: T1): T1[]")]
@@ -100,7 +94,11 @@ impl NativeArray {
         if self._inner.is_empty() {
             Value::Nil
         } else {
-            self._inner.remove(0)
+            let (head, tail) = self._inner.split_at(1);
+            let head = head.to_vec().remove(0);
+            self._inner = tail.to_vec();
+
+            head
         }
     }
 
@@ -115,7 +113,7 @@ impl NativeArray {
         } else {
             let split_idx = ((self._inner.len() as i64 + index) % self._inner.len() as i64) as usize;
             let (h1, h2) = self._inner.split_at(split_idx);
-            (h1.to_vec().clone(), h2.to_vec().clone())
+            (h1.to_vec(), h2.to_vec())
         };
         let p1 = Value::new_array_obj(p1);
         let p2 = Value::new_array_obj(p2);
