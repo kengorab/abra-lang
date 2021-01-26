@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, NativeInt, NativeFloat};
 use crate::builtins::native_fns::native_fns;
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, TypeValue};
@@ -47,8 +47,8 @@ impl Prelude {
         bindings.push(PreludeBinding { name: "None".to_string(), typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
 
         let prelude_types = vec![
-            ("Int", Type::Int, None),
-            ("Float", Type::Float, None),
+            ("Int", Type::Int, Some(NativeInt::get_type_value())),
+            ("Float", Type::Float, Some(NativeFloat::get_type_value())),
             ("Bool", Type::Bool, None),
             ("String", Type::String, Some(NativeString::get_type_value())),
             ("Unit", Type::Unit, None),

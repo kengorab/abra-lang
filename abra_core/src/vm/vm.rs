@@ -1,4 +1,4 @@
-use crate::builtins::native::{NativeArray, NativeFloat, NativeInt, to_string, NativeSet, NativeString};
+use crate::builtins::native::to_string;
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, Obj, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
@@ -111,10 +111,6 @@ pub struct VM {
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
     open_upvalues: HashMap<usize, Arc<RefCell<Upvalue>>>,
-    // TODO: Clean this up
-    array_type: TypeValue,
-    string_type: TypeValue,
-    set_type: TypeValue,
 }
 
 const STACK_LIMIT: usize = 1024;
@@ -143,9 +139,6 @@ impl VM {
             stack: Vec::new(),
             globals: HashMap::new(),
             open_upvalues: HashMap::new(),
-            array_type: NativeArray::get_type_value(),
-            string_type: NativeString::get_type_value(),
-            set_type: NativeSet::get_type_value(),
         }
     }
 
@@ -613,6 +606,24 @@ impl VM {
                     let idx = self.read_byte_expect()?;
 
                     let value = match inst {
+                        Value::Int(_) => {
+                            if is_method {
+                                let type_idx = self.type_constant_indexes["Int"];
+                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                    let (_, mut m) = tv.methods[idx].clone();
+                                    m.bind_fn_value(inst);
+                                    m
+                                } else { unreachable!("Int type somehow not loaded") }
+                            } else { unreachable!("Int values have no fields to access") }
+                        }
+                        Value::Float(_) => {
+                            let type_idx = self.type_constant_indexes["Float"];
+                            if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
+                                let (_, mut m) = tv.methods[idx].clone();
+                                m.bind_fn_value(inst);
+                                m
+                            } else { unreachable!("Float type somehow not loaded") }
+                        }
                         Value::ArrayObj(o) => {
                             if is_method {
                                 let type_idx = self.type_constant_indexes["Array"];
@@ -680,20 +691,6 @@ impl VM {
                                 v.bind_fn_value(inst);
                             }
                             v
-                        }
-                        Value::Float(_) => {
-                            if is_method {
-                                let (_, mut m) = NativeFloat::get_type_value().methods[idx].clone();
-                                m.bind_fn_value(inst);
-                                m
-                            } else { unreachable!("Float values have no fields to access") }
-                        }
-                        Value::Int(_) => {
-                            if is_method {
-                                let (_, mut m) = NativeInt::get_type_value().methods[idx].clone();
-                                m.bind_fn_value(inst);
-                                m
-                            } else { unreachable!("Int values have no fields to access") }
                         }
                         Value::Type(TypeValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[idx].clone();
