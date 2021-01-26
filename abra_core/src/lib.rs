@@ -14,8 +14,6 @@ pub mod common;
 pub mod lexer;
 pub mod parser;
 pub mod typechecker;
-
-#[macro_use]
 pub mod vm;
 
 pub enum Error {
