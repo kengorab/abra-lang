@@ -17,11 +17,10 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 use abra_core::builtins::native_fns::NativeFn;
 use abra_core::{Error, typecheck, compile, compile_and_disassemble};
-use abra_core::vm::value::{Obj, Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj, NativeInstanceObj};
+use abra_core::vm::value::{Value, FnValue, ClosureValue, TypeValue, EnumValue, NativeInstanceObj};
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
-use abra_core::builtins::native::NativeMap;
 
 pub struct RunResultValue(Option<Value>);
 
@@ -53,52 +52,54 @@ impl Serialize for RunResultValue {
                 });
                 arr.end()
             }
-            Value::SetObj(o) => {
-                let arr = &*o.borrow();
-                let array = &arr._inner;
-                let mut arr = serializer.serialize_seq(Some((*array).len()))?;
-                array.iter().for_each(|val| {
+            Value::TupleObj(o) => {
+                let tup = &*o.borrow();
+                let mut arr = serializer.serialize_seq(Some((*tup).len()))?;
+                tup.iter().for_each(|val| {
                     arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
                 });
                 arr.end()
             }
-            Value::Obj(obj) => match &*obj.borrow() {
-                Obj::TupleObj(value) => {
-                    let mut arr = serializer.serialize_seq(Some((*value).len()))?;
-                    value.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
-                    });
-                    arr.end()
-                }
-                Obj::InstanceObj(inst) => {
-                    let fields = &inst.fields;
-                    let mut arr = serializer.serialize_seq(Some(fields.len()))?;
-                    fields.into_iter().for_each(|val| {
-                        arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
-                    });
-                    arr.end()
-                }
-                Obj::NativeInstanceObj(NativeInstanceObj { typ, inst, .. }) => {
-                    if let Some(map) = inst.downcast_ref::<NativeMap>() {
-                        let map = &map._inner;
-
-                        let mut obj = serializer.serialize_map(Some((*map).len()))?;
-                        map.into_iter().for_each(|(key, val)| {
-                            obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
-                        });
-                        obj.end()
-                    } else {
-                        let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
-
-                        for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
-                            obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
-                        }
-
-                        obj.end()
-                    }
-                }
-                Obj::EnumVariantObj(EnumVariantObj { name, .. }) => serializer.serialize_str(name)
+            Value::SetObj(o) => {
+                let set = &*o.borrow();
+                let items = &set._inner;
+                let mut set = serializer.serialize_seq(Some((*items).len()))?;
+                items.iter().for_each(|val| {
+                    set.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                });
+                set.end()
             }
+            Value::MapObj(o) => {
+                let map = &*o.borrow();
+                let map = &map._inner;
+                let mut obj = serializer.serialize_map(Some((*map).len()))?;
+                map.into_iter().for_each(|(key, val)| {
+                    obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
+                });
+                obj.end()
+            }
+            Value::InstanceObj(o) => {
+                let inst = &*o.borrow();
+
+                let fields = &inst.fields;
+                let mut arr = serializer.serialize_seq(Some(fields.len()))?;
+                fields.into_iter().for_each(|val| {
+                    arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                });
+                arr.end()
+            }
+            Value::NativeInstanceObj(o) => {
+                let NativeInstanceObj { typ, inst } = &*o.borrow();
+
+                let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
+
+                for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
+                    obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
+                }
+
+                obj.end()
+            }
+            Value::EnumVariantObj(o) => serializer.serialize_str(&*o.borrow().name),
             Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),
             Value::Closure(ClosureValue { name, .. }) => serializer.serialize_str(name),
             Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),

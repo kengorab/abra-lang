@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::hash::{Hash, Hasher};
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
 use crate::builtins::native_value_trait::NativeValue;
@@ -91,8 +90,12 @@ pub enum Value {
     Str(String),
     StringObj(Arc<RefCell<NativeString>>),
     ArrayObj(Arc<RefCell<NativeArray>>),
+    TupleObj(Arc<RefCell<Vec<Value>>>),
     SetObj(Arc<RefCell<NativeSet>>),
-    Obj(Arc<RefCell<Obj>>),
+    MapObj(Arc<RefCell<NativeMap>>),
+    InstanceObj(Arc<RefCell<InstanceObj>>),
+    NativeInstanceObj(Arc<RefCell<NativeInstanceObj>>),
+    EnumVariantObj(Arc<RefCell<EnumVariantObj>>),
     Fn(FnValue),
     Closure(ClosureValue),
     NativeFn(NativeFn),
@@ -110,32 +113,30 @@ impl Value {
         Value::ArrayObj(Arc::new(RefCell::new(NativeArray::new(values))))
     }
 
+    pub fn new_tuple_obj(values: Vec<Value>) -> Value {
+        Value::TupleObj(Arc::new(RefCell::new(values)))
+    }
+
     pub fn new_set_obj(values: Vec<Value>) -> Value {
         Value::SetObj(Arc::new(RefCell::new(NativeSet::new(values))))
     }
 
-    pub fn new_tuple_obj(values: Vec<Value>) -> Value {
-        let arr = Obj::TupleObj(values);
-        Value::Obj(Arc::new(RefCell::new(arr)))
-    }
-
     pub fn new_map_obj(items: Vec<Value>) -> Value {
-        NativeMap::new(items).init()
+        Value::MapObj(Arc::new(RefCell::new(NativeMap::new(items))))
     }
 
     pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
-        let inst = Obj::InstanceObj(InstanceObj { typ, fields });
-        Value::Obj(Arc::new(RefCell::new(inst)))
+        let inst = InstanceObj { typ, fields };
+        Value::InstanceObj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn new_native_instance_obj(typ: TypeValue, inst: Box<dyn NativeValue>) -> Value {
-        let inst = Obj::NativeInstanceObj(NativeInstanceObj { typ, inst });
-        Value::Obj(Arc::new(RefCell::new(inst)))
+        let inst = NativeInstanceObj { typ, inst };
+        Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn new_enum_variant_obj(evv: EnumVariantObj) -> Value {
-        let inst = Obj::EnumVariantObj(evv);
-        Value::Obj(Arc::new(RefCell::new(inst)))
+        Value::EnumVariantObj(Arc::new(RefCell::new(evv)))
     }
 
     pub fn bind_fn_value(&mut self, instance: Value) {
@@ -157,6 +158,34 @@ impl Value {
     pub fn as_bool(&self) -> &bool {
         if let Value::Bool(b) = self { b } else { unreachable!() }
     }
+
+    pub fn as_string(&self) -> &Arc<RefCell<NativeString>> {
+        if let Value::StringObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_array(&self) -> &Arc<RefCell<NativeArray>> {
+        if let Value::ArrayObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_tuple(&self) -> &Arc<RefCell<Vec<Value>>> {
+        if let Value::TupleObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_set(&self) -> &Arc<RefCell<NativeSet>> {
+        if let Value::SetObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_map(&self) -> &Arc<RefCell<NativeMap>> {
+        if let Value::MapObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_instance_obj(&self) -> &Arc<RefCell<InstanceObj>> {
+        if let Value::InstanceObj(o) = self { o } else { unreachable!() }
+    }
+
+    pub fn as_enum_variant(&self) -> &Arc<RefCell<EnumVariantObj>> {
+        if let Value::EnumVariantObj(o) = self { o } else { unreachable!() }
+    }
 }
 
 impl Display for Value {
@@ -168,8 +197,29 @@ impl Display for Value {
             Value::Str(val) => write!(f, "{}", val),
             Value::StringObj(_) => write!(f, "<string>"),
             Value::ArrayObj(_) => write!(f, "<array>"),
+            Value::TupleObj(_) => write!(f, "<tuple>"),
             Value::SetObj(_) => write!(f, "<set>"),
-            Value::Obj(o) => write!(f, "{}", &*o.borrow()),
+            Value::MapObj(_) => write!(f, "<map>"),
+            Value::InstanceObj(o) => {
+                let inst = &*o.borrow();
+                let TypeValue { name, .. } = &inst.typ;
+                write!(f, "<instance {}>", name)
+            }
+            Value::NativeInstanceObj(o) => {
+                let inst = &*o.borrow();
+                let TypeValue { name, .. } = &inst.typ;
+                write!(f, "<instance {}>", name)
+            }
+            Value::EnumVariantObj(o) => {
+                let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
+                match values {
+                    None => write!(f, "{}.{}", enum_name, name),
+                    Some(values) => {
+                        let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+                        write!(f, "{}.{}({})", enum_name, name, values)
+                    }
+                }
+            }
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
@@ -189,8 +239,16 @@ impl Hash for Value {
             Value::Str(s) => s.hash(hasher),
             Value::StringObj(o) => (&*o.borrow()).hash(hasher),
             Value::ArrayObj(o) => (&*o.borrow()).hash(hasher),
+            Value::TupleObj(o) => (&*o.borrow()).hash(hasher),
             Value::SetObj(o) => (&*o.borrow()).hash(hasher),
-            Value::Obj(o) => (&*o.borrow()).hash(hasher),
+            Value::MapObj(o) => (&*o.borrow()).hash(hasher),
+            Value::InstanceObj(o) => {
+                let i = &*o.borrow();
+                i.typ.hash(hasher);
+                i.fields.hash(hasher);
+            }
+            Value::NativeInstanceObj(o) => (&*o.borrow()).inst.hash(hasher),
+            Value::EnumVariantObj(o) => (&*o.borrow()).hash(hasher),
             Value::Fn(f) => f.hash(hasher),
             Value::Closure(c) => c.hash(hasher),
             Value::NativeFn(NativeFn { name, receiver, has_return, .. }) => {
@@ -232,77 +290,8 @@ pub struct NativeInstanceObj {
     pub inst: Box<dyn NativeValue>,
 }
 
-impl NativeInstanceObj {
-    pub fn as_map(&self) -> Option<&NativeMap> {
-        self.inst.downcast_ref::<NativeMap>()
-    }
-
-    pub fn as_map_mut(&mut self) -> Option<&mut NativeMap> {
-        self.inst.downcast_mut::<NativeMap>()
-    }
-}
-
-#[derive(Debug)]
-pub enum Obj {
-    TupleObj(Vec<Value>),
-    InstanceObj(InstanceObj),
-    EnumVariantObj(EnumVariantObj),
-    NativeInstanceObj(NativeInstanceObj),
-}
-
-impl Display for Obj {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            Obj::TupleObj(value) => {
-                let items = value.iter().map(|v| format!("{}", v)).join(", ");
-                write!(f, "({})", items)
-            }
-            Obj::InstanceObj(inst) => {
-                let TypeValue { name, .. } = &inst.typ;
-                write!(f, "<instance {}>", name)
-            }
-            Obj::NativeInstanceObj(inst) => {
-                let TypeValue { name, .. } = &inst.typ;
-                write!(f, "<instance {}>", name)
-            }
-            Obj::EnumVariantObj(EnumVariantObj { enum_name, name, values, .. }) => {
-                match values {
-                    None => write!(f, "{}.{}", enum_name, name),
-                    Some(values) => {
-                        let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
-                        write!(f, "{}.{}({})", enum_name, name, values)
-                    }
-                }
-            }
-        }
-    }
-}
-
-impl PartialEq for Obj {
+impl PartialEq for NativeInstanceObj {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Obj::TupleObj(v1), Obj::TupleObj(v2)) => v1.eq(v2),
-            (Obj::InstanceObj(v1), Obj::InstanceObj(v2)) => v1.eq(v2),
-            (Obj::EnumVariantObj(v1), Obj::EnumVariantObj(v2)) => v1.eq(v2),
-            (Obj::NativeInstanceObj(v1), Obj::NativeInstanceObj(v2)) => v1.inst.is_equal(&v2.inst),
-            _ => false
-        }
-    }
-}
-
-impl Eq for Obj {}
-
-impl Hash for Obj {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        match self {
-            Obj::TupleObj(a) => a.hash(hasher),
-            Obj::InstanceObj(i) => {
-                i.typ.hash(hasher);
-                i.fields.hash(hasher);
-            }
-            Obj::EnumVariantObj(ev) => ev.hash(hasher),
-            Obj::NativeInstanceObj(i) => i.inst.hash(hasher),
-        }
-        hasher.finish();
+        self.inst.is_equal(&other.inst)
     }
 }

@@ -4,6 +4,7 @@ use crate::vm::value::Value;
 use crate::vm::vm::VM;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
+use crate::builtins::arguments::Arguments;
 
 // Native functions must return a Value, even if they're of return type Unit.
 // If their return type is Unit, they should return None//Value::Nil.
@@ -127,36 +128,27 @@ pub fn native_fns() -> Vec<(NativeFnDesc, NativeFn)> {
 }
 
 fn println(_receiver: Option<Value>, args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+    let args = Arguments::new("println", 0, args);
     let print_fn = vm.ctx.print;
 
-    let mut args = args.into_iter();
-    if let Some(arg) = args.next() {
-        if let Value::ArrayObj(o) = arg {
-            let vals = &*o.borrow()._inner;
-            let num_vals = vals.len();
-            for (idx, val) in vals.into_iter().enumerate() {
-                let sp = if idx == num_vals - 1 { "" } else { " " };
-                print_fn(&format!("{}{}", to_string(val, vm), sp));
-            }
-        } else if arg != Value::Nil { unreachable!() }
+    let vals = args.varargs();
+    let num_vals = vals.len();
+    for (idx, val) in vals.into_iter().enumerate() {
+        let sp = if idx == num_vals - 1 { "" } else { " " };
+        print_fn(&format!("{}{}", to_string(&val, vm), sp));
     }
+
     print_fn("\n");
 
     None
 }
 
 fn range(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-    let mut start = if let Some(Value::Int(i)) = args.get(0) { *i } else {
-        panic!("range requires an Int as first argument")
-    };
-    let end = if let Some(Value::Int(i)) = args.get(1) { *i } else {
-        panic!("range requires an Int as second argument")
-    };
-    let incr = match args.get(2) {
-        None | Some(Value::Nil) => 1,
-        Some(Value::Int(i)) => *i,
-        Some(_) => panic!("range requires an Int as third argument")
-    };
+    let mut args = Arguments::new("range", 3, args);
+
+    let mut start = args.next_int();
+    let end = args.next_int();
+    let incr = args.next_int_or_default(1);
 
     let size = (end - start).abs() / incr;
     let mut values = Vec::with_capacity(size as usize);
@@ -170,13 +162,9 @@ fn range(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Val
 }
 
 fn read_file(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option<Value> {
-    let file_name = args.into_iter().next().expect("readFile requires 1 argument");
-    let file_name = if let Value::StringObj(obj) = file_name {
-        obj.borrow()._inner.clone()
-    } else {
-        panic!("readFile requires a String as first argument")
-    };
+    let mut args = Arguments::new("readFile", 1, args);
 
+    let file_name = args.next_string();
     match std::fs::read_to_string(file_name) {
         Ok(contents) => Some(Value::new_string_obj(contents)),
         Err(_) => Some(Value::Nil)

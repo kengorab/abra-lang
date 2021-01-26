@@ -1,15 +1,13 @@
 use abra_native::{AbraType, abra_methods};
-use crate::vm::value::{Value, Obj};
+use crate::vm::value::Value;
 use std::collections::HashMap;
 use crate::vm::vm::VM;
-use crate::builtins::native::to_string;
-use itertools::Itertools;
 use std::hash::{Hash, Hasher};
 use crate::builtins::arguments::Arguments;
 use crate::builtins::native::common::invoke_fn;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(signature = "Map<K, V>")]
+#[abra_type(signature = "Map<K, V>", variant = "MapObj")]
 pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 
@@ -42,30 +40,13 @@ impl NativeMap {
         self.size = *value.as_int() as usize;
     }
 
-    #[abra_to_string]
-    fn to_string(&self, vm: &mut VM) -> String {
-        let fields = self._inner.iter()
-            .map(|(k, v)| {
-                let k = to_string(k, vm);
-                let v = to_string(v, vm);
-                format!("{}: {}", k, v)
-            })
-            .join(", ");
-        format!("{{ {} }}", fields)
-    }
-
     #[abra_static_method(signature = "fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2>")]
     fn from_pairs(mut args: Arguments) -> Self {
         let pairs = args.next_array();
 
         let items = pairs.into_iter().flat_map(|p| {
-            match p {
-                Value::Obj(obj) => match &*obj.borrow() {
-                    Obj::TupleObj(vs) => vs.clone(),
-                    _ => unreachable!()
-                }
-                _ => unreachable!()
-            }
+            let tuple = &*p.as_tuple().borrow();
+            tuple.clone()
         }).collect();
         Self::new(items)
     }
