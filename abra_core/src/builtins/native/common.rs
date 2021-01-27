@@ -17,8 +17,10 @@ pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
 pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
     let rcv = receiver.unwrap();
     let obj = &*rcv.as_instance_obj().borrow();
-    let type_name = &obj.typ.name;
-    let field_names = &obj.typ.fields;
+
+    let type_value = vm.load_type(obj.type_id);
+    let type_name = type_value.name.clone();
+    let field_names = type_value.fields.clone();
     let values = field_names.iter().zip(&obj.fields)
         .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
         .join(", ");
@@ -66,7 +68,8 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::InstanceObj(o) => {
             let o = &*o.borrow();
 
-            let mut tostring_method = o.typ.methods.iter()
+            let type_value = vm.load_type(o.type_id);
+            let mut tostring_method = type_value.methods.iter()
                 .find(|(name, _)| name == "toString")
                 .map(|(_, m)| m)
                 .expect("Every instance should have at least the default toString method")

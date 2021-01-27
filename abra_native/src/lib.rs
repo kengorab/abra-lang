@@ -877,10 +877,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
             let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
             quote! {
                 let inst = Self::#constructor_fn_name_ident(args);
-                crate::vm::value::Value::new_native_instance_obj(
-                    Self::get_type_value(),
-                    std::boxed::Box::new(inst)
-                )
+                crate::vm::value::Value::new_native_instance_obj(type_id, std::boxed::Box::new(inst))
             }
         }
         None => {
@@ -892,7 +889,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     };
 
     quote! {
-        fn construct(args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
+        fn construct(type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
             #body
         }
     }
@@ -947,7 +944,10 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                         None => {
                             quote! {
                                 let inst = inst.#native_name_ident(#arguments);
-                                Some(inst.init())
+                                Some(crate::vm::value::Value::new_native_instance_obj(
+                                    type_id,
+                                    std::boxed::Box::new(inst)
+                                ))
                             }
                         }
                     }
@@ -968,13 +968,9 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     }
                 } else {
                     quote! {
-                        match *rcv_obj.borrow_mut() {
-                            crate::vm::value::Obj::NativeInstanceObj(ref mut rcv) => {
-                                let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
-                                #body_return
-                            }
-                            _ => unreachable!()
-                        }
+                        let mut rcv = &mut *rcv_obj.borrow_mut();
+                        let mut inst = rcv.inst.downcast_mut::<Self>().unwrap();
+                        #body_return
                     }
                 }
             } else {
@@ -985,13 +981,9 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     }
                 } else {
                     quote! {
-                        match &*rcv_obj.borrow() {
-                            crate::vm::value::Obj::NativeInstanceObj(rcv) => {
-                                let inst = rcv.inst.downcast_ref::<Self>().unwrap();
-                                #body_return
-                            }
-                            _ => unreachable!()
-                        }
+                        let rcv = &*rcv_obj.borrow();
+                        let mut inst = rcv.inst.downcast_ref::<Self>().unwrap();
+                        #body_return
                     }
                 }
             };
@@ -1005,7 +997,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 }
                 None => {
                     quote! {
-                        if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv { #invocation } else { unreachable!() }
+                        if let Some(crate::vm::value::Value::NativeInstanceObj(rcv_obj)) = rcv { #invocation } else { unreachable!() }
                     }
                 }
             };
@@ -1058,7 +1050,11 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     if let TypeRepr::SelfType(_) = &static_method.return_type {
                         quote! {
                             let inst = Self::#native_name_ident(#arguments);
-                            Some(inst.init())
+                            let type_id = vm.type_id_for_name(#type_name);
+                            Some(crate::vm::value::Value::new_native_instance_obj(
+                                type_id,
+                                std::boxed::Box::new(inst)
+                            ))
                         }
                     } else {
                         quote! { Some(Self::#native_name_ident(#arguments)) }
@@ -1076,7 +1072,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
                 name: #name,
                 receiver: None,
-                native_fn: |_rcv, args, vm| { #body },
+                native_fn: |rcv, args, vm| { #body },
                 has_return: #has_return,
             }))
         }
@@ -1101,13 +1097,10 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
-                    if let Some(crate::vm::value::Value::Obj(rcv_obj)) = rcv {
-                        match &*rcv_obj.borrow() {
-                            crate::vm::value::Obj::NativeInstanceObj(rcv) => {
-                                Some(rcv.inst.method_to_string(vm))
-                            }
-                            _ => unreachable!()
-                        }
+                    if let Some(crate::vm::value::Value::NativeInstanceObj(rcv_obj)) = rcv {
+                        let rcv = &*rcv_obj.borrow();
+                        let mut inst = rcv.inst.downcast_ref::<Self>().unwrap();
+                        Some(rcv.inst.method_to_string(vm))
                     } else { unreachable!() }
                 },
                 has_return: true,

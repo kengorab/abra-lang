@@ -212,6 +212,17 @@ impl VM {
         Ok(())
     }
 
+    pub fn load_type(&self, type_id: usize) -> &TypeValue {
+        if let Some(Value::Type(tv)) = self.constants.get(type_id) {
+            tv
+        } else { panic!("Could not load type for id: {}", type_id) }
+    }
+
+    pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> usize {
+        let name = name.as_ref();
+        self.type_constant_indexes[name]
+    }
+
     fn stack_slot_for_local(&mut self, local_idx: usize) -> usize {
         let CallFrame { local_addrs, .. } = current_frame!(self);
         // This is worth documenting: if we're trying to resolve a local_idx and we haven't yet recorded
@@ -584,140 +595,87 @@ impl VM {
                     }
 
                     let type_value = if let Value::Type(tv) = self.pop_expect()? { tv } else { unreachable!() };
-                    let inst = type_value.construct(fields);
+                    let type_id = self.type_constant_indexes[&type_value.name];
+                    let inst = type_value.construct(type_id, fields);
 
                     self.push(inst);
                 }
-                op @ Opcode::GetField |
-                op @ Opcode::GetMethod => {
-                    let is_method = op == Opcode::GetMethod;
-
+                Opcode::GetField => {
                     let inst = self.pop_expect()?;
                     let idx = self.read_byte_expect()?;
 
                     let value = match inst {
-                        Value::Int(_) => {
-                            if is_method {
-                                let type_idx = self.type_constant_indexes["Int"];
-                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                    let (_, mut m) = tv.methods[idx].clone();
-                                    m.bind_fn_value(inst);
-                                    m
-                                } else { unreachable!("Int type somehow not loaded") }
-                            } else { unreachable!("Int values have no fields to access") }
-                        }
-                        Value::Float(_) => {
-                            let type_idx = self.type_constant_indexes["Float"];
-                            if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                let (_, mut m) = tv.methods[idx].clone();
-                                m.bind_fn_value(inst);
-                                m
-                            } else { unreachable!("Float type somehow not loaded") }
-                        }
-                        Value::ArrayObj(o) => {
-                            if is_method {
-                                let type_idx = self.type_constant_indexes["Array"];
-                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                    let (_, mut m) = tv.methods[idx].clone();
-                                    m.bind_fn_value(Value::ArrayObj(o));
-                                    m
-                                } else { unreachable!("Array type somehow not loaded") }
-                            } else {
-                                (*o.borrow()).get_field_value(idx)
-                            }
-                        }
-                        Value::StringObj(o) => {
-                            if is_method {
-                                let type_idx = self.type_constant_indexes["String"];
-                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                    let (_, mut m) = tv.methods[idx].clone();
-                                    m.bind_fn_value(Value::StringObj(o));
-                                    m
-                                } else { unreachable!("String type somehow not loaded") }
-                            } else {
-                                (*o.borrow()).get_field_value(idx)
-                            }
-                        }
-                        Value::SetObj(o) => {
-                            if is_method {
-                                let type_idx = self.type_constant_indexes["Set"];
-                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                    let (_, mut m) = tv.methods[idx].clone();
-                                    m.bind_fn_value(Value::SetObj(o));
-                                    m
-                                } else { unreachable!("Set type somehow not loaded") }
-                            } else {
-                                (*o.borrow()).get_field_value(idx)
-                            }
-                        }
-                        Value::MapObj(o) => {
-                            if is_method {
-                                let type_idx = self.type_constant_indexes["Map"];
-                                if let Some(Value::Type(tv)) = self.constants.get(type_idx) {
-                                    let (_, mut m) = tv.methods[idx].clone();
-                                    m.bind_fn_value(Value::MapObj(o));
-                                    m
-                                } else { unreachable!("Map type somehow not loaded") }
-                            } else {
-                                (*o.borrow()).get_field_value(idx)
-                            }
-                        }
+                        Value::ArrayObj(o) => (*o.borrow()).get_field_value(idx),
+                        Value::StringObj(o) => (*o.borrow()).get_field_value(idx),
+                        Value::SetObj(o) => (*o.borrow()).get_field_value(idx),
+                        Value::MapObj(o) => (*o.borrow()).get_field_value(idx),
                         Value::InstanceObj(o) => {
                             let i = &*o.borrow();
-                            if is_method {
-                                let (_, mut m) = i.typ.methods[idx].clone();
-                                m.bind_fn_value(Value::InstanceObj(o.clone()));
-                                m
-                            } else {
-                                i.fields[idx].clone()
-                            }
+                            i.fields[idx].clone()
                         }
                         Value::NativeInstanceObj(o) => {
                             let i = &*o.borrow();
-                            if is_method {
-                                let (_, mut m) = i.typ.methods[idx].clone();
-                                m.bind_fn_value(Value::NativeInstanceObj(o.clone()));
-                                m
-                            } else {
-                                i.inst.get_field_value(idx)
-                            }
+                            i.inst.get_field_value(idx)
                         }
                         Value::EnumVariantObj(o) => {
                             let inst = &*o.borrow();
-                            if is_method {
-                                let mut v = inst.methods[idx].clone();
-                                v.bind_fn_value(Value::EnumVariantObj(o.clone()));
-                                v
-                            } else if let Some(values) = &inst.values {
+                            if let Some(values) = &inst.values {
                                 values[idx].clone()
                             } else { unreachable!() }
                         }
-                        Value::Type(TypeValue { static_fields, .. }) => {
-                            debug_assert!(is_method);
+                        Value::Enum(EnumValue { variants, methods, .. }) => {
+                            let (_, variant_value) = variants[idx].clone();
+                            let instance_value = Value::new_enum_variant_obj(variant_value);
 
-                            let (_, field_value) = static_fields[idx].clone();
-                            field_value
-                        }
-                        Value::Enum(EnumValue { variants, static_fields, methods, .. }) => {
-                            if is_method {
-                                let (_, field_value) = static_fields[idx].clone();
-                                field_value
-                            } else {
-                                let (_, variant_value) = variants[idx].clone();
-                                let instance_value = Value::new_enum_variant_obj(variant_value);
+                            // TODO: Don't eagerly bind method values
+                            for (_, mut method_value) in methods {
+                                method_value.bind_fn_value(instance_value.clone());
 
-                                // TODO: Don't eagerly bind method values
-                                for (_, mut method_value) in methods {
-                                    method_value.bind_fn_value(instance_value.clone());
-
-                                    instance_value.as_enum_variant().borrow_mut().methods.push(method_value);
-                                }
-                                instance_value
+                                instance_value.as_enum_variant().borrow_mut().methods.push(method_value);
                             }
+                            instance_value
                         }
-                        _ => unreachable!()
+                        v => unreachable!("Value {} has no fields", v)
                     };
                     self.push(value);
+                }
+                Opcode::GetMethod => {
+                    let inst = self.pop_expect()?;
+                    let idx = self.read_byte_expect()?;
+
+                    let mut method = match &inst {
+                        // Handle static methods first, since they don't need to be bound to any instance
+                        Value::Type(TypeValue { static_fields, .. }) |
+                        Value::Enum(EnumValue { static_fields, .. }) => {
+                            let (_, field_value) = static_fields[idx].clone();
+                            self.push(field_value);
+                            continue
+                        }
+                        // Then we handle enum variant objects, since their methods are pre-cloned
+                        Value::EnumVariantObj(o) => {
+                            let inst = &*o.borrow();
+                            inst.methods[idx].clone()
+                        }
+                        // Otherwise, handle remaining value kinds
+                        v => {
+                            let type_id = match &v {
+                                Value::Int(_) => self.type_constant_indexes["Int"],
+                                Value::Float(_) => self.type_constant_indexes["Float"],
+                                Value::ArrayObj(_) => self.type_constant_indexes["Array"],
+                                Value::StringObj(_) =>  self.type_constant_indexes["String"],
+                                Value::SetObj(_) => self.type_constant_indexes["Set"],
+                                Value::MapObj(_) => self.type_constant_indexes["Map"],
+                                Value::InstanceObj(o) => o.borrow().type_id,
+                                Value::NativeInstanceObj(o) => o.borrow().type_id,
+                                _ => unreachable!("Remaining value kinds should have been handled above")
+                            };
+                            let (_, method) = self.load_type(type_id).methods[idx].clone();
+                            method
+                        }
+                    };
+                    method.bind_fn_value(inst);
+
+                    self.push(method);
                 }
                 Opcode::SetField => {
                     let field_idx = self.read_byte_expect()?;
@@ -1054,12 +1012,14 @@ impl VM {
                         Value::MapObj(_) => self.load_constant(self.type_constant_indexes["Map"])?,
                         Value::InstanceObj(o) => {
                             let i = &*o.borrow();
-                            self.push(Value::Type(i.typ.clone()))
-                        },
+                            let type_value = self.load_type(i.type_id).clone();
+                            self.push(Value::Type(type_value))
+                        }
                         Value::NativeInstanceObj(o) => {
                             let i = &*o.borrow();
-                            self.push(Value::Type(i.typ.clone()))
-                        },
+                            let type_value = self.load_type(i.type_id).clone();
+                            self.push(Value::Type(type_value))
+                        }
                         Value::EnumVariantObj(o) => self.load_constant(self.type_constant_indexes[&*o.borrow().enum_name])?,
                         Value::Nil => self.push(Value::Nil),
                         Value::TupleObj(_) |

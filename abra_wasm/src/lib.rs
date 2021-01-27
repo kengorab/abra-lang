@@ -89,15 +89,15 @@ impl Serialize for RunResultValue {
                 arr.end()
             }
             Value::NativeInstanceObj(o) => {
-                let NativeInstanceObj { typ, inst } = &*o.borrow();
+                let NativeInstanceObj { inst, .. } = &*o.borrow();
 
-                let mut obj = serializer.serialize_map(Some(typ.fields.len()))?;
-
-                for (field_name, field_value) in typ.fields.iter().zip(inst.get_field_values()) {
-                    obj.serialize_entry(field_name, &RunResultValue(Some(field_value)))?;
+                let fields = &inst.get_field_values();
+                let mut arr = serializer.serialize_seq(Some(fields.len()))?;
+                for field_value in inst.get_field_values() {
+                    arr.serialize_element(&RunResultValue(Some(field_value)))?;
                 }
 
-                obj.end()
+                arr.end()
             }
             Value::EnumVariantObj(o) => serializer.serialize_str(&*o.borrow().name),
             Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),

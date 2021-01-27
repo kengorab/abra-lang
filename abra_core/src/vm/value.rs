@@ -55,18 +55,17 @@ impl Hash for ClosureValue {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct TypeValue {
     pub name: String,
-    pub constructor: Option<fn(Vec<Value>) -> Value>,
+    pub constructor: Option<fn(usize, Vec<Value>) -> Value>,
     pub fields: Vec<String>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
 
 impl TypeValue {
-    pub fn construct(self, args: Vec<Value>) -> Value {
-        if let Some(constructor) = self.constructor {
-            constructor(args)
-        } else {
-            Value::new_instance_obj(self, args)
+    pub fn construct(self, type_id: usize, args: Vec<Value>) -> Value {
+        match self.constructor {
+            Some(constructor) => constructor(type_id, args),
+            None => Value::new_instance_obj(type_id, args)
         }
     }
 }
@@ -125,13 +124,13 @@ impl Value {
         Value::MapObj(Arc::new(RefCell::new(NativeMap::new(items))))
     }
 
-    pub fn new_instance_obj(typ: TypeValue, fields: Vec<Value>) -> Value {
-        let inst = InstanceObj { typ, fields };
+    pub fn new_instance_obj(type_id: usize, fields: Vec<Value>) -> Value {
+        let inst = InstanceObj { type_id, fields };
         Value::InstanceObj(Arc::new(RefCell::new(inst)))
     }
 
-    pub fn new_native_instance_obj(typ: TypeValue, inst: Box<dyn NativeValue>) -> Value {
-        let inst = NativeInstanceObj { typ, inst };
+    pub fn new_native_instance_obj(type_id: usize, inst: Box<dyn NativeValue>) -> Value {
+        let inst = NativeInstanceObj { type_id, inst };
         Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
@@ -202,13 +201,11 @@ impl Display for Value {
             Value::MapObj(_) => write!(f, "<map>"),
             Value::InstanceObj(o) => {
                 let inst = &*o.borrow();
-                let TypeValue { name, .. } = &inst.typ;
-                write!(f, "<instance {}>", name)
+                write!(f, "<instance type_id={}>", &inst.type_id)
             }
             Value::NativeInstanceObj(o) => {
                 let inst = &*o.borrow();
-                let TypeValue { name, .. } = &inst.typ;
-                write!(f, "<instance {}>", name)
+                write!(f, "<instance {}>", &inst.type_id)
             }
             Value::EnumVariantObj(o) => {
                 let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
@@ -244,7 +241,7 @@ impl Hash for Value {
             Value::MapObj(o) => (&*o.borrow()).hash(hasher),
             Value::InstanceObj(o) => {
                 let i = &*o.borrow();
-                i.typ.hash(hasher);
+                i.type_id.hash(hasher);
                 i.fields.hash(hasher);
             }
             Value::NativeInstanceObj(o) => (&*o.borrow()).inst.hash(hasher),
@@ -270,7 +267,8 @@ impl Eq for Value {}
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct InstanceObj {
-    pub typ: TypeValue,
+    // pub typ: TypeValue,
+    pub type_id: usize,
     pub fields: Vec<Value>,
 }
 
@@ -286,7 +284,8 @@ pub struct EnumVariantObj {
 
 #[derive(Debug)]
 pub struct NativeInstanceObj {
-    pub typ: TypeValue,
+    // pub typ: TypeValue,
+    pub type_id: usize,
     pub inst: Box<dyn NativeValue>,
 }
 

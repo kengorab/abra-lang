@@ -10,15 +10,8 @@ pub trait NativeTyp {
 }
 
 pub trait NativeValue: NativeTyp + DynHash + Debug + Downcast {
-    fn construct(args: Vec<Value>) -> Value where Self: Sized;
+    fn construct(type_id: usize, args: Vec<Value>) -> Value where Self: Sized;
     fn get_type_value() -> TypeValue where Self: Sized;
-
-    fn init(self) -> Value where Self: Sized {
-        Value::new_native_instance_obj(
-            Self::get_type_value(),
-            Box::new(self),
-        )
-    }
 
     fn is_equal(&self, other: &Box<dyn NativeValue>) -> bool;
     fn method_to_string(&self, vm: &mut VM) -> Value;
