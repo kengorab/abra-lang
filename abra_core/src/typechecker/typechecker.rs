@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString, NativeDate};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
@@ -1082,6 +1082,7 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), 
     referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
     referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
+    referencable_types.insert("Date".to_string(), Type::Struct(NativeDate::get_type()));
 
     let mut typechecker = Typechecker {
         cur_typedef: None,
@@ -2388,6 +2389,19 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                 })
                                 .filter_map(|(name, default_value)| default_value.map(|v| (name, v)))
                                 .collect::<HashMap<String, TypedAstNode>>()
+                        }
+                        (typ, None) => {
+                            // If there is no typedecl node for a type, then it's a native type; use placeholder _Nil ast nodes for its default
+                            // values, since they will be determined in native code.
+                            if let Type::Struct(st) = self.resolve_ref_type(&typ) {
+                                st.fields.into_iter()
+                                    .filter_map(|(name, _, has_default)| {
+                                        if has_default {
+                                            Some((name, TypedAstNode::_Nil(Token::None(Position::new(0, 0)))))
+                                        } else { None }
+                                    })
+                                    .collect::<HashMap<String, TypedAstNode>>()
+                            } else { HashMap::new() }
                         }
                         _ => HashMap::new()
                     };

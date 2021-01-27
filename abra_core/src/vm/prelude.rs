@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, NativeInt, NativeFloat};
+use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, NativeInt, NativeFloat, NativeDate};
 use crate::builtins::native_fns::native_fns;
 use crate::typechecker::types::Type;
 use crate::vm::value::{Value, TypeValue};
@@ -56,6 +56,7 @@ impl Prelude {
             ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeArray::get_type_value())),
             ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(NativeMap::get_type_value())),
             ("Set", Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeSet::get_type_value())),
+            ("Date", Type::Reference("Date".to_string(), vec![]), Some(NativeDate::get_type_value())),
         ];
         for (type_name, typ, type_value) in prelude_types {
             let value = match type_value {
