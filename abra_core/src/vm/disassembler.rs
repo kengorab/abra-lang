@@ -7,6 +7,7 @@ pub fn disassemble(module: Module, metadata: Metadata) -> String {
     let mut disassembler = Disassembler {
         current_load: 0,
         current_uv_load: 0,
+        current_uv_store: 0,
         current_store: 0,
         current_field_get: 0,
         current_local_mark: 0,
@@ -19,6 +20,7 @@ pub fn disassemble(module: Module, metadata: Metadata) -> String {
 struct Disassembler {
     current_load: usize,
     current_uv_load: usize,
+    current_uv_store: usize,
     current_store: usize,
     current_field_get: usize,
     current_local_mark: usize,
@@ -27,7 +29,7 @@ struct Disassembler {
 }
 
 impl Disassembler {
-    fn disassemble_bytecode(&mut self, name: String, code: Vec<u8>, is_native: bool) -> Vec<String> {
+    fn disassemble_bytecode(&mut self, name: String, code: Vec<Opcode>, is_native: bool) -> Vec<String> {
         let mut output = Vec::<String>::new();
         output.push(format!("\n{}:\n", name).to_string());
 
@@ -41,50 +43,30 @@ impl Disassembler {
         let mut slot_idx: i16 = -1;
         let mut code = code.iter();
         let mut disassembled = Vec::new();
-        while let Some(byte) = code.next() {
+        while let Some(opcode) = code.next() {
             let slot_idx_orig = slot_idx;
             slot_idx += 1;
             let mut acc = Vec::new();
 
-            let opcode = Opcode::from(byte);
-            acc.push(opcode.to_string());
-
-            let num_expected_imms = opcode.num_expected_imms();
-            let mut imms = vec![];
-            for _ in 0..num_expected_imms {
-                slot_idx += 1;
-                imms.push(code.next().map(|imm| {
-                    acc.push(format!(" {}", imm));
-                    imm
-                }));
-            };
+            acc.push(opcode.dis());
 
             match opcode {
-                Opcode::Constant => {
-                    let b1 = *imms[0].expect("Constant requires 2 immediates") as u16;
-                    let b2 = *imms[1].expect("Constant requires 2 immediates") as u16;
-                    let imm = (b1 << 8) | b2;
-                    let constant = self.module.constants.get(imm as usize)
+                Opcode::Constant(imm) => {
+                    let constant = self.module.constants.get(*imm)
                         .expect(format!("The constant at index {} should exist", imm).as_str());
-                    acc.push(format!("\t; {}, const_idx={}", constant, imm))
+                    acc.push(format!("\t; {}", constant))
                 }
-                Opcode::JumpIfF | Opcode::Jump => {
-                    let b1 = *imms[0].expect("JumpIfF/Jump requires 2 immediates") as u16;
-                    let b2 = *imms[1].expect("JumpIfF/Jump requires 2 immediates") as u16;
-                    let offset = (b1 << 8) | b2;
+                Opcode::JumpIfF(offset) | Opcode::Jump(offset) => {
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 + (offset as i16)) as usize, label.clone());
-                    acc.push(format!("\t; {}, offset={}", label, offset))
+                    labels.insert((slot_idx + 1 + (*offset as i16)) as usize, label.clone());
+                    acc.push(format!("\t; {}", label))
                 }
-                Opcode::JumpB => {
-                    let b1 = *imms[0].expect("JumpB requires 2 immediates") as u16;
-                    let b2 = *imms[1].expect("JumpB requires 2 immediates") as u16;
-                    let offset = (b1 << 8) | b2;
+                Opcode::JumpB(offset) => {
                     let label = format!("label_{}", labels.len());
-                    labels.insert((slot_idx + 1 - (offset as i16)) as usize, label.clone());
-                    acc.push(format!("\t; {}, offset={}", label, offset))
+                    labels.insert((slot_idx + 1 - (*offset as i16)) as usize, label.clone());
+                    acc.push(format!("\t; {}", label))
                 }
-                Opcode::LLoad | Opcode::LLoad0 | Opcode::LLoad1 | Opcode::LLoad2 | Opcode::LLoad3 | Opcode::LLoad4 => {
+                Opcode::LLoad(_) => {
                     let ident = self.metadata.loads.get(self.current_load)
                         .expect(&format!("There should be a load in the metadata at index {}", self.current_load));
                     self.current_load += 1;
@@ -93,7 +75,15 @@ impl Disassembler {
                         acc.push(format!("\t; {}", ident))
                     }
                 }
-                Opcode::ULoad | Opcode::ULoad0 | Opcode::ULoad1 | Opcode::ULoad2 | Opcode::ULoad3 | Opcode::ULoad4 => {
+                Opcode::LStore(_) => {
+                    let ident = self.metadata.stores.get(self.current_store)
+                        .expect(&format!("There should be a store in the metadata at index {}", self.current_store));
+                    self.current_store += 1;
+                    if !ident.is_empty() {
+                        acc.push(format!("\t; {}", ident))
+                    }
+                }
+                Opcode::ULoad(_) => {
                     let ident = self.metadata.uv_loads.get(self.current_uv_load)
                         .expect(&format!("There should be an upvalue load in the metadata at index {}", self.current_uv_load));
                     self.current_uv_load += 1;
@@ -102,19 +92,16 @@ impl Disassembler {
                         acc.push(format!("\t; {}", ident))
                     }
                 }
-                Opcode::LStore | Opcode::LStore0 | Opcode::LStore1 | Opcode::LStore2 | Opcode::LStore3 | Opcode::LStore4 => {
-                    let ident = self.metadata.stores.get(self.current_store)
-                        .expect(&format!("There should be a store in the metadata at index {}", self.current_store));
-                    self.current_store += 1;
+                Opcode::UStore(_) => {
+                    let ident = self.metadata.uv_stores.get(self.current_uv_load)
+                        .expect(&format!("There should be an upvalue store in the metadata at index {}", self.current_uv_load));
+                    self.current_uv_store += 1;
+
                     if !ident.is_empty() {
                         acc.push(format!("\t; {}", ident))
                     }
                 }
-                Opcode::Invoke => {
-                    let arity = imms[0].expect("Invoke requires an arity");
-                    acc.push(format!("\t; (arity: {})", arity))
-                }
-                Opcode::GetField => {
+                Opcode::GetField(_) => {
                     let ident = self.metadata.field_gets.get(self.current_field_get)
                         .expect(&format!("There should be a field_name in the metadata at index {}", self.current_field_get));
                     self.current_field_get += 1;
@@ -122,7 +109,7 @@ impl Disassembler {
                         acc.push(format!("\t; {}", ident))
                     }
                 }
-                Opcode::MarkLocal => {
+                Opcode::MarkLocal(_) => {
                     let ident = self.metadata.local_marks.get(self.current_local_mark)
                         .expect(&format!("There should be a local_mark in the metadata at index {}", self.current_local_mark));
                     self.current_local_mark += 1;

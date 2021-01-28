@@ -1,7 +1,6 @@
-#[derive(Clone, Display, Debug, PartialEq)]
-#[repr(u8)]
+#[derive(Clone, Copy, Display, Debug, Hash, PartialEq, Eq)]
 pub enum Opcode {
-    Constant = 0,
+    Constant(usize),
     Nil,
     IConst0,
     IConst1,
@@ -33,179 +32,72 @@ pub enum Opcode {
     Eq,
     Neq,
     Xor,
-    New,
-    GetField,
-    GetMethod,
-    SetField,
-    MapMk,
+    New(usize),
+    GetField(usize),
+    GetMethod(usize),
+    SetField(usize),
+    MapMk(usize),
     MapLoad,
     MapStore,
-    ArrMk,
+    ArrMk(usize),
     ArrLoad,
     ArrStore,
     ArrSlc,
-    TupleMk,
+    TupleMk(usize),
     TupleLoad,
     TupleStore,
-    SetMk,
-    GStore,
-    LStore0,
-    LStore1,
-    LStore2,
-    LStore3,
-    LStore4,
-    LStore,
-    UStore0,
-    UStore1,
-    UStore2,
-    UStore3,
-    UStore4,
-    UStore,
-    GLoad,
-    LLoad0,
-    LLoad1,
-    LLoad2,
-    LLoad3,
-    LLoad4,
-    LLoad,
-    ULoad0,
-    ULoad1,
-    ULoad2,
-    ULoad3,
-    ULoad4,
-    ULoad,
-    Jump,
-    JumpIfF,
-    JumpB,
-    Invoke,
+    SetMk(usize),
+    GStore(usize),
+    LStore(usize),
+    UStore(usize),
+    GLoad(usize),
+    LLoad(usize),
+    ULoad(usize),
+    Jump(usize),
+    JumpIfF(usize),
+    JumpB(usize),
+    Invoke(usize),
     ClosureMk,
     CloseUpvalue,
     CloseUpvalueAndPop,
-    Pop,
-    PopN,
-    MarkLocal,
+    Pop(usize),
+    MarkLocal(usize),
     Dup,
     Typeof,
     Return,
 }
 
-impl From<&u8> for Opcode {
-    fn from(i: &u8) -> Self {
-        match i {
-            0 => Opcode::Constant,
-            1 => Opcode::Nil,
-            2 => Opcode::IConst0,
-            3 => Opcode::IConst1,
-            4 => Opcode::IConst2,
-            5 => Opcode::IConst3,
-            6 => Opcode::IConst4,
-            7 => Opcode::IAdd,
-            8 => Opcode::ISub,
-            9 => Opcode::IMul,
-            10 => Opcode::IDiv,
-            11 => Opcode::FAdd,
-            12 => Opcode::FSub,
-            13 => Opcode::FMul,
-            14 => Opcode::FDiv,
-            15 => Opcode::IMod,
-            16 => Opcode::FMod,
-            17 => Opcode::Pow,
-            18 => Opcode::I2F,
-            19 => Opcode::F2I,
-            20 => Opcode::Invert,
-            21 => Opcode::StrConcat,
-            22 => Opcode::T,
-            23 => Opcode::F,
-            24 => Opcode::Negate,
-            25 => Opcode::LT,
-            26 => Opcode::LTE,
-            27 => Opcode::GT,
-            28 => Opcode::GTE,
-            29 => Opcode::Eq,
-            30 => Opcode::Neq,
-            31 => Opcode::Xor,
-            32 => Opcode::New,
-            33 => Opcode::GetField,
-            34 => Opcode::GetMethod,
-            35 => Opcode::SetField,
-            36 => Opcode::MapMk,
-            37 => Opcode::MapLoad,
-            38 => Opcode::MapStore,
-            39 => Opcode::ArrMk,
-            40 => Opcode::ArrLoad,
-            41 => Opcode::ArrStore,
-            42 => Opcode::ArrSlc,
-            43 => Opcode::TupleMk,
-            44 => Opcode::TupleLoad,
-            45 => Opcode::TupleStore,
-            46 => Opcode::SetMk,
-            47 => Opcode::GStore,
-            48 => Opcode::LStore0,
-            49 => Opcode::LStore1,
-            50 => Opcode::LStore2,
-            51 => Opcode::LStore3,
-            52 => Opcode::LStore4,
-            53 => Opcode::LStore,
-            54 => Opcode::UStore0,
-            55 => Opcode::UStore1,
-            56 => Opcode::UStore2,
-            57 => Opcode::UStore3,
-            58 => Opcode::UStore4,
-            59 => Opcode::UStore,
-            60 => Opcode::GLoad,
-            61 => Opcode::LLoad0,
-            62 => Opcode::LLoad1,
-            63 => Opcode::LLoad2,
-            64 => Opcode::LLoad3,
-            65 => Opcode::LLoad4,
-            66 => Opcode::LLoad,
-            67 => Opcode::ULoad0,
-            68 => Opcode::ULoad1,
-            69 => Opcode::ULoad2,
-            70 => Opcode::ULoad3,
-            71 => Opcode::ULoad4,
-            72 => Opcode::ULoad,
-            73 => Opcode::Jump,
-            74 => Opcode::JumpIfF,
-            75 => Opcode::JumpB,
-            76 => Opcode::Invoke,
-            77 => Opcode::ClosureMk,
-            78 => Opcode::CloseUpvalue,
-            79 => Opcode::CloseUpvalueAndPop,
-            80 => Opcode::Pop,
-            81 => Opcode::PopN,
-            82 => Opcode::MarkLocal,
-            83 => Opcode::Dup,
-            84 => Opcode::Typeof,
-            85 => Opcode::Return,
-            _ => unreachable!()
-        }
-    }
-}
-
 impl Opcode {
-    pub fn num_expected_imms(&self) -> u8 {
-        match self {
-            Opcode::ArrMk |
-            Opcode::TupleMk |
-            Opcode::SetMk |
-            Opcode::MapMk |
-            Opcode::LStore |
-            Opcode::UStore |
-            Opcode::PopN |
-            Opcode::LLoad |
-            Opcode::ULoad |
-            Opcode::New |
-            Opcode::MarkLocal |
-            Opcode::GetField |
-            Opcode::GetMethod |
-            Opcode::Invoke |
-            Opcode::SetField => 1,
-            Opcode::Constant |
-            Opcode::Jump |
-            Opcode::JumpIfF |
-            Opcode::JumpB => 2,
-            _ => 0
+    pub fn dis(&self) -> String {
+        let base = self.to_string();
+
+        let imm = match self {
+            Opcode::Constant(const_idx) => Some(const_idx),
+            Opcode::New(num_fields) => Some(num_fields),
+            Opcode::GetField(field_idx) => Some(field_idx),
+            Opcode::GetMethod(method_idx) => Some(method_idx),
+            Opcode::SetField(field_idx) => Some(field_idx),
+            Opcode::MapMk(size) |
+            Opcode::ArrMk(size) |
+            Opcode::TupleMk(size) |
+            Opcode::SetMk(size) => Some(size),
+            Opcode::GStore(slot) |
+            Opcode::LStore(slot) => Some(slot),
+            Opcode::UStore(upvalue_idx) => Some(upvalue_idx),
+            Opcode::GLoad(slot) |
+            Opcode::LLoad(slot) => Some(slot),
+            Opcode::ULoad(upvalue_idx) => Some(upvalue_idx),
+            Opcode::Jump(offset) |
+            Opcode::JumpIfF(offset) |
+            Opcode::JumpB(offset) => Some(offset),
+            Opcode::Invoke(arity) => Some(arity),
+            Opcode::Pop(num_pops) => Some(num_pops),
+            Opcode::MarkLocal(local_idx) => Some(local_idx),
+            _ => None
+        };
+        match imm {
+            Some(imm) => format!("{} {}", base, imm),
+            None => base
         }
     }
 }

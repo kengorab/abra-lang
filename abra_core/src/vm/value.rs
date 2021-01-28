@@ -8,11 +8,13 @@ use crate::vm::compiler::Upvalue;
 use std::fmt::{Display, Formatter, Error};
 use std::cell::RefCell;
 use std::sync::Arc;
+use crate::vm::opcode::Opcode;
+use itertools::Itertools;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FnValue {
     pub name: String,
-    pub code: Vec<u8>,
+    pub code: Vec<Opcode>,
     pub upvalues: Vec<Upvalue>,
     pub receiver: Option<Box<Value>>,
     pub has_return: bool,
@@ -32,7 +34,7 @@ impl Hash for FnValue {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ClosureValue {
     pub name: String,
-    pub code: Vec<u8>,
+    pub code: Vec<Opcode>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
     pub receiver: Option<Box<Value>>,
     pub has_return: bool,
@@ -194,18 +196,38 @@ impl Display for Value {
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
             Value::Str(val) => write!(f, "{}", val),
-            Value::StringObj(_) => write!(f, "<string>"),
-            Value::ArrayObj(_) => write!(f, "<array>"),
-            Value::TupleObj(_) => write!(f, "<tuple>"),
-            Value::SetObj(_) => write!(f, "<set>"),
-            Value::MapObj(_) => write!(f, "<map>"),
+            Value::StringObj(o) => write!(f, "\"{}\"", o.borrow()._inner),
+            Value::ArrayObj(o) => {
+                let items = &*o.borrow()._inner.iter()
+                    .map(|v| v.to_string())
+                    .join(", ");
+                write!(f, "[{}]", items)
+            },
+            Value::TupleObj(o) => {
+                let items = &*o.borrow().iter()
+                    .map(|v| v.to_string())
+                    .join(", ");
+                write!(f, "({})", items)
+            },
+            Value::SetObj(o) => {
+                let items = &*o.borrow()._inner.iter()
+                    .map(|v| v.to_string())
+                    .join(", ");
+                write!(f, "#{{{}}}", items)
+            },
+            Value::MapObj(o) => {
+                let items = &*o.borrow()._inner.iter()
+                    .map(|(k, v)| format!("{}: {}", k.to_string(), v.to_string()))
+                    .join(", ");
+                write!(f, "{{ {} }}", items)
+            },
             Value::InstanceObj(o) => {
                 let inst = &*o.borrow();
                 write!(f, "<instance type_id={}>", &inst.type_id)
             }
             Value::NativeInstanceObj(o) => {
                 let inst = &*o.borrow();
-                write!(f, "<instance {}>", &inst.type_id)
+                write!(f, "<instance type_id={}>", &inst.type_id)
             }
             Value::EnumVariantObj(o) => {
                 let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
@@ -267,7 +289,6 @@ impl Eq for Value {}
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct InstanceObj {
-    // pub typ: TypeValue,
     pub type_id: usize,
     pub fields: Vec<Value>,
 }
@@ -284,7 +305,6 @@ pub struct EnumVariantObj {
 
 #[derive(Debug)]
 pub struct NativeInstanceObj {
-    // pub typ: TypeValue,
     pub type_id: usize,
     pub inst: Box<dyn NativeValue>,
 }

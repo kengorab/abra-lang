@@ -11,15 +11,6 @@ use crate::builtins::native_fns::NativeFn;
 use crate::builtins::native_value_trait::NativeValue;
 
 // Helper macros
-macro_rules! pop_expect_string {
-    ($self: expr) => (
-        match $self.pop_expect()? {
-            Value::Str(value) => Ok(value),
-            v @ _ => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
-        }
-    );
-}
-
 macro_rules! pop_expect_int {
     ($self: expr) => (
         match $self.pop_expect()? {
@@ -70,7 +61,7 @@ pub struct Upvalue {
 
 struct CallFrame {
     ip: usize,
-    code: Vec<u8>,
+    code: Vec<Opcode>,
     start_stack_idx: usize,
     name: String,
     upvalues: Vec<Arc<RefCell<Upvalue>>>,
@@ -177,7 +168,7 @@ impl VM {
         }
     }
 
-    fn read_byte(&mut self) -> Option<u8> {
+    fn read_instr(&mut self) -> Option<Opcode> {
         let frame = current_frame!(self);
         if frame.code.len() == frame.ip {
             None
@@ -186,22 +177,6 @@ impl VM {
             frame.ip += 1;
             Some(instr)
         }
-    }
-
-    fn read_byte_expect(&mut self) -> Result<usize, InterpretError> {
-        self.read_byte()
-            .map(|b| b as usize)
-            .ok_or(InterpretError::EndOfBytes)
-    }
-
-    fn read_2_bytes_expect(&mut self) -> Result<u16, InterpretError> {
-        let b1 = self.read_byte().ok_or(InterpretError::EndOfBytes)? as u16;
-        let b2 = self.read_byte().ok_or(InterpretError::EndOfBytes)? as u16;
-        Ok((b1 << 8) | b2)
-    }
-
-    fn read_instr(&mut self) -> Option<Opcode> {
-        self.read_byte().map(|b| Opcode::from(&b))
     }
 
     fn load_constant(&mut self, const_idx: usize) -> Result<(), InterpretError> {
@@ -509,10 +484,7 @@ impl VM {
             let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
             match instr {
-                Opcode::Constant => {
-                    let const_idx = self.read_2_bytes_expect()? as usize;
-                    self.load_constant(const_idx)?;
-                }
+                Opcode::Constant(const_idx) => self.load_constant(const_idx)?,
                 Opcode::Nil => self.push(Value::Nil),
                 Opcode::IConst0 => self.push(Value::Int(0)),
                 Opcode::IConst1 => self.push(Value::Int(1)),
@@ -586,10 +558,9 @@ impl VM {
                     let val = if a && b { false } else { a || b };
                     self.push(Value::Bool(val));
                 }
-                Opcode::New => {
-                    let size = self.read_byte_expect()?;
-                    let mut fields = Vec::with_capacity(size);
-                    for _ in 0..size {
+                Opcode::New(num_fields) => {
+                    let mut fields = Vec::with_capacity(num_fields);
+                    for _ in 0..num_fields {
                         let field_value = self.pop_expect()?;
                         fields.push(field_value);
                     }
@@ -600,9 +571,8 @@ impl VM {
 
                     self.push(inst);
                 }
-                Opcode::GetField => {
+                Opcode::GetField(idx) => {
                     let inst = self.pop_expect()?;
-                    let idx = self.read_byte_expect()?;
 
                     let value = match inst {
                         Value::ArrayObj(o) => (*o.borrow()).get_field_value(idx),
@@ -639,9 +609,8 @@ impl VM {
                     };
                     self.push(value);
                 }
-                Opcode::GetMethod => {
+                Opcode::GetMethod(idx) => {
                     let inst = self.pop_expect()?;
-                    let idx = self.read_byte_expect()?;
 
                     let mut method = match &inst {
                         // Handle static methods first, since they don't need to be bound to any instance
@@ -677,8 +646,7 @@ impl VM {
 
                     self.push(method);
                 }
-                Opcode::SetField => {
-                    let field_idx = self.read_byte_expect()?;
+                Opcode::SetField(field_idx) => {
                     let target = self.pop_expect()?;
                     let value = self.pop_expect()?;
 
@@ -703,8 +671,7 @@ impl VM {
 
                     self.push(value);
                 }
-                Opcode::MapMk => {
-                    let size = self.read_byte_expect()?;
+                Opcode::MapMk(size) => {
                     let mut items = Vec::with_capacity(size * 2);
                     for _ in 0..size {
                         let value = self.pop_expect()?;
@@ -743,20 +710,21 @@ impl VM {
                     };
                     self.push(map);
                 }
-                o @ Opcode::ArrMk | o @ Opcode::TupleMk => {
-                    let size = self.read_byte_expect()?;
-                    let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
+                Opcode::ArrMk(size) => {
+                    let mut items = VecDeque::<Value>::with_capacity(size as usize);
                     for _ in 0..size {
-                        arr_items.push_front(self.pop_expect()?);
+                        items.push_front(self.pop_expect()?);
                     }
-                    if let Opcode::ArrMk = o {
-                        self.push(Value::new_array_obj(arr_items.into()));
-                    } else {
-                        self.push(Value::new_tuple_obj(arr_items.into()));
-                    }
+                    self.push(Value::new_array_obj(items.into()));
                 }
-                Opcode::SetMk => {
-                    let size = self.read_byte_expect()?;
+                Opcode::TupleMk(size) => {
+                    let mut items = VecDeque::<Value>::with_capacity(size as usize);
+                    for _ in 0..size {
+                        items.push_front(self.pop_expect()?);
+                    }
+                    self.push(Value::new_tuple_obj(items.into()));
+                }
+                Opcode::SetMk(size) => {
                     let mut arr_items = VecDeque::<Value>::with_capacity(size as usize);
                     for _ in 0..size {
                         arr_items.push_front(self.pop_expect()?);
@@ -876,75 +844,47 @@ impl VM {
                     };
                     self.push(value);
                 }
-                Opcode::GStore => {
-                    let global_name: String = pop_expect_string!(self)?;
+                Opcode::GStore(const_idx) => {
+                    let global_name = match self.constants.get(const_idx) {
+                        Some(Value::Str(value)) => Ok(value.clone()),
+                        None => Err(InterpretError::ConstIdxOutOfBounds),
+                        Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
+                    }?;
                     let value = self.pop_expect()?;
                     self.globals.insert(global_name, value);
                 }
-                Opcode::LStore0 => self.store_local(0)?,
-                Opcode::LStore1 => self.store_local(1)?,
-                Opcode::LStore2 => self.store_local(2)?,
-                Opcode::LStore3 => self.store_local(3)?,
-                Opcode::LStore4 => self.store_local(4)?,
-                Opcode::LStore => {
-                    let stack_slot = self.read_byte_expect()?;
-                    self.store_local(stack_slot)?
-                }
-                Opcode::UStore0 => self.store_upvalue(0)?,
-                Opcode::UStore1 => self.store_upvalue(1)?,
-                Opcode::UStore2 => self.store_upvalue(2)?,
-                Opcode::UStore3 => self.store_upvalue(3)?,
-                Opcode::UStore4 => self.store_upvalue(4)?,
-                Opcode::UStore => {
-                    let upvalue_idx = self.read_byte_expect()?;
-                    self.store_upvalue(upvalue_idx)?;
-                }
-                Opcode::GLoad => {
-                    let global_name: String = pop_expect_string!(self)?;
-                    let value = self.globals.get(&global_name)
+                Opcode::LStore(stack_slot) => self.store_local(stack_slot)?,
+                Opcode::UStore(upvalue_idx) => self.store_upvalue(upvalue_idx)?,
+                Opcode::GLoad(const_idx) => {
+                    let global_name = match self.constants.get(const_idx) {
+                        Some(Value::Str(value)) => Ok(value),
+                        None => Err(InterpretError::ConstIdxOutOfBounds),
+                        Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
+                    }?;
+                    let value = self.globals.get(global_name)
                         .unwrap_or(&Value::Nil)
                         .clone();
                     self.push(value);
                 }
-                Opcode::LLoad0 => self.load_local(0)?,
-                Opcode::LLoad1 => self.load_local(1)?,
-                Opcode::LLoad2 => self.load_local(2)?,
-                Opcode::LLoad3 => self.load_local(3)?,
-                Opcode::LLoad4 => self.load_local(4)?,
-                Opcode::LLoad => {
-                    let stack_slot = self.read_byte_expect()?;
-                    self.load_local(stack_slot)?
-                }
-                Opcode::ULoad0 => self.load_upvalue(0)?,
-                Opcode::ULoad1 => self.load_upvalue(1)?,
-                Opcode::ULoad2 => self.load_upvalue(2)?,
-                Opcode::ULoad3 => self.load_upvalue(3)?,
-                Opcode::ULoad4 => self.load_upvalue(4)?,
-                Opcode::ULoad => {
-                    let upvalue_idx = self.read_byte_expect()?;
-                    self.load_upvalue(upvalue_idx)?;
-                }
-                Opcode::Jump => {
-                    let jump_offset = self.read_2_bytes_expect()? as usize;
+                Opcode::LLoad(stack_slot) => self.load_local(stack_slot)?,
+                Opcode::ULoad(upvalue_idx) => self.load_upvalue(upvalue_idx)?,
+                Opcode::Jump(offset) => {
                     let frame = current_frame!(self);
-                    frame.ip += jump_offset;
+                    frame.ip += offset;
                 }
-                Opcode::JumpIfF => {
-                    let jump_offset = self.read_2_bytes_expect()? as usize;
+                Opcode::JumpIfF(offset) => {
                     let cond = pop_expect_bool!(self)?;
                     if !cond {
                         let frame = current_frame!(self);
-                        frame.ip += jump_offset;
+                        frame.ip += offset;
                     }
                 }
-                Opcode::JumpB => {
-                    let jump_offset = self.read_2_bytes_expect()? as usize;
+                Opcode::JumpB(offset) => {
                     let frame = current_frame!(self);
-                    frame.ip -= jump_offset;
+                    frame.ip -= offset;
                 }
-                Opcode::Invoke => {
+                Opcode::Invoke(arity) => {
                     let target = self.pop_expect()?;
-                    let arity = self.read_byte_expect()?;
 
                     match &target {
                         Value::NativeFn(native_fn) => {
@@ -978,19 +918,12 @@ impl VM {
                     self.close_upvalue()?;
                     self.pop_expect()?;
                 }
-                Opcode::Pop => {
-                    self.pop_expect()?;
-                }
-                Opcode::PopN => {
-                    let num_to_pop = self.read_byte_expect()?;
-                    self.pop_expect_n(num_to_pop)?;
-                }
+                Opcode::Pop(num_to_pop) => self.pop_expect_n(num_to_pop)?,
                 Opcode::Dup => {
                     let value = self.stack.last().unwrap().clone();
                     self.stack.push(value);
                 }
-                Opcode::MarkLocal => {
-                    let local_idx = self.read_byte_expect()?;
+                Opcode::MarkLocal(local_idx) => {
                     let CallFrame { local_addrs, .. } = current_frame!(self);
 
                     let local_addr = self.stack.len() - 1;

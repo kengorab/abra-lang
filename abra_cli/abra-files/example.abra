@@ -1,9 +1,6 @@
-type Person {
-  name: String
+func abc() {
+  val a = [1, 2, 3, 4, 5]
+  println(a)
 }
 
-Person(name: "Ken").name
-
-val d1 = Date(year: 2021, month: 1, day: 27)
-val d2 = Date.now()
-println(d1, d2)
+abc()

@@ -17,7 +17,7 @@ mod tests {
         Value::new_string_obj(string.to_string())
     }
 
-    fn with_prelude_const_offset(const_idx: u8) -> u8 {
+    fn with_prelude_const_offset(const_idx: usize) -> usize {
         PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
     }
 
@@ -746,10 +746,10 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::LStore0 as u8,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(3) as usize),
+                Opcode::LStore(0),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             upvalues: vec![],
             receiver: None,
