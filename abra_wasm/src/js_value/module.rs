@@ -1,7 +1,6 @@
 use crate::js_value::value::JsWrappedValue;
 use serde::{Serialize, Serializer};
 use abra_core::vm::compiler::Module;
-use abra_core::vm::opcode::Opcode;
 
 pub struct JsModule<'a>(pub &'a Module);
 
@@ -15,20 +14,18 @@ impl<'a> Serialize for JsModule<'a> {
 
         let mut obj = serializer.serialize_map(Some(4))?;
 
-        let mut bytecode = Vec::<(String, Option<Vec<u8>>)>::new();
+        let mut bytecode = Vec::<(String, Option<Vec<u32>>)>::new();
         let mut code = code.iter();
-        while let Some(byte) = code.next() {
-            let op = Opcode::from(byte);
-            let expected_imms = op.num_expected_imms();
-            let imms = if expected_imms > 0 {
-                let mut imms = vec![];
-                for _ in 0..expected_imms {
-                    let imm = code.next().map(|b| b.clone()).unwrap();
-                    imms.push(imm)
-                }
-                Some(imms)
-            } else { None };
-            bytecode.push((op.to_string(), imms));
+        while let Some(op) = code.next() {
+            let dis = op.dis();
+            let mut parts = dis.split(" ");
+            let op_repr = parts.next().expect("There should always be a name");
+            let imms = parts
+                .map(|p| p.parse::<u32>().expect("All immediate values should be numbers"))
+                .collect::<Vec<_>>();
+            let imms = if imms.is_empty() { None } else { Some(imms) };
+
+            bytecode.push((op_repr.to_string(), imms));
         }
         obj.serialize_entry("code", &bytecode)?;
 

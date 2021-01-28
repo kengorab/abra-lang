@@ -14,7 +14,7 @@ struct PreludeBinding {
 
 thread_local! {
   pub static PRELUDE: Prelude = Prelude::new();
-  pub static PRELUDE_NUM_CONSTS: u8 = PRELUDE.with(|p| p.num_bindings()) as u8;
+  pub static PRELUDE_NUM_CONSTS: usize = PRELUDE.with(|p| p.num_bindings());
   pub static PRELUDE_BINDINGS: Vec<(String, Value)> = PRELUDE.with(|p| p.get_bindings());
   pub static PRELUDE_BINDING_VALUES: Vec<Value> = PRELUDE.with(|p| p.get_binding_values());
 }

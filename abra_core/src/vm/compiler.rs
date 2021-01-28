@@ -43,7 +43,7 @@ struct Scope {
 }
 
 pub struct Compiler {
-    code: Vec<u8>,
+    code: Vec<Opcode>,
     constants: Vec<Value>,
     constant_indexes: HashMap<String, usize>,
     scopes: Vec<Scope>,
@@ -69,15 +69,14 @@ pub struct Metadata {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub constants: Vec<Value>,
-    pub code: Vec<u8>,
+    pub code: Vec<Opcode>,
 }
 
 struct JumpHandle {
-    // If it's a jump-forward, this holds the index of the _second_ <imm> byte in the code that
-    // needs to be replaced when the handle is `closed`; the _first_ <imm> byte is `imm_slot - 1`.
-    // If it's a jump-backwards, this holds the index of the byte in the code that the JumpB
-    // instruction should jump back to.
-    imm_slot: usize,
+    // If it's a jump-forward, this holds the index of the Jump(IfF)? instruction in the code vec,
+    // which needs to be replaced when the handle is `closed`; if it's a jump-backwards, this holds
+    // the index into `code` that the JumpB instruction should jump back to.
+    instr_slot: usize,
 }
 
 pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
@@ -115,7 +114,7 @@ pub fn compile(ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
         compiler.visit(node).unwrap();
 
         if idx != len - 1 && should_pop {
-            compiler.write_opcode(Opcode::Pop, line);
+            compiler.write_opcode(Opcode::Pop(1), line);
         }
         last_line = line
     }
@@ -145,13 +144,8 @@ fn should_pop_after_node(node: &TypedAstNode) -> bool {
 
 impl Compiler {
     #[inline]
-    fn write_opcode(&mut self, opcode: Opcode, line: usize) {
-        self.write_byte(opcode as u8, line);
-    }
-
-    #[inline]
-    fn write_byte(&mut self, byte: u8, _line: usize) { // TODO: Fix lines
-        self.code.push(byte);
+    fn write_opcode(&mut self, opcode: Opcode, _line: usize) {
+        self.code.push(opcode);
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {
@@ -180,53 +174,33 @@ impl Compiler {
         }
     }
 
-    fn imm_to_bytes(&self, immediate_value: usize) -> (u8, u8) {
-        if immediate_value > (u16::max_value() as usize) {
-            unimplemented!("Immediate value exceeds maximum value")
-        }
-        let b1 = ((immediate_value >> 8) & 0xff) as u8;
-        let b2 = (immediate_value & 0xff) as u8;
-        (b1, b2)
-    }
-
     fn add_and_write_constant(&mut self, value: Value, line: usize) {
         let const_idx = self.add_constant(value);
         self.write_constant(const_idx, line);
     }
 
     fn write_constant(&mut self, const_idx: usize, line: usize) {
-        self.write_opcode(Opcode::Constant, line);
-        let (b1, b2) = self.imm_to_bytes(const_idx);
-        self.write_byte(b1, line);
-        self.write_byte(b2, line);
+        self.write_opcode(Opcode::Constant(const_idx), line);
     }
 
     fn write_pops(&mut self, popped_locals: &Vec<Local>, line: usize) {
         let ops = popped_locals.iter()
-            .map(|local| if local.is_captured && !local.is_closed { Opcode::CloseUpvalueAndPop } else { Opcode::Pop })
+            .map(|local| if local.is_captured && !local.is_closed { Opcode::CloseUpvalueAndPop } else { Opcode::Pop(1) })
             .collect::<Vec<_>>();
 
         let mut num_conseq_pops = 0;
         for op in ops {
-            if op == Opcode::Pop {
+            if let Opcode::Pop(_) = op {
                 num_conseq_pops += 1;
             } else { // op = CloseUpvalueAndPop
-                if num_conseq_pops == 1 {
-                    self.write_opcode(Opcode::Pop, line);
-                } else if num_conseq_pops != 0 {
-                    self.write_opcode(Opcode::PopN, line);
-                    self.write_byte(num_conseq_pops, line);
-                }
+                self.write_opcode(Opcode::Pop(num_conseq_pops), line);
                 num_conseq_pops = 0;
 
                 self.write_opcode(Opcode::CloseUpvalueAndPop, line);
             }
         }
-        if num_conseq_pops == 1 {
-            self.write_opcode(Opcode::Pop, line);
-        } else if num_conseq_pops != 0 {
-            self.write_opcode(Opcode::PopN, line);
-            self.write_byte(num_conseq_pops, line);
+        if num_conseq_pops != 0 {
+            self.write_opcode(Opcode::Pop(num_conseq_pops), line);
         }
     }
 
@@ -237,7 +211,7 @@ impl Compiler {
             if local.is_captured && !local.is_closed {
                 self.write_opcode(Opcode::CloseUpvalueAndPop, line);
             } else {
-                self.write_opcode(Opcode::Pop, line);
+                self.write_opcode(Opcode::Pop(1), line);
             }
         }
     }
@@ -250,48 +224,28 @@ impl Compiler {
         }
     }
 
-    fn write_store_local_instr(&mut self, stack_slot: usize, line: usize) {
-        let ops = vec![Opcode::LStore0, Opcode::LStore1, Opcode::LStore2, Opcode::LStore3, Opcode::LStore4];
-        match ops.get(stack_slot) {
-            Some(op) => self.write_opcode((*op).clone(), line),
-            None => {
-                self.write_opcode(Opcode::LStore, line);
-                self.write_byte(stack_slot as u8, line);
-            }
-        }
+    fn write_store_local_instr<S: AsRef<str>>(&mut self, name: S, stack_slot: usize, line: usize) {
+        let name = name.as_ref();
+        self.write_opcode(Opcode::LStore(stack_slot), line);
+        self.metadata.stores.push(name.to_string());
     }
 
-    fn write_load_local_instr(&mut self, stack_slot: usize, line: usize) {
-        let ops = vec![Opcode::LLoad0, Opcode::LLoad1, Opcode::LLoad2, Opcode::LLoad3, Opcode::LLoad4];
-        match ops.get(stack_slot) {
-            Some(op) => self.write_opcode((*op).clone(), line),
-            None => {
-                self.write_opcode(Opcode::LLoad, line);
-                self.write_byte(stack_slot as u8, line);
-            }
-        }
+    fn write_load_local_instr<S: AsRef<str>>(&mut self, name: S, stack_slot: usize, line: usize) {
+        let name = name.as_ref();
+        self.write_opcode(Opcode::LLoad(stack_slot), line);
+        self.metadata.loads.push(name.to_string());
     }
 
-    fn write_store_upvalue_instr(&mut self, upvalue_idx: usize, line: usize) {
-        let ops = vec![Opcode::UStore0, Opcode::UStore1, Opcode::UStore2, Opcode::UStore3, Opcode::UStore4];
-        match ops.get(upvalue_idx) {
-            Some(op) => self.write_opcode((*op).clone(), line),
-            None => {
-                self.write_opcode(Opcode::UStore, line);
-                self.write_byte(upvalue_idx as u8, line);
-            }
-        }
+    fn write_store_upvalue_instr<S: AsRef<str>>(&mut self, name: S, upvalue_idx: usize, line: usize) {
+        let name = name.as_ref();
+        self.write_opcode(Opcode::UStore(upvalue_idx), line);
+        self.metadata.uv_stores.push(name.to_string());
     }
 
-    fn write_load_upvalue_instr(&mut self, upvalue_idx: usize, line: usize) {
-        let ops = vec![Opcode::ULoad0, Opcode::ULoad1, Opcode::ULoad2, Opcode::ULoad3, Opcode::ULoad4];
-        match ops.get(upvalue_idx) {
-            Some(op) => self.write_opcode((*op).clone(), line),
-            None => {
-                self.write_opcode(Opcode::ULoad, line);
-                self.write_byte(upvalue_idx as u8, line);
-            }
-        }
+    fn write_load_upvalue_instr<S: AsRef<str>>(&mut self, name: S, upvalue_idx: usize, line: usize) {
+        let name = name.as_ref();
+        self.write_opcode(Opcode::ULoad(upvalue_idx), line);
+        self.metadata.uv_loads.push(name.to_string());
     }
 
     // A local is resolved wrt the current function scope - any other notion of 'depth'
@@ -357,22 +311,19 @@ impl Compiler {
         let ident_str = ident.as_ref().to_string();
         match self.resolve_local(&ident, scope_depth) {
             Some((_, local_idx)) => { // Load local at index
-                self.write_load_local_instr(local_idx, line);
-                self.metadata.loads.push(ident_str);
+                self.write_load_local_instr(ident_str, local_idx, line);
             }
             None => { // Otherwise, if there's no local...
                 let upper_scope_depth = self.get_fn_depth() as i64 - 1;
                 match self.resolve_upvalue(&ident, upper_scope_depth) {
                     Some(upvalue_idx) => { // Load upvalue from upper scope
-                        self.write_load_upvalue_instr(upvalue_idx, line);
-                        self.metadata.uv_loads.push(ident_str);
+                        self.write_load_upvalue_instr(ident_str, upvalue_idx, line);
                     }
                     None => { // Otherwise, if there's no upvalue...
                         let const_idx = self.get_constant_index(&Value::Str(ident_str.clone()));
                         match const_idx {
                             Some(const_idx) => { // Load global by name
-                                self.write_constant(const_idx, line);
-                                self.write_opcode(Opcode::GLoad, line);
+                                self.write_opcode(Opcode::GLoad(const_idx), line);
                             }
                             None => { // Otherwise, if there's no global...
                                 // Load the value from the pre-loaded constant_indexes (from prelude)
@@ -423,8 +374,7 @@ impl Compiler {
         if mark_local {
             let (_, local_idx) = self.resolve_local(name.as_ref(), depth).unwrap();
             self.metadata.local_marks.push(name.as_ref().to_string());
-            self.write_opcode(Opcode::MarkLocal, line);
-            self.write_byte(local_idx as u8, line);
+            self.write_opcode(Opcode::MarkLocal(local_idx), line);
         }
     }
 
@@ -448,36 +398,33 @@ impl Compiler {
 
     fn begin_jump(&mut self, opcode: Opcode, line: usize) -> JumpHandle {
         self.write_opcode(opcode, line);
-        self.write_byte(0, line);  // <
-        self.write_byte(0, line);  // < These will be written to when the jump is closed
-        let imm_slot = self.code.len();
-        JumpHandle { imm_slot }
+        let instr_slot = self.code.len() - 1;
+        JumpHandle { instr_slot }
     }
 
     fn begin_jump_back(&mut self) -> JumpHandle {
-        let imm_slot = self.code.len();
-        JumpHandle { imm_slot }
+        let instr_slot = self.code.len();
+        JumpHandle { instr_slot }
     }
 
     fn close_jump(&mut self, jump_handle: JumpHandle) {
         let jump_offset = self.code.len()
-            .checked_sub(jump_handle.imm_slot)
+            .checked_sub(jump_handle.instr_slot)
             .expect("jump offset slot should be <= current position");
-        let (b1, b2) = self.imm_to_bytes(jump_offset);
         let code = &mut self.code;
-        *code.get_mut(jump_handle.imm_slot - 2).unwrap() = b1;
-        *code.get_mut(jump_handle.imm_slot - 1).unwrap() = b2;
+        match code.get_mut(jump_handle.instr_slot) {
+            Some(Opcode::Jump(offset)) => *offset = jump_offset - 1,
+            Some(Opcode::JumpIfF(offset)) => *offset = jump_offset - 1,
+            Some(op) => unreachable!(format!("Expected Jump/JumpIfF, got {:?}", op)),
+            None => unreachable!(format!("Expected opcode at index {}, but there was none", jump_handle.instr_slot)),
+        }
     }
 
     fn close_jump_back(&mut self, jump_handle: JumpHandle, line: usize) {
         let jump_offset = self.code.len()
-            .checked_sub(jump_handle.imm_slot)
+            .checked_sub(jump_handle.instr_slot)
             .expect("jump offset slot should be <= current position");
-        let jump_offset = jump_offset + 3; // Account for JumpB <imm1> <imm2>
-        let (b1, b2) = self.imm_to_bytes(jump_offset);
-        self.write_opcode(Opcode::JumpB, line);
-        self.write_byte(b1, line);
-        self.write_byte(b2, line);
+        self.write_opcode(Opcode::JumpB(jump_offset + 1), line); // +1 to account for the JumpB itself
     }
 
     fn hoist_fn_defs(&mut self, body: &Vec<TypedAstNode>) -> Result<(), ()> {
@@ -488,8 +435,8 @@ impl Compiler {
 
                 if self.current_scope().kind == ScopeKind::Root { // If it's a global...
                     self.write_int_constant(0, line);
-                    self.add_and_write_constant(Value::Str(func_name), line);
-                    self.write_opcode(Opcode::GStore, line);
+                    let const_idx = self.add_constant(Value::Str(func_name));
+                    self.write_opcode(Opcode::GStore(const_idx), line);
                 } else {
                     self.write_int_constant(0, line);
                     self.push_local(func_name, line, true);
@@ -527,7 +474,7 @@ impl Compiler {
             self.visit(node)?;
 
             if should_pop {
-                self.write_opcode(Opcode::Pop, line);
+                self.write_opcode(Opcode::Pop(1), line);
             }
 
             // In an interrupt (ie. a break) the local-popping and jumping bytecode
@@ -663,14 +610,13 @@ impl Compiler {
 
             // Handle bare expressions
             if !is_last_line && should_pop {
-                self.write_opcode(Opcode::Pop, line);
+                self.write_opcode(Opcode::Pop(1), line);
             }
             if is_last_line {
                 let popped_locals = self.pop_scope_locals();
 
                 if has_return {
-                    self.write_store_local_instr(0, line);
-                    self.metadata.stores.push("<ret>".to_string());
+                    self.write_store_local_instr("<ret>", 0, line);
                 }
                 self.write_pops_for_closure(&popped_locals, line);
             }
@@ -726,7 +672,7 @@ impl Compiler {
             // If we're in a statement and we should pop, then pop
             // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
             if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
-                self.write_opcode(Opcode::Pop, line);
+                self.write_opcode(Opcode::Pop(1), line);
             }
 
             // In an interrupt (ie. a break within a loop) the local-popping and jumping bytecode
@@ -745,10 +691,8 @@ impl Compiler {
                 if !is_stmt {
                     let first_local_idx = self.current_scope().first_local_idx;
                     if let Some(idx) = first_local_idx {
-                        self.write_store_local_instr(idx, line);
-
                         // Push an empty string into metadata since this isn't a "real" store
-                        self.metadata.stores.push("".to_string());
+                        self.write_store_local_instr("", idx, line);
                     }
                     if pops.len() != 0 {
                         pops.remove(0);
@@ -769,8 +713,8 @@ impl Compiler {
         #[inline]
         fn store(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) -> Option<usize> {
             if is_root_scope {
-                zelf.add_and_write_constant(Value::Str(ident), line);
-                zelf.write_opcode(Opcode::GStore, line);
+                let const_idx = zelf.add_constant(Value::Str(ident));
+                zelf.write_opcode(Opcode::GStore(const_idx), line);
                 None
             } else {
                 zelf.push_local(ident.clone(), line, true);
@@ -784,13 +728,11 @@ impl Compiler {
         fn load(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) {
             if is_root_scope {
                 let const_idx = zelf.get_constant_index(&Value::Str(ident)).unwrap();
-                zelf.write_constant(const_idx, line);
-                zelf.write_opcode(Opcode::GLoad, line);
+                zelf.write_opcode(Opcode::GLoad(const_idx), line);
             } else {
                 let scope_depth = zelf.get_fn_depth();
                 let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
-                zelf.write_load_local_instr(temp_idx, line);
-                zelf.metadata.loads.push(ident);
+                zelf.write_load_local_instr(ident, temp_idx, line);
             }
         }
 
@@ -866,11 +808,9 @@ impl Compiler {
                         } else {
                             NativeArray::get_type().get_method_idx("splitAt").expect("Array is missing required splitAt method")
                         };
-                        self.write_opcode(Opcode::GetMethod, line);
+                        self.write_opcode(Opcode::GetMethod(split_at_method_idx), line);
                         self.metadata.field_gets.push("splitAt".to_string());
-                        self.write_byte(split_at_method_idx as u8, line);
-                        self.write_opcode(Opcode::Invoke, line);
-                        self.write_byte(1, line);
+                        self.write_opcode(Opcode::Invoke(1), line);
 
                         // Store that previous intermediate result (splitAt returns (T[], T[])); the first
                         // element of that tuple gets stored as the splat ident...
@@ -1041,8 +981,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
 
-        self.write_opcode(Opcode::ArrMk, line);
-        self.write_byte(num_items as u8, line);
+        self.write_opcode(Opcode::ArrMk(num_items), line);
         Ok(())
     }
 
@@ -1054,8 +993,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
 
-        self.write_opcode(Opcode::TupleMk, line);
-        self.write_byte(num_items as u8, line);
+        self.write_opcode(Opcode::TupleMk(num_items), line);
         Ok(())
     }
 
@@ -1069,8 +1007,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.visit(value)?;
         }
 
-        self.write_opcode(Opcode::MapMk, line);
-        self.write_byte(num_items as u8, line);
+        self.write_opcode(Opcode::MapMk(num_items), line);
         Ok(())
     }
 
@@ -1082,8 +1019,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
 
-        self.write_opcode(Opcode::SetMk, line);
-        self.write_byte(num_items as u8, line);
+        self.write_opcode(Opcode::SetMk(num_items), line);
         Ok(())
     }
 
@@ -1150,8 +1086,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Fill in the stub allocated during the hoisting process (see hoist_fn_defs).
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            self.add_and_write_constant(Value::Str(func_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
+            let const_idx = self.add_constant(Value::Str(func_name.clone()));
+            self.write_opcode(Opcode::GStore(const_idx), line);
         } else {
             // For non-global fns, we must store and push the created fn/closure as a local, then
             // store (duplicate) that value into the stub created at the top of the block. This is
@@ -1169,10 +1105,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.push_local(func_name.clone(), line, true);
             let (_, real_fn_local_idx) = self.resolve_local(&func_name, scope_depth)
                 .expect("There should have been a function pre-defined with this name");
-            self.write_load_local_instr(real_fn_local_idx, line);
-            self.metadata.loads.push(func_name.clone());
-            self.write_store_local_instr(stub_fn_local_idx, line);
-            self.metadata.stores.push(func_name.clone());
+            self.write_load_local_instr(&func_name, real_fn_local_idx, line);
+            self.write_store_local_instr(&func_name, stub_fn_local_idx, line);
         }
 
         Ok(())
@@ -1187,8 +1121,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // To handle self-referencing types, initially store `0` as a placeholder
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_int_constant(0, line);
-            self.add_and_write_constant(Value::Str(type_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
+            let const_idx = self.add_constant(Value::Str(type_name.clone()));
+            self.write_opcode(Opcode::GStore(const_idx), line);
         } else { // ...otherwise, it's a local
             unreachable!("Type declarations are only allowed at the root scope");
         }
@@ -1248,8 +1182,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Overwrite placeholder created at start
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            self.add_and_write_constant(Value::Str(type_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
+            let const_idx = self.add_constant(Value::Str(type_name.clone()));
+            self.write_opcode(Opcode::GStore(const_idx), line);
         } else { // ...otherwise, it's a local
             unreachable!("Type declarations are only allowed at the root scope");
         }
@@ -1266,8 +1200,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // To handle self-referencing enums, initially store `0` as a placeholder
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
             self.write_int_constant(0, line);
-            self.add_and_write_constant(Value::Str(enum_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
+            let const_idx = self.add_constant(Value::Str(enum_name.clone()));
+            self.write_opcode(Opcode::GStore(const_idx), line);
         } else { // ...otherwise, it's a local
             unreachable!("Enum declarations are only allowed at the root scope");
         }
@@ -1338,8 +1272,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         // Overwrite placeholder created at start
         if self.current_scope().kind == ScopeKind::Root { // If it's a global...
-            self.add_and_write_constant(Value::Str(enum_name.clone()), line);
-            self.write_opcode(Opcode::GStore, line);
+            let const_idx = self.add_constant(Value::Str(enum_name.clone()));
+            self.write_opcode(Opcode::GStore(const_idx), line);
         } else { // ...otherwise, it's a local
             unreachable!("Type declarations are only allowed at the root scope");
         }
@@ -1382,8 +1316,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 self.visit(*expr)?;
                 self.visit(*target)?;
 
-                self.write_opcode(Opcode::SetField, line);
-                self.write_byte(field_idx as u8, line);
+                self.write_opcode(Opcode::SetField(field_idx), line);
             }
             TypedAstNode::Identifier(ident, _) => {
                 let ident = Token::get_ident_name(&ident).clone();
@@ -1393,28 +1326,22 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 let scope_depth = self.get_fn_depth();
                 match self.resolve_local(&ident, scope_depth) {
                     Some((_, local_idx)) => { // Store to local at index
-                        self.write_store_local_instr(local_idx, line);
-                        self.metadata.stores.push(ident.clone());
-                        self.write_load_local_instr(local_idx, line);
-                        self.metadata.loads.push(ident.clone());
+                        self.write_store_local_instr(&ident, local_idx, line);
+                        self.write_load_local_instr(&ident, local_idx, line);
                     }
                     None => {
                         let upper_scope_depth = self.get_fn_depth() as i64 - 1;
                         match self.resolve_upvalue(&ident, upper_scope_depth) {
                             Some(upvalue_idx) => { // Store to upvalue at index
-                                self.write_store_upvalue_instr(upvalue_idx, line);
-                                self.metadata.uv_stores.push(ident.clone());
-                                self.write_load_upvalue_instr(upvalue_idx, line);
-                                self.metadata.uv_loads.push(ident.clone());
+                                self.write_store_upvalue_instr(&ident, upvalue_idx, line);
+                                self.write_load_upvalue_instr(&ident, upvalue_idx, line);
                             }
                             None => { // Store to global by name
                                 let const_idx = self.get_constant_index(&Value::Str(ident.clone()));
                                 let const_idx = const_idx.unwrap();
 
-                                self.write_constant(const_idx, line);
-                                self.write_opcode(Opcode::GStore, line);
-                                self.write_constant(const_idx, line);
-                                self.write_opcode(Opcode::GLoad, line);
+                                self.write_opcode(Opcode::GStore(const_idx), line);
+                                self.write_opcode(Opcode::GLoad(const_idx), line);
                             }
                         }
                     }
@@ -1485,7 +1412,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.write_opcode(Opcode::Neq, line);
         }
 
-        let if_block_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
+        let if_block_jump_handle = self.begin_jump(Opcode::JumpIfF(0), line);
 
         self.push_scope(ScopeKind::If);
         let has_cond_binding = condition_binding.is_some();
@@ -1511,7 +1438,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             None => if has_cond_binding { Some(vec![]) } else { None }
         };
         let else_block_jump_handle = if else_block.is_some() {
-            Some(self.begin_jump(Opcode::Jump, line))
+            Some(self.begin_jump(Opcode::Jump(0), line))
         } else { None };
 
         self.close_jump(if_block_jump_handle);
@@ -1521,7 +1448,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             // for how we know we can always do this here (tl;dr there will _always_ be an else-block
             // if there is a condition binding).
             if has_cond_binding {
-                self.write_opcode(Opcode::Pop, line);
+                self.write_opcode(Opcode::Pop(1), line);
             }
 
             self.push_scope(ScopeKind::If);
@@ -1553,7 +1480,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                     self.push_local(binding_name, token.get_position().line, true);
                 } else {
                     // Pop match target if it's not bound as a local
-                    self.write_opcode(Opcode::Pop, token.get_position().line);
+                    self.write_opcode(Opcode::Pop(1), token.get_position().line);
                 }
                 self.visit_block(block, is_stmt)?;
 
@@ -1579,7 +1506,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
 
             self.write_opcode(Opcode::Eq, token.get_position().line);
-            let next_case_jump_handle = self.begin_jump(Opcode::JumpIfF, token.get_position().line);
+            let next_case_jump_handle = self.begin_jump(Opcode::JumpIfF(0), token.get_position().line);
 
             // Push a local representing the match target still left on the stack (from the previous DUP).
             // If there is a name supplied in source to ascribe to that value we use it, otherwise use the intrinsic $match_target.
@@ -1591,18 +1518,16 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 let depth = self.get_fn_depth();
                 for (idx, pat) in destructured_args.into_iter().enumerate() {
                     let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
-                    self.write_load_local_instr(slot, token.get_position().line);
-                    self.metadata.loads.push(binding_name.clone());
+                    self.write_load_local_instr(&binding_name, slot, token.get_position().line);
 
-                    self.write_opcode(Opcode::GetField, token.get_position().line);
-                    self.write_byte(idx as u8, token.get_position().line);
+                    self.write_opcode(Opcode::GetField(idx), token.get_position().line);
                     self.visit_pattern(pat);
                 }
             }
 
             self.visit_block(block, is_stmt)?;
 
-            let end_match_jump_handle = self.begin_jump(Opcode::Jump, token.get_position().line);
+            let end_match_jump_handle = self.begin_jump(Opcode::Jump(0), token.get_position().line);
             end_match_jumps.push(end_match_jump_handle);
 
             self.close_jump(next_case_jump_handle);
@@ -1639,8 +1564,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
             #[inline]
             fn store(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) -> Option<usize> {
                 if is_root_scope {
-                    zelf.add_and_write_constant(Value::Str(ident), line);
-                    zelf.write_opcode(Opcode::GStore, line);
+                    let const_idx = zelf.add_constant(Value::Str(ident));
+                    zelf.write_opcode(Opcode::GStore(const_idx), line);
                     None
                 } else {
                     zelf.push_local(ident.clone(), line, true);
@@ -1654,13 +1579,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
             fn load(zelf: &mut Compiler, is_root_scope: bool, ident: String, line: usize) {
                 if is_root_scope {
                     let const_idx = zelf.get_constant_index(&Value::Str(ident)).unwrap();
-                    zelf.write_constant(const_idx, line);
-                    zelf.write_opcode(Opcode::GLoad, line);
+                    zelf.write_opcode(Opcode::GLoad(const_idx), line);
                 } else {
                     let scope_depth = zelf.get_fn_depth();
                     let (_, temp_idx) = zelf.resolve_local(&ident, scope_depth).unwrap();
-                    zelf.write_load_local_instr(temp_idx, line);
-                    zelf.metadata.loads.push(ident);
+                    zelf.write_load_local_instr(ident, temp_idx, line);
                 }
             }
 
@@ -1671,10 +1594,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
             load(self, is_root_scope, tmp_name.clone(), line);
             self.write_opcode(Opcode::Nil, line);
             self.write_opcode(Opcode::Eq, line);
-            let else_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
+            let else_jump_handle = self.begin_jump(Opcode::JumpIfF(0), line);
 
             self.write_opcode(Opcode::Nil, line);
-            let if_end_jump_handle = self.begin_jump(Opcode::Jump, line);
+            let if_end_jump_handle = self.begin_jump(Opcode::Jump(0), line);
 
             self.close_jump(else_jump_handle);
             if has_return {
@@ -1690,8 +1613,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             load(self, is_root_scope, tmp_name, line);
 
-            self.write_opcode(Opcode::Invoke, line);
-            self.write_byte(arity as u8, line);
+            self.write_opcode(Opcode::Invoke(arity), line);
             self.close_jump(if_end_jump_handle);
 
             return Ok(());
@@ -1710,8 +1632,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         self.visit(*target)?;
 
-        self.write_opcode(Opcode::Invoke, line);
-        self.write_byte(arity as u8, line);
+        self.write_opcode(Opcode::Invoke(arity), line);
         Ok(())
     }
 
@@ -1726,9 +1647,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
             self.visit(field_value)?;
         }
 
-        self.write_opcode(Opcode::New, line);
-        self.write_byte(num_fields as u8, line);
-
+        self.write_opcode(Opcode::New(num_fields), line);
         Ok(())
     }
 
@@ -1816,11 +1735,10 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             self.visit(*target)?;
             if is_method {
-                self.write_opcode(Opcode::GetMethod, line);
+                self.write_opcode(Opcode::GetMethod(field_idx), line);
             } else {
-                self.write_opcode(Opcode::GetField, line);
+                self.write_opcode(Opcode::GetField(field_idx), line);
             }
-            self.write_byte(field_idx as u8, line);
         }
 
         Ok(())
@@ -1846,25 +1764,21 @@ impl TypedAstVisitor<(), ()> for Compiler {
             Type::Map(_, _) => NativeMap::get_type().get_method_idx("enumerate").expect("Map is missing required enumerate method"),
             _ => unreachable!("Should have been caught during typechecking")
         };
-        self.write_opcode(Opcode::GetMethod, line);
+        self.write_opcode(Opcode::GetMethod(enumerate_method_idx), line);
         self.metadata.field_gets.push("enumerate".to_string());
-        self.write_byte(enumerate_method_idx as u8, line);
-        self.write_opcode(Opcode::Invoke, line);
-        self.write_byte(0, line);
+        self.write_opcode(Opcode::Invoke(0), line);
         self.push_local("$iter", line, true); // Local 1 is the iterator
 
         #[inline]
         fn load_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
             let (_, slot) = compiler.resolve_local(&name.to_string(), compiler.get_fn_depth()).unwrap();
-            compiler.write_load_local_instr(slot, line);
-            compiler.metadata.loads.push(name.to_string());
+            compiler.write_load_local_instr(name, slot, line);
         }
 
         #[inline]
         fn store_intrinsic(compiler: &mut Compiler, name: &str, line: usize) {
             let (_, slot) = compiler.resolve_local(&name.to_string(), compiler.get_fn_depth()).unwrap();
-            compiler.write_store_local_instr(slot, line);
-            compiler.metadata.stores.push(name.to_string());
+            compiler.write_store_local_instr(name, slot, line);
         }
 
         // Place marker to point the JumpB to later, to jump to start of loop
@@ -1873,12 +1787,11 @@ impl TypedAstVisitor<(), ()> for Compiler {
         // Essentially: if $idx >= $iter.length { break }
         load_intrinsic(self, "$idx", line);
         load_intrinsic(self, "$iter", line);
-        self.write_opcode(Opcode::GetField, line);
+        let length_idx = NativeArray::get_type().get_field_idx("length").expect("Array is missing required length field");
+        self.write_opcode(Opcode::GetField(length_idx), line);
         self.metadata.field_gets.push("length".to_string());
-        let length_idx = NativeArray::get_type().get_field_idx("length").expect("Array is missing required length field") as u8;
-        self.write_byte(length_idx, line);
         self.write_opcode(Opcode::LT, line);
-        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
+        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF(0), line);
 
         // Insert iteratee and index bindings (if indexer expected) into loop scope
         //   $iter[$idx] is a tuple, of (<iteratee>, <index>)
@@ -1908,10 +1821,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
         let last_line = self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         self.pop_scope();
-        self.write_opcode(Opcode::Pop, last_line); // Pop $iter
-        self.locals.pop(); // Remove $iter from compiler's locals vector
-        self.write_opcode(Opcode::Pop, last_line); // Pop $idx
-        self.locals.pop(); // Remove $idx from compiler's locals vector
+        self.write_opcode(Opcode::Pop(2), last_line); // Pop $iter and $idx
+        self.locals.pop(); // <
+        self.locals.pop(); // < Remove $iter and $idx from compiler's locals vector
 
         self.pop_scope();
         Ok(())
@@ -1940,21 +1852,20 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             let ident = Token::get_ident_name(ident);
             let (_, slot) = self.resolve_local(&ident, self.get_fn_depth()).unwrap();
-            self.write_store_local_instr(slot, line); // Store into condition binding
-            self.metadata.stores.push(ident);
+            self.write_store_local_instr(ident, slot, line); // Store into condition binding
         }
         if is_opt {
             self.write_opcode(Opcode::Nil, line);
             self.write_opcode(Opcode::Neq, line);
         }
 
-        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF, line);
+        let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF(0), line);
 
         self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         if let Some(_) = condition_binding {
             // If there was a condition binding, we need to pop it off the stack
-            self.write_opcode(Opcode::Pop, line);
+            self.write_opcode(Opcode::Pop(1), line);
         }
 
         self.pop_scope();
@@ -1982,7 +1893,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.write_pops(&locals_to_pop, line);
         self.locals.append(&mut locals_to_pop);
 
-        let interrupt_jump_handle = self.begin_jump(Opcode::Jump, line);
+        let interrupt_jump_handle = self.begin_jump(Opcode::Jump(0), line);
         self.interrupt_handles.push(interrupt_jump_handle);
         Ok(())
     }
@@ -2005,15 +1916,14 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let line = token.get_position().line;
         if has_return {
-            self.write_store_local_instr(0, line);
-            self.metadata.stores.push("<ret>".to_string());
+            self.write_store_local_instr("<ret>", 0, line);
         }
 
         let mut locals_to_pop = self.locals.split_off(split_idx as usize);
         self.write_pops_for_closure(&locals_to_pop, line);
         self.locals.append(&mut locals_to_pop);
 
-        let return_jump_handle = self.begin_jump(Opcode::Jump, line);
+        let return_jump_handle = self.begin_jump(Opcode::Jump(0), line);
         self.return_handles.push(return_jump_handle);
         Ok(())
     }
@@ -2028,7 +1938,7 @@ mod tests {
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
 
-    fn with_prelude_const_offset(const_idx: u8) -> u8 {
+    fn with_prelude_const_offset(const_idx: usize) -> usize {
         PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
     }
 
@@ -2061,7 +1971,7 @@ mod tests {
     fn compile_empty() {
         let chunk = compile("");
         let expected = Module {
-            code: vec![Opcode::Return as u8],
+            code: vec![Opcode::Return],
             constants: with_prelude_consts(vec![]),
         };
         assert_eq!(expected, chunk);
@@ -2072,20 +1982,20 @@ mod tests {
         let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Pop as u8,
-                Opcode::T as u8,
-                Opcode::Pop as u8,
-                Opcode::F as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::Pop(1),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::IConst4,
+                Opcode::Pop(1),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Pop(1),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::Pop(1),
+                Opcode::T,
+                Opcode::Pop(1),
+                Opcode::F,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Float(2.3),
@@ -2101,9 +2011,9 @@ mod tests {
         let chunk = compile("-5");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Invert as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Invert,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5)]),
         };
@@ -2112,9 +2022,9 @@ mod tests {
         let chunk = compile("-2.3");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Invert as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Invert,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Float(2.3)]),
         };
@@ -2123,9 +2033,9 @@ mod tests {
         let chunk = compile("!false");
         let expected = Module {
             code: vec![
-                Opcode::F as u8,
-                Opcode::Negate as u8,
-                Opcode::Return as u8
+                Opcode::F,
+                Opcode::Negate,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2137,10 +2047,10 @@ mod tests {
         let chunk = compile("5 + 6");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5), Value::Int(6)]),
         };
@@ -2150,18 +2060,18 @@ mod tests {
         let chunk = compile("1 - -5 * 3.4 / 5");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::I2F as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Invert as u8,
-                Opcode::I2F as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::FMul as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::I2F as u8,
-                Opcode::FDiv as u8,
-                Opcode::FSub as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::I2F,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Invert,
+                Opcode::I2F,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::FMul,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::I2F,
+                Opcode::FDiv,
+                Opcode::FSub,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5), Value::Float(3.4)]),
         };
@@ -2171,13 +2081,13 @@ mod tests {
         let chunk = compile("3.4 % 2.4 % 5");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::FMod as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::I2F as u8,
-                Opcode::FMod as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::FMod,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::I2F,
+                Opcode::FMod,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Float(3.4), Value::Float(2.4), Value::Int(5)]),
         };
@@ -2187,10 +2097,10 @@ mod tests {
         let chunk = compile("3.4 ** 5");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Pow as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Pow,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Float(3.4), Value::Int(5)]),
         };
@@ -2202,12 +2112,12 @@ mod tests {
         let chunk = compile("(1 + 2) * 3");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IMul as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IMul,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2219,10 +2129,10 @@ mod tests {
         let chunk = compile("\"abc\" + \"def\"");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::StrConcat as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::StrConcat,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("abc"),
@@ -2234,12 +2144,12 @@ mod tests {
         let chunk = compile("1 + \"a\" + 3.4");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::StrConcat as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::StrConcat,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::StrConcat,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2254,16 +2164,16 @@ mod tests {
         let chunk = compile("true && true || false");
         let expected = Module {
             code: vec![
-                Opcode::T as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::T as u8,
-                Opcode::Jump as u8, 0, 1,
-                Opcode::F as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::T as u8,
-                Opcode::Jump as u8, 0, 1,
-                Opcode::F as u8,
-                Opcode::Return as u8
+                Opcode::T,
+                Opcode::JumpIfF(2),
+                Opcode::T,
+                Opcode::Jump(1),
+                Opcode::F,
+                Opcode::JumpIfF(2),
+                Opcode::T,
+                Opcode::Jump(1),
+                Opcode::F,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2273,10 +2183,10 @@ mod tests {
         let chunk = compile("true ^ false");
         let expected = Module {
             code: vec![
-                Opcode::T as u8,
-                Opcode::F as u8,
-                Opcode::Xor as u8,
-                Opcode::Return as u8
+                Opcode::T,
+                Opcode::F,
+                Opcode::Xor,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2288,14 +2198,14 @@ mod tests {
         let chunk = compile("1 <= 5 == 3.4 >= 5.6");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::LTE as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GTE as u8,
-                Opcode::Eq as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::LTE,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GTE,
+                Opcode::Eq,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)]),
         };
@@ -2304,12 +2214,12 @@ mod tests {
         let chunk = compile("\"a\" < \"b\" != 4");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::LT as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Neq as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::LT,
+                Opcode::IConst4,
+                Opcode::Neq,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2324,22 +2234,22 @@ mod tests {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst2 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::LLoad0 as u8,
-                Opcode::LStore0 as u8,
-                Opcode::Jump as u8, 0, 4,
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::ArrMk(2),
+                Opcode::IConst2,
+                Opcode::ArrLoad,
+                Opcode::Dup,
+                Opcode::Nil,
+                Opcode::Neq,
+                Opcode::JumpIfF(4),
+                Opcode::MarkLocal(0),
+                Opcode::LLoad(0),
+                Opcode::LStore(0),
+                Opcode::Jump(2),
+                Opcode::Pop(1),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2355,10 +2265,10 @@ mod tests {
         let chunk = compile("[1, 2]");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2367,11 +2277,11 @@ mod tests {
         let chunk = compile("[\"a\", \"b\", \"c\"]");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::ArrMk as u8, 3,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::ArrMk(3),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2387,15 +2297,15 @@ mod tests {
         let chunk = compile("[[1, 2], [3, 4, 5]]");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::ArrMk as u8, 3,
-                Opcode::ArrMk as u8, 2,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::IConst3,
+                Opcode::IConst4,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::ArrMk(3),
+                Opcode::ArrMk(2),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5)]),
         };
@@ -2407,10 +2317,10 @@ mod tests {
         let chunk = compile("#{1, 2}");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::SetMk as u8, 2,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::SetMk(2),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -2419,11 +2329,11 @@ mod tests {
         let chunk = compile("#{\"a\", \"b\", \"c\"}");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::SetMk as u8, 3,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::SetMk(3),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2439,14 +2349,14 @@ mod tests {
         let chunk = compile("{ a: 1, b: \"c\", d: true }");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::T as u8,
-                Opcode::MapMk as u8, 3,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::T,
+                Opcode::MapMk(3),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2463,10 +2373,9 @@ mod tests {
         let chunk = compile("val abc = 123");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123), Value::Str("abc".to_string())]),
         };
@@ -2475,13 +2384,11 @@ mod tests {
         let chunk = compile("var unset: Bool\nvar set = true");
         let expected = Module {
             code: vec![
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::T as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::Nil,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::T,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("unset".to_string()),
@@ -2493,15 +2400,13 @@ mod tests {
         let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::StrConcat as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::StrConcat,
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::GStore(with_prelude_const_offset(4)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -2522,19 +2427,15 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::New as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::New(1),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -2559,27 +2460,21 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::New as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::New as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::New(2),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::New(2),
+                Opcode::GStore(with_prelude_const_offset(6)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -2605,24 +2500,19 @@ mod tests {
         let chunk = compile("val (a, b) = (1, 2)");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::TupleMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::TupleMk(2),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::TupleLoad,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::TupleLoad,
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("$temp_0".to_string()),
@@ -2639,35 +2529,33 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::IConst1 as u8,
-                        Opcode::IConst2 as u8,
-                        Opcode::TupleMk as u8, 2,
-                        Opcode::MarkLocal as u8, 0,
-                        Opcode::LLoad0 as u8,
-                        Opcode::IConst0 as u8,
-                        Opcode::TupleLoad as u8,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::LLoad0 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::TupleLoad as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8
+                        Opcode::IConst1,
+                        Opcode::IConst2,
+                        Opcode::TupleMk(2),
+                        Opcode::MarkLocal(0),
+                        Opcode::LLoad(0),
+                        Opcode::IConst0,
+                        Opcode::TupleLoad,
+                        Opcode::MarkLocal(1),
+                        Opcode::LLoad(0),
+                        Opcode::IConst1,
+                        Opcode::TupleLoad,
+                        Opcode::MarkLocal(2),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2683,24 +2571,19 @@ mod tests {
         let chunk = compile("val [a, b] = [1, 2]");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::ArrLoad,
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("$temp_0".to_string()),
@@ -2717,35 +2600,33 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::IConst1 as u8,
-                        Opcode::IConst2 as u8,
-                        Opcode::ArrMk as u8, 2,
-                        Opcode::MarkLocal as u8, 0,
-                        Opcode::LLoad0 as u8,
-                        Opcode::IConst0 as u8,
-                        Opcode::ArrLoad as u8,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::LLoad0 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::ArrLoad as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8
+                        Opcode::IConst1,
+                        Opcode::IConst2,
+                        Opcode::ArrMk(2),
+                        Opcode::MarkLocal(0),
+                        Opcode::LLoad(0),
+                        Opcode::IConst0,
+                        Opcode::ArrLoad,
+                        Opcode::MarkLocal(1),
+                        Opcode::LLoad(0),
+                        Opcode::IConst1,
+                        Opcode::ArrLoad,
+                        Opcode::MarkLocal(2),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2761,22 +2642,17 @@ mod tests {
         let chunk = compile("val [a, b] = \"hello\"");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::IConst1,
+                Opcode::ArrLoad,
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("hello"),
@@ -2793,12 +2669,10 @@ mod tests {
         let chunk = compile("val abc = 123\nabc");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123), Value::Str("abc".to_string())]),
         };
@@ -2810,24 +2684,22 @@ mod tests {
         let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string()),
                 Value::Fn(FnValue {
                     name: "c".to_string(),
                     code: vec![
-                        Opcode::ULoad0 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8,
+                        Opcode::ULoad(0),
+                        Opcode::IConst1,
+                        Opcode::IAdd,
+                        Opcode::LStore(0),
+                        Opcode::Return,
                     ],
                     upvalues: vec![
                         Upvalue {
@@ -2841,20 +2713,20 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "a".to_string(),
                     code: vec![
-                        Opcode::IConst0 as u8,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::IConst3 as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::ClosureMk as u8,
-                        Opcode::MarkLocal as u8, 3,
-                        Opcode::LLoad3 as u8,
-                        Opcode::LStore1 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::CloseUpvalueAndPop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::IConst0,
+                        Opcode::MarkLocal(1),
+                        Opcode::IConst3,
+                        Opcode::MarkLocal(2),
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::ClosureMk,
+                        Opcode::MarkLocal(3),
+                        Opcode::LLoad(3),
+                        Opcode::LStore(1),
+                        Opcode::Pop(1),
+                        Opcode::CloseUpvalueAndPop,
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2870,24 +2742,22 @@ mod tests {
         let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string()),
                 Value::Fn(FnValue {
                     name: "d".to_string(),
                     code: vec![
-                        Opcode::ULoad0 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8,
+                        Opcode::ULoad(0),
+                        Opcode::IConst1,
+                        Opcode::IAdd,
+                        Opcode::LStore(0),
+                        Opcode::Return,
                     ],
                     upvalues: vec![
                         Upvalue {
@@ -2901,16 +2771,16 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "c".to_string(),
                     code: vec![
-                        Opcode::IConst0 as u8,
-                        Opcode::MarkLocal as u8, 0,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::ClosureMk as u8,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::LLoad1 as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::IConst0,
+                        Opcode::MarkLocal(0),
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::ClosureMk,
+                        Opcode::MarkLocal(1),
+                        Opcode::LLoad(1),
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![
                         Upvalue {
@@ -2924,20 +2794,20 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "a".to_string(),
                     code: vec![
-                        Opcode::IConst0 as u8,
-                        Opcode::MarkLocal as u8, 1,
-                        Opcode::IConst3 as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                        Opcode::ClosureMk as u8,
-                        Opcode::MarkLocal as u8, 3,
-                        Opcode::LLoad3 as u8,
-                        Opcode::LStore1 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::CloseUpvalueAndPop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::IConst0,
+                        Opcode::MarkLocal(1),
+                        Opcode::IConst3,
+                        Opcode::MarkLocal(2),
+                        Opcode::Constant(with_prelude_const_offset(2)),
+                        Opcode::ClosureMk,
+                        Opcode::MarkLocal(3),
+                        Opcode::LLoad(3),
+                        Opcode::LStore(1),
+                        Opcode::Pop(1),
+                        Opcode::CloseUpvalueAndPop,
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2954,30 +2824,23 @@ mod tests {
         let expected = Module {
             code: vec![
                 // var a = 1
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
+                Opcode::IConst1,
+                Opcode::GStore(with_prelude_const_offset(0)),
                 // var b = 2
-                Opcode::IConst2 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
+                Opcode::IConst2,
+                Opcode::GStore(with_prelude_const_offset(1)),
 
                 // val c = b = a = 3
                 //   a = 3
-                Opcode::IConst3 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
+                Opcode::IConst3,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
                 //  b = <a = 3>
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
                 //  c = <b = <a = 3>>
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string()),
@@ -2991,21 +2854,17 @@ mod tests {
         let expected = Module {
             code: vec![
                 // var a = 1
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
+                Opcode::IConst1,
+                Opcode::GStore(with_prelude_const_offset(0)),
                 // a = 2
-                Opcode::IConst2 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Pop as u8, // <- This test verifies that the intermediate 2 gets popped
+                Opcode::IConst2,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Pop(1), // <- This test verifies that the intermediate 2 gets popped
                 // val b = 3
-                Opcode::IConst3 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst3,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string()),
@@ -3020,16 +2879,13 @@ mod tests {
         let chunk = compile("var a = 1\nfunc abc(): Int { a = 3 }");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
@@ -3037,13 +2893,11 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::IConst3 as u8,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::GStore as u8,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::GLoad as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8
+                        Opcode::IConst3,
+                        Opcode::GStore(with_prelude_const_offset(1)),
+                        Opcode::GLoad(with_prelude_const_offset(1)),
+                        Opcode::LStore(0),
+                        Opcode::Return
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3059,24 +2913,22 @@ mod tests {
         let chunk = compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("outer".to_string()),
                 Value::Fn(FnValue {
                     name: "inner".to_string(),
                     code: vec![
-                        Opcode::IConst3 as u8,
-                        Opcode::UStore0 as u8,
-                        Opcode::ULoad0 as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8
+                        Opcode::IConst3,
+                        Opcode::UStore(0),
+                        Opcode::ULoad(0),
+                        Opcode::LStore(0),
+                        Opcode::Return
                     ],
                     upvalues: vec![
                         Upvalue {
@@ -3090,19 +2942,19 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "outer".to_string(),
                     code: vec![
-                        Opcode::IConst0 as u8,
-                        Opcode::MarkLocal as u8, 0, // Stub for inner
-                        Opcode::IConst1 as u8,
-                        Opcode::MarkLocal as u8, 1, // var a = 1
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::ClosureMk as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::LLoad2 as u8,
-                        Opcode::LStore0 as u8, // Store real fn in stub slot
-                        Opcode::Pop as u8,
-                        Opcode::CloseUpvalueAndPop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8
+                        Opcode::IConst0,
+                        Opcode::MarkLocal(0), // Stub for inner
+                        Opcode::IConst1,
+                        Opcode::MarkLocal(1), // var a = 1
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::ClosureMk,
+                        Opcode::MarkLocal(2),
+                        Opcode::LLoad(2),
+                        Opcode::LStore(0), // Store real fn in stub slot
+                        Opcode::Pop(1),
+                        Opcode::CloseUpvalueAndPop,
+                        Opcode::Pop(1),
+                        Opcode::Return
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3118,16 +2970,14 @@ mod tests {
         let chunk = compile("val a = [1]\na[0] = 0");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::IConst0 as u8,
-                Opcode::ArrStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst1,
+                Opcode::ArrMk(1),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::IConst0,
+                Opcode::ArrStore,
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string()),
@@ -3138,17 +2988,15 @@ mod tests {
         let chunk = compile("val a = {b:1}\na[\"b\"] = 0");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst1 as u8,
-                Opcode::MapMk as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst0 as u8,
-                Opcode::MapStore as u8,
-                Opcode::Return as u8,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::MapMk(1),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::MapStore,
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("b"),
@@ -3160,17 +3008,15 @@ mod tests {
         let chunk = compile("val a = (1, 2)\na[0] = 0");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::TupleMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::IConst0 as u8,
-                Opcode::TupleStore as u8,
-                Opcode::Return as u8,
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::TupleMk(2),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::IConst0,
+                Opcode::TupleStore,
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("a".to_string())
@@ -3188,23 +3034,18 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::New as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GLoad as u8,
-                Opcode::SetField as u8, 0,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::New(1),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::GLoad(with_prelude_const_offset(3)),
+                Opcode::SetField(0),
+                Opcode::Return,
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -3228,17 +3069,17 @@ mod tests {
         let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::ArrMk as u8, 5,
-                Opcode::IConst3 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IConst3,
+                Opcode::IConst4,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::ArrMk(5),
+                Opcode::IConst3,
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::ArrLoad,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(5)]),
         };
@@ -3247,13 +3088,13 @@ mod tests {
         let chunk = compile("\"some string\"[1 + 1:]");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst1 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Nil as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::Nil,
+                Opcode::ArrSlc,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("some string"),
@@ -3264,12 +3105,12 @@ mod tests {
         let chunk = compile("\"some string\"[-1:4]");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst1 as u8,
-                Opcode::Invert as u8,
-                Opcode::IConst4 as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::Invert,
+                Opcode::IConst4,
+                Opcode::ArrSlc,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("some string"),
@@ -3280,13 +3121,13 @@ mod tests {
         let chunk = compile("\"some string\"[:1 + 1]");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::ArrSlc as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst0,
+                Opcode::IConst1,
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::ArrSlc,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("some string"),
@@ -3297,14 +3138,14 @@ mod tests {
         let chunk = compile("{ a: 1, b: 2 }[\"a\"]");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IConst2 as u8,
-                Opcode::MapMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::MapLoad as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IConst2,
+                Opcode::MapMk(2),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::MapLoad,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("a"),
@@ -3316,13 +3157,13 @@ mod tests {
         let chunk = compile("(1, true, 3)[2]");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::T as u8,
-                Opcode::IConst3 as u8,
-                Opcode::TupleMk as u8, 3,
-                Opcode::IConst2 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::T,
+                Opcode::IConst3,
+                Opcode::TupleMk(3),
+                Opcode::IConst2,
+                Opcode::TupleLoad,
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -3334,16 +3175,16 @@ mod tests {
         let chunk = compile("if (1 == 2) 123 else 456");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 4,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::Eq,
+                Opcode::JumpIfF(3),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Jump(2),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123), Value::Int(456)]),
         };
@@ -3352,13 +3193,13 @@ mod tests {
         let chunk = compile("if (1 == 2) 123");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::Eq,
+                Opcode::JumpIfF(2),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123)]),
         };
@@ -3367,14 +3208,14 @@ mod tests {
         let chunk = compile("if (1 == 2) { } else { 456 }");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 3,
-                Opcode::Jump as u8, 0, 4,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::Eq,
+                Opcode::JumpIfF(1),
+                Opcode::Jump(2),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(456)]),
         };
@@ -3383,23 +3224,23 @@ mod tests {
         let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 17,
-                Opcode::IConst3 as u8,
-                Opcode::IConst4 as u8,
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 4,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::Eq,
+                Opcode::JumpIfF(3),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Jump(9),
+                Opcode::IConst3,
+                Opcode::IConst4,
+                Opcode::LT,
+                Opcode::JumpIfF(3),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Pop(1),
+                Opcode::Jump(2),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123), Value::Int(456), Value::Int(789)]),
         };
@@ -3414,19 +3255,18 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::T as u8,
-                Opcode::JumpIfF as u8, 0, 10,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::MarkLocal as u8, 0,
-                Opcode::LLoad0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::T,
+                Opcode::JumpIfF(7),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::MarkLocal(0),
+                Opcode::LLoad(0),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Int(123),
@@ -3442,20 +3282,20 @@ mod tests {
         let chunk = compile("if ([1, 2][0]) 123 else 456");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 4,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::Nil,
+                Opcode::Neq,
+                Opcode::JumpIfF(3),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Jump(2),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(123), Value::Int(456)]),
         };
@@ -3467,24 +3307,24 @@ mod tests {
         let chunk = compile("if [1, 2][0] |item| item else 456");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 0, 8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::LLoad0 as u8,
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 5,
-                Opcode::Pop as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::Dup,
+                Opcode::Nil,
+                Opcode::Neq,
+                Opcode::JumpIfF(5),
+                Opcode::MarkLocal(0),
+                Opcode::LLoad(0),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(3),
+                Opcode::Pop(1),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![Value::Int(456)]),
         };
@@ -3505,22 +3345,17 @@ mod tests {
         "#);
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::IConst3 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::IConst2,
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::IConst3,
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
@@ -3530,19 +3365,18 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::GLoad as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::LLoad1 as u8,
-                        Opcode::LLoad2 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::MarkLocal as u8, 3,
-                        Opcode::LLoad3 as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::GLoad(with_prelude_const_offset(1)),
+                        Opcode::MarkLocal(2),
+                        Opcode::LLoad(1),
+                        Opcode::LLoad(2),
+                        Opcode::IAdd,
+                        Opcode::MarkLocal(3),
+                        Opcode::LLoad(3),
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3563,13 +3397,11 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
@@ -3577,14 +3409,14 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::IConst1 as u8,
-                        Opcode::MarkLocal as u8, 0,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::ArrMk as u8, 1,
-                        Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                        Opcode::Invoke as u8, 1,
-                        Opcode::Pop as u8, // Pop off `a`; note, there is no LStore0, since the return is Unit
-                        Opcode::Return as u8,
+                        Opcode::IConst1,
+                        Opcode::MarkLocal(0),
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::ArrMk(1),
+                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                        Opcode::Invoke(1),
+                        Opcode::Pop(1), // Pop off `a`; note, there is no LStore0, since the return is Unit
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3600,47 +3432,43 @@ mod tests {
         let chunk = compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Nil as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 2,
-                Opcode::Pop as u8,
-                Opcode::Nil as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 2,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Nil,
+                Opcode::IConst1,
+                Opcode::Nil,
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Invoke(2),
+                Opcode::Pop(1),
+                Opcode::Nil,
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Invoke(2),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("add".to_string()),
                 Value::Fn(FnValue {
                     name: "add".to_string(),
                     code: vec![
-                        Opcode::Nil as u8,
-                        Opcode::LLoad2 as u8,
-                        Opcode::Eq as u8,
-                        Opcode::JumpIfF as u8, 0, 4,
-                        Opcode::IConst2 as u8,
-                        Opcode::LStore2 as u8,
-                        Opcode::LLoad2 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::LLoad1 as u8,
-                        Opcode::LLoad2 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::Nil,
+                        Opcode::LLoad(2),
+                        Opcode::Eq,
+                        Opcode::JumpIfF(4),
+                        Opcode::IConst2,
+                        Opcode::LStore(2),
+                        Opcode::LLoad(2),
+                        Opcode::Pop(1),
+                        Opcode::LLoad(1),
+                        Opcode::LLoad(2),
+                        Opcode::IAdd,
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3662,25 +3490,23 @@ mod tests {
         "#);
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("abc".to_string()),
                 Value::Fn(FnValue {
                     name: "def".to_string(),
                     code: vec![
-                        Opcode::LLoad1 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::LLoad(1),
+                        Opcode::IConst1,
+                        Opcode::IAdd,
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3689,26 +3515,26 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "abc".to_string(),
                     code: vec![
-                        Opcode::IConst0 as u8,
-                        Opcode::MarkLocal as u8, 2,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::MarkLocal as u8, 3,
-                        Opcode::LLoad3 as u8,
-                        Opcode::LStore2 as u8,
-                        Opcode::LLoad1 as u8,
-                        Opcode::Nil as u8,
-                        Opcode::LLoad1 as u8,
-                        Opcode::LLoad3 as u8,
-                        Opcode::Invoke as u8, 1,
-                        Opcode::IAdd as u8,
-                        Opcode::MarkLocal as u8, 4,
-                        Opcode::LLoad4 as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::IConst0,
+                        Opcode::MarkLocal(2),
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::MarkLocal(3),
+                        Opcode::LLoad(3),
+                        Opcode::LStore(2),
+                        Opcode::LLoad(1),
+                        Opcode::Nil,
+                        Opcode::LLoad(1),
+                        Opcode::LLoad(3),
+                        Opcode::Invoke(1),
+                        Opcode::IAdd,
+                        Opcode::MarkLocal(4),
+                        Opcode::LLoad(4),
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3730,13 +3556,11 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -3749,11 +3573,11 @@ mod tests {
                         ("getName".to_string(), Value::Fn(FnValue {
                             name: "getName".to_string(),
                             code: vec![
-                                Opcode::LLoad1 as u8,
-                                Opcode::GetField as u8, 0,
-                                Opcode::LStore0 as u8,
-                                Opcode::Pop as u8,
-                                Opcode::Return as u8
+                                Opcode::LLoad(1),
+                                Opcode::GetField(0),
+                                Opcode::LStore(0),
+                                Opcode::Pop(1),
+                                Opcode::Return
                             ],
                             upvalues: vec![],
                             receiver: None,
@@ -3762,13 +3586,13 @@ mod tests {
                         ("getName2".to_string(), Value::Fn(FnValue {
                             name: "getName2".to_string(),
                             code: vec![
-                                Opcode::Nil as u8,
-                                Opcode::LLoad1 as u8,
-                                Opcode::GetMethod as u8, 1,
-                                Opcode::Invoke as u8, 0,
-                                Opcode::LStore0 as u8,
-                                Opcode::Pop as u8,
-                                Opcode::Return as u8
+                                Opcode::Nil,
+                                Opcode::LLoad(1),
+                                Opcode::GetMethod(1),
+                                Opcode::Invoke(0),
+                                Opcode::LStore(0),
+                                Opcode::Pop(1),
+                                Opcode::Return
                             ],
                             upvalues: vec![],
                             receiver: None,
@@ -3787,13 +3611,11 @@ mod tests {
         let chunk = compile("enum Status { On, Off }");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Status".to_string()),
@@ -3842,24 +3664,18 @@ mod tests {
         "#);
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Invoke as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Nil,
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Invoke(1),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("inc".to_string()),
@@ -3867,12 +3683,12 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "inc".to_string(),
                     code: vec![
-                        Opcode::LLoad1 as u8,
-                        Opcode::IConst1 as u8,
-                        Opcode::IAdd as u8,
-                        Opcode::LStore0 as u8,
-                        Opcode::Pop as u8,
-                        Opcode::Return as u8,
+                        Opcode::LLoad(1),
+                        Opcode::IConst1,
+                        Opcode::IAdd,
+                        Opcode::LStore(0),
+                        Opcode::Pop(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3894,25 +3710,20 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 0, 18,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 0, 27,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::LT,
+                Opcode::JumpIfF(7),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::JumpB(11),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("i".to_string()),
@@ -3923,18 +3734,18 @@ mod tests {
         let chunk = compile("while ([1, 2][0]) { 123 }");
         let expected = Module {
             code: vec![
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 0, 7,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 0, 18,
-                Opcode::Return as u8
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::Nil,
+                Opcode::Neq,
+                Opcode::JumpIfF(3),
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::JumpB(11),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Int(123),
@@ -3948,24 +3759,24 @@ mod tests {
         let chunk = compile("while ([1, 2][0]) |item| { item }");
         let expected = Module {
             code: vec![
-                Opcode::Nil as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::IConst0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::LStore0 as u8,
-                Opcode::Nil as u8,
-                Opcode::Neq as u8,
-                Opcode::JumpIfF as u8, 0, 6,
-                Opcode::LLoad0 as u8,
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 0, 22,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Nil,
+                Opcode::MarkLocal(0),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::IConst0,
+                Opcode::ArrLoad,
+                Opcode::Dup,
+                Opcode::LStore(0),
+                Opcode::Nil,
+                Opcode::Neq,
+                Opcode::JumpIfF(4),
+                Opcode::LLoad(0),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::JumpB(16),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -3983,28 +3794,23 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 0, 22,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::LLoad0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 0, 31,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::LT,
+                Opcode::JumpIfF(10),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::MarkLocal(0),
+                Opcode::LLoad(0),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::JumpB(14),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("i".to_string()),
@@ -4023,14 +3829,14 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::T as u8,
-                Opcode::JumpIfF as u8, 0, 10,
-                Opcode::IConst1 as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::Pop as u8,          // <
-                Opcode::Jump as u8, 0, 3,   // < These 3 instrs are generated by the break
-                Opcode::JumpB as u8, 0, 14, // These 2 get falsely attributed to the break, because of #32
-                Opcode::Return as u8
+                Opcode::T,
+                Opcode::JumpIfF(5),
+                Opcode::IConst1,
+                Opcode::MarkLocal(0),
+                Opcode::Pop(1),      // <
+                Opcode::Jump(1),     // < These 3 instrs are generated by the break
+                Opcode::JumpB(7),    // These 2 get falsely attributed to the break, because of #32
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -4047,21 +3853,21 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::T as u8,
-                Opcode::JumpIfF as u8, 0, 21,
-                Opcode::IConst1 as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::LLoad0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 8,
-                Opcode::IConst2 as u8,
-                Opcode::MarkLocal as u8, 1,
-                Opcode::PopN as u8, 2,     // <
-                Opcode::Jump as u8, 0, 4,  // < These 3 instrs are generated by the break
-                Opcode::Pop as u8,         // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
-                Opcode::JumpB as u8, 0, 25,
-                Opcode::Return as u8
+                Opcode::T,
+                Opcode::JumpIfF(12),
+                Opcode::IConst1,
+                Opcode::MarkLocal(0),
+                Opcode::LLoad(0),
+                Opcode::IConst1,
+                Opcode::Eq,
+                Opcode::JumpIfF(4),
+                Opcode::IConst2,
+                Opcode::MarkLocal(1),
+                Opcode::Pop(2),     // <
+                Opcode::Jump(2),  // < These 3 instrs are generated by the break
+                Opcode::Pop(1),         // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
+                Opcode::JumpB(14),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![]),
         };
@@ -4080,74 +3886,69 @@ mod tests {
         let expected = Module {
             code: vec![
                 // val msg = "Row: "
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
 
                 // val arr = [1, 2]
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::ArrMk as u8, 2,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::GStore(with_prelude_const_offset(2)),
 
                 // val $idx = 0
                 // val $iter = arr.enumerate()
                 // if $idx < $iter.length {
-                Opcode::IConst0 as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GLoad as u8,
-                Opcode::GetMethod as u8, 2, // .enumerate
-                Opcode::Invoke as u8, 0,
-                Opcode::MarkLocal as u8, 1,
-                Opcode::LLoad0 as u8,
-                Opcode::LLoad1 as u8,
-                Opcode::GetField as u8, 0, // .length
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 0, 38,
+                Opcode::IConst0,
+                Opcode::MarkLocal(0),
+                Opcode::Nil,
+                Opcode::GLoad(with_prelude_const_offset(2)),
+                Opcode::GetMethod(2), // .enumerate
+                Opcode::Invoke(0),
+                Opcode::MarkLocal(1),
+                Opcode::LLoad(0),
+                Opcode::LLoad(1),
+                Opcode::GetField(0), // .length
+                Opcode::LT,
+                Opcode::JumpIfF(26),
 
                 // a = $iter[$idx][0]
-                Opcode::LLoad1 as u8,
-                Opcode::LLoad0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::MarkLocal as u8, 2,
+                Opcode::LLoad(1),
+                Opcode::LLoad(0),
+                Opcode::ArrLoad,
+                Opcode::IConst0,
+                Opcode::TupleLoad,
+                Opcode::MarkLocal(2),
 
                 // i = $iter[$idx][1]
-                Opcode::LLoad1 as u8,
-                Opcode::LLoad0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::IConst1 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::MarkLocal as u8, 3,
+                Opcode::LLoad(1),
+                Opcode::LLoad(0),
+                Opcode::ArrLoad,
+                Opcode::IConst1,
+                Opcode::TupleLoad,
+                Opcode::MarkLocal(3),
 
                 // $idx += 1
-                Opcode::LLoad0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::LStore0 as u8,
+                Opcode::LLoad(0),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::LStore(0),
 
                 // println(msg + a + i)
                 // <recur>
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::LLoad2 as u8,
-                Opcode::StrConcat as u8,
-                Opcode::LLoad3 as u8,
-                Opcode::StrConcat as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::PopN as u8, 2,
-                Opcode::JumpB as u8, 0, 46,
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::LLoad(2),
+                Opcode::StrConcat,
+                Opcode::LLoad(3),
+                Opcode::StrConcat,
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(2),
+                Opcode::JumpB(31),
 
                 // Cleanup/end
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Pop(2),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("Row: "),
@@ -4185,319 +3986,318 @@ mod tests {
                 Value::Int(5), Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9), Value::Int(10), Value::Int(11)
             ]),
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::Nil as u8,
-                Opcode::Nil as u8,
-                Opcode::IConst0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, 1,
-                Opcode::Invoke as u8, 3,
-                Opcode::GetMethod as u8, 2, // .enumerate
-                Opcode::Invoke as u8, 0,
-                Opcode::MarkLocal as u8, 1,
-                Opcode::LLoad0 as u8,
-                Opcode::LLoad1 as u8,
-                Opcode::GetField as u8, 0, // .length
-                Opcode::LT as u8,
-                Opcode::JumpIfF as u8, 1, 238,
-                Opcode::LLoad1 as u8,
-                Opcode::LLoad0 as u8,
-                Opcode::ArrLoad as u8,
-                Opcode::IConst0 as u8,
-                Opcode::TupleLoad as u8,
-                Opcode::MarkLocal as u8, 2,
-                Opcode::LLoad0 as u8,
-                Opcode::IConst1 as u8,
-                Opcode::IAdd as u8,
-                Opcode::LStore0 as u8,
-                Opcode::T as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::T as u8,
-                Opcode::Jump as u8, 0, 1,
-                Opcode::F as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::T as u8,
-                Opcode::Jump as u8, 0, 1,
-                Opcode::F as u8,
-                Opcode::JumpIfF as u8, 0, 4,
-                Opcode::T as u8,
-                Opcode::Jump as u8, 0, 1,
-                Opcode::F as u8,
-                Opcode::JumpIfF as u8, 0, 227,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 3,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 4,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 5,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 6,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 7,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 8,
-                Opcode::PopN as u8, 6,
-                Opcode::Jump as u8, 0, 224,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 3,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 4,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 5,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 6,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 7,
-                Opcode::IConst1 as u8,
-                Opcode::IConst2 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst3 as u8,
-                Opcode::IAdd as u8,
-                Opcode::IConst4 as u8,
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(4),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(5),
-                Opcode::IAdd as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(6),
-                Opcode::IAdd as u8,
-                Opcode::MarkLocal as u8, 8,
-                Opcode::PopN as u8, 6,
-                Opcode::Pop as u8,
-                Opcode::JumpB as u8, 1, 246,
-                Opcode::Pop as u8,
-                Opcode::Pop as u8,
-                Opcode::Return as u8,
+                Opcode::IConst0,
+                Opcode::MarkLocal(0),
+                Opcode::Nil,
+                Opcode::Nil,
+                Opcode::IConst0,
+                Opcode::IConst1,
+                Opcode::Nil,
+                Opcode::Constant(1),
+                Opcode::Invoke(3),
+                Opcode::GetMethod(2), // .enumerate
+                Opcode::Invoke(0),
+                Opcode::MarkLocal(1),
+                Opcode::LLoad(0),
+                Opcode::LLoad(1),
+                Opcode::GetField(0), // .length
+                Opcode::LT,
+                Opcode::JumpIfF(293),
+                Opcode::LLoad(1),
+                Opcode::LLoad(0),
+                Opcode::ArrLoad,
+                Opcode::IConst0,
+                Opcode::TupleLoad,
+                Opcode::MarkLocal(2),
+                Opcode::LLoad(0),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::LStore(0),
+                Opcode::T,
+                Opcode::JumpIfF(2),
+                Opcode::T,
+                Opcode::Jump(1),
+                Opcode::F,
+                Opcode::JumpIfF(2),
+                Opcode::T,
+                Opcode::Jump(1),
+                Opcode::F,
+                Opcode::JumpIfF(2),
+                Opcode::T,
+                Opcode::Jump(1),
+                Opcode::F,
+                Opcode::JumpIfF(134),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(3),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(4),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(5),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(6),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(7),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(8),
+                Opcode::Pop(6),
+                Opcode::Jump(133),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(3),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(4),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(5),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(6),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(7),
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::IAdd,
+                Opcode::IConst3,
+                Opcode::IAdd,
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(4)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(5)),
+                Opcode::IAdd,
+                Opcode::Constant(with_prelude_const_offset(6)),
+                Opcode::IAdd,
+                Opcode::MarkLocal(8),
+                Opcode::Pop(6),
+                Opcode::Pop(1),
+                Opcode::JumpB(298),
+                Opcode::Pop(2),
+                Opcode::Return,
             ],
         };
         assert_eq!(expected, chunk);
@@ -4520,26 +4320,13 @@ mod tests {
                     .collect()
             ),
             code: vec![
-                (PRELUDE_NUM_CONSTS.with(|n| n.clone())..255).step_by(2).into_iter()
+                (PRELUDE_NUM_CONSTS.with(|n| n.clone() as usize)..313).step_by(2).into_iter()
                     .flat_map(|i| vec![
-                        Opcode::Constant as u8, 0, i as u8,
-                        Opcode::Constant as u8, 0, (i + 1) as u8,
-                        Opcode::GStore as u8
+                        Opcode::Constant(i),
+                        Opcode::GStore(i + 1)
                     ])
                     .collect(),
-                vec![
-                    // Opcode::Constant as u8, 0, 255 as u8,
-                    // Opcode::Constant as u8, 1, 0 as u8,
-                    // Opcode::GStore as u8
-                ],
-                (0..57).step_by(2).into_iter()
-                    .flat_map(|i| vec![
-                        Opcode::Constant as u8, 1, i as u8,
-                        Opcode::Constant as u8, 1, (i + 1) as u8,
-                        Opcode::GStore as u8
-                    ])
-                    .collect(),
-                vec![Opcode::Return as u8]
+                vec![Opcode::Return]
             ].concat(),
         };
         assert_eq!(expected, chunk);
@@ -4555,22 +4342,17 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::New as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GLoad as u8,
-                Opcode::GetField as u8, 0,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::New(1),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::GLoad(with_prelude_const_offset(3)),
+                Opcode::GetField(0),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -4591,9 +4373,9 @@ mod tests {
         let chunk = compile("\"hello\".length");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GetField as u8, 0,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GetField(0),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("hello"),
@@ -4609,21 +4391,20 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("hello"),
                 Value::Fn(FnValue {
                     name: "$anon_0".to_string(),
                     code: vec![
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                        Opcode::ArrMk as u8, 1,
-                        Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                        Opcode::Invoke as u8, 1,
-                        Opcode::Return as u8,
+                        Opcode::Constant(with_prelude_const_offset(0)),
+                        Opcode::ArrMk(1),
+                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                        Opcode::Invoke(1),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -4646,29 +4427,27 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::Nil as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 14,
-                Opcode::MarkLocal as u8, 0, // x
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 11,
-                Opcode::MarkLocal as u8, 0, // x
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::Dup,
+                Opcode::Nil,
+                Opcode::Eq,
+                Opcode::JumpIfF(7),
+                Opcode::MarkLocal(0), // x
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(6),
+                Opcode::MarkLocal(0), // x
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("woo"),
@@ -4686,29 +4465,27 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::GLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::Nil as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 14,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::IConst4 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 11,
-                Opcode::MarkLocal as u8, 0, // x
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::Constant(with_prelude_const_offset(0)),
+                Opcode::GStore(with_prelude_const_offset(1)),
+                Opcode::GLoad(with_prelude_const_offset(1)),
+                Opcode::Dup,
+                Opcode::Nil,
+                Opcode::Eq,
+                Opcode::JumpIfF(7),
+                Opcode::MarkLocal(0),
+                Opcode::IConst4,
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(6),
+                Opcode::MarkLocal(0), // x
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 new_string_obj("woo"),
@@ -4727,42 +4504,38 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::Typeof as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 14,
-                Opcode::MarkLocal as u8, 0, // p
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 23,
-                Opcode::Dup as u8,
-                Opcode::Typeof as u8,
-                Opcode::Constant as u8, 0, PRELUDE_INT_INDEX,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 14,
-                Opcode::MarkLocal as u8, 0, // s
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 0,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::GLoad(with_prelude_const_offset(3)),
+                Opcode::Dup,
+                Opcode::Typeof,
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::Eq,
+                Opcode::JumpIfF(7),
+                Opcode::MarkLocal(0), // p
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(12),
+                Opcode::Dup,
+                Opcode::Typeof,
+                Opcode::Constant(PRELUDE_INT_INDEX as usize),
+                Opcode::Eq,
+                Opcode::JumpIfF(7),
+                Opcode::MarkLocal(0), // s
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(0),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Person".to_string()),
@@ -4789,37 +4562,32 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::GetField as u8, 0,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::GLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 16,
-                Opcode::MarkLocal as u8, 0,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Jump as u8, 0, 11,
-                Opcode::MarkLocal as u8, 0, // x
-                Opcode::LLoad0 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::Pop as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::GetField(0),
+                Opcode::GStore(with_prelude_const_offset(2)),
+                Opcode::GLoad(with_prelude_const_offset(2)),
+                Opcode::Dup,
+                Opcode::IConst0,
+                Opcode::Eq,
+                Opcode::JumpIfF(7),
+                Opcode::MarkLocal(0),
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(6),
+                Opcode::MarkLocal(0), // x
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Direction".to_string()),
@@ -4867,37 +4635,32 @@ mod tests {
         ");
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Nil as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GLoad as u8,
-                Opcode::GetField as u8, 0,
-                Opcode::Invoke as u8, 1,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::GLoad as u8,
-                Opcode::Dup as u8,
-                Opcode::IConst0 as u8,
-                Opcode::Eq as u8,
-                Opcode::JumpIfF as u8, 0, 20,
-                Opcode::MarkLocal as u8, 0, // $match_target
-                Opcode::LLoad0 as u8,
-                Opcode::GetField as u8, 0,
-                Opcode::MarkLocal as u8, 1, // baz
-                Opcode::LLoad1 as u8,
-                Opcode::ArrMk as u8, 1,
-                Opcode::Constant as u8, 0, PRELUDE_PRINTLN_INDEX,
-                Opcode::Invoke as u8, 1,
-                Opcode::PopN as u8, 2,
-                Opcode::Jump as u8, 0, 0,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(1)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Nil,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
+                Opcode::GetField(0),
+                Opcode::Invoke(1),
+                Opcode::GStore(with_prelude_const_offset(3)),
+                Opcode::GLoad(with_prelude_const_offset(3)),
+                Opcode::Dup,
+                Opcode::IConst0,
+                Opcode::Eq,
+                Opcode::JumpIfF(10),
+                Opcode::MarkLocal(0), // $match_target
+                Opcode::LLoad(0),
+                Opcode::GetField(0),
+                Opcode::MarkLocal(1), // baz
+                Opcode::LLoad(1),
+                Opcode::ArrMk(1),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::Invoke(1),
+                Opcode::Pop(2),
+                Opcode::Jump(0),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("Foo".to_string()),
@@ -4936,13 +4699,11 @@ mod tests {
         "#);
         let expected = Module {
             code: vec![
-                Opcode::IConst0 as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Constant as u8, 0, with_prelude_const_offset(3),
-                Opcode::Constant as u8, 0, with_prelude_const_offset(0),
-                Opcode::GStore as u8,
-                Opcode::Return as u8
+                Opcode::IConst0,
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Constant(with_prelude_const_offset(3)),
+                Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::Return
             ],
             constants: with_prelude_consts(vec![
                 Value::Str("f".to_string()),
@@ -4951,17 +4712,17 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "f".to_string(),
                     code: vec![
-                        Opcode::T as u8,
-                        Opcode::JumpIfF as u8, 0, 8,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(1),
-                        Opcode::LStore0 as u8,
-                        Opcode::Jump as u8, 0, 9,
-                        Opcode::Pop as u8,
-                        Opcode::Constant as u8, 0, with_prelude_const_offset(2),
-                        Opcode::LStore0 as u8,
-                        Opcode::Jump as u8, 0, 1,
-                        Opcode::LStore0 as u8,
-                        Opcode::Return as u8,
+                        Opcode::T,
+                        Opcode::JumpIfF(4),
+                        Opcode::Constant(with_prelude_const_offset(1)),
+                        Opcode::LStore(0),
+                        Opcode::Jump(5),
+                        Opcode::Pop(1),
+                        Opcode::Constant(with_prelude_const_offset(2)),
+                        Opcode::LStore(0),
+                        Opcode::Jump(1),
+                        Opcode::LStore(0),
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
