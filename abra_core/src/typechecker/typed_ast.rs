@@ -194,9 +194,16 @@ pub struct TypedTypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub fields: Vec<(Token, Type, Option<TypedAstNode>)>,
+    pub fields: Vec<TypedTypeDeclField>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub methods: Vec<(String, TypedAstNode)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedTypeDeclField {
+    pub ident: Token,
+    pub typ: Type,
+    pub default_value: Option<TypedAstNode>
 }
 
 #[derive(Clone, Debug, PartialEq)]

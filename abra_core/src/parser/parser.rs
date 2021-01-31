@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
@@ -575,13 +575,14 @@ impl Parser {
                         variants.push((field_name, args));
                     } else {
                         self.expect_next_token(TokenType::Colon)?;
-                        let field_type = self.parse_type_identifier(true)?;
+                        let type_ident = self.parse_type_identifier(true)?;
                         let default_value = if let Some(Token::Assign(_)) = self.peek() {
                             self.expect_next()?; // Consume '='
                             Some(self.parse_expr()?)
                         } else { None };
 
-                        fields.push((field_name, field_type, default_value));
+                        let field = TypeDeclField { ident: field_name, type_ident, default_value };
+                        fields.push(field);
                     }
                 }
                 Token::Func(_) => {
@@ -927,15 +928,15 @@ impl Parser {
                         target: Box::new(base_node),
                         field: Box::new(AstNode::Identifier(
                             Token::Ident(first_chunk.get_position(), "concat".to_string()),
-                            None
+                            None,
                         )),
-                        is_opt_safe: false
-                    }
+                        is_opt_safe: false,
+                    },
                 )),
                 args: args.into_iter()
                     .map(|arg| (None, arg))
-                    .collect()
-            }
+                    .collect(),
+            },
         ))
     }
 
@@ -1376,26 +1377,26 @@ mod tests {
                     AccessorNode {
                         target: Box::new(AstNode::Literal(
                             Token::String(Position::new(1, 1), "abc ".to_string()),
-                            AstLiteralNode::StringLiteral("abc ".to_string())
+                            AstLiteralNode::StringLiteral("abc ".to_string()),
                         )),
                         field: Box::new(AstNode::Identifier(
                             Token::Ident(Position::new(1, 1), "concat".to_string()),
-                            None
+                            None,
                         )),
-                        is_opt_safe: false
-                    }
+                        is_opt_safe: false,
+                    },
                 )),
                 args: vec![
                     (None, AstNode::Identifier(
                         Token::Ident(Position::new(1, 7), "def".to_string()),
-                        None
+                        None,
                     )),
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 10), " ghi".to_string()),
-                        AstLiteralNode::StringLiteral(" ghi".to_string())
+                        AstLiteralNode::StringLiteral(" ghi".to_string()),
                     ))
-                ]
-            }
+                ],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -1408,14 +1409,14 @@ mod tests {
                     AccessorNode {
                         target: Box::new(AstNode::Literal(
                             Token::String(Position::new(1, 1), "abc ".to_string()),
-                            AstLiteralNode::StringLiteral("abc ".to_string())
+                            AstLiteralNode::StringLiteral("abc ".to_string()),
                         )),
                         field: Box::new(AstNode::Identifier(
                             Token::Ident(Position::new(1, 1), "concat".to_string()),
-                            None
+                            None,
                         )),
-                        is_opt_safe: false
-                    }
+                        is_opt_safe: false,
+                    },
                 )),
                 args: vec![
                     (None, AstNode::Binary(
@@ -1424,14 +1425,14 @@ mod tests {
                             left: Box::new(int_literal!((1, 8), 1)),
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((1, 12), 2)),
-                        }
+                        },
                     )),
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 14), " ghi".to_string()),
-                        AstLiteralNode::StringLiteral(" ghi".to_string())
+                        AstLiteralNode::StringLiteral(" ghi".to_string()),
                     ))
-                ]
-            }
+                ],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -2976,7 +2977,13 @@ mod tests {
             TypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
-                fields: vec![(ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None)],
+                fields: vec![
+                    TypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
+                        default_value: None,
+                    },
+                ],
                 methods: vec![],
             },
         );
@@ -2991,8 +2998,16 @@ mod tests {
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
-                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None),
-                    (ident_token!((1, 29), "age"), TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int"), type_args: None }, None),
+                    TypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
+                        default_value: None,
+                    },
+                    TypeDeclField {
+                        ident: ident_token!((1, 29), "age"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int"), type_args: None },
+                        default_value: None,
+                    },
                 ],
                 methods: vec![],
             },
@@ -3007,8 +3022,16 @@ mod tests {
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
-                    (ident_token!((1, 15), "name"), TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None }, None),
-                    (ident_token!((1, 29), "isHappy"), TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None }, Some(bool_literal!((1, 45), true)))
+                    TypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
+                        default_value: None,
+                    },
+                    TypeDeclField {
+                        ident: ident_token!((1, 29), "isHappy"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None },
+                        default_value: Some(bool_literal!((1, 45), true)),
+                    }
                 ],
                 methods: vec![],
             },

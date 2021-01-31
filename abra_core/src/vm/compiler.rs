@@ -1173,7 +1173,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
         let type_value = Value::Type(TypeValue {
             name: type_name.clone(),
-            fields: fields.iter().map(|f| Token::get_ident_name(&f.0)).collect(),
+            fields: fields.iter().map(|f| Token::get_ident_name(&f.ident)).collect(),
             constructor: None,
             methods: compiled_methods,
             static_fields: compiled_static_fields,

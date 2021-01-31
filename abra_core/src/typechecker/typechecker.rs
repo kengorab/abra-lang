@@ -2,10 +2,10 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString, NativeDate};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -1632,15 +1632,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
-            .map(|(field_name, field_type, default_value)| {
-                let field_type = self.type_from_type_ident(&field_type)?;
-                let field_name_str = Token::get_ident_name(&field_name);
+            .map(|TypeDeclField { ident, type_ident, default_value }| {
+                let field_type = self.type_from_type_ident(&type_ident)?;
+                let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
-                    return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: field_name, orig_is_field: true, orig_is_enum_variant: false });
+                    return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident, orig_is_field: true, orig_is_enum_variant: false });
                 } else {
-                    field_names.insert(field_name_str.clone(), field_name.clone());
+                    field_names.insert(field_name_str.clone(), ident.clone());
                 }
-                Ok((field_name, field_type, default_value))
+                Ok((ident, field_type, default_value))
             })
             .collect::<Result<Vec<(Token, Type, Option<AstNode>)>, _>>();
         let fields = fields?;
@@ -1671,8 +1671,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Some(default_value)
                 }
             } else { None };
-            Ok((tok, field_type, default_value))
-        }).collect::<Result<Vec<(Token, Type, Option<TypedAstNode>)>, _>>();
+            let field = TypedTypeDeclField {
+                ident: tok,
+                typ: field_type,
+                default_value,
+            };
+            Ok(field)
+        }).collect::<Result<Vec<_>, _>>();
         let typed_fields = typed_fields?;
 
         // Record TypeDeclNode for type, registering the freshly-typed fields. Later on, we'll mutate
@@ -2383,11 +2388,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     let default_field_values = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
                         (_, Some(TypedAstNode::TypeDecl(_, TypedTypeDeclNode { fields, .. }))) => {
                             fields.iter()
-                                .map(|(name, _, default_value)| {
-                                    let name = Token::get_ident_name(name).clone();
-                                    (name, default_value.clone())
+                                .map(|TypedTypeDeclField { ident, default_value, .. }| {
+                                    let name = Token::get_ident_name(ident).clone();
+                                    (name, default_value)
                                 })
-                                .filter_map(|(name, default_value)| default_value.map(|v| (name, v)))
+                                .filter_map(|(name, default_value)| default_value.as_ref().map(|v| (name, v.clone())))
                                 .collect::<HashMap<String, TypedAstNode>>()
                         }
                         (typ, None) => {
@@ -4552,7 +4557,11 @@ mod tests {
             TypedTypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((1, 15), "name"), Type::String, None)
+                    TypedTypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        typ: Type::String,
+                        default_value: None
+                    }
                 ],
                 static_fields: vec![],
                 methods: vec![],
@@ -4576,8 +4585,16 @@ mod tests {
             TypedTypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((1, 15), "name"), Type::String, None),
-                    (ident_token!((1, 29), "age"), Type::Int, Some(int_literal!((1, 40), 0)))
+                    TypedTypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        typ: Type::String,
+                        default_value: None
+                    },
+                    TypedTypeDeclField {
+                        ident: ident_token!((1, 29), "age"),
+                        typ: Type::Int,
+                        default_value: Some(int_literal!((1, 40), 0))
+                    }
                 ],
                 static_fields: vec![],
                 methods: vec![],
@@ -4695,7 +4712,11 @@ mod tests {
             TypedTypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((2, 1), "name"), Type::String, None),
+                    TypedTypeDeclField {
+                        ident: ident_token!((2, 1), "name"),
+                        typ: Type::String,
+                        default_value: None
+                    },
                 ],
                 static_fields: vec![],
                 methods: vec![
@@ -4814,7 +4835,11 @@ mod tests {
             TypedTypeDeclNode {
                 name: ident_token!((1, 6), "Person"),
                 fields: vec![
-                    (ident_token!((2, 1), "name"), Type::String, None),
+                    TypedTypeDeclField {
+                        ident: ident_token!((2, 1), "name"),
+                        typ: Type::String,
+                        default_value: None
+                    },
                 ],
                 static_fields: vec![
                     (
