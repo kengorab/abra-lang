@@ -69,6 +69,7 @@ pub enum TypecheckerError {
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
+    InvalidAccess { token: Token, is_field: bool, is_get: bool },
 }
 
 impl TypecheckerError {
@@ -128,6 +129,7 @@ impl TypecheckerError {
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
             TypecheckerError::InvalidProtocolMethod { token, .. } => token,
             TypecheckerError::VarargMismatch { token, .. } => token,
+            TypecheckerError::InvalidAccess { token, .. } => token,
         }
     }
 }
@@ -730,6 +732,18 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line, type_repr(typ)
                 )
             }
+            TypecheckerError::InvalidAccess { token, is_field, is_get, .. } => {
+                let target = Token::get_ident_name(token);
+                let target_kind = if *is_field { "field" } else { "method" };
+                let access_kind = if *is_get { "read" } else { "write" };
+                let access_str = if *is_get { "get" } else { "set" };
+                format!(
+                    "Invalid access for {} '{}': ({}:{})\n{}\n\
+                    Cannot {} field '{}' since it is not {}table",
+                    target_kind, target, pos.line, pos.col, cursor_line,
+                    access_kind, target, access_str
+                )
+            }
         }
     }
 }
@@ -1175,7 +1189,7 @@ Type Int[] does not have a member with name 'size'"
                 name: "Person".to_string(),
                 type_args: vec![],
                 fields: vec![
-                    StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                    StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: true }
                 ],
                 static_fields: vec![],
                 methods: vec![],

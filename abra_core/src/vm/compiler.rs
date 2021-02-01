@@ -1702,7 +1702,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
                         TypedAstNode::Accessor(tok, node) => {
                             let prev_cond_binding_name = format!("${}", layer_number - 1);
                             let target = Box::new(make_dummy_ident_node(&token, prev_cond_binding_name));
-                            TypedAstNode::Accessor(tok, TypedAccessorNode { typ: node.typ, target, field_name: node.field_name, field_idx: node.field_idx, is_method: node.is_method, is_opt_safe: false })
+                            TypedAstNode::Accessor(tok, TypedAccessorNode { target, is_opt_safe: false, ..node })
                         }
                         _ => unimplemented!()
                     }
@@ -1730,7 +1730,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
 
             self.visit(if_node)?;
         } else {
-            let TypedAccessorNode { target, field_name, field_idx, is_method, .. } = node;
+            let TypedAccessorNode { target, field_ident, field_idx, is_method, .. } = node;
+            let field_name = Token::get_ident_name(&field_ident);
             self.metadata.field_gets.push(field_name);
 
             self.visit(*target)?;

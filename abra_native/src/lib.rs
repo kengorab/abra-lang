@@ -36,6 +36,7 @@ struct FieldSpec {
     name: String,
     typ: TypeRepr,
     has_default: bool,
+    readonly: bool,
     getter: Option<GetterSpec>,
     setter: Option<SetterSpec>,
 }
@@ -143,6 +144,7 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
         name: field_attr.get("name").unwrap_or(&name).clone(),
         typ,
         has_default: field_attr.get("has_default").map_or(false, |f| f == "true"),
+        readonly: field_attr.get("readonly").map_or(false, |f| f == "true"),
         getter: None, // <
         setter: None, // < For now, will be set later when parsing methods
     }))
@@ -344,20 +346,16 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     }
 
-    for FieldSpec { name, getter, setter, .. } in &field_specs {
-        if getter.is_none() {
-            let msg = format!(
-                "Missing required getter function binding for field {}.\n\
-                Please add the #[abra_getter(field = \"{}\")] attribute to a function of type (&self) -> Value",
-                name, name
-            );
-            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        } else if setter.is_none() {
+    for FieldSpec { name, readonly, setter, .. } in &field_specs {
+        if !*readonly && setter.is_none() {
             let msg = format!(
                 "Missing required setter function binding for field {}.\n\
                 Please add the #[abra_setter(field = \"{}\")] attribute to a function of type (&self, Value) -> ()",
                 name, name
             );
+            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
+        } else if *readonly && setter.is_some() {
+            let msg = format!("Invalid setter function binding for readonly field {}", name);
             return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
         }
     }
@@ -760,14 +758,15 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     });
 
     let fields = type_spec.fields.iter().map(|field| {
-        let FieldSpec { name, typ, has_default, .. } = field;
+        let FieldSpec { name, typ, has_default, readonly, .. } = field;
         let typ = gen_rust_type_path(typ, type_name);
 
         quote! {
             crate::typechecker::types::StructTypeField {
                 name: #name.to_string(),
                 typ: #typ,
-                has_default_value: #has_default
+                has_default_value: #has_default,
+                readonly: #readonly,
             }
         }
     });
@@ -1156,11 +1155,11 @@ fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_mac
 }
 
 fn gen_get_field_values_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
-    let code = type_spec.fields.iter().map(|field| {
-        let method_name = &field.getter.as_ref().unwrap().native_method_name;
-        let method_name_ident = format_ident!("{}", method_name);
-
-        quote! { self.#method_name_ident() }
+    let code = type_spec.fields.iter().filter_map(|field| {
+        field.getter.as_ref().map(|getter| {
+            let method_name_ident = format_ident!("{}", getter.native_method_name);
+            quote! { self.#method_name_ident() }
+        })
     });
 
     quote! {
@@ -1189,11 +1188,11 @@ fn gen_get_field_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenSt
 }
 
 fn gen_set_field_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
-    let code = type_spec.fields.iter().enumerate().map(|(idx, field)| {
-        let method_name = &field.setter.as_ref().unwrap().native_method_name;
-        let method_name_ident = format_ident!("{}", method_name);
-
-        quote! { #idx => self.#method_name_ident(value) }
+    let code = type_spec.fields.iter().enumerate().filter_map(|(idx, field)| {
+        field.setter.as_ref().map(|setter| {
+            let method_name_ident = format_ident!("{}", setter.native_method_name);
+            quote! { #idx => self.#method_name_ident(value) }
+        })
     });
 
     quote! {
@@ -1230,6 +1229,10 @@ fn parse_attr(attr: &syn::Attribute) -> HashMap<String, String> {
                             _ => unreachable!()
                         };
                         map.insert(arg, val);
+                    }
+                    NestedMeta::Meta(syn::Meta::Path(path)) => {
+                        let bool_arg = path.segments[0].ident.to_string();
+                        map.insert(bool_arg, "true".to_string());
                     }
                     _ => {}
                 }

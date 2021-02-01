@@ -288,6 +288,7 @@ impl<'a> Lexer<'a> {
                     let has_newline = saw_newline || self.peek().is_none();
                     Token::Return(pos, has_newline)
                 }
+                "readonly" => Token::Readonly(pos),
                 "None" => Token::None(pos),
                 s @ _ => Token::Ident(pos, s.to_string())
             };
@@ -776,7 +777,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_keywords() {
-        let input = "true false val var if else func while break for in type enum self match";
+        let input = "true false val var if else func while break for in type enum self match readonly";
         let tokens = tokenize(&input.to_string()).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
@@ -794,6 +795,7 @@ mod tests {
             Token::Enum(Position::new(1, 57)),
             Token::Self_(Position::new(1, 62)),
             Token::Match(Position::new(1, 67)),
+            Token::Readonly(Position::new(1, 73)),
         ];
         assert_eq!(expected, tokens);
     }

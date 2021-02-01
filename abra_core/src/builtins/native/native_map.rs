@@ -11,7 +11,7 @@ use crate::builtins::native::common::invoke_fn;
 pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 
-    #[abra_field(name = "size", field_type = "Int")]
+    #[abra_field(name = "size", field_type = "Int", readonly)]
     size: usize,
 }
 
@@ -33,11 +33,6 @@ impl NativeMap {
     #[abra_getter(field = "size")]
     fn get_size(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "size")]
-    fn set_size(&mut self, value: Value) {
-        self.size = *value.as_int() as usize;
     }
 
     #[abra_static_method(signature = "fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2>")]
@@ -155,7 +150,7 @@ impl Hash for NativeMap {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]
@@ -167,6 +162,10 @@ mod test {
         let result = interpret("{ a: 123, b: true }.size");
         let expected = Value::Int(2);
         assert_eq!(Some(expected), result);
+
+        // Setting size should produce an error
+        let is_err = interpret_get_result("{ a: 4 }.size = 8").is_err();
+        assert!(is_err);
     }
 
     #[test]

@@ -15,7 +15,7 @@ pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,
 
-    #[abra_field(name = "length", field_type = "Int")]
+    #[abra_field(name = "length", field_type = "Int", readonly)]
     length: usize,
 }
 
@@ -29,11 +29,6 @@ impl NativeArray {
     #[abra_getter(field = "length")]
     fn get_length(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "length")]
-    fn set_length(&mut self, value: Value) {
-        self.length = *value.as_int() as usize;
     }
 
     #[abra_static_method(signature = "fill<T1>(amount: Int, value: T1): T1[]")]
@@ -446,7 +441,7 @@ impl NativeArray {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]
@@ -454,6 +449,10 @@ mod test {
         let result = interpret("[1, 2, 3, 4, 5].length");
         let expected = Value::Int(5);
         assert_eq!(Some(expected), result);
+
+        // Setting length should produce an error
+        let is_err = interpret_get_result("[1, 2, 3].length = 8").is_err();
+        assert!(is_err);
     }
 
     #[test]

@@ -4,7 +4,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
 use crate::vm::prelude::PRELUDE;
-use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
@@ -1632,7 +1632,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
-            .map(|TypeDeclField { ident, type_ident, default_value, .. }| {
+            .map(|TypeDeclField { ident, type_ident, default_value, readonly }| {
                 let field_type = self.type_from_type_ident(&type_ident)?;
                 let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
@@ -1640,18 +1640,21 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 } else {
                     field_names.insert(field_name_str.clone(), ident.clone());
                 }
-                Ok((ident, field_type, default_value))
+
+                let is_settable = readonly.is_some();
+                Ok((ident, field_type, default_value, is_settable))
             })
-            .collect::<Result<Vec<(Token, Type, Option<AstNode>)>, _>>();
+            .collect::<Result<Vec<_>, _>>();
         let fields = fields?;
 
         let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
         typedef.fields = fields.iter()
-            .map(|(name, typ, default_value_node)| {
+            .map(|(name, typ, default_value_node, settable)| {
                 StructTypeField {
                     name: Token::get_ident_name(name),
                     typ: typ.clone(),
                     has_default_value: default_value_node.is_some(),
+                    readonly: *settable,
                 }
             })
             .collect();
@@ -1667,7 +1670,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // --------------------------------------------------------------------------------- \\
         // ------------------------ Begin Field/Method Typechecking ------------------------ \\
 
-        let typed_fields = fields.into_iter().map(|(tok, field_type, default_value_node)| {
+        let typed_fields = fields.into_iter().map(|(tok, field_type, default_value_node, _)| {
             let default_value = if let Some(default_value) = default_value_node {
                 let mut default_value = self.visit(default_value)?;
                 let default_value_type = default_value.get_type();
@@ -1958,9 +1961,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             }
             AstNode::Accessor(tok, node) => {
                 let typed_target = self.visit_accessor(tok.clone(), node)?;
-                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, .. }) = &typed_target {
+                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, is_readonly, field_ident, .. }) = &typed_target {
                     if *is_method {
                         return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
+                    } else if *is_readonly {
+                        return Err(TypecheckerError::InvalidAccess { token: field_ident.clone(), is_field: !*is_method, is_get: false });
                     }
                 } else { unreachable!() }
                 let mut typed_expr = self.visit(*expr)?;
@@ -2608,18 +2613,22 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             target_type: &Type,
             field_name: &String,
             token: &Token,
-        ) -> Result<(Option<(/*idx:*/usize, /*typ:*/Type, /*is_method:*/bool)>, HashMap<String, Type>), TypecheckerError> {
+        ) -> Result<(Option<FieldSpec>, HashMap<String, Type>), TypecheckerError> {
             match zelf.resolve_ref_type(&target_type) {
                 Type::Struct(StructType { fields, methods, type_args, .. }) => {
                     let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
 
                     let field_data = fields.iter().enumerate()
-                        .find_map(|(idx, StructTypeField { name, typ, .. })| {
-                            if field_name == name { Some((idx, typ.clone(), false)) } else { None }
+                        .find_map(|(idx, StructTypeField { name, typ, readonly, .. })| {
+                            if field_name == name {
+                                Some(FieldSpec { idx, typ: typ.clone(), is_method: false, readonly: *readonly })
+                            } else { None }
                         })
                         .or_else(|| {
                             methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                                if field_name == name { Some((idx, typ.clone(), true)) } else { None }
+                                if field_name == name {
+                                    Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true })
+                                } else { None }
                             })
                         });
                     Ok((field_data, generics))
@@ -2649,7 +2658,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()
                             .find(|(_, (name, _, _))| field_name == name)
-                            .map(|(idx, (_, typ, _))| (idx, typ.clone(), true)); // All static fields are methods at the moment
+                            .map(|(idx, (_, typ, _))| FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true }); // All static fields are methods at the moment
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Enum(enum_type) => {
@@ -2658,11 +2667,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             .find(|(_, EnumVariantType { name, .. })| field_name == name)
                             .map(|(idx, variant_type)| {
                                 let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
-                                (idx, Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false), false)
+                                let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
+                                FieldSpec { idx, typ, is_method: false, readonly: true }
                             })
                             .or_else(|| {
                                 static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
-                                    if field_name == name { Some((idx, typ.clone(), true)) } else { None } // All static fields are methods at the moment
+                                    if field_name == name {
+                                        Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true }) // All static fields are methods at the moment
+                                    } else { None }
                                 })
                             });
                         Ok((field_data, HashMap::new()))
@@ -2679,7 +2691,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
                 Type::Enum(enum_type) => {
                     let field_data = enum_type.methods.iter().enumerate().find_map(|(idx, (name, typ))| {
-                        if field_name == name { Some((idx, typ.clone(), true)) } else { None }
+                        if field_name == name {
+                            Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true })
+                        } else { None }
                     });
                     Ok((field_data, HashMap::new()))
                 }
@@ -2690,7 +2704,9 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             if is_constructed {
                                 arg_types.iter().enumerate()
                                     .find_map(|(idx, (arg_name, arg_type, _))| {
-                                        if field_name == arg_name { Some((idx, arg_type.clone(), false)) } else { None }
+                                        if field_name == arg_name {
+                                            Some(FieldSpec { idx, typ: arg_type.clone(), is_method: false, readonly: false })
+                                        } else { None }
                                     })
                             } else {
                                 return Err(TypecheckerError::InvalidUninitializedEnumVariant { token: token.clone() });
@@ -2735,8 +2751,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
 
         let (field_data, mut generics) = get_field_data(&self, &target_type, &field_name, &token)?;
-        let (field_idx, mut typ, is_method) = match field_data {
-            Some((field_idx, typ, is_method)) => {
+        let (field_idx, mut typ, is_method, is_readonly) = match field_data {
+            Some(FieldSpec { idx, typ, is_method, readonly }) => {
                 if let Some(ident_type_args) = &ident_type_args {
                     if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
                         if ident_type_args.len() != fn_type_args.len() {
@@ -2753,7 +2769,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }
                 }
-                (field_idx, Type::substitute_generics(&typ, &generics), is_method)
+                (idx, Type::substitute_generics(&typ, &generics), is_method, readonly)
             }
             None => return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() })
         };
@@ -2767,7 +2783,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             } else { unreachable!() }
         } else { (token, is_opt_safe) };
 
-        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_name, field_idx, is_opt_safe, is_method }))
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_ident, field_idx, is_opt_safe, is_method, is_readonly }))
     }
 
     fn visit_lambda(
@@ -4582,7 +4598,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }],
+            fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -4616,8 +4632,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -4644,17 +4660,41 @@ mod tests {
             name: "Node".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false },
+                StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
                 StructTypeField {
                     name: "next".to_string(),
                     typ: Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
                     has_default_value: true,
+                    readonly: false,
                 },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Node"]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_type_decl_readonly_fields() -> TestResult {
+        let (typechecker, _) = typecheck_get_typechecker("\
+          type Foo {\n\
+            a: Int\n\
+            b: Int readonly \n\
+          }\
+        ");
+        let expected_type = Type::Struct(StructType {
+            name: "Foo".to_string(),
+            type_args: vec![],
+            fields: vec![
+                StructTypeField { name: "a".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
+                StructTypeField { name: "b".to_string(), typ: Type::Int, has_default_value: false, readonly: true },
+            ],
+            static_fields: vec![],
+            methods: vec![to_string_method_type()],
+        });
+        assert_eq!(expected_type, typechecker.referencable_types["Foo"]);
 
         Ok(())
     }
@@ -4753,10 +4793,11 @@ mod tests {
                                                     is_mutable: false,
                                                 },
                                             )),
-                                            field_name: "name".to_string(),
+                                            field_ident: ident_token!((3, 35), "name"),
                                             field_idx: 0,
                                             is_opt_safe: false,
                                             is_method: false,
+                                            is_readonly: false,
                                         },
                                     )
                                 ],
@@ -4795,10 +4836,11 @@ mod tests {
                                                                 is_mutable: false,
                                                             },
                                                         )),
-                                                        field_name: "getName".to_string(),
+                                                        field_ident: ident_token!((4, 36), "getName"),
                                                         field_idx: 1,
                                                         is_opt_safe: false,
                                                         is_method: true,
+                                                        is_readonly: true,
                                                     },
                                                 )
                                             ),
@@ -4818,7 +4860,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![
@@ -4877,7 +4919,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true),
@@ -4939,7 +4981,7 @@ mod tests {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![
-                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false }
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -5161,7 +5203,7 @@ mod tests {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![
-                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false }
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -5312,9 +5354,10 @@ mod tests {
                                             0
                                         )),
                                         field_idx: 0,
-                                        field_name: "Red".to_string(),
+                                        field_ident: ident_token!((1, 46), "Red"),
                                         is_opt_safe: false,
                                         is_method: false,
+                                        is_readonly: true,
                                     },
                                 ))
                             ),
@@ -5643,9 +5686,10 @@ mod tests {
                         typ: Type::String,
                         target: Box::new(identifier!((3, 1), "a", Type::Reference("Person".to_string(), vec![]), 0)),
                         field_idx: 0,
-                        field_name: "name".to_string(),
+                        field_ident: ident_token!((3, 3), "name"),
                         is_opt_safe: false,
                         is_method: false,
+                        is_readonly: false,
                     },
                 )),
                 expr: Box::new(string_literal!((3, 10), "qwer")),
@@ -5656,12 +5700,21 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+
+        // Test setting inner property of readonly field
+        let res = typecheck("\
+          type Name { first: String }\n\
+          type Person { name: Name readonly }\n\
+          val p = Person(name: Name(first: \"Ken\"))\n\
+          p.name.first = \"Meg\"\
+        ").is_ok();
+        assert!(res);
 
         Ok(())
     }
@@ -5738,6 +5791,20 @@ mod tests {
             token: Token::Assign(Position::new(6, 7)),
             typ: None,
             reason: InvalidAssignmentTargetReason::MethodTarget,
+        };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          type Person {\n\
+            name: String readonly\n\
+          }\n\
+          val a = Person(name: \"abc\")\n\
+          a.name = \"hello\"\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidAccess {
+            token: ident_token!((5, 3), "name"),
+            is_field: true,
+            is_get: false,
         };
         assert_eq!(expected, err);
     }
@@ -6399,7 +6466,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6429,8 +6496,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6920,10 +6987,11 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::String,
                 target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
-                field_name: "name".to_string(),
+                field_ident: ident_token!((3, 3), "name"),
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -6931,7 +6999,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6949,10 +7017,11 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::Int,
                 target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
-                field_name: "age".to_string(),
+                field_ident: ident_token!((3, 3), "age"),
                 field_idx: 1,
                 is_opt_safe: false,
                 is_method: false,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -6960,8 +7029,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6985,10 +7054,11 @@ mod tests {
                         ],
                     },
                 )),
-                field_name: "length".to_string(),
+                field_ident: ident_token!((1, 11), "length"),
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -7000,13 +7070,22 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::Int,
                 target: Box::new(string_literal!((1, 1), "hello")),
-                field_name: "length".to_string(),
+                field_ident: ident_token!((1, 9), "length"),
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[0]);
+
+        // Test getting readonly field
+        let res = typecheck("\
+          type Person { name: String = \"Jim\" readonly }\n\
+          val p = Person(name: \"Ken\")\n\
+          p.name\
+        ").is_ok();
+        assert!(res);
 
         Ok(())
     }
@@ -7023,10 +7102,11 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
                 target: Box::new(identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)),
-                field_name: "getName".to_string(),
+                field_ident: ident_token!((2, 8), "getName"),
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: true,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[1]);
@@ -7058,16 +7138,18 @@ mod tests {
                     TypedAccessorNode {
                         typ: Type::Option(Box::new(Type::String)),
                         target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
-                        field_name: "name".to_string(),
+                        field_ident: ident_token!((3, 3), "name"),
                         field_idx: 0,
                         is_opt_safe: false,
                         is_method: false,
+                        is_readonly: false,
                     },
                 )),
-                field_name: "length".to_string(),
+                field_ident: ident_token!((3, 9), "length"),
                 field_idx: 0,
                 is_opt_safe: true,
                 is_method: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7075,7 +7157,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true }
+                StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7093,10 +7175,11 @@ mod tests {
             TypedAccessorNode {
                 typ: Type::String,
                 target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
-                field_name: "name".to_string(),
+                field_ident: ident_token!((3, 4), "name"),
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7104,7 +7187,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
