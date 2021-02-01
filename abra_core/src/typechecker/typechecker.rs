@@ -2691,7 +2691,6 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             .find(|(_, EnumVariantType { name, .. })| field_name == name)
                             .map(|(idx, variant_type)| {
                                 let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
-                                // (idx, Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false), false)
                                 let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
                                 FieldSpec { idx, typ, is_method: false, gettable: true, settable: false }
                             })

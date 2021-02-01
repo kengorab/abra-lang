@@ -295,7 +295,6 @@ pub struct TypedForLoopNode {
 pub struct TypedAccessorNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    // pub field_name: String,
     // Must be Token::Ident
     pub field_ident: Token,
     pub field_idx: usize,
