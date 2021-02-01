@@ -763,7 +763,13 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
         let FieldSpec { name, typ, has_default, .. } = field;
         let typ = gen_rust_type_path(typ, type_name);
 
-        quote! { (#name.to_string(), #typ, #has_default) }
+        quote! {
+            crate::typechecker::types::StructTypeField {
+                name: #name.to_string(),
+                typ: #typ,
+                has_default_value: #has_default
+            }
+        }
     });
 
     let all_methods = type_spec.methods.iter().chain(type_spec.pseudo_methods.iter());

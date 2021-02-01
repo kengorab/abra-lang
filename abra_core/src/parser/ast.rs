@@ -195,7 +195,9 @@ pub struct TypeDeclNode {
 pub struct TypeDeclField {
     pub ident: Token,
     pub type_ident: TypeIdentifier,
-    pub default_value: Option<AstNode>
+    pub default_value: Option<AstNode>,
+    // Must be Token::Idents
+    pub specs: Vec<Token>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -267,7 +269,7 @@ pub struct AccessorNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MatchNode {
     pub target: Box<AstNode>,
-    pub branches: Vec<(MatchCase, Vec<AstNode>)>
+    pub branches: Vec<(MatchCase, Vec<AstNode>)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -282,7 +284,7 @@ pub struct MatchCase {
 pub enum MatchCaseType {
     Ident(Token),
     Compound(Vec<Token>),
-    Wildcard(Token)
+    Wildcard(Token),
 }
 
 #[derive(Clone, Debug, PartialEq)]

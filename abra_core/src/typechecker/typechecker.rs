@@ -4,7 +4,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
 use crate::vm::prelude::PRELUDE;
-use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use itertools::Itertools;
@@ -1632,7 +1632,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
-            .map(|TypeDeclField { ident, type_ident, default_value }| {
+            .map(|TypeDeclField { ident, type_ident, default_value, .. }| {
                 let field_type = self.type_from_type_ident(&type_ident)?;
                 let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
@@ -1647,7 +1647,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
         typedef.fields = fields.iter()
-            .map(|(name, typ, default_value_node)| (Token::get_ident_name(name).clone(), typ.clone(), default_value_node.is_some()))
+            .map(|(name, typ, default_value_node)| {
+                StructTypeField {
+                    name: Token::get_ident_name(name),
+                    typ: typ.clone(),
+                    has_default_value: default_value_node.is_some(),
+                }
+            })
             .collect();
 
         let (static_methods, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
@@ -2171,7 +2177,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             zelf: &mut Typechecker,
             invocation_target: Token,
             args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
-            arg_types: &Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
+            expected_arg_types: &Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
             generics: &mut HashMap<String, Type>,
         ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerError> {
             // Check for duplicate named parameters
@@ -2196,7 +2202,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     (arg_name.clone(), (arg_name_tok, node))
                 })
                 .collect::<HashMap<String, (Token, AstNode)>>();
-            let expected_args = arg_types.iter()
+            let expected_args = expected_arg_types.iter()
                 .map(|(arg_name, arg_type, is_optional)| (arg_name, (arg_type, is_optional)))
                 .collect::<HashMap<&String, (&Type, &bool)>>();
 
@@ -2214,7 +2220,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             // Ensure all expected args passed
             let mut missing_params = Vec::new();
             let mut args = args;
-            for (arg_name, expected_arg_type, is_optional) in arg_types {
+            for (arg_name, expected_arg_type, is_optional) in expected_arg_types {
                 match args.remove(arg_name) {
                     None => {
                         if !is_optional {
@@ -2383,7 +2389,10 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         if type_arg_type.has_unbound_generic() { continue; }
                         generics.insert(type_arg_name.clone(), type_arg_type.clone());
                     }
-                    let typed_args = verify_named_args_invocation(self, target_token, args, expected_fields, &mut generics)?;
+                    let expected_arg_types = expected_fields.into_iter()
+                        .map(|f| (f.name.clone(), f.typ.clone(), f.has_default_value))
+                        .collect();
+                    let typed_args = verify_named_args_invocation(self, target_token, args, &expected_arg_types, &mut generics)?;
 
                     let default_field_values = match self.get_type(&name).expect(&format!("Type {} should exist", name)) {
                         (_, Some(TypedAstNode::TypeDecl(_, TypedTypeDeclNode { fields, .. }))) => {
@@ -2400,8 +2409,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             // values, since they will be determined in native code.
                             if let Type::Struct(st) = self.resolve_ref_type(&typ) {
                                 st.fields.into_iter()
-                                    .filter_map(|(name, _, has_default)| {
-                                        if has_default {
+                                    .filter_map(|StructTypeField { name, has_default_value, .. }| {
+                                        if has_default_value {
                                             Some((name, TypedAstNode::_Nil(Token::None(Position::new(0, 0)))))
                                         } else { None }
                                     })
@@ -2605,7 +2614,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
 
                     let field_data = fields.iter().enumerate()
-                        .find_map(|(idx, (name, typ, _))| {
+                        .find_map(|(idx, StructTypeField { name, typ, .. })| {
                             if field_name == name { Some((idx, typ.clone(), false)) } else { None }
                         })
                         .or_else(|| {
@@ -4560,7 +4569,7 @@ mod tests {
                     TypedTypeDeclField {
                         ident: ident_token!((1, 15), "name"),
                         typ: Type::String,
-                        default_value: None
+                        default_value: None,
                     }
                 ],
                 static_fields: vec![],
@@ -4573,7 +4582,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::String, false)],
+            fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -4588,12 +4597,12 @@ mod tests {
                     TypedTypeDeclField {
                         ident: ident_token!((1, 15), "name"),
                         typ: Type::String,
-                        default_value: None
+                        default_value: None,
                     },
                     TypedTypeDeclField {
                         ident: ident_token!((1, 29), "age"),
                         typ: Type::Int,
-                        default_value: Some(int_literal!((1, 40), 0))
+                        default_value: Some(int_literal!((1, 40), 0)),
                     }
                 ],
                 static_fields: vec![],
@@ -4607,8 +4616,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                ("name".to_string(), Type::String, false),
-                ("age".to_string(), Type::Int, true),
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -4635,12 +4644,12 @@ mod tests {
             name: "Node".to_string(),
             type_args: vec![],
             fields: vec![
-                ("value".to_string(), Type::Int, false),
-                (
-                    "next".to_string(),
-                    Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
-                    true
-                ),
+                StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false },
+                StructTypeField {
+                    name: "next".to_string(),
+                    typ: Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
+                    has_default_value: true,
+                },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -4715,7 +4724,7 @@ mod tests {
                     TypedTypeDeclField {
                         ident: ident_token!((2, 1), "name"),
                         typ: Type::String,
-                        default_value: None
+                        default_value: None,
                     },
                 ],
                 static_fields: vec![],
@@ -4809,7 +4818,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                ("name".to_string(), Type::String, false)
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
             ],
             static_fields: vec![],
             methods: vec![
@@ -4838,7 +4847,7 @@ mod tests {
                     TypedTypeDeclField {
                         ident: ident_token!((2, 1), "name"),
                         typ: Type::String,
-                        default_value: None
+                        default_value: None,
                     },
                 ],
                 static_fields: vec![
@@ -4868,7 +4877,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                ("name".to_string(), Type::String, false)
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
             ],
             static_fields: vec![
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true),
@@ -4929,7 +4938,9 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
-            fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
+            fields: vec![
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -5149,7 +5160,9 @@ mod tests {
         let list_struct_type = Type::Struct(StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
-            fields: vec![("items".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))), false)],
+            fields: vec![
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -5642,7 +5655,9 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::String, false)],
+            fields: vec![
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -6383,7 +6398,9 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::String, false)],
+            fields: vec![
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -6412,8 +6429,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                ("name".to_string(), Type::String, false),
-                ("age".to_string(), Type::Int, true),
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6913,7 +6930,9 @@ mod tests {
         let expected_typ = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::String, false)],
+            fields: vec![
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -6941,8 +6960,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                ("name".to_string(), Type::String, false),
-                ("age".to_string(), Type::Int, true),
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7055,7 +7074,9 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::Option(Box::new(Type::String)), true)],
+            fields: vec![
+                StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -7082,7 +7103,9 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![("name".to_string(), Type::String, true)],
+            fields: vec![
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true }
+            ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });

@@ -738,7 +738,7 @@ impl DisplayError for TypecheckerError {
 mod tests {
     use super::TypecheckerError;
     use crate::lexer::tokens::{Token, Position};
-    use crate::typechecker::types::{Type, StructType};
+    use crate::typechecker::types::{Type, StructType, StructTypeField};
     use crate::common::display_error::DisplayError;
     use crate::parser::ast::{BinaryOp, AstNode, AstLiteralNode, IndexingMode};
     use crate::typechecker::typechecker_error::InvalidAssignmentTargetReason;
@@ -1174,7 +1174,9 @@ Type Int[] does not have a member with name 'size'"
             target_type: Type::Struct(StructType {
                 name: "Person".to_string(),
                 type_args: vec![],
-                fields: vec![("name".to_string(), Type::String, false)],
+                fields: vec![
+                    StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                ],
                 static_fields: vec![],
                 methods: vec![],
             }),

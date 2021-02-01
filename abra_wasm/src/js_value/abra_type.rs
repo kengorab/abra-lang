@@ -1,4 +1,4 @@
-use abra_core::typechecker::types::{Type, StructType, FnType, EnumType};
+use abra_core::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField};
 use serde::{Serialize, Serializer};
 
 pub struct JsType<'a>(pub &'a Type);
@@ -111,7 +111,7 @@ impl<'a> Serialize for JsType<'a> {
                     .collect();
                 obj.serialize_entry("typeArgs", &type_args)?;
                 let fields: Vec<(String, JsType)> = fields.iter()
-                    .map(|(name, typ, _)| (name.clone(), JsType(typ)))
+                    .map(|StructTypeField { name, typ, .. }| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("fields", &fields)?;
                 let static_fields: Vec<(String, JsType)> = static_fields.iter()

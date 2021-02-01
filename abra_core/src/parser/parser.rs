@@ -564,7 +564,7 @@ impl Parser {
                     self.expect_next()?; // Consume ','
                 }
                 Token::Ident(_, _) => {
-                    let field_name = self.expect_next()?;
+                    let ident = self.expect_next()?;
 
                     if is_enum {
                         let args = if let Token::LParen(_, _) = self.expect_peek()? {
@@ -572,7 +572,7 @@ impl Parser {
                             let args = self.parse_func_args(false)?;
                             Some(args)
                         } else { None };
-                        variants.push((field_name, args));
+                        variants.push((ident, args));
                     } else {
                         self.expect_next_token(TokenType::Colon)?;
                         let type_ident = self.parse_type_identifier(true)?;
@@ -581,7 +581,30 @@ impl Parser {
                             Some(self.parse_expr()?)
                         } else { None };
 
-                        let field = TypeDeclField { ident: field_name, type_ident, default_value };
+                        let field_specs = if let Token::LBrace(_) = self.expect_peek()? {
+                            self.expect_next()?; // Consume '{'
+
+                            let mut field_specs = Vec::new();
+                            loop {
+                                match self.expect_peek()? {
+                                    Token::RBrace(_) => {
+                                        self.expect_next()?; // Consume '}'
+                                        break;
+                                    }
+                                    Token::Ident(_, _) => {
+                                        let ident = self.expect_next()?;
+                                        field_specs.push(ident);
+                                    }
+                                    _ => {
+                                        let t = self.expect_next()?;
+                                        return Err(ParseError::UnexpectedToken(t));
+                                    }
+                                };
+                            }
+                            field_specs
+                        } else { vec![] };
+
+                        let field = TypeDeclField { ident, type_ident, default_value, specs: field_specs };
                         fields.push(field);
                     }
                 }
@@ -2982,6 +3005,7 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
+                        specs: vec![],
                     },
                 ],
                 methods: vec![],
@@ -3002,11 +3026,13 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
+                        specs: vec![],
                     },
                     TypeDeclField {
                         ident: ident_token!((1, 29), "age"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int"), type_args: None },
                         default_value: None,
+                        specs: vec![],
                     },
                 ],
                 methods: vec![],
@@ -3026,12 +3052,37 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
+                        specs: vec![],
                     },
                     TypeDeclField {
                         ident: ident_token!((1, 29), "isHappy"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None },
                         default_value: Some(bool_literal!((1, 45), true)),
+                        specs: vec![],
                     }
+                ],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Test with field specs
+        let ast = parse("type Person { name: String { get set } }")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 1)),
+            TypeDeclNode {
+                name: ident_token!((1, 6), "Person"),
+                type_args: vec![],
+                fields: vec![
+                    TypeDeclField {
+                        ident: ident_token!((1, 15), "name"),
+                        type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
+                        default_value: None,
+                        specs: vec![
+                            ident_token!((1, 30), "get"),
+                            ident_token!((1, 34), "set"),
+                        ],
+                    },
                 ],
                 methods: vec![],
             },
