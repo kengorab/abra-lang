@@ -11,7 +11,7 @@ use crate::builtins::native::common::invoke_fn;
 pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 
-    #[abra_field(name = "size", field_type = "Int")]
+    #[abra_field(name = "size", field_type = "Int", settable = false)]
     size: usize,
 }
 
@@ -33,11 +33,6 @@ impl NativeMap {
     #[abra_getter(field = "size")]
     fn get_size(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "size")]
-    fn set_size(&mut self, value: Value) {
-        self.size = *value.as_int() as usize;
     }
 
     #[abra_static_method(signature = "fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2>")]

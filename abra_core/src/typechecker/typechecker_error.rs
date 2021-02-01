@@ -23,10 +23,12 @@ pub enum TypecheckerError {
     MissingRequiredAssignment { ident: Token },
     DuplicateBinding { ident: Token, orig_ident: Token },
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
+    DuplicateFieldSpec { ident: Token, field_name: String },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
     UnboundGeneric(Token, String),
     UnknownIdentifier { ident: Token },
+    UnknownFieldSpec { ident: Token, field_name: String },
     InvalidAssignmentTarget { token: Token, typ: Option<Type>, reason: InvalidAssignmentTargetReason },
     AssignmentToImmutable { orig_ident: Token, token: Token },
     UnannotatedUninitialized { ident: Token, is_mutable: bool },
@@ -69,6 +71,7 @@ pub enum TypecheckerError {
     ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
+    InvalidAccess { token: Token, is_field: bool, is_get: bool },
 }
 
 impl TypecheckerError {
@@ -85,7 +88,9 @@ impl TypecheckerError {
             TypecheckerError::DuplicateTypeArgument { ident, .. } => ident,
             TypecheckerError::UnboundGeneric(token, _) => token,
             TypecheckerError::DuplicateField { ident, .. } => ident,
+            TypecheckerError::DuplicateFieldSpec { ident, .. } => ident,
             TypecheckerError::UnknownIdentifier { ident } => ident,
+            TypecheckerError::UnknownFieldSpec { ident, .. } => ident,
             TypecheckerError::InvalidAssignmentTarget { token, .. } => token,
             TypecheckerError::AssignmentToImmutable { token, .. } => token,
             TypecheckerError::UnannotatedUninitialized { ident, .. } => ident,
@@ -128,6 +133,7 @@ impl TypecheckerError {
             TypecheckerError::ReturnTypeMismatch { token, .. } => token,
             TypecheckerError::InvalidProtocolMethod { token, .. } => token,
             TypecheckerError::VarargMismatch { token, .. } => token,
+            TypecheckerError::InvalidAccess { token, .. } => token,
         }
     }
 }
@@ -302,6 +308,12 @@ impl DisplayError for TypecheckerError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
+            TypecheckerError::DuplicateFieldSpec { field_name, .. } => {
+                format!(
+                    "Duplicate attribute declared for field '{}': ({}:{})\n{}",
+                    field_name, pos.line, pos.col, cursor_line
+                )
+            }
             TypecheckerError::DuplicateType { ident, orig_ident } => { // orig_ident will be None if it's a builtin type
                 let ident = Token::get_ident_name(&ident);
                 let first_msg = format!("Duplicate type '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
@@ -350,6 +362,13 @@ impl DisplayError for TypecheckerError {
                         ident, pos.line, pos.col, cursor_line
                     )
                 }
+            }
+            TypecheckerError::UnknownFieldSpec { ident, field_name } => {
+                let attr = Token::get_ident_name(ident);
+                format!(
+                    "Unknown attribute '{}' declared for field '{}': ({}:{})\n{}",
+                    attr, field_name, pos.line, pos.col, cursor_line
+                )
             }
             TypecheckerError::InvalidAssignmentTarget { typ, reason, .. } => {
                 let msg = match reason {
@@ -728,6 +747,18 @@ impl DisplayError for TypecheckerError {
                     "Invalid type for vararg parameter: ({}:{})\n{}\n\
                     Vararg parameters must be an Array type, but got {}",
                     pos.line, pos.col, cursor_line, type_repr(typ)
+                )
+            }
+            TypecheckerError::InvalidAccess { token, is_field, is_get, .. } => {
+                let target = Token::get_ident_name(token);
+                let target_kind = if *is_field { "field" } else { "method" };
+                let access_kind = if *is_get { "read" } else { "write" };
+                let access_str = if *is_get { "get" } else { "set" };
+                format!(
+                    "Invalid access for {} '{}': ({}:{})\n{}\n\
+                    Cannot {} field '{}' since it is not {}table",
+                    target_kind, target, pos.line, pos.col, cursor_line,
+                    access_kind, target, access_str
                 )
             }
         }
@@ -1175,7 +1206,7 @@ Type Int[] does not have a member with name 'size'"
                 name: "Person".to_string(),
                 type_args: vec![],
                 fields: vec![
-                    StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false }
+                    StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
                 ],
                 static_fields: vec![],
                 methods: vec![],

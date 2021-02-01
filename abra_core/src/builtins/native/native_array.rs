@@ -15,7 +15,7 @@ pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,
 
-    #[abra_field(name = "length", field_type = "Int")]
+    #[abra_field(name = "length", field_type = "Int", settable = false)]
     length: usize,
 }
 
@@ -29,11 +29,6 @@ impl NativeArray {
     #[abra_getter(field = "length")]
     fn get_length(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "length")]
-    fn set_length(&mut self, value: Value) {
-        self.length = *value.as_int() as usize;
     }
 
     #[abra_static_method(signature = "fill<T1>(amount: Int, value: T1): T1[]")]

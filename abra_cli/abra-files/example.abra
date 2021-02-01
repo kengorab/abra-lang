@@ -1,3 +1,13 @@
-type Person {
-  name: String { set get }
+type Name {
+  value: String
 }
+
+type Person {
+  name: Name { get }
+}
+
+val p = Person(name: Name(value: "Ken"))
+//p.name = Name(value: "Meg")
+p.name.value = "Meg"
+
+p

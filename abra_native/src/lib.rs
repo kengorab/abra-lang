@@ -36,6 +36,8 @@ struct FieldSpec {
     name: String,
     typ: TypeRepr,
     has_default: bool,
+    gettable: bool,
+    settable: bool,
     getter: Option<GetterSpec>,
     setter: Option<SetterSpec>,
 }
@@ -138,11 +140,16 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
         }
     };
 
+    let gettable = field_attr.get("gettable").unwrap_or(&"true".to_string()) == "true";
+    let settable = field_attr.get("settable").unwrap_or(&"true".to_string()) == "true";
+
     Ok(Some(FieldSpec {
         native_field_name: name.clone(),
         name: field_attr.get("name").unwrap_or(&name).clone(),
         typ,
         has_default: field_attr.get("has_default").map_or(false, |f| f == "true"),
+        gettable,
+        settable,
         getter: None, // <
         setter: None, // < For now, will be set later when parsing methods
     }))
@@ -344,20 +351,26 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     }
 
-    for FieldSpec { name, getter, setter, .. } in &field_specs {
-        if getter.is_none() {
+    for FieldSpec { name, gettable, settable, getter, setter, .. } in &field_specs {
+        if *gettable && getter.is_none() {
             let msg = format!(
-                "Missing required getter function binding for field {}.\n\
+                "Missing required getter function binding for gettable field {}.\n\
                 Please add the #[abra_getter(field = \"{}\")] attribute to a function of type (&self) -> Value",
                 name, name
             );
             return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        } else if setter.is_none() {
+        } else if !*gettable && getter.is_some() {
+            let msg = format!("Invalid getter function binding for non-gettable field {}", name);
+            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
+        } else if *settable && setter.is_none() {
             let msg = format!(
-                "Missing required setter function binding for field {}.\n\
+                "Missing required setter function binding for settable field {}.\n\
                 Please add the #[abra_setter(field = \"{}\")] attribute to a function of type (&self, Value) -> ()",
                 name, name
             );
+            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
+        } else if !*settable && setter.is_some() {
+            let msg = format!("Invalid setter function binding for non-settable field {}", name);
             return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
         }
     }
@@ -767,7 +780,9 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
             crate::typechecker::types::StructTypeField {
                 name: #name.to_string(),
                 typ: #typ,
-                has_default_value: #has_default
+                has_default_value: #has_default,
+                gettable: true,
+                settable: true,
             }
         }
     });
@@ -1156,11 +1171,11 @@ fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_mac
 }
 
 fn gen_get_field_values_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
-    let code = type_spec.fields.iter().map(|field| {
-        let method_name = &field.getter.as_ref().unwrap().native_method_name;
-        let method_name_ident = format_ident!("{}", method_name);
-
-        quote! { self.#method_name_ident() }
+    let code = type_spec.fields.iter().filter_map(|field| {
+        field.getter.as_ref().map(|getter| {
+            let method_name_ident = format_ident!("{}", getter.native_method_name);
+            quote! { self.#method_name_ident() }
+        })
     });
 
     quote! {
@@ -1189,11 +1204,11 @@ fn gen_get_field_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenSt
 }
 
 fn gen_set_field_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
-    let code = type_spec.fields.iter().enumerate().map(|(idx, field)| {
-        let method_name = &field.setter.as_ref().unwrap().native_method_name;
-        let method_name_ident = format_ident!("{}", method_name);
-
-        quote! { #idx => self.#method_name_ident(value) }
+    let code = type_spec.fields.iter().enumerate().filter_map(|(idx, field)| {
+        field.setter.as_ref().map(|setter| {
+            let method_name_ident = format_ident!("{}", setter.native_method_name);
+            quote! { #idx => self.#method_name_ident(value) }
+        })
     });
 
     quote! {

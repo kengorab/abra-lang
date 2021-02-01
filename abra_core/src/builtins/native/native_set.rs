@@ -12,7 +12,7 @@ use crate::builtins::arguments::Arguments;
 pub struct NativeSet {
     pub _inner: HashSet<Value>,
 
-    #[abra_field(name = "size", field_type = "Int")]
+    #[abra_field(name = "size", field_type = "Int", settable = false)]
     size: usize,
 }
 
@@ -26,11 +26,6 @@ impl NativeSet {
     #[abra_getter(field = "size")]
     fn get_size(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "size")]
-    fn set_size(&mut self, value: Value) {
-        self.size = *value.as_int() as usize;
     }
 
     #[abra_method(signature = "isEmpty(): Bool")]

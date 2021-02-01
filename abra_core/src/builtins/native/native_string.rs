@@ -12,7 +12,7 @@ use crate::builtins::native::to_string;
 pub struct NativeString {
     pub _inner: String,
 
-    #[abra_field(name = "length", field_type = "Int")]
+    #[abra_field(name = "length", field_type = "Int", settable = false)]
     length: usize,
 }
 
@@ -28,11 +28,6 @@ impl NativeString {
     #[abra_getter(field = "length")]
     fn get_length(&self) -> Value {
         Value::Int(self._inner.len() as i64)
-    }
-
-    #[abra_setter(field = "length")]
-    fn set_length(&mut self, value: Value) {
-        self.length = *value.as_int() as usize;
     }
 
     #[abra_method(signature = "toLower(): String")]
