@@ -1632,7 +1632,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
 
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
-            .map(|TypeDeclField { ident, type_ident, default_value, specs }| {
+            .map(|TypeDeclField { ident, type_ident, default_value, readonly }| {
                 let field_type = self.type_from_type_ident(&type_ident)?;
                 let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
@@ -1641,44 +1641,20 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     field_names.insert(field_name_str.clone(), ident.clone());
                 }
 
-                let mut saw_get_attr = false;
-                let mut saw_set_attr = false;
-                for tok in specs {
-                    if let Token::Ident(_, i) = &tok {
-                        if i == "get" {
-                            if saw_get_attr {
-                                return Err(TypecheckerError::DuplicateFieldSpec { ident: tok, field_name: field_name_str });
-                            } else { saw_get_attr = true; }
-                        } else if i == "set" {
-                            if saw_set_attr {
-                                return Err(TypecheckerError::DuplicateFieldSpec { ident: tok, field_name: field_name_str });
-                            } else { saw_set_attr = true; }
-                        } else {
-                            return Err(TypecheckerError::UnknownFieldSpec { ident: tok, field_name: field_name_str });
-                        }
-                    } else { unreachable!("Field specs must be identifier tokens") }
-                }
-                let (is_gettable, is_settable) = match (saw_get_attr, saw_set_attr) {
-                    (false, false) => (true, true), // If neither present, it's both gettable and settable
-                    (true, false) => (true, false), // If only saw `get`, it's only gettable and NOT settable
-                    (false, true) => (false, true), // If only saw `set`, it's only settable and NOT gettable
-                    (true, true) => (true, true),   // If both present, it's both gettable and settable // todo: Add warning
-                };
-
-                Ok((ident, field_type, default_value, is_gettable, is_settable))
+                let is_settable = readonly.is_some();
+                Ok((ident, field_type, default_value, is_settable))
             })
             .collect::<Result<Vec<_>, _>>();
         let fields = fields?;
 
         let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
         typedef.fields = fields.iter()
-            .map(|(name, typ, default_value_node, gettable, settable)| {
+            .map(|(name, typ, default_value_node, settable)| {
                 StructTypeField {
                     name: Token::get_ident_name(name),
                     typ: typ.clone(),
                     has_default_value: default_value_node.is_some(),
-                    gettable: gettable.clone(),
-                    settable: settable.clone(),
+                    readonly: *settable,
                 }
             })
             .collect();
@@ -1694,7 +1670,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         // --------------------------------------------------------------------------------- \\
         // ------------------------ Begin Field/Method Typechecking ------------------------ \\
 
-        let typed_fields = fields.into_iter().map(|(tok, field_type, default_value_node, _, _)| {
+        let typed_fields = fields.into_iter().map(|(tok, field_type, default_value_node, _)| {
             let default_value = if let Some(default_value) = default_value_node {
                 let mut default_value = self.visit(default_value)?;
                 let default_value_type = default_value.get_type();
@@ -1984,11 +1960,11 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 }
             }
             AstNode::Accessor(tok, node) => {
-                let typed_target = self.visit_accessor(tok.clone(), node, false)?;
-                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, is_settable, field_ident, .. }) = &typed_target {
+                let typed_target = self.visit_accessor(tok.clone(), node)?;
+                if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, is_readonly, field_ident, .. }) = &typed_target {
                     if *is_method {
                         return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
-                    } else if !is_settable {
+                    } else if *is_readonly {
                         return Err(TypecheckerError::InvalidAccess { token: field_ident.clone(), is_field: !*is_method, is_get: false });
                     }
                 } else { unreachable!() }
@@ -2616,7 +2592,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
     }
 
-    fn visit_accessor(&mut self, token: Token, node: AccessorNode, is_get: bool) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
         let AccessorNode { target, field, is_opt_safe } = node;
         let target = self.visit(*target)?;
 
@@ -2643,15 +2619,15 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
 
                     let field_data = fields.iter().enumerate()
-                        .find_map(|(idx, StructTypeField { name, typ, gettable, settable, .. })| {
+                        .find_map(|(idx, StructTypeField { name, typ, readonly, .. })| {
                             if field_name == name {
-                                Some(FieldSpec { idx, typ: typ.clone(), is_method: false, gettable: *gettable, settable: *settable })
+                                Some(FieldSpec { idx, typ: typ.clone(), is_method: false, readonly: *readonly })
                             } else { None }
                         })
                         .or_else(|| {
                             methods.iter().enumerate().find_map(|(idx, (name, typ))| {
                                 if field_name == name {
-                                    Some(FieldSpec { idx, typ: typ.clone(), is_method: true, gettable: true, settable: false })
+                                    Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true })
                                 } else { None }
                             })
                         });
@@ -2682,7 +2658,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()
                             .find(|(_, (name, _, _))| field_name == name)
-                            .map(|(idx, (_, typ, _))| FieldSpec { idx, typ: typ.clone(), is_method: true, gettable: true, settable: false }); // All static fields are methods at the moment
+                            .map(|(idx, (_, typ, _))| FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true }); // All static fields are methods at the moment
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Enum(enum_type) => {
@@ -2692,13 +2668,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                             .map(|(idx, variant_type)| {
                                 let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
                                 let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
-                                FieldSpec { idx, typ, is_method: false, gettable: true, settable: false }
+                                FieldSpec { idx, typ, is_method: false, readonly: true }
                             })
                             .or_else(|| {
                                 static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
                                     if field_name == name {
-                                        Some(FieldSpec { idx, typ: typ.clone(), is_method: true, gettable: true, settable: false }) // All static fields are methods at the moment
-                                    } else { None } // All static fields are methods at the moment
+                                        Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true }) // All static fields are methods at the moment
+                                    } else { None }
                                 })
                             });
                         Ok((field_data, HashMap::new()))
@@ -2716,7 +2692,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                 Type::Enum(enum_type) => {
                     let field_data = enum_type.methods.iter().enumerate().find_map(|(idx, (name, typ))| {
                         if field_name == name {
-                            Some(FieldSpec { idx, typ: typ.clone(), is_method: true, gettable: true, settable: false })
+                            Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true })
                         } else { None }
                     });
                     Ok((field_data, HashMap::new()))
@@ -2729,7 +2705,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                                 arg_types.iter().enumerate()
                                     .find_map(|(idx, (arg_name, arg_type, _))| {
                                         if field_name == arg_name {
-                                            Some(FieldSpec { idx, typ: arg_type.clone(), is_method: false, gettable: true, settable: true })
+                                            Some(FieldSpec { idx, typ: arg_type.clone(), is_method: false, readonly: false })
                                         } else { None }
                                     })
                             } else {
@@ -2775,11 +2751,8 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
 
         let (field_data, mut generics) = get_field_data(&self, &target_type, &field_name, &token)?;
-        let (field_idx, mut typ, is_method, is_settable) = match field_data {
-            Some(FieldSpec { idx, typ, is_method, gettable, settable }) => {
-                if is_get && !gettable {
-                    return Err(TypecheckerError::InvalidAccess { token: field_ident, is_field: !is_method, is_get });
-                }
+        let (field_idx, mut typ, is_method, is_readonly) = match field_data {
+            Some(FieldSpec { idx, typ, is_method, readonly }) => {
                 if let Some(ident_type_args) = &ident_type_args {
                     if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
                         if ident_type_args.len() != fn_type_args.len() {
@@ -2796,7 +2769,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
                         }
                     }
                 }
-                (idx, Type::substitute_generics(&typ, &generics), is_method, settable)
+                (idx, Type::substitute_generics(&typ, &generics), is_method, readonly)
             }
             None => return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() })
         };
@@ -2810,7 +2783,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             } else { unreachable!() }
         } else { (token, is_opt_safe) };
 
-        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_ident, field_idx, is_opt_safe, is_method, is_settable }))
+        Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_ident, field_idx, is_opt_safe, is_method, is_readonly }))
     }
 
     fn visit_lambda(
@@ -4625,7 +4598,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
-            fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }],
+            fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
@@ -4659,8 +4632,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, gettable: true, settable: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -4687,13 +4660,12 @@ mod tests {
             name: "Node".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, gettable: true, settable: true },
+                StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
                 StructTypeField {
                     name: "next".to_string(),
                     typ: Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
                     has_default_value: true,
-                    gettable: true,
-                    settable: true,
+                    readonly: false,
                 },
             ],
             static_fields: vec![],
@@ -4705,47 +4677,24 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_type_decl_field_attrs() -> TestResult {
+    fn typecheck_type_decl_readonly_fields() -> TestResult {
         let (typechecker, _) = typecheck_get_typechecker("\
           type Foo {\n\
-            a: Int { get set }\n\
-            b: Int { set }\n\
-            c: Int { get }\n\
-            d: Int\n\
+            a: Int\n\
+            b: Int readonly \n\
           }\
         ");
         let expected_type = Type::Struct(StructType {
             name: "Foo".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "a".to_string(), typ: Type::Int, has_default_value: false, gettable: true, settable: true },
-                StructTypeField { name: "b".to_string(), typ: Type::Int, has_default_value: false, gettable: false, settable: true },
-                StructTypeField { name: "c".to_string(), typ: Type::Int, has_default_value: false, gettable: true, settable: false },
-                StructTypeField { name: "d".to_string(), typ: Type::Int, has_default_value: false, gettable: true, settable: true },
+                StructTypeField { name: "a".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
+                StructTypeField { name: "b".to_string(), typ: Type::Int, has_default_value: false, readonly: true },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Foo"]);
-
-        Ok(())
-    }
-
-    #[test]
-    fn typecheck_type_decl_field_attrs_errors() -> TestResult {
-        let err = typecheck("type Foo { a: Int { get set set } }").unwrap_err();
-        let expected = TypecheckerError::DuplicateFieldSpec {
-            ident: ident_token!((1, 29), "set"),
-            field_name: "a".to_string()
-        };
-        assert_eq!(expected, err);
-
-        let err = typecheck("type Foo { a: Int { get set unknownThing } }").unwrap_err();
-        let expected = TypecheckerError::UnknownFieldSpec {
-            ident: ident_token!((1, 29), "unknownThing"),
-            field_name: "a".to_string()
-        };
-        assert_eq!(expected, err);
 
         Ok(())
     }
@@ -4848,7 +4797,7 @@ mod tests {
                                             field_idx: 0,
                                             is_opt_safe: false,
                                             is_method: false,
-                                            is_settable: true,
+                                            is_readonly: false,
                                         },
                                     )
                                 ],
@@ -4891,7 +4840,7 @@ mod tests {
                                                         field_idx: 1,
                                                         is_opt_safe: false,
                                                         is_method: true,
-                                                        is_settable: false,
+                                                        is_readonly: true,
                                                     },
                                                 )
                                             ),
@@ -4911,7 +4860,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![
@@ -4970,7 +4919,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true),
@@ -5032,7 +4981,7 @@ mod tests {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![
-                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -5254,7 +5203,7 @@ mod tests {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
             fields: vec![
-                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -5408,7 +5357,7 @@ mod tests {
                                         field_ident: ident_token!((1, 46), "Red"),
                                         is_opt_safe: false,
                                         is_method: false,
-                                        is_settable: false,
+                                        is_readonly: true,
                                     },
                                 ))
                             ),
@@ -5740,7 +5689,7 @@ mod tests {
                         field_ident: ident_token!((3, 3), "name"),
                         is_opt_safe: false,
                         is_method: false,
-                        is_settable: true,
+                        is_readonly: false,
                     },
                 )),
                 expr: Box::new(string_literal!((3, 10), "qwer")),
@@ -5751,12 +5700,21 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+
+        // Test setting inner property of readonly field
+        let res = typecheck("\
+          type Name { first: String }\n\
+          type Person { name: Name readonly }\n\
+          val p = Person(name: Name(first: \"Ken\"))\n\
+          p.name.first = \"Meg\"\
+        ").is_ok();
+        assert!(res);
 
         Ok(())
     }
@@ -5838,7 +5796,7 @@ mod tests {
 
         let err = typecheck("\
           type Person {\n\
-            name: String { get }\n\
+            name: String readonly\n\
           }\n\
           val a = Person(name: \"abc\")\n\
           a.name = \"hello\"\
@@ -5846,7 +5804,7 @@ mod tests {
         let expected = TypecheckerError::InvalidAccess {
             token: ident_token!((5, 3), "name"),
             is_field: true,
-            is_get: false
+            is_get: false,
         };
         assert_eq!(expected, err);
     }
@@ -6508,7 +6466,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -6538,8 +6496,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, gettable: true, settable: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7033,7 +6991,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: true,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7041,7 +6999,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7063,7 +7021,7 @@ mod tests {
                 field_idx: 1,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: true,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7071,8 +7029,8 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, gettable: true, settable: true },
-                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, gettable: true, settable: true },
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
+                StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7100,7 +7058,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -7116,17 +7074,16 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[0]);
 
-        // Test setting inner property of readonly field
+        // Test getting readonly field
         let res = typecheck("\
-          type Name { first: String }\n\
-          type Person { name: Name { get } }\n\
-          val p = Person(name: Name(first: \"Ken\"))\n\
-          p.name.first = \"Meg\"\
+          type Person { name: String = \"Jim\" readonly }\n\
+          val p = Person(name: \"Ken\")\n\
+          p.name\
         ").is_ok();
         assert!(res);
 
@@ -7149,7 +7106,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: true,
-                is_settable: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[1]);
@@ -7185,14 +7142,14 @@ mod tests {
                         field_idx: 0,
                         is_opt_safe: false,
                         is_method: false,
-                        is_settable: true,
+                        is_readonly: false,
                     },
                 )),
                 field_ident: ident_token!((3, 9), "length"),
                 field_idx: 0,
                 is_opt_safe: true,
                 is_method: false,
-                is_settable: false,
+                is_readonly: true,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7200,7 +7157,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7222,7 +7179,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: true,
+                is_readonly: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);
@@ -7230,7 +7187,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![
-                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true, gettable: true, settable: true }
+                StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true, readonly: false }
             ],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -7257,18 +7214,6 @@ mod tests {
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((1, 6), "value"),
             target_type: Type::Bool,
-        };
-        assert_eq!(expected, error);
-
-        let error = typecheck("\
-          type Person { name: String { set } }\n\
-          val p = Person(name: \"Sam\")\n\
-          p.name\
-        ").unwrap_err();
-        let expected = TypecheckerError::InvalidAccess {
-            token: ident_token!((3, 3), "name"),
-            is_field: true,
-            is_get: true,
         };
         assert_eq!(expected, error);
     }

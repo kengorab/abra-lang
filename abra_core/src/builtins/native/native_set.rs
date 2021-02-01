@@ -12,7 +12,7 @@ use crate::builtins::arguments::Arguments;
 pub struct NativeSet {
     pub _inner: HashSet<Value>,
 
-    #[abra_field(name = "size", field_type = "Int", settable = false)]
+    #[abra_field(name = "size", field_type = "Int", readonly)]
     size: usize,
 }
 

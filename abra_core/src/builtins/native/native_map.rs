@@ -11,7 +11,7 @@ use crate::builtins::native::common::invoke_fn;
 pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 
-    #[abra_field(name = "size", field_type = "Int", settable = false)]
+    #[abra_field(name = "size", field_type = "Int", readonly)]
     size: usize,
 }
 

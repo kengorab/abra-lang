@@ -616,24 +616,6 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateFieldSpec { ident, field_name } => {
-                    let mut obj = serializer.serialize_map(Some(5))?;
-                    obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "duplicateFieldSpec")?;
-                    obj.serialize_entry("token", &JsToken(ident))?;
-                    obj.serialize_entry("fieldName", field_name)?;
-                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
-                    obj.end()
-                }
-                TypecheckerError::UnknownFieldSpec { ident, field_name } => {
-                    let mut obj = serializer.serialize_map(Some(5))?;
-                    obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "unknownFieldSpec")?;
-                    obj.serialize_entry("token", &JsToken(ident))?;
-                    obj.serialize_entry("fieldName", field_name)?;
-                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
-                    obj.end()
-                }
                 TypecheckerError::InvalidAccess { token, is_field, is_get } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;

@@ -103,34 +103,32 @@ pub struct StructTypeField {
     pub name: String,
     pub typ: Type,
     pub has_default_value: bool,
-    pub gettable: bool,
-    pub settable: bool,
+    pub readonly: bool,
 }
 
 pub struct FieldSpec {
     pub idx: usize,
     pub typ: Type,
     pub is_method: bool,
-    pub gettable: bool,
-    pub settable: bool,
+    pub readonly: bool,
 }
 
 impl StructType {
     pub fn get_field_or_method<S: AsRef<str>>(&self, name: S) -> Option<FieldSpec> {
         self.fields.iter().enumerate()
             .find(|(_, f)| f.name == name.as_ref())
-            .map(|(idx, f)| FieldSpec { idx, typ: f.typ.clone(), is_method: false, gettable: f.gettable, settable: f.settable })
+            .map(|(idx, f)| FieldSpec { idx, typ: f.typ.clone(), is_method: false, readonly: f.readonly })
             .or_else(|| {
                 self.methods.iter().enumerate()
                     .find(|(_, f)| f.0 == name.as_ref())
-                    .map(|(idx, f)| FieldSpec { idx, typ: f.1.clone(), is_method: true, gettable: true, settable: false })
+                    .map(|(idx, f)| FieldSpec { idx, typ: f.1.clone(), is_method: true, readonly: true })
             })
     }
 
     pub fn get_static_field_or_method<S: AsRef<str>>(&self, name: S) -> Option<FieldSpec> {
         self.static_fields.iter().enumerate()
             .find(|(_, f)| f.0 == name.as_ref())
-            .map(|(idx, f)| FieldSpec { idx, typ: f.1.clone(), is_method: true, gettable: true, settable: false }) // All static fields are methods atm
+            .map(|(idx, f)| FieldSpec { idx, typ: f.1.clone(), is_method: true, readonly: true }) // All static fields are methods atm
     }
 
     pub fn get_field_idx<S: AsRef<str>>(&self, name: S) -> Option<usize> {

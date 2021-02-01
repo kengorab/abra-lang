@@ -15,7 +15,7 @@ pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,
 
-    #[abra_field(name = "length", field_type = "Int", settable = false)]
+    #[abra_field(name = "length", field_type = "Int", readonly)]
     length: usize,
 }
 

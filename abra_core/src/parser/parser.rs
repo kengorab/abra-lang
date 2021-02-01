@@ -581,30 +581,11 @@ impl Parser {
                             Some(self.parse_expr()?)
                         } else { None };
 
-                        let field_specs = if let Token::LBrace(_) = self.expect_peek()? {
-                            self.expect_next()?; // Consume '{'
+                        let readonly = if let Token::Readonly(_) = self.expect_peek()? {
+                            Some(self.expect_next()?)
+                        } else { None };
 
-                            let mut field_specs = Vec::new();
-                            loop {
-                                match self.expect_peek()? {
-                                    Token::RBrace(_) => {
-                                        self.expect_next()?; // Consume '}'
-                                        break;
-                                    }
-                                    Token::Ident(_, _) => {
-                                        let ident = self.expect_next()?;
-                                        field_specs.push(ident);
-                                    }
-                                    _ => {
-                                        let t = self.expect_next()?;
-                                        return Err(ParseError::UnexpectedToken(t));
-                                    }
-                                };
-                            }
-                            field_specs
-                        } else { vec![] };
-
-                        let field = TypeDeclField { ident, type_ident, default_value, specs: field_specs };
+                        let field = TypeDeclField { ident, type_ident, default_value, readonly };
                         fields.push(field);
                     }
                 }
@@ -3005,7 +2986,7 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
-                        specs: vec![],
+                        readonly: None,
                     },
                 ],
                 methods: vec![],
@@ -3026,13 +3007,13 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
-                        specs: vec![],
+                        readonly: None,
                     },
                     TypeDeclField {
                         ident: ident_token!((1, 29), "age"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 34), "Int"), type_args: None },
                         default_value: None,
-                        specs: vec![],
+                        readonly: None,
                     },
                 ],
                 methods: vec![],
@@ -3052,13 +3033,13 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
-                        specs: vec![],
+                        readonly: None,
                     },
                     TypeDeclField {
                         ident: ident_token!((1, 29), "isHappy"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None },
                         default_value: Some(bool_literal!((1, 45), true)),
-                        specs: vec![],
+                        readonly: None,
                     }
                 ],
                 methods: vec![],
@@ -3067,7 +3048,7 @@ mod tests {
         assert_eq!(expected, ast[0]);
 
         // Test with field specs
-        let ast = parse("type Person { name: String { get set } }")?;
+        let ast = parse("type Person { name: String readonly }")?;
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
@@ -3078,10 +3059,7 @@ mod tests {
                         ident: ident_token!((1, 15), "name"),
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 21), "String"), type_args: None },
                         default_value: None,
-                        specs: vec![
-                            ident_token!((1, 30), "get"),
-                            ident_token!((1, 34), "set"),
-                        ],
+                        readonly: Some(Token::Readonly(Position::new(1, 28))),
                     },
                 ],
                 methods: vec![],

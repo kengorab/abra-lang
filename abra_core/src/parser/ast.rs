@@ -196,8 +196,7 @@ pub struct TypeDeclField {
     pub ident: Token,
     pub type_ident: TypeIdentifier,
     pub default_value: Option<AstNode>,
-    // Must be Token::Idents
-    pub specs: Vec<Token>,
+    pub readonly: Option<Token>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

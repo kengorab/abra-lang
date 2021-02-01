@@ -12,7 +12,7 @@ use crate::builtins::native::to_string;
 pub struct NativeString {
     pub _inner: String,
 
-    #[abra_field(name = "length", field_type = "Int", settable = false)]
+    #[abra_field(name = "length", field_type = "Int", readonly)]
     length: usize,
 }
 

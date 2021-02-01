@@ -300,7 +300,7 @@ pub struct TypedAccessorNode {
     pub field_idx: usize,
     pub is_opt_safe: bool,
     pub is_method: bool,
-    pub is_settable: bool,
+    pub is_readonly: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

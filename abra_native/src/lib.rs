@@ -36,8 +36,7 @@ struct FieldSpec {
     name: String,
     typ: TypeRepr,
     has_default: bool,
-    gettable: bool,
-    settable: bool,
+    readonly: bool,
     getter: Option<GetterSpec>,
     setter: Option<SetterSpec>,
 }
@@ -140,16 +139,12 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
         }
     };
 
-    let gettable = field_attr.get("gettable").unwrap_or(&"true".to_string()) == "true";
-    let settable = field_attr.get("settable").unwrap_or(&"true".to_string()) == "true";
-
     Ok(Some(FieldSpec {
         native_field_name: name.clone(),
         name: field_attr.get("name").unwrap_or(&name).clone(),
         typ,
         has_default: field_attr.get("has_default").map_or(false, |f| f == "true"),
-        gettable,
-        settable,
+        readonly: field_attr.get("readonly").map_or(false, |f| f == "true"),
         getter: None, // <
         setter: None, // < For now, will be set later when parsing methods
     }))
@@ -351,26 +346,16 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     }
 
-    for FieldSpec { name, gettable, settable, getter, setter, .. } in &field_specs {
-        if *gettable && getter.is_none() {
+    for FieldSpec { name, readonly, setter, .. } in &field_specs {
+        if !*readonly && setter.is_none() {
             let msg = format!(
-                "Missing required getter function binding for gettable field {}.\n\
-                Please add the #[abra_getter(field = \"{}\")] attribute to a function of type (&self) -> Value",
-                name, name
-            );
-            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        } else if !*gettable && getter.is_some() {
-            let msg = format!("Invalid getter function binding for non-gettable field {}", name);
-            return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        } else if *settable && setter.is_none() {
-            let msg = format!(
-                "Missing required setter function binding for settable field {}.\n\
+                "Missing required setter function binding for field {}.\n\
                 Please add the #[abra_setter(field = \"{}\")] attribute to a function of type (&self, Value) -> ()",
                 name, name
             );
             return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
-        } else if !*settable && setter.is_some() {
-            let msg = format!("Invalid setter function binding for non-settable field {}", name);
+        } else if *readonly && setter.is_some() {
+            let msg = format!("Invalid setter function binding for readonly field {}", name);
             return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
         }
     }
@@ -773,7 +758,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     });
 
     let fields = type_spec.fields.iter().map(|field| {
-        let FieldSpec { name, typ, has_default, gettable, settable, ..  } = field;
+        let FieldSpec { name, typ, has_default, readonly, .. } = field;
         let typ = gen_rust_type_path(typ, type_name);
 
         quote! {
@@ -781,8 +766,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
                 name: #name.to_string(),
                 typ: #typ,
                 has_default_value: #has_default,
-                gettable: #gettable,
-                settable: #settable,
+                readonly: #readonly,
             }
         }
     });
@@ -1245,6 +1229,10 @@ fn parse_attr(attr: &syn::Attribute) -> HashMap<String, String> {
                             _ => unreachable!()
                         };
                         map.insert(arg, val);
+                    }
+                    NestedMeta::Meta(syn::Meta::Path(path)) => {
+                        let bool_arg = path.segments[0].ident.to_string();
+                        map.insert(bool_arg, "true".to_string());
                     }
                     _ => {}
                 }
