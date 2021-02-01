@@ -171,7 +171,7 @@ impl NativeString {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]
@@ -179,6 +179,10 @@ mod test {
         let result = interpret("\"asdf qwer\".length");
         let expected = Value::Int(9);
         assert_eq!(Some(expected), result);
+
+        // Setting length should produce an error
+        let is_err = interpret_get_result("\"asdf\".length = 8").is_err();
+        assert!(is_err);
     }
 
     #[test]

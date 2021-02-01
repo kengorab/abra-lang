@@ -7100,7 +7100,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: true,
+                is_settable: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -7116,7 +7116,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: false,
                 is_method: false,
-                is_settable: true,
+                is_settable: false,
             },
         );
         assert_eq!(expected, typed_ast[0]);
@@ -7192,7 +7192,7 @@ mod tests {
                 field_idx: 0,
                 is_opt_safe: true,
                 is_method: false,
-                is_settable: true,
+                is_settable: false,
             },
         );
         assert_eq!(expected, typed_ast[2]);

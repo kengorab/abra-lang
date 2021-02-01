@@ -3,7 +3,7 @@ type Name {
 }
 
 type Person {
-  name: Name { get }
+  name: Name { get set }
 }
 
 val p = Person(name: Name(value: "Ken"))

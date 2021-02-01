@@ -773,7 +773,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     });
 
     let fields = type_spec.fields.iter().map(|field| {
-        let FieldSpec { name, typ, has_default, .. } = field;
+        let FieldSpec { name, typ, has_default, gettable, settable, ..  } = field;
         let typ = gen_rust_type_path(typ, type_name);
 
         quote! {
@@ -781,8 +781,8 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
                 name: #name.to_string(),
                 typ: #typ,
                 has_default_value: #has_default,
-                gettable: true,
-                settable: true,
+                gettable: #gettable,
+                settable: #settable,
             }
         }
     });

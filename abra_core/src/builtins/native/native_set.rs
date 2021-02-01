@@ -145,7 +145,7 @@ impl Hash for NativeSet {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]
@@ -161,6 +161,10 @@ mod test {
         let result = interpret("#{0, 1, 2, 1, 0}.size");
         let expected = Value::Int(3);
         assert_eq!(Some(expected), result);
+
+        // Setting size should produce an error
+        let is_err = interpret_get_result("#{1, 2, 3}.size = 8").is_err();
+        assert!(is_err);
     }
 
     #[test]

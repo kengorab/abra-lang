@@ -150,7 +150,7 @@ impl Hash for NativeMap {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]
@@ -162,6 +162,10 @@ mod test {
         let result = interpret("{ a: 123, b: true }.size");
         let expected = Value::Int(2);
         assert_eq!(Some(expected), result);
+
+        // Setting size should produce an error
+        let is_err = interpret_get_result("{ a: 4 }.size = 8").is_err();
+        assert!(is_err);
     }
 
     #[test]

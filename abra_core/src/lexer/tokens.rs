@@ -9,7 +9,7 @@ impl Default for Position {
     fn default() -> Self { Position { line: 0, col: 0 } }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
