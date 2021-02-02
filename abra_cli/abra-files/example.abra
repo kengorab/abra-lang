@@ -1,13 +1,6 @@
-type Name {
-  value: String
-}
-
-type Person {
-  name: Name { get set }
-}
-
-val p = Person(name: Name(value: "Ken"))
-//p.name = Name(value: "Meg")
-p.name.value = "Meg"
-
-p
+var total = 0
+val arr = [1, 2, 3, 4]
+arr.map(i => {
+  total += i
+  i * 3
+}).concat([total])

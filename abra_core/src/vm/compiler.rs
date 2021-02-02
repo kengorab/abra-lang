@@ -771,13 +771,13 @@ impl Compiler {
                     let is_last = idx == num_pats - 1;
 
                     // If the element is a splat (and it's not the last element), push arguments for eventual splitAt invocation
-                    if is_splat && !is_last {
-                        let line = pat.get_token().get_position().line;
-
-                        self.write_opcode(Opcode::Nil, line);
-                        self.write_int_constant((num_pats - 1 - idx) as u32, line);
-                        self.write_opcode(Opcode::Invert, line);
-                    }
+                    // if is_splat && !is_last {
+                    //     let line = pat.get_token().get_position().line;
+                    //
+                    //     self.write_opcode(Opcode::Nil, line);
+                    //     self.write_int_constant((num_pats - 1 - idx) as u32, line);
+                    //     self.write_opcode(Opcode::Invert, line);
+                    // }
 
                     load(self, is_root_scope, temp_var_name.clone(), line);
 
@@ -810,7 +810,14 @@ impl Compiler {
                         };
                         self.write_opcode(Opcode::GetMethod(split_at_method_idx), line);
                         self.metadata.field_gets.push("splitAt".to_string());
-                        self.write_opcode(Opcode::Invoke(1), line);
+
+                        let line = pat.get_token().get_position().line;
+
+                        self.write_opcode(Opcode::Nil, line);
+                        self.write_int_constant((num_pats - 1 - idx) as u32, line);
+                        self.write_opcode(Opcode::Invert, line);
+
+                        self.write_opcode(Opcode::Invoke(1, true), line);
 
                         // Store that previous intermediate result (splitAt returns (T[], T[])); the first
                         // element of that tuple gets stored as the splat ident...
@@ -1600,6 +1607,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
             let if_end_jump_handle = self.begin_jump(Opcode::Jump(0), line);
 
             self.close_jump(else_jump_handle);
+
+            load(self, is_root_scope, tmp_name, line);
             if has_return {
                 self.write_opcode(Opcode::Nil, line);
             }
@@ -1611,13 +1620,15 @@ impl TypedAstVisitor<(), ()> for Compiler {
                 }
             }
 
-            load(self, is_root_scope, tmp_name, line);
+            // load(self, is_root_scope, tmp_name, line);
 
-            self.write_opcode(Opcode::Invoke(arity), line);
+            self.write_opcode(Opcode::Invoke(arity, has_return), line);
             self.close_jump(if_end_jump_handle);
 
             return Ok(());
         }
+
+        self.visit(*target)?;
 
         if has_return {
             self.write_opcode(Opcode::Nil, line);
@@ -1630,9 +1641,9 @@ impl TypedAstVisitor<(), ()> for Compiler {
             }
         }
 
-        self.visit(*target)?;
+        // self.visit(*target)?;
 
-        self.write_opcode(Opcode::Invoke(arity), line);
+        self.write_opcode(Opcode::Invoke(arity, has_return), line);
         Ok(())
     }
 
@@ -1757,7 +1768,6 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.push_local("$idx", line, true);
 
         // $iter = <iterator>.enumerate()
-        self.write_opcode(Opcode::Nil, line);
         self.visit(*iterator)?;
         let enumerate_method_idx = match iterator_type {
             Type::Array(_) => NativeArray::get_type().get_method_idx("enumerate").expect("Array is missing required enumerate method"),
@@ -1767,7 +1777,8 @@ impl TypedAstVisitor<(), ()> for Compiler {
         };
         self.write_opcode(Opcode::GetMethod(enumerate_method_idx), line);
         self.metadata.field_gets.push("enumerate".to_string());
-        self.write_opcode(Opcode::Invoke(0), line);
+        self.write_opcode(Opcode::Nil, line);
+        self.write_opcode(Opcode::Invoke(0, true), line);
         self.push_local("$iter", line, true); // Local 1 is the iterator
 
         #[inline]
@@ -3412,10 +3423,10 @@ mod tests {
                     code: vec![
                         Opcode::IConst1,
                         Opcode::MarkLocal(0),
+                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                         Opcode::Constant(with_prelude_const_offset(1)),
                         Opcode::ArrMk(1),
-                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                        Opcode::Invoke(1),
+                        Opcode::Invoke(1, false),
                         Opcode::Pop(1), // Pop off `a`; note, there is no LStore0, since the return is Unit
                         Opcode::Return,
                     ],
@@ -3437,17 +3448,17 @@ mod tests {
                 Opcode::GStore(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
                 Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
                 Opcode::Nil,
                 Opcode::IConst1,
                 Opcode::Nil,
-                Opcode::GLoad(with_prelude_const_offset(0)),
-                Opcode::Invoke(2),
+                Opcode::Invoke(2, true),
                 Opcode::Pop(1),
+                Opcode::GLoad(with_prelude_const_offset(0)),
                 Opcode::Nil,
                 Opcode::IConst1,
                 Opcode::IConst2,
-                Opcode::GLoad(with_prelude_const_offset(0)),
-                Opcode::Invoke(2),
+                Opcode::Invoke(2, true),
                 Opcode::Return
             ],
             constants: with_prelude_consts(vec![
@@ -3523,10 +3534,10 @@ mod tests {
                         Opcode::LLoad(3),
                         Opcode::LStore(2),
                         Opcode::LLoad(1),
+                        Opcode::LLoad(3),
                         Opcode::Nil,
                         Opcode::LLoad(1),
-                        Opcode::LLoad(3),
-                        Opcode::Invoke(1),
+                        Opcode::Invoke(1, true),
                         Opcode::IAdd,
                         Opcode::MarkLocal(4),
                         Opcode::LLoad(4),
@@ -3587,10 +3598,10 @@ mod tests {
                         ("getName2".to_string(), Value::Fn(FnValue {
                             name: "getName2".to_string(),
                             code: vec![
-                                Opcode::Nil,
                                 Opcode::LLoad(1),
                                 Opcode::GetMethod(1),
-                                Opcode::Invoke(0),
+                                Opcode::Nil,
+                                Opcode::Invoke(0, true),
                                 Opcode::LStore(0),
                                 Opcode::Pop(1),
                                 Opcode::Return
@@ -3671,10 +3682,10 @@ mod tests {
                 Opcode::GStore(with_prelude_const_offset(1)),
                 Opcode::Constant(with_prelude_const_offset(2)),
                 Opcode::GStore(with_prelude_const_offset(0)),
+                Opcode::GLoad(with_prelude_const_offset(0)),
                 Opcode::Nil,
                 Opcode::GLoad(with_prelude_const_offset(1)),
-                Opcode::GLoad(with_prelude_const_offset(0)),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, true),
                 Opcode::GStore(with_prelude_const_offset(3)),
                 Opcode::Return
             ],
@@ -3901,10 +3912,10 @@ mod tests {
                 // if $idx < $iter.length {
                 Opcode::IConst0,
                 Opcode::MarkLocal(0),
-                Opcode::Nil,
                 Opcode::GLoad(with_prelude_const_offset(2)),
                 Opcode::GetMethod(2), // .enumerate
-                Opcode::Invoke(0),
+                Opcode::Nil,
+                Opcode::Invoke(0, true),
                 Opcode::MarkLocal(1),
                 Opcode::LLoad(0),
                 Opcode::LLoad(1),
@@ -3936,14 +3947,14 @@ mod tests {
 
                 // println(msg + a + i)
                 // <recur>
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::GLoad(with_prelude_const_offset(1)),
                 Opcode::LLoad(2),
                 Opcode::StrConcat,
                 Opcode::LLoad(3),
                 Opcode::StrConcat,
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(2),
                 Opcode::JumpB(31),
 
@@ -3989,15 +4000,15 @@ mod tests {
             code: vec![
                 Opcode::IConst0,
                 Opcode::MarkLocal(0),
-                Opcode::Nil,
+                Opcode::Constant(1),
                 Opcode::Nil,
                 Opcode::IConst0,
                 Opcode::IConst1,
                 Opcode::Nil,
-                Opcode::Constant(1),
-                Opcode::Invoke(3),
+                Opcode::Invoke(3, true),
                 Opcode::GetMethod(2), // .enumerate
-                Opcode::Invoke(0),
+                Opcode::Nil,
+                Opcode::Invoke(0, true),
                 Opcode::MarkLocal(1),
                 Opcode::LLoad(0),
                 Opcode::LLoad(1),
@@ -4401,10 +4412,10 @@ mod tests {
                 Value::Fn(FnValue {
                     name: "$anon_0".to_string(),
                     code: vec![
+                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                         Opcode::Constant(with_prelude_const_offset(0)),
                         Opcode::ArrMk(1),
-                        Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                        Opcode::Invoke(1),
+                        Opcode::Invoke(1, false),
                         Opcode::Return,
                     ],
                     upvalues: vec![],
@@ -4436,17 +4447,17 @@ mod tests {
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0), // x
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Jump(6),
                 Opcode::MarkLocal(0), // x
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Return
             ],
@@ -4474,17 +4485,17 @@ mod tests {
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::IConst4,
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Jump(6),
                 Opcode::MarkLocal(0), // x
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Return
             ],
@@ -4518,10 +4529,10 @@ mod tests {
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0), // p
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Jump(12),
                 Opcode::Dup,
@@ -4530,10 +4541,10 @@ mod tests {
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0), // s
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Jump(0),
                 Opcode::Return
@@ -4576,17 +4587,17 @@ mod tests {
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0),
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::Constant(with_prelude_const_offset(3)),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Jump(6),
                 Opcode::MarkLocal(0), // x
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(0),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(1),
                 Opcode::Return
             ],
@@ -4640,11 +4651,11 @@ mod tests {
                 Opcode::GStore(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
                 Opcode::GStore(with_prelude_const_offset(0)),
-                Opcode::Nil,
-                Opcode::Constant(with_prelude_const_offset(2)),
                 Opcode::GLoad(with_prelude_const_offset(0)),
                 Opcode::GetField(0),
-                Opcode::Invoke(1),
+                Opcode::Nil,
+                Opcode::Constant(with_prelude_const_offset(2)),
+                Opcode::Invoke(1, true),
                 Opcode::GStore(with_prelude_const_offset(3)),
                 Opcode::GLoad(with_prelude_const_offset(3)),
                 Opcode::Dup,
@@ -4655,10 +4666,10 @@ mod tests {
                 Opcode::LLoad(0),
                 Opcode::GetField(0),
                 Opcode::MarkLocal(1), // baz
+                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
                 Opcode::LLoad(1),
                 Opcode::ArrMk(1),
-                Opcode::Constant(PRELUDE_PRINTLN_INDEX as usize),
-                Opcode::Invoke(1),
+                Opcode::Invoke(1, false),
                 Opcode::Pop(2),
                 Opcode::Jump(0),
                 Opcode::Return

@@ -883,8 +883,9 @@ impl VM {
                     let frame = current_frame!(self);
                     frame.ip -= offset;
                 }
-                Opcode::Invoke(arity) => {
-                    let target = self.pop_expect()?;
+                Opcode::Invoke(arity, has_return) => {
+                    let fn_idx = self.stack.len() - (arity + if has_return { 1 } else { 0 }) - 1;
+                    let target = self.stack.remove(fn_idx);
 
                     match &target {
                         Value::NativeFn(native_fn) => {

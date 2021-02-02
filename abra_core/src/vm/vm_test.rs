@@ -1102,7 +1102,7 @@ mod tests {
     }
 
     #[test]
-    fn interpret_func_invocation_ordering() {
+    fn interpret_func_invocation_lexical_ordering() {
         // Test global fns
         let input = r#"
           func abc(): Int = def()
@@ -1172,6 +1172,22 @@ mod tests {
             Value::Int(8),
             Value::Int(13),
         ]);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_invocation_order() {
+        // Verify that the value of `total` passed to `concat` is the value after all the `map` lambda invocations
+        let input = r#"
+          var total = 0
+          val arr = [1, 2]
+          arr.map(i => {
+            total += i
+            i * 3
+          }).concat([total])
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![Value::Int(3), Value::Int(6), Value::Int(3)]);
         assert_eq!(expected, result);
     }
 
