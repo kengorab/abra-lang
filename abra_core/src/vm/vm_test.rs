@@ -748,7 +748,6 @@ mod tests {
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(3) as usize),
                 Opcode::LStore(0),
-                Opcode::Pop(1),
                 Opcode::Return
             ],
             upvalues: vec![],

@@ -56,7 +56,7 @@ pub enum Opcode {
     Jump(usize),
     JumpIfF(usize),
     JumpB(usize),
-    Invoke(usize, bool),
+    Invoke(usize),
     ClosureMk,
     CloseUpvalue,
     CloseUpvalueAndPop,
@@ -72,27 +72,27 @@ impl Opcode {
         let base = self.to_string();
 
         let imm = match self {
-            Opcode::Constant(const_idx) => Some(const_idx.to_string()),
-            Opcode::New(num_fields) => Some(num_fields.to_string()),
-            Opcode::GetField(field_idx) => Some(field_idx.to_string()),
-            Opcode::GetMethod(method_idx) => Some(method_idx.to_string()),
-            Opcode::SetField(field_idx) => Some(field_idx.to_string()),
+            Opcode::Constant(const_idx) => Some(const_idx),
+            Opcode::New(num_fields) => Some(num_fields),
+            Opcode::GetField(field_idx) => Some(field_idx),
+            Opcode::GetMethod(method_idx) => Some(method_idx),
+            Opcode::SetField(field_idx) => Some(field_idx),
             Opcode::MapMk(size) |
             Opcode::ArrMk(size) |
             Opcode::TupleMk(size) |
-            Opcode::SetMk(size) => Some(size.to_string()),
+            Opcode::SetMk(size) => Some(size),
             Opcode::GStore(slot) |
-            Opcode::LStore(slot) => Some(slot.to_string()),
-            Opcode::UStore(upvalue_idx) => Some(upvalue_idx.to_string()),
+            Opcode::LStore(slot) => Some(slot),
+            Opcode::UStore(upvalue_idx) => Some(upvalue_idx),
             Opcode::GLoad(slot) |
-            Opcode::LLoad(slot) => Some(slot.to_string()),
-            Opcode::ULoad(upvalue_idx) => Some(upvalue_idx.to_string()),
+            Opcode::LLoad(slot) => Some(slot),
+            Opcode::ULoad(upvalue_idx) => Some(upvalue_idx),
             Opcode::Jump(offset) |
             Opcode::JumpIfF(offset) |
-            Opcode::JumpB(offset) => Some(offset.to_string()),
-            Opcode::Invoke(arity, has_return) => Some(format!("{} {}", arity, has_return)),
-            Opcode::Pop(num_pops) => Some(num_pops.to_string()),
-            Opcode::MarkLocal(local_idx) => Some(local_idx.to_string()),
+            Opcode::JumpB(offset) => Some(offset),
+            Opcode::Invoke(arity) => Some(arity),
+            Opcode::Pop(num_pops) => Some(num_pops),
+            Opcode::MarkLocal(local_idx) => Some(local_idx),
             _ => None
         };
         match imm {
