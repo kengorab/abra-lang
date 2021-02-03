@@ -1,6 +1,30 @@
-var total = 0
-val arr = [1, 2, 3, 4]
-arr.map(i => {
-  total += i
-  i * 3
-}).concat([total])
+//func getAdder(q: Int, x: Int): (Int) => Int {
+//  //val q = 54
+//  val f: (Int) => Int = (y, z = 3) => x + y + z
+//  f
+//}
+//getAdder(-24, 20)(1)
+
+//val f = if true {
+//  val x = 4
+//  (y: Int) => x + y
+//} else {
+//  (y: Int) => 0
+//}
+//
+//f(1)
+
+func getAdder(x: Int): (Int) => Int {
+  (y, z = 3) => x + y + z
+}
+getAdder(20)(1)
+
+//func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] {
+//  () => []
+//}
+
+func f(): Int {
+  if true { return 24 }
+  return 6
+}
+f()

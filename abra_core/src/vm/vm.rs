@@ -398,17 +398,14 @@ impl VM {
     fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn) -> Result<Option<Value>, InterpretError> {
         let num_args = self.stack.len() - arity;
         let args = self.stack.split_off(num_args);
-        if native_fn.has_return {
-            self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
-        }
         return Ok(native_fn.invoke(args, self));
     }
 
     fn start_call_frame(&mut self, arity: usize, func_value: Value) -> Result<(), InterpretError> {
         let mut arity = arity;
-        let (name, code, upvalues, receiver, has_return) = match func_value {
-            Value::Fn(FnValue { name, code, receiver, has_return, .. }) => (name, code, vec![], receiver, has_return),
-            Value::Closure(ClosureValue { name, code, captures, receiver, has_return, .. }) => (name, code, captures, receiver, has_return),
+        let (name, code, upvalues, receiver) = match func_value {
+            Value::Fn(FnValue { name, code, receiver, .. }) => (name, code, vec![], receiver),
+            Value::Closure(ClosureValue { name, code, captures, receiver, .. }) => (name, code, captures, receiver),
             _ => unreachable!("Native functions should be handled separately")
         };
 
@@ -421,7 +418,6 @@ impl VM {
             }
             None => {}
         }
-        if has_return { arity += 1 }
         let start_stack_idx = self.stack.len() - arity;
 
         // Initialize the frame with local_addrs for the args already on the stack, since
@@ -448,10 +444,6 @@ impl VM {
             Value::Closure(ClosureValue { has_return, .. }) => has_return.clone(),
             _ => unreachable!()
         };
-
-        if has_return {
-            self.push(Value::Nil);
-        }
 
         let arity = args.len();
         for arg in args {
@@ -618,7 +610,7 @@ impl VM {
                         Value::Enum(EnumValue { static_fields, .. }) => {
                             let (_, field_value) = static_fields[idx].clone();
                             self.push(field_value);
-                            continue
+                            continue;
                         }
                         // Then we handle enum variant objects, since their methods are pre-cloned
                         Value::EnumVariantObj(o) => {
@@ -631,7 +623,7 @@ impl VM {
                                 Value::Int(_) => self.type_constant_indexes["Int"],
                                 Value::Float(_) => self.type_constant_indexes["Float"],
                                 Value::ArrayObj(_) => self.type_constant_indexes["Array"],
-                                Value::StringObj(_) =>  self.type_constant_indexes["String"],
+                                Value::StringObj(_) => self.type_constant_indexes["String"],
                                 Value::SetObj(_) => self.type_constant_indexes["Set"],
                                 Value::MapObj(_) => self.type_constant_indexes["Map"],
                                 Value::InstanceObj(o) => o.borrow().type_id,
@@ -883,8 +875,8 @@ impl VM {
                     let frame = current_frame!(self);
                     frame.ip -= offset;
                 }
-                Opcode::Invoke(arity, has_return) => {
-                    let fn_idx = self.stack.len() - (arity + if has_return { 1 } else { 0 }) - 1;
+                Opcode::Invoke(arity) => {
+                    let fn_idx = self.stack.len() - arity - 1;
                     let target = self.stack.remove(fn_idx);
 
                     match &target {
@@ -899,7 +891,6 @@ impl VM {
                             let arity = evv.arity;
                             let num_args = self.stack.len() - arity;
                             let args = self.stack.split_off(num_args);
-                            self.stack.pop(); // <-- Pop off nil (<ret> placeholder) value
 
                             evv.values = Some(args);
                         }
