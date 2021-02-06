@@ -49,13 +49,13 @@ pub fn typecheck(input: &String) -> Result<Vec<TypedAstNode>, Error> {
     }
 }
 
-pub fn compile(input: &String) -> Result<(Module, Metadata), Error> {
+pub fn compile(module_path: String, input: &String) -> Result<(Module, Metadata), Error> {
     let typed_ast_nodes = typecheck(input)?;
-    let result = vm::compiler::compile(typed_ast_nodes).unwrap();
+    let result = vm::compiler::compile(module_path, typed_ast_nodes).unwrap();
     Ok(result)
 }
 
-pub fn compile_and_disassemble(input: &String) -> Result<String, Error> {
-    let (compiled_module, metadata) = compile(input)?;
+pub fn compile_and_disassemble(module_path: String, input: &String) -> Result<String, Error> {
+    let (compiled_module, metadata) = compile(module_path, input)?;
     Ok(vm::disassembler::disassemble(compiled_module, metadata))
 }

@@ -100,7 +100,7 @@ const STACK_LIMIT: usize = 1024;
 impl VM {
     pub fn new(module: Module, ctx: VMContext) -> Self {
         let name = "$main".to_string();
-        let Module { code, constants } = module;
+        let Module { code, constants, .. } = module;
         let root_frame = CallFrame { ip: 0, code, start_stack_idx: 0, name, upvalues: vec![], local_addrs: vec![] };
 
         let type_constant_indexes = constants.iter().enumerate()
