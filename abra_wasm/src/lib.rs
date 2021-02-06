@@ -220,7 +220,8 @@ extern "C" {
 
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
-    let result = compile_and_disassemble(&input.to_string());
+    let module_name = "_repl.abra".to_string();
+    let result = compile_and_disassemble(module_name, &input.to_string());
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -237,7 +238,8 @@ pub fn typecheck_input(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
-    let result = compile(&input.to_string())
+    let module_name = "_repl.abra".to_string();
+    let result = compile(module_name, &input.to_string())
         .map(|(module, _)| module);
     let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
@@ -245,7 +247,8 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 }
 
 fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
-    let (module, _) = compile(&input)?;
+    let module_name = "_repl.abra".to_string();
+    let (module, _) = compile(module_name, &input)?;
     let mut vm = VM::new(module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),

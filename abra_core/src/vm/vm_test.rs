@@ -25,7 +25,9 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
         let (_, typed_ast) = typecheck(ast).unwrap();
-        let (module, _) = compile(typed_ast).unwrap();
+
+        let module_name = "_test.abra".to_string();
+        let (module, _) = compile(module_name, typed_ast).unwrap();
         let ctx = VMContext::default();
 
         let mut vm = VM::new(module, ctx);

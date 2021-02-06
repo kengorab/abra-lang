@@ -49,7 +49,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
         print: |input| print!("{}", input)
     };
 
-    let module = match compile(&contents) {
+    let module = match compile(opts.file_name, &contents) {
         Ok((module, _)) => module,
         Err(error) => {
             match error {
@@ -74,7 +74,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let contents = read_file(&opts.file_name)?;
 
-    match compile_and_disassemble(&contents) {
+    match compile_and_disassemble(opts.file_name, &contents) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),

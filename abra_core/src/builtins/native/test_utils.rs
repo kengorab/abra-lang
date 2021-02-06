@@ -38,14 +38,17 @@ pub fn interpret(input: &str) -> Option<Value> {
     let tokens = tokenize(&input.to_string()).unwrap();
     let ast = parse(tokens).unwrap();
     let (_, typed_ast) = typecheck(ast).unwrap();
-    let (module, _) = compile(typed_ast).unwrap();
+
+    let module_name = "_test.abra".to_string();
+    let (module, _) = compile(module_name, typed_ast).unwrap();
 
     let mut vm = VM::new(module, VMContext::default());
     vm.run().unwrap()
 }
 
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
-    let module = match crate::compile(&input.as_ref().to_string()) {
+    let module_name = "_test.abra".to_string();
+    let module = match crate::compile(module_name, &input.as_ref().to_string()) {
         Ok((module, _)) => module,
         Err(error) => return Err(error)
     };

@@ -10,9 +10,10 @@ impl<'a> Serialize for JsModule<'a> {
     {
         use serde::ser::SerializeMap;
 
-        let Module { constants, code } = self.0;
+        let Module { name, constants, code } = self.0;
 
-        let mut obj = serializer.serialize_map(Some(4))?;
+        let mut obj = serializer.serialize_map(Some(3))?;
+        obj.serialize_entry("name", name)?;
 
         let mut bytecode = Vec::<(String, Option<Vec<u32>>)>::new();
         let mut code = code.iter();
