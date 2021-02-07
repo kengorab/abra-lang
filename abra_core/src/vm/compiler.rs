@@ -10,6 +10,7 @@ use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, d
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
+use crate::typechecker::typechecker::TypedModule;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,7 +83,7 @@ struct JumpHandle {
     instr_slot: usize,
 }
 
-pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
+pub fn compile(module_path: String, module: TypedModule) -> Result<(Module, Metadata), ()> {
     let metadata = Metadata::default();
     let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
@@ -111,6 +112,7 @@ pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, M
         temp_idx: 0,
     };
 
+    let ast = module.typed_nodes;
     compiler.hoist_fn_defs(&ast)?;
 
     let len = ast.len();
@@ -2018,10 +2020,10 @@ mod tests {
     fn compile(input: &str) -> Module {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        let (_, typed_ast) = typecheck(ast).unwrap();
+        let module = typecheck(ast).unwrap();
 
         let module_name = "_test.abra".to_string();
-        super::compile(module_name, typed_ast).unwrap().0
+        super::compile(module_name, module).unwrap().0
     }
 
     fn to_string_method() -> (String, Value) {
