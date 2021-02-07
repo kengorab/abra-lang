@@ -35,12 +35,12 @@ macro_rules! string_array {
 }
 
 pub fn interpret(input: &str) -> Option<Value> {
+    let module_name = "_test.abra".to_string();
+
     let tokens = tokenize(&input.to_string()).unwrap();
     let ast = parse(tokens).unwrap();
-    let module = typecheck(ast).unwrap();
-
-    let module_name = "_test.abra".to_string();
-    let (module, _) = compile(module_name, module).unwrap();
+    let module = typecheck(module_name, ast).unwrap();
+    let (module, _) = compile(module).unwrap();
 
     let mut vm = VM::new(module, VMContext::default());
     vm.run().unwrap()

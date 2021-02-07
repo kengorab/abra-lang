@@ -34,13 +34,13 @@ impl DisplayError for Error {
     }
 }
 
-pub fn typecheck(input: &String) -> Result<TypedModule, Error> {
+pub fn typecheck(module_path: String, input: &String) -> Result<TypedModule, Error> {
     match lexer::lexer::tokenize(input) {
         Err(e) => Err(Error::LexerError(e)),
         Ok(tokens) => match parser::parser::parse(tokens) {
             Err(e) => Err(Error::ParseError(e)),
             Ok(ast) => {
-                match typechecker::typechecker::typecheck(ast) {
+                match typechecker::typechecker::typecheck(module_path, ast) {
                     Err(e) => Err(Error::TypecheckerError(e)),
                     Ok(module) => Ok(module)
                 }
@@ -50,8 +50,8 @@ pub fn typecheck(input: &String) -> Result<TypedModule, Error> {
 }
 
 pub fn compile(module_path: String, input: &String) -> Result<(Module, Metadata), Error> {
-    let typed_ast_nodes = typecheck(input)?;
-    let result = vm::compiler::compile(module_path, typed_ast_nodes).unwrap();
+    let module = typecheck(module_path, input)?;
+    let result = vm::compiler::compile(module).unwrap();
     Ok(result)
 }
 

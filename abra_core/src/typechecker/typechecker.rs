@@ -58,18 +58,20 @@ impl Scope {
 
 #[derive(Debug, Clone)]
 pub struct TypedModule {
+    pub module_name: String,
     pub typed_nodes: Vec<TypedAstNode>,
     pub referencable_types: HashMap<String, Type>,
     pub global_bindings: HashMap<String, ScopeBinding>,
     pub types: HashMap<String, Type>,
 }
 
-pub fn typecheck(ast: Vec<AstNode>) -> Result<TypedModule, TypecheckerError> {
+pub fn typecheck(module_path: String, ast: Vec<AstNode>) -> Result<TypedModule, TypecheckerError> {
     let mut referencable_types = HashMap::new();
     referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
     referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Date".to_string(), Type::Struct(NativeDate::get_type()));
+
 
     let mut typechecker = Typechecker {
         cur_typedef: None,
@@ -87,6 +89,7 @@ pub fn typecheck(ast: Vec<AstNode>) -> Result<TypedModule, TypecheckerError> {
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
 
     let module = TypedModule {
+        module_name: module_path.replace(".abra", "").replace("/", "."),
         typed_nodes: results?,
         referencable_types: typechecker.referencable_types.clone(),
         global_bindings: scope.bindings,
@@ -2880,7 +2883,8 @@ mod tests {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
 
-        let module = super::typecheck(ast)?;
+        let module_path = "_test.abra".to_string();
+        let module = super::typecheck(module_path, ast)?;
         Ok(module)
     }
 
