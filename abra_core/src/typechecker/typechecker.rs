@@ -56,6 +56,49 @@ impl Scope {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TypedModule {
+    pub module_name: String,
+    pub typed_nodes: Vec<TypedAstNode>,
+    pub referencable_types: HashMap<String, Type>,
+    pub global_bindings: HashMap<String, ScopeBinding>,
+    pub types: HashMap<String, Type>,
+}
+
+pub fn typecheck(module_path: String, ast: Vec<AstNode>) -> Result<TypedModule, TypecheckerError> {
+    let mut referencable_types = HashMap::new();
+    referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
+    referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
+    referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
+    referencable_types.insert("Date".to_string(), Type::Struct(NativeDate::get_type()));
+
+
+    let mut typechecker = Typechecker {
+        cur_typedef: None,
+        scopes: vec![Scope::root_scope()],
+        referencable_types,
+        returns: vec![],
+    };
+
+    typechecker.hoist_declarations_in_scope(&ast)?;
+
+    let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
+        .map(|node| typechecker.visit(node))
+        .collect();
+
+    let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
+
+    let module = TypedModule {
+        module_name: module_path.replace(".abra", "").replace("/", "."),
+        typed_nodes: results?,
+        referencable_types: typechecker.referencable_types.clone(),
+        global_bindings: scope.bindings,
+        types: scope.types.into_iter().map(|(k, (t, _))| (k, t)).collect(),
+    };
+
+    Ok(module)
+}
+
 pub struct Typechecker {
     pub(crate) cur_typedef: Option<Type>,
     pub(crate) scopes: Vec<Scope>,
@@ -1075,28 +1118,6 @@ impl Typechecker {
 
         Ok(())
     }
-}
-
-pub fn typecheck(ast: Vec<AstNode>) -> Result<(Typechecker, Vec<TypedAstNode>), TypecheckerError> {
-    let mut referencable_types = HashMap::new();
-    referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
-    referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
-    referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
-    referencable_types.insert("Date".to_string(), Type::Struct(NativeDate::get_type()));
-
-    let mut typechecker = Typechecker {
-        cur_typedef: None,
-        scopes: vec![Scope::root_scope()],
-        referencable_types,
-        returns: vec![],
-    };
-
-    typechecker.hoist_declarations_in_scope(&ast)?;
-
-    let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
-        .map(|node| typechecker.visit(node))
-        .collect();
-    Ok((typechecker, results?))
 }
 
 impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
@@ -2858,19 +2879,13 @@ mod tests {
 
     type TestResult = Result<(), TypecheckerError>;
 
-    fn typecheck(input: &str) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+    fn typecheck(input: &str) -> Result<TypedModule, TypecheckerError> {
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
 
-        let (_, nodes) = super::typecheck(ast)?;
-        Ok(nodes)
-    }
-
-    fn typecheck_get_typechecker(input: &str) -> (Typechecker, Vec<TypedAstNode>) {
-        let tokens = tokenize(&input.to_string()).unwrap();
-        let ast = parse(tokens).unwrap();
-
-        super::typecheck(ast).unwrap()
+        let module_path = "_test.abra".to_string();
+        let module = super::typecheck(module_path, ast)?;
+        Ok(module)
     }
 
     fn to_string_method_type() -> (String, Type) {
@@ -2879,18 +2894,18 @@ mod tests {
 
     #[test]
     fn typecheck_literals() -> TestResult {
-        let typed_ast = typecheck("1 2.34 \"hello\"")?;
+        let module = typecheck("1 2.34 \"hello\"")?;
         let expected = vec![
             int_literal!((1, 1), 1),
             float_literal!((1, 3), 2.34),
             string_literal!((1, 8), "hello")
         ];
-        Ok(assert_eq!(expected, typed_ast))
+        Ok(assert_eq!(expected, module.typed_nodes))
     }
 
     #[test]
     fn typecheck_unary() -> TestResult {
-        let typed_ast = typecheck("-1")?;
+        let module = typecheck("-1")?;
         let expected = vec![
             TypedAstNode::Unary(
                 Token::Minus(Position::new(1, 1)),
@@ -2901,9 +2916,9 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(expected, typed_ast);
+        assert_eq!(expected, module.typed_nodes);
 
-        let typed_ast = typecheck("-2.34")?;
+        let module = typecheck("-2.34")?;
         let expected = vec![
             TypedAstNode::Unary(
                 Token::Minus(Position::new(1, 1)),
@@ -2914,9 +2929,9 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(expected, typed_ast);
+        assert_eq!(expected, module.typed_nodes);
 
-        let typed_ast = typecheck("!true")?;
+        let module = typecheck("!true")?;
         let expected = vec![
             TypedAstNode::Unary(
                 Token::Bang(Position::new(1, 1)),
@@ -2927,7 +2942,8 @@ mod tests {
                 },
             ),
         ];
-        Ok(assert_eq!(expected, typed_ast))
+        assert_eq!(expected, module.typed_nodes);
+        Ok(())
     }
 
     #[test]
@@ -2967,7 +2983,7 @@ mod tests {
 
     #[test]
     fn typecheck_binary_numeric_operators() -> TestResult {
-        let typed_ast = typecheck("1 + 2")?;
+        let module = typecheck("1 + 2")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 3)),
             TypedBinaryNode {
@@ -2977,9 +2993,9 @@ mod tests {
                 right: Box::new(int_literal!((1, 5), 2)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("1 % 2")?;
+        let module = typecheck("1 % 2")?;
         let expected = TypedAstNode::Binary(
             Token::Percent(Position::new(1, 3)),
             TypedBinaryNode {
@@ -2989,9 +3005,9 @@ mod tests {
                 right: Box::new(int_literal!((1, 5), 2)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("1.1 % 2")?;
+        let module = typecheck("1.1 % 2")?;
         let expected = TypedAstNode::Binary(
             Token::Percent(Position::new(1, 5)),
             TypedBinaryNode {
@@ -3001,9 +3017,9 @@ mod tests {
                 right: Box::new(int_literal!((1, 7), 2)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("1 % 2.3")?;
+        let module = typecheck("1 % 2.3")?;
         let expected = TypedAstNode::Binary(
             Token::Percent(Position::new(1, 3)),
             TypedBinaryNode {
@@ -3013,9 +3029,9 @@ mod tests {
                 right: Box::new(float_literal!((1, 5), 2.3)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("2 ** 3")?;
+        let module = typecheck("2 ** 3")?;
         let expected = TypedAstNode::Binary(
             Token::StarStar(Position::new(1, 3)),
             TypedBinaryNode {
@@ -3025,9 +3041,9 @@ mod tests {
                 right: Box::new(int_literal!((1, 6), 3)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("1 ** 2.3")?;
+        let module = typecheck("1 ** 2.3")?;
         let expected = TypedAstNode::Binary(
             Token::StarStar(Position::new(1, 3)),
             TypedBinaryNode {
@@ -3037,14 +3053,14 @@ mod tests {
                 right: Box::new(float_literal!((1, 6), 2.3)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_binary_numeric_operators_nested() -> TestResult {
-        let typed_ast = typecheck("1 + 2.3 - -4.5")?;
+        let module = typecheck("1 + 2.3 - -4.5")?;
         let expected = TypedAstNode::Binary(
             Token::Minus(Position::new(1, 9)),
             TypedBinaryNode {
@@ -3073,12 +3089,12 @@ mod tests {
                 ),
             },
         );
-        Ok(assert_eq!(expected, typed_ast[0]))
+        Ok(assert_eq!(expected, module.typed_nodes[0]))
     }
 
     #[test]
     fn typecheck_binary_str_concat() -> TestResult {
-        let typed_ast = typecheck("\"hello \" + \"world\"")?;
+        let module = typecheck("\"hello \" + \"world\"")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 10)),
             TypedBinaryNode {
@@ -3088,9 +3104,9 @@ mod tests {
                 right: Box::new(string_literal!((1, 12), "world")),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("\"hello \" + 3")?;
+        let module = typecheck("\"hello \" + 3")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 10)),
             TypedBinaryNode {
@@ -3100,9 +3116,9 @@ mod tests {
                 right: Box::new(int_literal!((1, 12), 3)),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("3.14 + \"world\"")?;
+        let module = typecheck("3.14 + \"world\"")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 6)),
             TypedBinaryNode {
@@ -3112,9 +3128,9 @@ mod tests {
                 right: Box::new(string_literal!((1, 8), "world")),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("false + \" world\"")?;
+        let module = typecheck("false + \" world\"")?;
         let expected = TypedAstNode::Binary(
             Token::Plus(Position::new(1, 7)),
             TypedBinaryNode {
@@ -3124,7 +3140,9 @@ mod tests {
                 right: Box::new(string_literal!((1, 9), " world")),
             },
         );
-        Ok(assert_eq!(expected, typed_ast[0]))
+        assert_eq!(expected, module.typed_nodes[0]);
+
+        Ok(())
     }
 
     #[test]
@@ -3208,7 +3226,7 @@ mod tests {
 
     #[test]
     fn typecheck_binary_boolean() -> TestResult {
-        let typed_ast = typecheck("true && true || false")?;
+        let module = typecheck("true && true || false")?;
         let expected = TypedAstNode::IfExpression(Token::If(Position::new(1, 14)), TypedIfNode {
             typ: Type::Bool,
             condition: Box::new(
@@ -3232,9 +3250,9 @@ mod tests {
                 bool_literal!((1, 17), false),
             ]),
         });
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("true ^ true")?;
+        let module = typecheck("true ^ true")?;
         let expected = TypedAstNode::Binary(
             Token::Caret(Position::new(1, 6)),
             TypedBinaryNode {
@@ -3244,7 +3262,9 @@ mod tests {
                 right: Box::new(bool_literal!((1, 8), true)),
             },
         );
-        Ok(assert_eq!(expected, typed_ast[0]))
+        assert_eq!(expected, module.typed_nodes[0]);
+
+        Ok(())
     }
 
     #[test]
@@ -3292,7 +3312,7 @@ mod tests {
             ("1 == 2", Box::new(Token::Eq), BinaryOp::Eq),
         ];
         for (input, token, op) in cases {
-            let typed_ast = typecheck(input)?;
+            let module = typecheck(input)?;
             let expected = TypedAstNode::Binary(
                 token(Position::new(1, 3)),
                 TypedBinaryNode {
@@ -3302,7 +3322,7 @@ mod tests {
                     right: Box::new(int_literal!((1, 6), 2)),
                 },
             );
-            assert_eq!(expected, typed_ast[0]);
+            assert_eq!(expected, module.typed_nodes[0]);
         };
 
         let cases: Vec<(&str, Box<dyn Fn(Position) -> Token>, BinaryOp)> = vec![
@@ -3314,7 +3334,7 @@ mod tests {
             ("\"abc\" != \"def\"", Box::new(Token::Neq), BinaryOp::Neq),
         ];
         for (input, token, op) in cases {
-            let typed_ast = typecheck(input)?;
+            let module = typecheck(input)?;
             let expected = TypedAstNode::Binary(
                 token(Position::new(1, 7)),
                 TypedBinaryNode {
@@ -3324,7 +3344,7 @@ mod tests {
                     right: Box::new(string_literal!((1, 10), "def")),
                 },
             );
-            assert_eq!(expected, typed_ast[0]);
+            assert_eq!(expected, module.typed_nodes[0]);
         }
 
         let cases: Vec<(&str, Box<dyn Fn(Position) -> Token>, BinaryOp)> = vec![
@@ -3332,7 +3352,7 @@ mod tests {
             ("\"abc\" != 3", Box::new(Token::Neq), BinaryOp::Neq),
         ];
         for (input, token, op) in cases {
-            let typed_ast = typecheck(input)?;
+            let module = typecheck(input)?;
             let expected = TypedAstNode::Binary(
                 token(Position::new(1, 7)),
                 TypedBinaryNode {
@@ -3342,7 +3362,7 @@ mod tests {
                     right: Box::new(int_literal!((1, 10), 3)),
                 },
             );
-            assert_eq!(expected, typed_ast[0]);
+            assert_eq!(expected, module.typed_nodes[0]);
         }
 
         Ok(())
@@ -3386,8 +3406,8 @@ mod tests {
         ];
 
         for (input, expected_type) in cases {
-            let typed_ast = typecheck(input)?;
-            assert_eq!(expected_type, typed_ast[0].get_type());
+            let module = typecheck(input)?;
+            assert_eq!(expected_type, module.typed_nodes[0].get_type());
         };
 
         Ok(())
@@ -3420,7 +3440,7 @@ mod tests {
 
     #[test]
     fn typecheck_grouped() -> TestResult {
-        let typed_ast = typecheck("(1 + 2)")?;
+        let module = typecheck("(1 + 2)")?;
         let expected = TypedAstNode::Grouped(
             Token::LParen(Position::new(1, 1), false),
             TypedGroupedNode {
@@ -3438,17 +3458,17 @@ mod tests {
                 ),
             },
         );
-        Ok(assert_eq!(expected, typed_ast[0]))
+        Ok(assert_eq!(expected, module.typed_nodes[0]))
     }
 
     #[test]
     fn typecheck_array_empty() -> TestResult {
-        let typed_ast = typecheck("[]")?;
+        let module = typecheck("[]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode { typ: Type::Array(Box::new(Type::Unknown)), items: vec![] },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Verify explicit type annotations works
         let res = typecheck("val a: Int[] = []");
@@ -3461,7 +3481,7 @@ mod tests {
 
     #[test]
     fn typecheck_array_nonempty() -> TestResult {
-        let typed_ast = typecheck("[1, 2, 3]")?;
+        let module = typecheck("[1, 2, 3]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
@@ -3473,9 +3493,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("[\"a\", true]")?;
+        let module = typecheck("[\"a\", true]")?;
         let expected = TypedAstNode::Array(
             Token::LBrack(Position::new(1, 1), false),
             TypedArrayNode {
@@ -3486,7 +3506,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Verify explicit type annotations works
         let res = typecheck("val a: Bool[] = [true, false]");
@@ -3499,9 +3519,9 @@ mod tests {
 
     #[test]
     fn typecheck_array_nested() -> TestResult {
-        let typed_ast = typecheck("[[1, 2], [3, 4]]")?;
+        let module = typecheck("[[1, 2], [3, 4]]")?;
         let expected_type = Type::Array(Box::new(Type::Array(Box::new(Type::Int))));
-        assert_eq!(expected_type, typed_ast[0].get_type());
+        assert_eq!(expected_type, module.typed_nodes[0].get_type());
 
         // TODO: Handle edge cases, like [[1, 2.3], [3.4, 5]], which should be (Int | Float)[][]
 
@@ -3510,12 +3530,12 @@ mod tests {
 
     #[test]
     fn typecheck_set_empty() -> TestResult {
-        let typed_ast = typecheck("#{}")?;
+        let module = typecheck("#{}")?;
         let expected = TypedAstNode::Set(
             Token::LBraceHash(Position::new(1, 1)),
             TypedSetNode { typ: Type::Set(Box::new(Type::Unknown)), items: vec![] },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Verify explicit type annotations works
         let res = typecheck("val a: Set<Int> = #{}");
@@ -3526,7 +3546,7 @@ mod tests {
 
     #[test]
     fn typecheck_set_nonempty() -> TestResult {
-        let typed_ast = typecheck("#{1, 2, 3}")?;
+        let module = typecheck("#{1, 2, 3}")?;
         let expected = TypedAstNode::Set(
             Token::LBraceHash(Position::new(1, 1)),
             TypedSetNode {
@@ -3538,9 +3558,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("#{\"a\", 12}")?;
+        let module = typecheck("#{\"a\", 12}")?;
         let expected = TypedAstNode::Set(
             Token::LBraceHash(Position::new(1, 1)),
             TypedSetNode {
@@ -3551,7 +3571,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Verify explicit type annotations works
         let res = typecheck("val a: Set<Int> = #{1, 2, 3}");
@@ -3562,9 +3582,9 @@ mod tests {
 
     #[test]
     fn typecheck_set_nested() -> TestResult {
-        let typed_ast = typecheck("#{#{1, 2}, #{3, 4}}")?;
+        let module = typecheck("#{#{1, 2}, #{3, 4}}")?;
         let expected_type = Type::Set(Box::new(Type::Set(Box::new(Type::Int))));
-        assert_eq!(expected_type, typed_ast[0].get_type());
+        assert_eq!(expected_type, module.typed_nodes[0].get_type());
 
         // Verify explicit type annotations works
         let res = typecheck("val a: Set<Set<Int>> = #{#{1, 2}, #{3, 4}}");
@@ -3575,17 +3595,17 @@ mod tests {
 
     #[test]
     fn typecheck_tuple() -> TestResult {
-        let typed_ast = typecheck("(1, \"hello\")")?;
+        let module = typecheck("(1, \"hello\")")?;
         let expected_type = Type::Tuple(vec![Type::Int, Type::String]);
-        assert_eq!(expected_type, typed_ast[0].get_type());
+        assert_eq!(expected_type, module.typed_nodes[0].get_type());
 
-        let typed_ast = typecheck("(1, (\"hello\", \"world\"), 3)")?;
+        let module = typecheck("(1, (\"hello\", \"world\"), 3)")?;
         let expected_type = Type::Tuple(vec![
             Type::Int,
             Type::Tuple(vec![Type::String, Type::String]),
             Type::Int,
         ]);
-        assert_eq!(expected_type, typed_ast[0].get_type());
+        assert_eq!(expected_type, module.typed_nodes[0].get_type());
 
         let res = typecheck("val t: (Int, Int, String) = (1, 2, \"three\")");
         assert!(res.is_ok());
@@ -3595,14 +3615,14 @@ mod tests {
 
     #[test]
     fn typecheck_tuple_generics() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           func abc<T>(t: T): (T, T[]) = (t, [t])\
           abc(1)
         ")?;
         let expected_type = Type::Tuple(vec![Type::Int, Type::Array(Box::new(Type::Int))]);
-        assert_eq!(expected_type, typed_ast[1].get_type());
+        assert_eq!(expected_type, module.typed_nodes[1].get_type());
 
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           func abc<T, U, V>(t: T, u: U, v: V): (T, U, V) = (t, u, v)\
           abc(1, \"2\", [3])
         ")?;
@@ -3611,14 +3631,14 @@ mod tests {
             Type::String,
             Type::Array(Box::new(Type::Int))
         ]);
-        assert_eq!(expected_type, typed_ast[1].get_type());
+        assert_eq!(expected_type, module.typed_nodes[1].get_type());
 
         Ok(())
     }
 
     #[test]
     fn typecheck_map_empty() -> TestResult {
-        let typed_ast = typecheck("{}")?;
+        let module = typecheck("{}")?;
         let expected = TypedAstNode::Map(
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
@@ -3626,14 +3646,14 @@ mod tests {
                 items: vec![],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_map_nonempty() -> TestResult {
-        let typed_ast = typecheck("{ a: 1, b: 2 }")?;
+        let module = typecheck("{ a: 1, b: 2 }")?;
         let expected = TypedAstNode::Map(
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
@@ -3644,9 +3664,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("{ a: { c: true }, b: { c: false } }")?;
+        let module = typecheck("{ a: { c: true }, b: { c: false } }")?;
         let expected = TypedAstNode::Map(
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
@@ -3672,20 +3692,20 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("{ a: 1, b: true, c: \"hello\" }")?;
+        let module = typecheck("{ a: 1, b: true, c: \"hello\" }")?;
         let expected_type = Type::Map(
             Box::new(Type::String),
             Box::new(Type::Union(vec![Type::Int, Type::Bool, Type::String])),
         );
-        assert_eq!(expected_type, typed_ast[0].get_type());
+        assert_eq!(expected_type, module.typed_nodes[0].get_type());
 
         Ok(())
     }
 
     #[test]
-    fn typecheck_type_annotation() {
+    fn typecheck_type_annotation() -> TestResult {
         let cases = vec![
             // Simple cases
             ("var abc: Int", Type::Int),
@@ -3698,16 +3718,15 @@ mod tests {
         ];
 
         for (input, expected_binding_type) in cases {
-            let (typechecker, _) = typecheck_get_typechecker(input);
-            let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc").unwrap();
-            assert_eq!(expected_binding_type, *typ);
-            assert_eq!(0, scope_depth);
+            let module = typecheck(input)?;
+            assert_eq!(expected_binding_type, module.global_bindings["abc"].1);
         }
+        Ok(())
     }
 
     #[test]
     fn typecheck_binding_decl() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("val abc = 123");
+        let module = typecheck("val abc = 123")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3717,17 +3736,16 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (binding, scope_depth) = typechecker.get_binding("abc").unwrap();
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["abc"];
         let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
             Type::Int,
             false,
         );
         assert_eq!(&expected_binding, binding);
-        assert_eq!(0, scope_depth);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("var abc: Int");
+        let module = typecheck("var abc: Int")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Var(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3737,15 +3755,14 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (binding, scope_depth) = typechecker.get_binding("abc").unwrap();
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["abc"];
         let expected_binding = ScopeBinding(
             Token::Ident(Position::new(1, 5), "abc".to_string()),
             Type::Int,
             true,
         );
         assert_eq!(&expected_binding, binding);
-        assert_eq!(0, scope_depth);
 
         assert!(typecheck("val arr: Int[] = []").is_ok());
 
@@ -3791,7 +3808,7 @@ mod tests {
     #[test]
     fn typecheck_binding_decl_destructuring() -> TestResult {
         // Tuples
-        let (typechecker, typed_ast) = typecheck_get_typechecker("val (a, b, c) = (1, \"2\", [1, 2, 3])");
+        let module = typecheck("val (a, b, c) = (1, \"2\", [1, 2, 3])")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3828,19 +3845,19 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("a").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 6), "a"), Type::Int, false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("b").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 9), "b"), Type::String, false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("c").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 12), "c"), Type::Array(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["a"];
+        let expected_binding = ScopeBinding(ident_token!((1, 6), "a"), Type::Int, false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["b"];
+        let expected_binding = ScopeBinding(ident_token!((1, 9), "b"), Type::String, false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["c"];
+        let expected_binding = ScopeBinding(ident_token!((1, 12), "c"), Type::Array(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
 
         // Arrays
-        let (typechecker, typed_ast) = typecheck_get_typechecker("val [a, *b, c] = [1, 2, 3]");
+        let module = typecheck("val [a, *b, c] = [1, 2, 3]")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3868,19 +3885,19 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("a").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 6), "a"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("b").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 10), "b"), Type::Array(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("c").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 13), "c"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["a"];
+        let expected_binding = ScopeBinding(ident_token!((1, 6), "a"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["b"];
+        let expected_binding = ScopeBinding(ident_token!((1, 10), "b"), Type::Array(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["c"];
+        let expected_binding = ScopeBinding(ident_token!((1, 13), "c"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
 
         // Strings
-        let (typechecker, typed_ast) = typecheck_get_typechecker("val [a, *b, c] = \"hello\"");
+        let module = typecheck("val [a, *b, c] = \"hello\"")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3898,19 +3915,19 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("a").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 6), "a"), Type::String, false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("b").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 10), "b"), Type::String, false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("c").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 13), "c"), Type::String, false), 0);
-        assert_eq!(expected_binding, binding);
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["a"];
+        let expected_binding = ScopeBinding(ident_token!((1, 6), "a"), Type::String, false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["b"];
+        let expected_binding = ScopeBinding(ident_token!((1, 10), "b"), Type::String, false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["c"];
+        let expected_binding = ScopeBinding(ident_token!((1, 13), "c"), Type::String, false);
+        assert_eq!(&expected_binding, binding);
 
         // Nested
-        let (typechecker, typed_ast) = typecheck_get_typechecker("val [(x1, y1), (x2, y2)] = [(1, 2), (3, 4)]");
+        let module = typecheck("val [(x1, y1), (x2, y2)] = [(1, 2), (3, 4)]")?;
         let expected = TypedAstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             TypedBindingDeclNode {
@@ -3972,19 +3989,19 @@ mod tests {
                 scope_depth: 0,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let binding = typechecker.get_binding("x1").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 7), "x1"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("y1").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 11), "y1"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("x2").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 17), "x2"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
-        let binding = typechecker.get_binding("y2").unwrap();
-        let expected_binding = (&ScopeBinding(ident_token!((1, 21), "y2"), Type::Option(Box::new(Type::Int)), false), 0);
-        assert_eq!(expected_binding, binding);
+        assert_eq!(expected, module.typed_nodes[0]);
+        let binding = &module.global_bindings["x1"];
+        let expected_binding = ScopeBinding(ident_token!((1, 7), "x1"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["y1"];
+        let expected_binding = ScopeBinding(ident_token!((1, 11), "y1"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["x2"];
+        let expected_binding = ScopeBinding(ident_token!((1, 17), "x2"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
+        let binding = &module.global_bindings["y2"];
+        let expected_binding = ScopeBinding(ident_token!((1, 21), "y2"), Type::Option(Box::new(Type::Int)), false);
+        assert_eq!(&expected_binding, binding);
 
         Ok(())
     }
@@ -4067,7 +4084,7 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int = 123");
+        let module = typecheck("func abc(): Int = 123")?;
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -4081,14 +4098,12 @@ mod tests {
                 is_recursive: false,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc")
-            .expect("The function abc should be defined");
+        assert_eq!(expected, module.typed_nodes[0]);
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false });
         assert_eq!(&expected_type, typ);
-        assert_eq!(0, scope_depth);
 
-        let typed_ast = typecheck("func abc(a: Int): Int = a + 1")?;
+        let module = typecheck("func abc(a: Int): Int = a + 1")?;
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -4109,9 +4124,9 @@ mod tests {
                 is_recursive: false,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int[] { val a = [1, 2] a }");
+        let module = typecheck("func abc(): Int[] { val a = [1, 2] a }")?;
         let expected = TypedAstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             TypedFunctionDeclNode {
@@ -4145,27 +4160,25 @@ mod tests {
                 is_recursive: false,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (ScopeBinding(_, typ, _), scope_depth) = typechecker.get_binding("abc")
-            .expect("The function abc should be defined");
+        assert_eq!(expected, module.typed_nodes[0]);
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Array(Box::new(Type::Int))), is_variadic: false });
         assert_eq!(&expected_type, typ);
-        assert_eq!(0, scope_depth);
 
-        let typed_ast = typecheck("func abc(): Int = 123")?;
-        let ret_type = match typed_ast.first().unwrap() {
+        let module = typecheck("func abc(): Int = 123")?;
+        let ret_type = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { ret_type, .. }) => ret_type,
             _ => panic!("Node must be a FunctionDecl")
         };
         assert_eq!(&Type::Int, ret_type);
 
         // Test that bindings assigned to functions have the proper type
-        let (typechecker, _) = typecheck_get_typechecker("func abc(a: Int): Bool = a == 1\nval def = abc");
-        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("def").unwrap();
+        let module = typecheck("func abc(a: Int): Bool = a == 1\nval def = abc")?;
+        let ScopeBinding(_, typ, _) = &module.global_bindings["def"];
         assert_eq!(&Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Bool), is_variadic: false }), typ);
 
-        let (typechecker, _) = typecheck_get_typechecker("func abc(): Bool[] = []");
-        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc").unwrap();
+        let module = typecheck("func abc(): Bool[] = []")?;
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType {
             arg_types: vec![],
             type_args: vec![],
@@ -4174,8 +4187,8 @@ mod tests {
         });
         assert_eq!(&expected_type, typ);
 
-        let (typechecker, _) = typecheck_get_typechecker("func abc(): Bool[]? = None");
-        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc").unwrap();
+        let module = typecheck("func abc(): Bool[]? = None")?;
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType {
             arg_types: vec![],
             type_args: vec![],
@@ -4189,8 +4202,8 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_args() -> TestResult {
-        let typed_ast = typecheck("func abc(a: Int): Int = 123")?;
-        let args = match typed_ast.first().unwrap() {
+        let module = typecheck("func abc(a: Int): Int = 123")?;
+        let args = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
         };
@@ -4199,8 +4212,8 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
-        let typed_ast = typecheck("func abc(a: Int, b: Bool?, c: Int[]): Int = 123")?;
-        let args = match typed_ast.first().unwrap() {
+        let module = typecheck("func abc(a: Int, b: Bool?, c: Int[]): Int = 123")?;
+        let args = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
         };
@@ -4211,8 +4224,8 @@ mod tests {
         ];
         assert_eq!(&expected, args);
 
-        let typed_ast = typecheck("func abc(a: Int = 1, b = [1, 2, 3]): Int = 123")?;
-        let args = match typed_ast.first().unwrap() {
+        let module = typecheck("func abc(a: Int = 1, b = [1, 2, 3]): Int = 123")?;
+        let args = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
         };
@@ -4235,12 +4248,12 @@ mod tests {
         assert_eq!(&expected, args);
 
         // A function with default-valued arguments beyond those required should still be acceptable
-        let typed_ast = typecheck(r#"
+        let result = typecheck(r#"
           func call(fn: (Int) => Int, value: Int): Int = fn(value)
           func incr(v: Int, incBy = 3): Int = v + incBy
           call(incr, 21)
         "#);
-        assert!(typed_ast.is_ok());
+        assert!(result.is_ok());
 
         Ok(())
     }
@@ -4273,8 +4286,8 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_varargs() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(*a: Int[]): Int = 123");
-        let args = match typed_ast.first().unwrap() {
+        let module = typecheck("func abc(*a: Int[]): Int = 123")?;
+        let args = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { args, .. }) => args,
             _ => panic!("Node must be a FunctionDecl")
         };
@@ -4287,7 +4300,7 @@ mod tests {
             )
         ];
         assert_eq!(&expected, args);
-        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc").unwrap();
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType {
             arg_types: vec![("a".to_string(), Type::Array(Box::new(Type::Int)), true)],
             type_args: vec![],
@@ -4344,24 +4357,25 @@ mod tests {
     }
 
     #[test]
-    fn typecheck_function_decl_recursion() {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("func abc(): Int {\nabc()\n}");
-        let (ScopeBinding(_, typ, _), _) = typechecker.get_binding("abc")
-            .expect("The function abc should be defined");
+    fn typecheck_function_decl_recursion() -> TestResult {
+        let module = typecheck("func abc(): Int {\nabc()\n}")?;
+        let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
         let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false });
         assert_eq!(&expected_type, typ);
 
-        let is_recursive = match typed_ast.first().unwrap() {
+        let is_recursive = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, TypedFunctionDeclNode { is_recursive, .. }) => is_recursive,
             _ => panic!("Node must be a FunctionDecl")
         };
         assert_eq!(&true, is_recursive);
+
+        Ok(())
     }
 
     #[test]
     fn typecheck_function_decl_inner_function() -> TestResult {
-        let typed_ast = typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b()\n}")?;
-        let func = match typed_ast.first().unwrap() {
+        let module = typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b()\n}")?;
+        let func = match module.typed_nodes.first().unwrap() {
             TypedAstNode::FunctionDecl(_, func) => func,
             _ => panic!("Node must be a FunctionDecl")
         };
@@ -4457,44 +4471,44 @@ mod tests {
 
     #[test]
     fn typecheck_function_decl_generics() -> TestResult {
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func abc<T>(t: T): T { t }
           val a = abc(123)
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         assert_eq!(Type::Int, typ);
 
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func abc<T, U>(t: T, u: U): U { u }
           val a = abc(123, "asdf")
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         assert_eq!(Type::String, typ);
 
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }
           val a = map([0, 1, 2], x => x + "!")
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         assert_eq!(Type::Array(Box::new(Type::String)), typ);
 
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func map<T, U>(arr: T[], fn: (T) => U): U[] { [] }
           val a = map([[0, 1], [2, 3]], a => a.length)
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         assert_eq!(Type::Array(Box::new(Type::Int)), typ);
 
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }
           val a = map([[0, 1], [2, 3]], a => a.length)
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         let expected = Type::Fn(FnType {
             arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Int)), false)],
             type_args: vec![],
@@ -4504,21 +4518,21 @@ mod tests {
         assert_eq!(expected, typ);
 
         // Verify generic resolution works for maps
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func abc<T>(item: T): Map<String, T> = { a: item }
           val a = abc("hello")["a"]
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         assert_eq!(Type::Option(Box::new(Type::String)), typ);
 
         // Verify generic resolution works for named arguments too
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { t => [] }
           val a = map(fn: a => a.length, arr: [[0, 1], [2, 3]])
           a
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         let expected = Type::Fn(FnType {
             arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Int)), false)],
             type_args: vec![],
@@ -4528,18 +4542,18 @@ mod tests {
         assert_eq!(expected, typ);
 
         // Verify generic resolution works for union types
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func cos<T>(angle: T | Float): T | Float = angle
           cos(1.23)
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         let expected = Type::Union(vec![Type::Float, Type::Float]); // <- Redundant, I know
         assert_eq!(expected, typ);
-        let typed_ast = typecheck(r#"
+        let module = typecheck(r#"
           func cos<T>(angle: T | Float): T | Float = angle
           cos(12)
         "#)?;
-        let typ = typed_ast.last().unwrap().get_type();
+        let typ = module.typed_nodes.last().unwrap().get_type();
         let expected = Type::Union(vec![Type::Int, Type::Float]);
         assert_eq!(expected, typ);
 
@@ -4576,7 +4590,7 @@ mod tests {
 
     #[test]
     fn typecheck_type_decl() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("type Person { name: String }");
+        let module = typecheck("type Person { name: String }")?;
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -4592,9 +4606,8 @@ mod tests {
                 methods: vec![],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
-        assert_eq!(Type::Reference("Person".to_string(), vec![]), typ);
+        assert_eq!(expected, module.typed_nodes[0]);
+        assert_eq!(Type::Reference("Person".to_string(), vec![]), module.types["Person"]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4602,9 +4615,9 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
-        let (typechecker, typed_ast) = typecheck_get_typechecker("type Person { name: String, age: Int = 0 }");
+        let module = typecheck("type Person { name: String, age: Int = 0 }")?;
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -4625,9 +4638,8 @@ mod tests {
                 methods: vec![],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
-        let (typ, _) = typechecker.get_type(&"Person".to_string()).unwrap();
-        assert_eq!(Type::Reference("Person".to_string(), vec![]), typ);
+        assert_eq!(expected, module.typed_nodes[0]);
+        assert_eq!(Type::Reference("Person".to_string(), vec![]), module.types["Person"]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4638,24 +4650,24 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_type_decl_self_referencing() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Node {\n\
             value: Int\n\
             next: Node? = None\n\
           }\n\
           val node = Node(value: 1, next: Node(value: 2))\n\
           node\n\
-        ");
+        ")?;
 
         let expected = identifier!((6, 1), "node", Type::Reference("Node".to_string(), vec![]), 0);
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Node".to_string(),
             type_args: vec![],
@@ -4671,19 +4683,19 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Node"]);
+        assert_eq!(expected_type, module.referencable_types["Node"]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_type_decl_readonly_fields() -> TestResult {
-        let (typechecker, _) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Foo {\n\
             a: Int\n\
             b: Int readonly \n\
           }\
-        ");
+        ")?;
         let expected_type = Type::Struct(StructType {
             name: "Foo".to_string(),
             type_args: vec![],
@@ -4694,7 +4706,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Foo"]);
+        assert_eq!(expected_type, module.referencable_types["Foo"]);
 
         Ok(())
     }
@@ -4754,7 +4766,7 @@ mod tests {
             func getName2(self): String = self.getName()\n\
           }
         ";
-        let (typechecker, typed_ast) = typecheck_get_typechecker(input);
+        let module = typecheck(input)?;
         let person_type = Type::Reference("Person".to_string(), vec![]);
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
@@ -4855,7 +4867,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4869,7 +4881,7 @@ mod tests {
                 ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }))
             ],
         });
-        Ok(assert_eq!(expected_type, typechecker.referencable_types["Person"]))
+        Ok(assert_eq!(expected_type, module.referencable_types["Person"]))
     }
 
     #[test]
@@ -4880,7 +4892,7 @@ mod tests {
             func getName(): String = \"hello\"\n\
           }
         ";
-        let (typechecker, typed_ast) = typecheck_get_typechecker(input);
+        let module = typecheck(input)?;
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -4914,7 +4926,7 @@ mod tests {
                 methods: vec![],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4926,7 +4938,7 @@ mod tests {
             ],
             methods: vec![to_string_method_type()],
         });
-        Ok(assert_eq!(expected_type, typechecker.referencable_types["Person"]))
+        Ok(assert_eq!(expected_type, module.referencable_types["Person"]))
     }
 
     #[test]
@@ -4961,7 +4973,6 @@ mod tests {
           }
         ";
         let error = typecheck(input).unwrap_err();
-        // let expected = TypecheckerError::MissingRequiredTypeAnnotation { token: ident_token!((2, 6), "hello") };
         let expected = TypecheckerError::ReturnTypeMismatch {
             token: Token::String(Position::new(2, 20), "hello".to_string()),
             fn_name: "hello".to_string(),
@@ -4976,7 +4987,7 @@ mod tests {
     #[test]
     fn typecheck_type_decl_generics() -> TestResult {
         let input = "type List<T> { items: T[] }";
-        let (typechecker, _) = typecheck_get_typechecker(input);
+        let module = typecheck(input)?;
         let expected_type = Type::Struct(StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
@@ -4986,15 +4997,15 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["List"]);
+        assert_eq!(expected_type, module.referencable_types["List"]);
 
         let input = r#"
           type List<T> { items: T[] }
           val l = List(items: [1, 2, 3])
           l
         "#;
-        let typed_ast = typecheck(input)?;
-        let actual_type = typed_ast.last().unwrap().get_type();
+        let module = typecheck(input)?;
+        let actual_type = module.typed_nodes.last().unwrap().get_type();
         let expected_type = Type::Reference("List".to_string(), vec![Type::Int]);
         assert_eq!(expected_type, actual_type);
 
@@ -5237,7 +5248,7 @@ mod tests {
 
     #[test]
     fn typecheck_enum_decl() -> TestResult {
-        let typed_ast = typecheck("enum Temp { Hot, Cold }")?;
+        let module = typecheck("enum Temp { Hot, Cold }")?;
         let expected = TypedAstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             TypedEnumDeclNode {
@@ -5258,9 +5269,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
         ")?;
         let expected = TypedAstNode::EnumDecl(
@@ -5295,10 +5306,10 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Verify that constructor variants can have default arg values that are themselves enum variants
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
         ")?;
         let expected = TypedAstNode::EnumDecl(
@@ -5371,7 +5382,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
@@ -5553,7 +5564,7 @@ mod tests {
 
     #[test]
     fn typecheck_ident() -> TestResult {
-        let typed_ast = typecheck("val abc = 123\nabc")?;
+        let module = typecheck("val abc = 123\nabc")?;
         let expected = vec![
             TypedAstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
@@ -5566,7 +5577,7 @@ mod tests {
             ),
             identifier!((2, 1), "abc", Type::Int, 0)
         ];
-        assert_eq!(expected, typed_ast);
+        assert_eq!(expected, module.typed_nodes);
         Ok(())
     }
 
@@ -5594,7 +5605,7 @@ mod tests {
 
     #[test]
     fn typecheck_assignment_identifier() -> TestResult {
-        let typed_ast = typecheck("var abc = 123\nabc = 456")?;
+        let module = typecheck("var abc = 123\nabc = 456")?;
         let expected = vec![
             TypedAstNode::BindingDecl(
                 Token::Var(Position::new(1, 1)),
@@ -5615,13 +5626,13 @@ mod tests {
                 },
             )
         ];
-        assert_eq!(expected, typed_ast);
+        assert_eq!(expected, module.typed_nodes);
         Ok(())
     }
 
     #[test]
     fn typecheck_assignment_indexing() -> TestResult {
-        let typed_ast = typecheck("var abc = [1, 2]\nabc[0] = 2")?;
+        let module = typecheck("var abc = [1, 2]\nabc[0] = 2")?;
         let expected = TypedAstNode::Assignment(
             Token::Assign(Position::new(2, 8)),
             TypedAssignmentNode {
@@ -5638,9 +5649,9 @@ mod tests {
                 expr: Box::new(int_literal!((2, 10), 2)),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("var abc = {a: 2}\nabc[\"a\"] = 3")?;
+        let module = typecheck("var abc = {a: 2}\nabc[\"a\"] = 3")?;
         let expected = TypedAstNode::Assignment(
             Token::Assign(Position::new(2, 10)),
             TypedAssignmentNode {
@@ -5657,7 +5668,7 @@ mod tests {
                 expr: Box::new(int_literal!((2, 12), 3)),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         let res = typecheck("var abc = {a: 2, b: true}\nabc[\"c\"] = 3");
         assert!(res.is_ok());
@@ -5670,11 +5681,11 @@ mod tests {
 
     #[test]
     fn typecheck_assignment_field() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String }\n\
           val a = Person(name: \"abc\")\n\
           a.name = \"qwer\"\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Assignment(
             Token::Assign(Position::new(3, 8)),
             TypedAssignmentNode {
@@ -5695,7 +5706,7 @@ mod tests {
                 expr: Box::new(string_literal!((3, 10), "qwer")),
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -5705,7 +5716,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         // Test setting inner property of readonly field
         let res = typecheck("\
@@ -5838,7 +5849,7 @@ mod tests {
 
     #[test]
     fn typecheck_indexing() -> TestResult {
-        let typed_ast = typecheck("val abc = [1, 2, 3]\nabc[1]")?;
+        let module = typecheck("val abc = [1, 2, 3]\nabc[1]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
@@ -5847,9 +5858,9 @@ mod tests {
                 index: IndexingMode::Index(Box::new(int_literal!((2, 5), 1))),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("val idx = 1\nval abc = [1, 2, 3]\nabc[idx:]")?;
+        let module = typecheck("val idx = 1\nval abc = [1, 2, 3]\nabc[idx:]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(3, 4), false),
             TypedIndexingNode {
@@ -5861,9 +5872,9 @@ mod tests {
                 ),
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
 
-        let typed_ast = typecheck("val idx = 1\n\"abc\"[:idx * 2]")?;
+        let module = typecheck("val idx = 1\n\"abc\"[:idx * 2]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(2, 6), false),
             TypedIndexingNode {
@@ -5885,9 +5896,9 @@ mod tests {
                 ),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("val map = { a: 1, b: 2 }\nmap[\"a\"]")?;
+        let module = typecheck("val map = { a: 1, b: 2 }\nmap[\"a\"]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
@@ -5896,9 +5907,9 @@ mod tests {
                 index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("val map = { a: 1, b: true }\nmap[\"a\"]")?;
+        let module = typecheck("val map = { a: 1, b: true }\nmap[\"a\"]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(2, 4), false),
             TypedIndexingNode {
@@ -5912,9 +5923,9 @@ mod tests {
                 index: IndexingMode::Index(Box::new(string_literal!((2, 5), "a"))),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("(1, 2)[0]")?;
+        let module = typecheck("(1, 2)[0]")?;
         let expected = TypedAstNode::Indexing(
             Token::LBrack(Position::new(1, 7), false),
             TypedIndexingNode {
@@ -5929,7 +5940,7 @@ mod tests {
                 index: IndexingMode::Index(Box::new(int_literal!((1, 8), 0))),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
@@ -6026,7 +6037,7 @@ mod tests {
 
     #[test]
     fn typecheck_if_statement() -> TestResult {
-        let typed_ast = typecheck("if 1 < 2 1234")?;
+        let module = typecheck("if 1 < 2 1234")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
@@ -6047,9 +6058,9 @@ mod tests {
                 else_block: None,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("if 1 < 2 1234 else 1 + 2")?;
+        let module = typecheck("if 1 < 2 1234 else 1 + 2")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
@@ -6080,9 +6091,9 @@ mod tests {
                 ]),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i: Int? = 0\n\
           if i 1 else 2\
         ")?;
@@ -6096,14 +6107,14 @@ mod tests {
                 else_block: Some(vec![int_literal!((2, 13), 2)]),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_if_statement_condition_binding() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i: Int? = 0\n\
           if i |i| i else 2\
         ")?;
@@ -6119,9 +6130,9 @@ mod tests {
                 else_block: Some(vec![int_literal!((2, 17), 2)]),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("if true |v| v else false")?;
+        let module = typecheck("if true |v| v else false")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
@@ -6134,7 +6145,7 @@ mod tests {
                 else_block: Some(vec![bool_literal!((1, 20), false)]),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
@@ -6151,7 +6162,7 @@ mod tests {
 
     #[test]
     fn typecheck_if_statement_scopes() -> TestResult {
-        let typed_ast = typecheck("if 1 < 2 { val a = \"hello\" a }")?;
+        let module = typecheck("if 1 < 2 { val a = \"hello\" a }")?;
         let expected = TypedAstNode::IfStatement(
             Token::If(Position::new(1, 1)),
             TypedIfNode {
@@ -6183,9 +6194,9 @@ mod tests {
                 else_block: None,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck(
+        let module = typecheck(
             "val a = \"hello\"\nif 1 < 2 { val b = \"world\" a + b } else { a + \"!\" }"
         )?;
         let expected = TypedAstNode::IfStatement(
@@ -6237,7 +6248,7 @@ mod tests {
                 ]),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         Ok(())
     }
@@ -6264,7 +6275,7 @@ mod tests {
 
     #[test]
     fn typecheck_if_expression_conversion_to_statement() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           func abc() {\n\
             if true { println(\"hello\") }\n\
           }\
@@ -6308,39 +6319,23 @@ mod tests {
                 is_recursive: false,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
 
     #[test]
-    fn typecheck_if_expression() {
-        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123 else 456");
-        match typechecker.get_binding("a") {
-            Some((ScopeBinding(_, typ, _), scope_depth)) => {
-                assert_eq!(&Type::Int, typ);
-                assert_eq!(0, scope_depth);
-            }
-            _ => panic!("There should be a binding named 'a'"),
-        }
+    fn typecheck_if_expression() -> TestResult {
+        let module = typecheck("val a = if (1 < 2) 123 else 456")?;
+        assert_eq!(Type::Int, module.global_bindings["a"].1);
 
-        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) 123");
-        match typechecker.get_binding("a") {
-            Some((ScopeBinding(_, typ, _), scope_depth)) => {
-                assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
-                assert_eq!(0, scope_depth);
-            }
-            _ => panic!("There should be a binding named 'a'"),
-        }
+        let module = typecheck("val a = if (1 < 2) 123")?;
+        assert_eq!(Type::Option(Box::new(Type::Int)), module.global_bindings["a"].1);
 
-        let (typechecker, _) = typecheck_get_typechecker("val a = if (1 < 2) { if (true) 123 } else if (false) 456");
-        match typechecker.get_binding("a") {
-            Some((ScopeBinding(_, typ, _), scope_depth)) => {
-                assert_eq!(&Type::Option(Box::new(Type::Int)), typ);
-                assert_eq!(0, scope_depth);
-            }
-            _ => panic!("There should be a binding named 'a'"),
-        }
+        let module = typecheck("val a = if (1 < 2) { if (true) 123 } else if (false) 456")?;
+        assert_eq!(Type::Option(Box::new(Type::Int)), module.global_bindings["a"].1);
+
+        Ok(())
     }
 
     #[test]
@@ -6372,83 +6367,79 @@ mod tests {
 
     #[test]
     fn typecheck_invocation() -> TestResult {
-        // let ast = typecheck("func abc() {}\nabc()")?;
-        // let node = ast.get(1).unwrap();
-        //
-        // let expected = TypedAstNode::Invocation(
-        //     Token::LParen(Position::new(2, 4), false),
-        //     TypedInvocationNode {
-        //         typ: Type::Unit,
-        //         target: Box::new(
-        //             identifier!((2, 1), "abc", Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: false }), 0)
-        //         ),
-        //         args: vec![],
-        //     },
-        // );
-        // assert_eq!(node, &expected);
-        //
-        // let ast = typecheck("\
-        //   func abc(a: Int, b: String): String { b }\n\
-        //   abc(1, \"2\")\
-        // ")?;
-        // let node = ast.get(1).unwrap();
-        //
-        // let expected = TypedAstNode::Invocation(
-        //     Token::LParen(Position::new(2, 4), false),
-        //     TypedInvocationNode {
-        //         typ: Type::String,
-        //         target: Box::new(identifier!(
-        //             (2, 1),
-        //             "abc",
-        //             Type::Fn(FnType {
-        //                 arg_types: vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
-        //                 type_args: vec![],
-        //                 ret_type: Box::new(Type::String),
-        //                 is_variadic: false
-        //             }),
-        //             0
-        //         )),
-        //         args: vec![
-        //             Some(int_literal!((2, 5), 1)),
-        //             Some(string_literal!((2, 8), "2")),
-        //         ],
-        //     },
-        // );
-        // assert_eq!(node, &expected);
-        //
-        // let ast = typecheck(r#"
-        //   func abc(a: Int, b = "hello"): String { b }
-        //   abc(1)
-        // "#);
-        // assert_eq!(ast.is_ok(), true);
+        let module = typecheck("func abc() {}\nabc()")?;
+        let expected = TypedAstNode::Invocation(
+            Token::LParen(Position::new(2, 4), false),
+            TypedInvocationNode {
+                typ: Type::Unit,
+                target: Box::new(
+                    identifier!((2, 1), "abc", Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: false }), 0)
+                ),
+                args: vec![],
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let ast = typecheck(r#"
+        let module = typecheck("\
+          func abc(a: Int, b: String): String { b }\n\
+          abc(1, \"2\")\
+        ")?;
+        let expected = TypedAstNode::Invocation(
+            Token::LParen(Position::new(2, 4), false),
+            TypedInvocationNode {
+                typ: Type::String,
+                target: Box::new(identifier!(
+                    (2, 1),
+                    "abc",
+                    Type::Fn(FnType {
+                        arg_types: vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
+                        type_args: vec![],
+                        ret_type: Box::new(Type::String),
+                        is_variadic: false
+                    }),
+                    0
+                )),
+                args: vec![
+                    Some(int_literal!((2, 5), 1)),
+                    Some(string_literal!((2, 8), "2")),
+                ],
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+
+        let res = typecheck(r#"
+          func abc(a: Int, b = "hello"): String { b }
+          abc(1)
+        "#);
+        assert_eq!(res.is_ok(), true);
+
+        let res = typecheck(r#"
           func abc(*a: Int[]) {}
           abc()
-          //abc(1)
-          //abc(1, 2, 3, 4)
+          abc(1)
+          abc(1, 2, 3, 4)
           abc(a: [1, 2, 3])
         "#);
-        assert_eq!(ast.is_ok(), true);
+        assert_eq!(res.is_ok(), true);
 
-        let ast = typecheck(r#"
+        let res = typecheck(r#"
           func abc(a: Int, *b: Int[]) {}
           abc(1)
           abc(1)
           abc(1, 2, 3, 4)
           abc(a: 1, b: [2, 3, 4])
         "#);
-        assert_eq!(ast.is_ok(), true);
+        assert_eq!(res.is_ok(), true);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_invocation_instantiation() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String }\n\
           Person(name: \"Ken\")\
-        ");
+        ")?;
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
@@ -6461,7 +6452,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -6471,13 +6462,13 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         // Test with default parameters
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String, age: Int = 0 }\n\
           Person(name: \"Ken\")\
-        ");
+        ")?;
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
@@ -6491,7 +6482,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -6502,7 +6493,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         Ok(())
     }
@@ -6669,7 +6660,7 @@ mod tests {
 
     #[test]
     fn typecheck_while_loop() -> TestResult {
-        let ast = typecheck("while true 1 + 1")?;
+        let module = typecheck("while true 1 + 1")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
@@ -6688,9 +6679,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let ast = typecheck("while true { break }")?;
+        let module = typecheck("while true { break }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
@@ -6701,9 +6692,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let ast = typecheck("while true {\nval a = 1\na + 1 }")?;
+        let module = typecheck("while true {\nval a = 1\na + 1 }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
@@ -6731,9 +6722,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let ast = typecheck("while [1, 2][0] { break }")?;
+        let module = typecheck("while [1, 2][0] { break }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
@@ -6764,12 +6755,12 @@ mod tests {
                 ],
             },
         );
-        Ok(assert_eq!(expected, ast[0]))
+        Ok(assert_eq!(expected, module.typed_nodes[0]))
     }
 
     #[test]
     fn typecheck_while_loop_condition_binding() -> TestResult {
-        let ast = typecheck("while true |v| { v }")?;
+        let module = typecheck("while true |v| { v }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
             TypedWhileLoopNode {
@@ -6780,9 +6771,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let ast = typecheck("\
+        let module = typecheck("\
           val item = [1, 2, 3][0]\n\
           while item |item| { item }\
         ")?;
@@ -6798,7 +6789,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         Ok(())
     }
@@ -6833,7 +6824,7 @@ mod tests {
 
     #[test]
     fn typecheck_for_loop() -> TestResult {
-        let ast = typecheck("val arr = [1, 2, 3]\nfor a in arr {\na + 1 }")?;
+        let module = typecheck("val arr = [1, 2, 3]\nfor a in arr {\na + 1 }")?;
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
@@ -6853,9 +6844,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let ast = typecheck("val arr = [1, 2, 3]\nfor a, i in arr {\na + i }")?;
+        let module = typecheck("val arr = [1, 2, 3]\nfor a, i in arr {\na + i }")?;
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
@@ -6875,9 +6866,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let ast = typecheck("val set = #{1, 2, 3}\nfor a, i in set {\na + i }")?;
+        let module = typecheck("val set = #{1, 2, 3}\nfor a, i in set {\na + i }")?;
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
@@ -6897,9 +6888,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let ast = typecheck("val map = {a:1, b:2}\nfor k, v in map {\nk + v }")?;
+        let module = typecheck("val map = {a:1, b:2}\nfor k, v in map {\nk + v }")?;
         let expected = TypedAstNode::ForLoop(
             Token::For(Position::new(2, 1)),
             TypedForLoopNode {
@@ -6919,9 +6910,9 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let ast = typecheck("\
+        let module = typecheck("\
           val coords = [(1, 2), (3, 4)]\n\
           for (x, y), i in coords {\n\
             x + y\n\
@@ -6952,7 +6943,7 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         Ok(())
     }
@@ -6977,11 +6968,11 @@ mod tests {
     #[test]
     fn typecheck_accessor_instance() -> TestResult {
         // Getting fields off structs
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String }\n\
           val p = Person(name: \"Sam\")\n\
           p.name\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
@@ -6994,7 +6985,7 @@ mod tests {
                 is_readonly: false,
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_typ = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -7004,14 +6995,14 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_typ, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_typ, module.referencable_types["Person"]);
 
         // Getting fields off structs with default field values
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String, age: Int = 0 }\n\
           val p = Person(name: \"Sam\")\n\
           p.age\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
@@ -7024,7 +7015,7 @@ mod tests {
                 is_readonly: false,
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -7035,10 +7026,10 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         // Getting field of builtin Array type
-        let typed_ast = typecheck("[1, 2, 3].length")?;
+        let module = typecheck("[1, 2, 3].length")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(1, 10)),
             TypedAccessorNode {
@@ -7061,10 +7052,10 @@ mod tests {
                 is_readonly: true,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Getting field of builtin String type
-        let typed_ast = typecheck("\"hello\".length")?;
+        let module = typecheck("\"hello\".length")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(1, 8)),
             TypedAccessorNode {
@@ -7077,7 +7068,7 @@ mod tests {
                 is_readonly: true,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         // Test getting readonly field
         let res = typecheck("\
@@ -7093,10 +7084,10 @@ mod tests {
     #[test]
     fn typecheck_accessor_static() -> TestResult {
         // Getting static fields off structs
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { func getName(): String = \"Sam\" }\n\
           Person.getName\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(2, 7)),
             TypedAccessorNode {
@@ -7109,7 +7100,7 @@ mod tests {
                 is_readonly: true,
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -7117,18 +7108,18 @@ mod tests {
             static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true)],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_accessor_optional_safe() -> TestResult {
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String? = None }\n\
           val p = Person()\n\
           p.name?.length\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Accessor(
             Token::QuestionDot(Position::new(3, 7)),
             TypedAccessorNode {
@@ -7152,7 +7143,7 @@ mod tests {
                 is_readonly: true,
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -7162,14 +7153,14 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         // Verify that it also works for non-optional fields, converting QuestionDot to just Dot
-        let (typechecker, typed_ast) = typecheck_get_typechecker("\
+        let module = typecheck("\
           type Person { name: String = \"\" }\n\
           val p = Person()\n\
           p?.name\n\
-        ");
+        ")?;
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
@@ -7182,7 +7173,7 @@ mod tests {
                 is_readonly: false,
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -7192,7 +7183,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, typechecker.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["Person"]);
 
         Ok(())
     }
@@ -7220,7 +7211,7 @@ mod tests {
 
     #[test]
     fn typecheck_lambda() -> TestResult {
-        let typed_ast = typecheck("() => \"hello\"")?;
+        let module = typecheck("() => \"hello\"")?;
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 4)),
             TypedLambdaNode {
@@ -7230,9 +7221,9 @@ mod tests {
                 orig_node: None,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("a => \"hello\"")?;
+        let module = typecheck("a => \"hello\"")?;
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 3)),
             TypedLambdaNode {
@@ -7253,9 +7244,9 @@ mod tests {
                 )),
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("(a, b = \"b\") => \"hello\"")?;
+        let module = typecheck("(a, b = \"b\") => \"hello\"")?;
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 14)),
             TypedLambdaNode {
@@ -7290,9 +7281,9 @@ mod tests {
                 typed_body: None,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
-        let typed_ast = typecheck("(a: String) => \"hello\"")?;
+        let module = typecheck("(a: String) => \"hello\"")?;
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 13)),
             TypedLambdaNode {
@@ -7306,14 +7297,14 @@ mod tests {
                 orig_node: None,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
 
     #[test]
     fn typecheck_lambda_closure() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           func getAdder(x: Int): (Int) => Int {\n\
             y => x + y\n\
           }\
@@ -7358,7 +7349,7 @@ mod tests {
                 is_recursive: false,
             },
         );
-        assert_eq!(expected, typed_ast[0]);
+        assert_eq!(expected, module.typed_nodes[0]);
 
         Ok(())
     }
@@ -7379,7 +7370,7 @@ mod tests {
 
     #[test]
     fn typecheck_lambda_inference() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           var fn = (a: String) => a\n\
           fn = a => a\n\
         ")?;
@@ -7409,9 +7400,9 @@ mod tests {
                 )),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           var fn = (a: String) => a\n\
           fn = (a, b = \"a\") => \"hello\"\n\
         ")?;
@@ -7440,17 +7431,17 @@ mod tests {
                 )),
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
-        let typed_ast = typecheck(r#"
+        let res = typecheck(r#"
           var fn = (a: String) => a
           func abc(str: String): String = str
           fn = abc
           fn("abc")
         "#);
-        assert!(typed_ast.is_ok());
+        assert!(res.is_ok());
 
-        let typed_ast = typecheck(r#"
+        let res = typecheck(r#"
           var fn: (String) => String = a => a
           type Person {
             name: String
@@ -7459,20 +7450,20 @@ mod tests {
           fn = Person(name: "Ken").greet
           fn("Hello")
         "#);
-        assert!(typed_ast.is_ok());
+        assert!(res.is_ok());
 
-        let typed_ast = typecheck(r#"
+        let res = typecheck(r#"
           func call(fn: (String) => String, value: String): String = fn(value)
           call((x, b = "hello") => b, "hello")
         "#);
-        assert!(typed_ast.is_ok());
+        assert!(res.is_ok());
 
         // A lambda which returns Unit can accept anything as a response (which will just be thrown out)
-        let typed_ast = typecheck(r#"
+        let res = typecheck(r#"
           func call(fn: (String) => Unit, value: String) = fn(value)
           call((x, b = "hello") => b, "hello")
         "#);
-        assert!(typed_ast.is_ok());
+        assert!(res.is_ok());
 
         Ok(())
     }
@@ -7506,7 +7497,7 @@ mod tests {
     #[test]
     fn typecheck_match_statements() -> TestResult {
         // Verify branches for Int? type
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i = [1, 2][2]\n\
           match i {\n\
             Int i => i\n\
@@ -7524,10 +7515,10 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         // Verify branches for (Int | String)? type
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i: (Int | String)? = [1, 2][2]\n\
           match i {\n\
             Int i => i\n\
@@ -7553,10 +7544,10 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[1]);
+        assert_eq!(expected, module.typed_nodes[1]);
 
         // Verify branches for enum type
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           enum Direction { Left, Right, Up, Down }\n\
           val d: Direction = Direction.Left\n\
           match d {\n\
@@ -7604,23 +7595,23 @@ mod tests {
                 ],
             },
         );
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
 
-        let typed_ast = typecheck("\
+        let res = typecheck("\
           enum Foo { Bar(baz: Int) }\n\
           val f: Foo = Foo.Bar(baz: 24)\n\
           val i: Int = match f {\n\
             Foo.Bar(z) => z\n\
           }
         ");
-        assert!(typed_ast.is_ok());
+        assert!(res.is_ok());
 
         Ok(())
     }
 
     #[test]
     fn typecheck_match_expressions() -> TestResult {
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i = [1, 2][2]\n\
           val j = match i {\n\
             Int i => i\n\
@@ -7632,9 +7623,9 @@ mod tests {
           j
         ")?;
         let expected = identifier!((9, 1), "j", Type::Int, 0);
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
 
-        let typed_ast = typecheck("\
+        let module = typecheck("\
           val i: String | Int = 123\n\
           val j = match i {\n\
             Int i => i\n\
@@ -7643,7 +7634,7 @@ mod tests {
           j
         ")?;
         let expected = identifier!((6, 1), "j", Type::Int, 0);
-        assert_eq!(expected, typed_ast[2]);
+        assert_eq!(expected, module.typed_nodes[2]);
 
         Ok(())
     }

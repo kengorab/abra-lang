@@ -16,7 +16,8 @@ impl Backend {
     }
 
     fn get_diagnostics(&self, uri: Url, version: Option<i64>, text: String) -> PublishDiagnosticsParams {
-        let diagnostics = match typecheck(&text) {
+        let module_path = uri.path();
+        let diagnostics = match typecheck(module_path.to_string(), &text) {
             Ok(_) => vec![],
             Err(e) => {
                 let diagnostic = abra_error_to_diagnostic(e, &text);

@@ -1,11 +1,16 @@
 use abra_core::common::display_error::DisplayError;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range};
+use abra_core::parser::parse_error::ParseError;
 
 pub fn abra_error_to_diagnostic(e: abra_core::Error, source: &String) -> Diagnostic {
     let range = match &e {
         abra_core::Error::LexerError(e) => e.get_range(),
         abra_core::Error::TypecheckerError(e) => e.get_token().get_range(),
-        abra_core::Error::ParseError(_) => unimplemented!(),
+        abra_core::Error::ParseError(e) => match e {
+            ParseError::UnexpectedEof => unimplemented!(),
+            ParseError::UnexpectedToken(tok) |
+            ParseError::ExpectedToken(_, tok) => tok.get_range()
+        }
         abra_core::Error::InterpretError(_) => unreachable!()
     };
 

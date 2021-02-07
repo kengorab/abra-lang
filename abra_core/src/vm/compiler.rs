@@ -10,6 +10,7 @@ use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, d
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
 use crate::builtins::native_fns::NativeFn;
+use crate::typechecker::typechecker::TypedModule;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,7 +83,7 @@ struct JumpHandle {
     instr_slot: usize,
 }
 
-pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, Metadata), ()> {
+pub fn compile(module: TypedModule) -> Result<(Module, Metadata), ()> {
     let metadata = Metadata::default();
     let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
@@ -93,10 +94,8 @@ pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, M
             .collect()
     );
 
-    let module_name = module_path.replace(".abra", "").replace("/", ".");
-
     let mut compiler = Compiler {
-        module_name,
+        module_name: module.module_name,
         code: Vec::new(),
         constants,
         str_constant_indexes: HashMap::new(),
@@ -111,6 +110,7 @@ pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, M
         temp_idx: 0,
     };
 
+    let ast = module.typed_nodes;
     compiler.hoist_fn_defs(&ast)?;
 
     let len = ast.len();
@@ -127,7 +127,7 @@ pub fn compile(module_path: String, ast: Vec<TypedAstNode>) -> Result<(Module, M
     }
     compiler.write_opcode(Opcode::Return, last_line + 1);
 
-    let module = Module { name: module_path, constants: compiler.constants, code: compiler.code };
+    let module = Module { name: compiler.module_name, constants: compiler.constants, code: compiler.code };
     Ok((module, compiler.metadata))
 }
 
@@ -266,7 +266,7 @@ impl Compiler {
                 let const_idx = self.add_constant(Value::Str(const_name.clone()));
                 self.str_constant_indexes.insert(const_name, const_idx);
                 const_idx
-            },
+            }
             Some(const_idx) => *const_idx
         };
         self.write_opcode(Opcode::GStore(const_idx), line);
@@ -2016,12 +2016,12 @@ mod tests {
     }
 
     fn compile(input: &str) -> Module {
+        let module_name = "_test.abra".to_string();
+
         let tokens = tokenize(&input.to_string()).unwrap();
         let ast = parse(tokens).unwrap();
-        let (_, typed_ast) = typecheck(ast).unwrap();
-
-        let module_name = "_test.abra".to_string();
-        super::compile(module_name, typed_ast).unwrap().0
+        let module = typecheck(module_name, ast).unwrap();
+        super::compile(module).unwrap().0
     }
 
     fn to_string_method() -> (String, Value) {
@@ -2037,7 +2037,7 @@ mod tests {
     fn compile_empty() {
         let chunk = compile("");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![Opcode::Return],
             constants: with_prelude_consts(vec![]),
         };
@@ -2048,7 +2048,7 @@ mod tests {
     fn compile_literals() {
         let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::Pop(1),
@@ -2078,7 +2078,7 @@ mod tests {
     fn compile_unary() {
         let chunk = compile("-5");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Invert,
@@ -2090,7 +2090,7 @@ mod tests {
 
         let chunk = compile("-2.3");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Invert,
@@ -2102,7 +2102,7 @@ mod tests {
 
         let chunk = compile("!false");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::F,
                 Opcode::Negate,
@@ -2117,7 +2117,7 @@ mod tests {
     fn compile_binary_numeric() {
         let chunk = compile("5 + 6");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2131,7 +2131,7 @@ mod tests {
         // Testing i2f and order of ops
         let chunk = compile("1 - -5 * 3.4 / 5");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::I2F,
@@ -2153,7 +2153,7 @@ mod tests {
         // Testing %, along with i2f
         let chunk = compile("3.4 % 2.4 % 5");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2170,7 +2170,7 @@ mod tests {
         // Testing **
         let chunk = compile("3.4 ** 5");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2186,7 +2186,7 @@ mod tests {
     fn compile_binary_grouped() {
         let chunk = compile("(1 + 2) * 3");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2204,7 +2204,7 @@ mod tests {
     fn compile_binary_str_concat() {
         let chunk = compile("\"abc\" + \"def\"");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2220,7 +2220,7 @@ mod tests {
 
         let chunk = compile("1 + \"a\" + 3.4");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::Constant(with_prelude_const_offset(0)),
@@ -2241,7 +2241,7 @@ mod tests {
     fn compile_binary_boolean() {
         let chunk = compile("true && true || false");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::T,
                 Opcode::JumpIfF(2),
@@ -2261,7 +2261,7 @@ mod tests {
         // Testing xor
         let chunk = compile("true ^ false");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::T,
                 Opcode::F,
@@ -2277,7 +2277,7 @@ mod tests {
     fn compile_binary_comparisons() {
         let chunk = compile("1 <= 5 == 3.4 >= 5.6");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::Constant(with_prelude_const_offset(0)),
@@ -2294,7 +2294,7 @@ mod tests {
 
         let chunk = compile("\"a\" < \"b\" != 4");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2315,7 +2315,7 @@ mod tests {
     fn compile_binary_coalesce() {
         let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2347,7 +2347,7 @@ mod tests {
     fn compile_array_literal() {
         let chunk = compile("[1, 2]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2360,7 +2360,7 @@ mod tests {
 
         let chunk = compile("[\"a\", \"b\", \"c\"]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2381,7 +2381,7 @@ mod tests {
     fn compile_array_nested() {
         let chunk = compile("[[1, 2], [3, 4, 5]]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2402,7 +2402,7 @@ mod tests {
     fn compile_set_literal() {
         let chunk = compile("#{1, 2}");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2415,7 +2415,7 @@ mod tests {
 
         let chunk = compile("#{\"a\", \"b\", \"c\"}");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2436,7 +2436,7 @@ mod tests {
     fn compile_map_literal() {
         let chunk = compile("{ a: 1, b: \"c\", d: true }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst1,
@@ -2461,7 +2461,7 @@ mod tests {
     fn compile_binding_decl() {
         let chunk = compile("val abc = 123");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -2473,7 +2473,7 @@ mod tests {
 
         let chunk = compile("var unset: Bool\nvar set = true");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Nil,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2490,7 +2490,7 @@ mod tests {
 
         let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::Constant(with_prelude_const_offset(1)),
@@ -2518,7 +2518,7 @@ mod tests {
           val meg = Person(name: \"Meg\")\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2552,7 +2552,7 @@ mod tests {
           val anAdult = Person(name: \"Some Name\", age: 29)\n\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2593,7 +2593,7 @@ mod tests {
     fn compile_binding_decl_destructuring_tuples() {
         let chunk = compile("val (a, b) = (1, 2)");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2623,7 +2623,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2666,7 +2666,7 @@ mod tests {
     fn compile_binding_decl_destructuring_arrays() {
         let chunk = compile("val [a, b] = [1, 2]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -2696,7 +2696,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2739,7 +2739,7 @@ mod tests {
     fn compile_binding_decl_destructuring_strings() {
         let chunk = compile("val [a, b] = \"hello\"");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -2767,7 +2767,7 @@ mod tests {
     fn compile_ident() {
         let chunk = compile("val abc = 123\nabc");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -2783,7 +2783,7 @@ mod tests {
     fn compile_ident_upvalues() {
         let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2841,7 +2841,7 @@ mod tests {
     fn compile_ident_upvalues_skip_level() {
         let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -2922,7 +2922,7 @@ mod tests {
     fn compile_assignment() {
         let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 // var a = 1
                 Opcode::IConst1,
@@ -2953,7 +2953,7 @@ mod tests {
 
         let chunk = compile("var a = 1\na = 2\nval b = 3");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 // var a = 1
                 Opcode::IConst1,
@@ -2980,7 +2980,7 @@ mod tests {
     fn compile_assignment_globals() {
         let chunk = compile("var a = 1\nfunc abc(): Int { a = 3 }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3014,7 +3014,7 @@ mod tests {
     fn compile_assignment_upvalues() {
         let chunk = compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3071,7 +3071,7 @@ mod tests {
     fn compile_assignment_indexing() {
         let chunk = compile("val a = [1]\na[0] = 0");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::ArrMk(1),
@@ -3090,7 +3090,7 @@ mod tests {
 
         let chunk = compile("val a = {b:1}\na[\"b\"] = 0");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst1,
@@ -3111,7 +3111,7 @@ mod tests {
 
         let chunk = compile("val a = (1, 2)\na[0] = 0");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3138,7 +3138,7 @@ mod tests {
           p.name = \"Meg\"\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3174,7 +3174,7 @@ mod tests {
     fn compile_indexing() {
         let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3194,7 +3194,7 @@ mod tests {
 
         let chunk = compile("\"some string\"[1 + 1:]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst1,
@@ -3212,7 +3212,7 @@ mod tests {
 
         let chunk = compile("\"some string\"[-1:4]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst1,
@@ -3229,7 +3229,7 @@ mod tests {
 
         let chunk = compile("\"some string\"[:1 + 1]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst0,
@@ -3247,7 +3247,7 @@ mod tests {
 
         let chunk = compile("{ a: 1, b: 2 }[\"a\"]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::IConst1,
@@ -3267,7 +3267,7 @@ mod tests {
 
         let chunk = compile("(1, true, 3)[2]");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::T,
@@ -3286,7 +3286,7 @@ mod tests {
     fn compile_if_else_statements() {
         let chunk = compile("if (1 == 2) 123 else 456");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3305,7 +3305,7 @@ mod tests {
 
         let chunk = compile("if (1 == 2) 123");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3321,7 +3321,7 @@ mod tests {
 
         let chunk = compile("if (1 == 2) { } else { 456 }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3338,7 +3338,7 @@ mod tests {
 
         let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3370,7 +3370,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -3398,7 +3398,7 @@ mod tests {
     fn compile_if_else_statements_option_condition() {
         let chunk = compile("if ([1, 2][0]) 123 else 456");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3424,7 +3424,7 @@ mod tests {
     fn compile_if_else_statements_with_condition_binding() {
         let chunk = compile("if [1, 2][0] |item| item else 456");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3463,7 +3463,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3515,7 +3515,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3551,7 +3551,7 @@ mod tests {
     fn compile_function_declaration_default_args() {
         let chunk = compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3607,7 +3607,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3671,7 +3671,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3724,7 +3724,7 @@ mod tests {
     fn compile_enum_decl_variants() {
         let chunk = compile("enum Status { On, Off }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3778,7 +3778,7 @@ mod tests {
           val two = inc(number: one)
         "#);
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3823,7 +3823,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3848,7 +3848,7 @@ mod tests {
 
         let chunk = compile("while ([1, 2][0]) { 123 }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst1,
                 Opcode::IConst2,
@@ -3874,7 +3874,7 @@ mod tests {
     fn compile_while_loop_with_condition_binding() {
         let chunk = compile("while ([1, 2][0]) |item| { item }");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Nil,
                 Opcode::MarkLocal(0),
@@ -3910,7 +3910,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -3946,7 +3946,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::T,
                 Opcode::JumpIfF(5),
@@ -3971,7 +3971,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::T,
                 Opcode::JumpIfF(12),
@@ -4004,7 +4004,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 // val msg = "Row: "
                 Opcode::Constant(with_prelude_const_offset(0)),
@@ -4102,7 +4102,7 @@ mod tests {
         "#;
         let chunk = compile(input);
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             constants: with_prelude_consts(vec![
                 Value::Int(5), Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9), Value::Int(10), Value::Int(11)
             ]),
@@ -4430,7 +4430,7 @@ mod tests {
             .join("\n");
         let chunk = compile(input.as_str());
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             constants: with_prelude_consts(
                 (0..150).into_iter()
                     .flat_map(|i| vec![
@@ -4461,7 +4461,7 @@ mod tests {
           ken.name\n\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -4493,7 +4493,7 @@ mod tests {
         // Accessing fields of structs
         let chunk = compile("\"hello\".length");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GetField(0),
@@ -4512,7 +4512,7 @@ mod tests {
           val abc = () => println(\"hello\")\
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(1)),
                 Opcode::GStore(with_prelude_const_offset(2)),
@@ -4549,7 +4549,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -4588,7 +4588,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::Constant(with_prelude_const_offset(0)),
                 Opcode::GStore(with_prelude_const_offset(1)),
@@ -4628,7 +4628,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -4687,7 +4687,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -4761,7 +4761,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
@@ -4825,7 +4825,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test.abra".to_string(),
+            name: "_test".to_string(),
             code: vec![
                 Opcode::IConst0,
                 Opcode::GStore(with_prelude_const_offset(0)),
