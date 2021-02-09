@@ -1,4 +1,3 @@
-val m: Map<Int[], Int> = {}
-m[[1, 2]] = 2
-m[[1, 2, 3]] = 3
-m.keys()
+import a from .example2
+
+println("a: $a")

@@ -2,7 +2,7 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString, NativeDate};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode};
 use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
@@ -10,6 +10,7 @@ use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentT
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
+use std::cell::RefCell;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
@@ -63,28 +64,49 @@ pub struct TypedModule {
     pub referencable_types: HashMap<String, Type>,
     pub global_bindings: HashMap<String, ScopeBinding>,
     pub types: HashMap<String, Type>,
+    pub exports: HashSet<String>,
+}
+
+thread_local! {
+  pub static TYPED_MODULES: RefCell<HashMap<String, TypedModule>> = RefCell::new(HashMap::new());
 }
 
 pub fn typecheck(module_path: String, ast: Vec<AstNode>) -> Result<TypedModule, TypecheckerError> {
+    let modules = HashMap::new();
+    typecheck_with_modules(module_path, ast, modules)
+}
+
+fn typecheck_with_modules(module_path: String, ast: Vec<AstNode>, modules: HashMap<String, TypedModule>) -> Result<TypedModule, TypecheckerError> {
+    TYPED_MODULES.with(|m| m.borrow_mut().extend(modules));
+
     let mut referencable_types = HashMap::new();
     referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
     referencable_types.insert("Set".to_string(), Type::Set(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Date".to_string(), Type::Struct(NativeDate::get_type()));
 
-
     let mut typechecker = Typechecker {
         cur_typedef: None,
         scopes: vec![Scope::root_scope()],
         referencable_types,
         returns: vec![],
+        exports: HashSet::new(),
     };
 
     typechecker.hoist_declarations_in_scope(&ast)?;
 
-    let results: Result<Vec<TypedAstNode>, TypecheckerError> = ast.into_iter()
-        .map(|node| typechecker.visit(node))
-        .collect();
+    let mut imports_done = false;
+    let results = ast.into_iter()
+        .map(|node| match node {
+            AstNode::ImportStatement(token, import_node) => {
+                typechecker.visit_import(token, import_node, !imports_done)
+            }
+            node => {
+                imports_done = true;
+                typechecker.visit(node)
+            }
+        })
+        .collect::<Result<Vec<_>, TypecheckerError>>();
 
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
 
@@ -94,6 +116,7 @@ pub fn typecheck(module_path: String, ast: Vec<AstNode>) -> Result<TypedModule, 
         referencable_types: typechecker.referencable_types.clone(),
         global_bindings: scope.bindings,
         types: scope.types.into_iter().map(|(k, (t, _))| (k, t)).collect(),
+        exports: typechecker.exports,
     };
 
     Ok(module)
@@ -104,6 +127,7 @@ pub struct Typechecker {
     pub(crate) scopes: Vec<Scope>,
     pub(crate) referencable_types: HashMap<String, Type>,
     pub(crate) returns: Vec<TypedAstNode>,
+    pub(crate) exports: HashSet<String>,
 }
 
 impl Typechecker {
@@ -1059,7 +1083,7 @@ impl Typechecker {
         Ok((static_fields, typed_methods))
     }
 
-    fn visit_binding_pattern(&mut self, binding: &mut BindingPattern, typ: &Type, is_mutable: bool) -> Result<(), TypecheckerError> {
+    fn visit_binding_pattern(&mut self, binding: &mut BindingPattern, typ: &Type, is_mutable: bool) -> Result<Vec<String>, TypecheckerError> {
         match binding {
             BindingPattern::Variable(ident) => {
                 let name = Token::get_ident_name(ident);
@@ -1069,14 +1093,18 @@ impl Typechecker {
                     return Err(TypecheckerError::DuplicateBinding { ident: ident.clone(), orig_ident });
                 }
                 self.add_binding(&name, &ident, &typ, is_mutable);
+                Ok(vec![name])
             }
             BindingPattern::Tuple(_, idents) => {
                 match typ.get_opt_unwrapped() {
                     Type::Tuple(opts) if idents.len() == opts.len() => {
+                        let mut bindings = Vec::new();
                         for (pat, tuple_elem_typ) in idents.iter_mut().zip(opts) {
                             let typ = if typ.is_opt() { Type::Option(Box::new(tuple_elem_typ)) } else { tuple_elem_typ };
-                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            let res = self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            bindings.extend(res);
                         }
+                        Ok(bindings)
                     }
                     typ @ _ => {
                         return Err(TypecheckerError::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
@@ -1091,6 +1119,7 @@ impl Typechecker {
                     } else { unreachable!() }
                 }
 
+                let mut bindings = Vec::new();
                 match typ.get_opt_unwrapped() {
                     Type::Array(inner_typ) => {
                         for (pat, is_splat) in idents {
@@ -1100,23 +1129,24 @@ impl Typechecker {
                             } else {
                                 Type::Option(Box::new(*inner_typ.clone()))
                             };
-                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            let res = self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            bindings.extend(res);
                         }
                     }
                     Type::String => {
                         *is_string = true;
                         for (pat, _) in idents {
-                            self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            let res = self.visit_binding_pattern(pat, &typ, is_mutable)?;
+                            bindings.extend(res);
                         }
                     }
                     typ @ _ => {
                         return Err(TypecheckerError::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
                     }
-                }
+                };
+                Ok(bindings)
             }
         }
-
-        Ok(())
     }
 }
 
@@ -1378,7 +1408,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let BindingDeclNode { is_mutable, mut binding, type_ann, expr } = node;
+        let BindingDeclNode { export_token, is_mutable, mut binding, type_ann, expr } = node;
         if !is_mutable && expr.is_none() {
             if let BindingPattern::Variable(ident) = binding {
                 return Err(TypecheckerError::MissingRequiredAssignment { ident });
@@ -1432,7 +1462,13 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unit });
         }
 
-        self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
+        let binding_idents = self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
+        if let Some(token) = export_token {
+            if self.scopes.len() != 1 {
+                return Err(TypecheckerError::InvalidExportDepth { token });
+            }
+            self.exports.extend(binding_idents);
+        }
 
         let scope_depth = self.scopes.len() - 1;
         let node = TypedBindingDeclNode {
@@ -1445,13 +1481,19 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
     }
 
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
-        let FunctionDeclNode { name, type_args, args, ret_type: ret_ann_type, body, } = node;
+        let FunctionDeclNode { export_token, name, type_args, args, ret_type: ret_ann_type, body, .. } = node;
 
         let func_name = Token::get_ident_name(&name);
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
             let orig_ident = orig_ident.clone();
             return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
+        } else if let Some(token) = export_token {
+            if self.scopes.len() != 1 {
+                return Err(TypecheckerError::InvalidExportDepth { token });
+            }
+            self.exports.insert(func_name.clone());
         }
+
         let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
         let mut seen = HashMap::<String, Token>::new();
         for type_arg in &type_args {
@@ -1607,8 +1649,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::InvalidTypeDeclDepth { token });
         }
 
-        let TypeDeclNode { name, type_args, fields, methods, .. } = node;
+        let TypeDeclNode { export_token, name, type_args, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
+        if let Some(token) = export_token {
+            if self.scopes.len() != 1 {
+                return Err(TypecheckerError::InvalidExportDepth { token });
+            }
+            self.exports.insert(new_type_name.clone());
+        }
 
         // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
         // // --- First gather only the type data for each field, method, and static value. --- \\
@@ -1735,8 +1783,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
             return Err(TypecheckerError::InvalidTypeDeclDepth { token });
         }
 
-        let EnumDeclNode { name, variants, methods, .. } = node;
+        let EnumDeclNode { export_token, name, variants, methods, .. } = node;
         let new_enum_name = Token::get_ident_name(&name);
+        if let Some(token) = export_token {
+            if self.scopes.len() != 1 {
+                return Err(TypecheckerError::InvalidExportDepth { token });
+            }
+            self.exports.insert(new_enum_name.clone());
+        }
 
         // // ------------------------ Begin First-pass Type Gathering ------------------------ \\
         // // ---    See comment in visit_type_decl above, the process here is similar      --- \\
@@ -2611,6 +2665,14 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         } else {
             Err(TypecheckerError::InvalidReturn(token))
         }
+    }
+
+    fn visit_import(&mut self, token: Token, _node: ImportNode, is_proper: bool) -> Result<TypedAstNode, TypecheckerError> {
+        if !is_proper {
+            return Err(TypecheckerError::InvalidImportLocation { token });
+        }
+
+        todo!()
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
@@ -8095,6 +8157,55 @@ mod tests {
             actual: Type::Unit,
             expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
         };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_exports() -> TestResult {
+        let module = typecheck("\
+          export val a = 123
+          val b = 123
+          export var c = 456
+          var d = 456
+          export func abc() {}
+          func def() {}
+          export type Foo {}
+          type Bar {}
+          export enum Baz {}
+          enum Quuz {}
+        ")?;
+        let expected = vec!["a", "c", "abc", "Foo", "Baz"].into_iter().map(|s| s.to_string()).collect::<HashSet<_>>();
+        assert_eq!(expected, module.exports);
+
+        Ok(())
+    }
+
+    #[test]
+    fn typecheck_exports_errors() {
+        let err = typecheck("\
+          func abc() {\n\
+            export val d = 123\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
+        assert_eq!(expected, err);
+
+        let err = typecheck("\
+          func abc() {\n\
+            export func d() = 123\n\
+          }\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
+        assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn typecheck_imports_errors() {
+        let err = typecheck("\
+          func abc() {}\n\
+          import abc from def.ghi\
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidImportLocation { token: Token::Import(Position::new(2, 1)) };
         assert_eq!(expected, err);
     }
 }
