@@ -95,17 +95,8 @@ fn typecheck_with_modules(module_path: String, ast: Vec<AstNode>, modules: HashM
 
     typechecker.hoist_declarations_in_scope(&ast)?;
 
-    let mut imports_done = false;
     let results = ast.into_iter()
-        .map(|node| match node {
-            AstNode::ImportStatement(token, import_node) => {
-                typechecker.visit_import(token, import_node, !imports_done)
-            }
-            node => {
-                imports_done = true;
-                typechecker.visit(node)
-            }
-        })
+        .map(|node| typechecker.visit(node))
         .collect::<Result<Vec<_>, TypecheckerError>>();
 
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
@@ -2667,11 +2658,7 @@ impl AstVisitor<TypedAstNode, TypecheckerError> for Typechecker {
         }
     }
 
-    fn visit_import(&mut self, token: Token, _node: ImportNode, is_proper: bool) -> Result<TypedAstNode, TypecheckerError> {
-        if !is_proper {
-            return Err(TypecheckerError::InvalidImportLocation { token });
-        }
-
+    fn visit_import(&mut self, _token: Token, _node: ImportNode) -> Result<TypedAstNode, TypecheckerError> {
         todo!()
     }
 
@@ -8196,16 +8183,6 @@ mod tests {
           }\
         ").unwrap_err();
         let expected = TypecheckerError::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
-        assert_eq!(expected, err);
-    }
-
-    #[test]
-    fn typecheck_imports_errors() {
-        let err = typecheck("\
-          func abc() {}\n\
-          import abc from def.ghi\
-        ").unwrap_err();
-        let expected = TypecheckerError::InvalidImportLocation { token: Token::Import(Position::new(2, 1)) };
         assert_eq!(expected, err);
     }
 }

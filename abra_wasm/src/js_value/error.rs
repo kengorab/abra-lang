@@ -634,14 +634,6 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidImportLocation { token } => {
-                    let mut obj = serializer.serialize_map(Some(4))?;
-                    obj.serialize_entry("kind", "typecheckerError")?;
-                    obj.serialize_entry("subKind", "invalidImportLocation")?;
-                    obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
-                    obj.end()
-                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

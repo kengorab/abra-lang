@@ -52,7 +52,6 @@ pub enum TypecheckerError {
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
     InvalidTypeDeclDepth { token: Token },
-    InvalidImportLocation { token: Token },
     InvalidExportDepth { token: Token },
     ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
@@ -114,7 +113,6 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParamPosition { token } => token,
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
-            TypecheckerError::InvalidImportLocation { token } => token,
             TypecheckerError::InvalidExportDepth { token } => token,
             TypecheckerError::ForbiddenVariableType { binding, .. } => binding.get_token(),
             TypecheckerError::InvalidInstantiation { token, .. } => token,
@@ -566,13 +564,6 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Invalid location for type declaration: ({}:{})\n{}\n\
                     Types may only be declared at the root level",
-                    pos.line, pos.col, cursor_line
-                )
-            }
-            TypecheckerError::InvalidImportLocation { .. } => {
-                format!(
-                    "Invalid import statement: ({}:{})\n{}\n\
-                    All imports must be located at the top of the file",
                     pos.line, pos.col, cursor_line
                 )
             }

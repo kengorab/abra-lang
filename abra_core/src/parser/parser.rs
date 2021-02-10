@@ -9,9 +9,19 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
     let mut parser = Parser::new(tokens);
 
     let mut nodes: Vec<AstNode> = vec![];
+    let mut imports_done = false;
     loop {
         match parser.peek() {
-            Some(_) => nodes.push(parser.parse_stmt(None)?),
+            Some(tok) => {
+                let node = if let Token::Import(_) = tok {
+                    parser.parse_import_statement(!imports_done)?
+                } else {
+                    imports_done = true;
+                    parser.parse_stmt(None)?
+                };
+
+                nodes.push(node);
+            },
             None => break
         }
     }
@@ -202,7 +212,7 @@ impl Parser {
             Token::For(_) => self.parse_for_statement(),
             Token::Break(_) => self.parse_break_statement(),
             Token::Return(_, _) => self.parse_return_statement(),
-            Token::Import(_) => self.parse_import_statement(),
+            Token::Import(_) => self.parse_import_statement(false),
             Token::Export(_) => self.parse_exported_statement(),
             _ => self.parse_expr(),
         }
@@ -712,8 +722,11 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?; // Consume 'import' token
+        if !is_proper {
+            return Err(ParseError::UnexpectedToken(token));
+        }
 
         let mut star_token = None;
         let mut imports = Vec::new();
@@ -4686,5 +4699,15 @@ mod tests {
         let error = parse("export if true {} else {}").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::If(Position::new(1, 8)));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_imports_errors() {
+        let err = parse("\
+          func abc() {}\n\
+          import abc from def.ghi\
+        ").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Import(Position::new(2, 1)));
+        assert_eq!(expected, err);
     }
 }
