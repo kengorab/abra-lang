@@ -1,21 +1,18 @@
 use crate::utils::abra_error_to_diagnostic;
-use abra_core::{typecheck, ModuleLoader, ModuleLoaderError};
+use abra_core::typecheck;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::{Client, LanguageServer};
 use tower_lsp::lsp_types::notification::PublishDiagnostics;
 use tower_lsp::lsp_types::{Url, PublishDiagnosticsParams, InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, InitializedParams, MessageType, DidOpenTextDocumentParams, TextDocumentItem, DidChangeTextDocumentParams, VersionedTextDocumentIdentifier};
-use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::parser::ast::ModuleId;
+use abra_core::module_loader::{ModuleReader, ModuleLoader};
 
 #[derive(Debug)]
-struct LspModuleLoader;
+struct LspModuleReader;
 
-impl ModuleLoader for LspModuleLoader {
-    fn load_module(&mut self, _module_id: &ModuleId) -> std::result::Result<(), ModuleLoaderError> {
-        unimplemented!()
-    }
-
-    fn get_module(&self, _module_id: &ModuleId) -> &TypedModule {
+impl ModuleReader for LspModuleReader {
+    fn read_module(&mut self, _module_id: &ModuleId) -> Option<String> {
+        // TODO: Real implementation
         unimplemented!()
     }
 }
@@ -32,7 +29,8 @@ impl Backend {
 
     fn get_diagnostics(&self, uri: Url, version: Option<i64>, text: String) -> PublishDiagnosticsParams {
         let module_path = uri.path();
-        let mut loader = LspModuleLoader; // TODO: Real implementation
+        let module_reader = LspModuleReader;
+        let mut loader = ModuleLoader::new(module_reader);
         let diagnostics = match typecheck(module_path.to_string(), &text, &mut loader) {
             Ok(_) => vec![],
             Err(e) => {

@@ -16,13 +16,13 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 use abra_core::builtins::native_fns::NativeFn;
-use abra_core::{Error, typecheck, compile, compile_and_disassemble, ModuleLoader, ModuleLoaderError};
+use abra_core::{Error, typecheck, compile, compile_and_disassemble};
 use abra_core::vm::value::{Value, FnValue, ClosureValue, TypeValue, EnumValue, NativeInstanceObj};
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
-use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::parser::ast::ModuleId;
+use abra_core::module_loader::{ModuleReader, ModuleLoader};
 
 pub struct RunResultValue(Option<Value>);
 
@@ -214,13 +214,10 @@ impl Serialize for DisassembleResult {
     }
 }
 
-struct WasmModuleLoader;
+struct WasmModuleReader;
 
-impl ModuleLoader for WasmModuleLoader {
-    fn load_module(&mut self, _module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
-        unimplemented!()
-    }
-    fn get_module(&self, _module_id: &ModuleId) -> &TypedModule {
+impl ModuleReader for WasmModuleReader {
+    fn read_module(&mut self, _module_id: &ModuleId) -> Option<String> {
         unimplemented!()
     }
 }
@@ -234,8 +231,8 @@ extern "C" {
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
     let module_name = "_repl.abra".to_string();
-    let mut loader = WasmModuleLoader;
-    let result = compile_and_disassemble(module_name, &input.to_string(), &mut loader);
+    let module_reader = WasmModuleReader;
+    let result = compile_and_disassemble(module_name, &input.to_string(), module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -244,8 +241,9 @@ pub fn disassemble(input: &str) -> JsValue {
 #[wasm_bindgen(js_name = typecheck)]
 pub fn typecheck_input(input: &str) -> JsValue {
     let module_name = "_repl.abra".to_string();
-    let mut loader = WasmModuleLoader;
-    let result = typecheck(module_name, &input.to_string(), &mut loader).map(|_| ());
+    let module_reader = WasmModuleReader;
+    let mut module_loader = ModuleLoader::new(module_reader);
+    let result = typecheck(module_name, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
@@ -254,8 +252,8 @@ pub fn typecheck_input(input: &str) -> JsValue {
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
     let module_name = "_repl.abra".to_string();
-    let mut loader = WasmModuleLoader;
-    let result = compile(module_name, &input.to_string(), &mut loader).map(|(module, _)| module);
+    let module_reader = WasmModuleReader;
+    let result = compile(module_name, &input.to_string(), module_reader).map(|(module, _)| module);
     let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
@@ -263,8 +261,8 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 
 fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
     let module_name = "_repl.abra".to_string();
-    let mut loader = WasmModuleLoader;
-    let (module, _) = compile(module_name, &input, &mut loader)?;
+    let module_reader = WasmModuleReader;
+    let (module, _) = compile(module_name, &input, module_reader)?;
     let mut vm = VM::new(module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),

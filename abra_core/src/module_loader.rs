@@ -1,24 +1,30 @@
+use crate::parser::ast::ModuleId;
+use crate::typechecker::typechecker::TypedModule;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use abra_core::{ModuleLoader, typecheck, ModuleLoaderError};
-use abra_core::typechecker::typechecker::TypedModule;
-use std::fmt::Debug;
-use abra_core::parser::ast::ModuleId;
+use crate::{Error, typecheck};
+
+pub trait ModuleReader {
+    fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
+}
+
+pub enum ModuleLoaderError {
+    WrappedError(Error),
+    CannotLoadModule,
+    CircularDependency,
+}
 
 #[derive(Debug)]
-pub struct Loader {
-    project_root: PathBuf,
+pub struct ModuleLoader<R: ModuleReader> {
+    module_reader: R,
     cache: HashMap<String, Option<TypedModule>>,
 }
 
-impl Loader {
-    pub fn new(project_root: PathBuf) -> Self {
-        Self { project_root, cache: HashMap::new() }
+impl<R: ModuleReader> ModuleLoader<R> {
+    pub fn new(module_reader: R) -> Self {
+        Self { module_reader, cache: HashMap::new() }
     }
-}
 
-impl ModuleLoader for Loader {
-    fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
+    pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
         if !module_id.0 { unimplemented!() }
 
         let module_name = module_id.get_name();
@@ -28,10 +34,9 @@ impl ModuleLoader for Loader {
             _ => {}
         }
 
-        let file_path = self.project_root.join(&module_id.get_path("abra"));
-        let contents = match std::fs::read_to_string(file_path) {
-            Ok(contents) => contents,
-            Err(_) => return Err(ModuleLoaderError::CannotLoadModule)
+        let contents = match self.module_reader.read_module(&module_id) {
+            Some(contents) => contents,
+            None => return Err(ModuleLoaderError::CannotLoadModule),
         };
 
         self.cache.insert(module_name.clone(), None);
@@ -44,7 +49,7 @@ impl ModuleLoader for Loader {
         }
     }
 
-    fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
+    pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
         if !module_id.0 { unimplemented!() }
 
         let name = module_id.get_name();

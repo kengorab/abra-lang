@@ -2003,7 +2003,7 @@ mod tests {
     use super::*;
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
-    use crate::common::test_utils::MockLoader;
+    use crate::common::test_utils::MockModuleReader;
 
     fn with_prelude_const_offset(const_idx: usize) -> usize {
         PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
@@ -2018,9 +2018,9 @@ mod tests {
     }
 
     fn test_compile(input: &str) -> Module {
-        let mut mock_loader = MockLoader::default();
+        let mock_reader = MockModuleReader::default();
         let module_name = "_test".to_string();
-        crate::compile(module_name, &input.to_string(), &mut mock_loader).unwrap().0
+        crate::compile(module_name, &input.to_string(), mock_reader).unwrap().0
     }
 
     fn to_string_method() -> (String, Value) {

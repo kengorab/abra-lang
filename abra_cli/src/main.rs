@@ -1,14 +1,14 @@
 #[macro_use]
 extern crate clap;
 
-mod module_loader;
+mod fs_module_reader;
 
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::builtins::native::to_string;
-use crate::module_loader::Loader;
+use crate::fs_module_reader::FsModuleReader;
 use std::path::PathBuf;
 
 #[derive(Clap)]
@@ -55,8 +55,9 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_name);
     let contents = read_file(&file_path)?;
 
-    let mut module_loader = Loader::new(current_path);
-    let module = match compile(opts.file_name, &contents, &mut module_loader) {
+    let module_reader = FsModuleReader::new(current_path);
+    // TODO: Fix, this is still passing in the path, _not_ the name
+    let module = match compile(opts.file_name, &contents, module_reader) {
         Ok((module, _)) => module,
         Err(error) => {
             match error {
@@ -83,8 +84,8 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_name);
     let contents = read_file(&file_path)?;
 
-    let mut module_loader = Loader::new(current_path);
-    match compile_and_disassemble(opts.file_name, &contents, &mut module_loader) {
+    let module_reader = FsModuleReader::new(current_path);
+    match compile_and_disassemble(opts.file_name, &contents, module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),

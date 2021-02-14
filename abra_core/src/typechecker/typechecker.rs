@@ -7,7 +7,7 @@ use crate::vm::prelude::PRELUDE;
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
-use crate::ModuleLoader;
+use crate::{ModuleLoader, ModuleReader};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
@@ -73,9 +73,7 @@ pub struct TypedModule {
     pub exports: HashMap<String, ExportedValue>,
 }
 
-pub fn typecheck<M>(module_name: String, ast: Vec<AstNode>, loader: &M) -> Result<TypedModule, TypecheckerError>
-    where M: ModuleLoader
-{
+pub fn typecheck<R: ModuleReader>(module_name: String, ast: Vec<AstNode>, loader: &ModuleLoader<R>) -> Result<TypedModule, TypecheckerError> {
     let mut referencable_types = HashMap::new();
     referencable_types.insert("Array".to_string(), Type::Array(Box::new(Type::Generic("T".to_string()))));
     referencable_types.insert("Map".to_string(), Type::Map(Box::new(Type::Generic("K".to_string())), Box::new(Type::Generic("V".to_string()))));
@@ -111,7 +109,7 @@ pub fn typecheck<M>(module_name: String, ast: Vec<AstNode>, loader: &M) -> Resul
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
 
     let module = TypedModule {
-        module_name,//: module_path.replace(".abra", "").replace("/", "."),
+        module_name,
         typed_nodes,
         referencable_types: typechecker.referencable_types.clone(),
         global_bindings: scope.bindings,
@@ -122,16 +120,16 @@ pub fn typecheck<M>(module_name: String, ast: Vec<AstNode>, loader: &M) -> Resul
     Ok(module)
 }
 
-pub struct Typechecker<'a, M> {
+pub struct Typechecker<'a, R: ModuleReader> {
     cur_typedef: Option<Type>,
     scopes: Vec<Scope>,
     referencable_types: HashMap<String, Type>,
     returns: Vec<TypedAstNode>,
     exports: HashMap<String, ExportedValue>,
-    module_loader: &'a M,
+    module_loader: &'a ModuleLoader<R>,
 }
 
-impl<'a, M: 'a + ModuleLoader> Typechecker<'a, M> {
+impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
     pub fn get_referencable_types(&self) -> &HashMap<String, Type> {
         &self.referencable_types
     }
@@ -1151,7 +1149,7 @@ impl<'a, M: 'a + ModuleLoader> Typechecker<'a, M> {
     }
 }
 
-impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typechecker<'a, M> {
+impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typechecker<'a, R> {
     fn visit_literal(&mut self, token: Token, node: AstLiteralNode) -> Result<TypedAstNode, TypecheckerError> {
         match node {
             AstLiteralNode::IntLiteral(val) =>
@@ -1188,8 +1186,8 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
     fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<TypedAstNode, TypecheckerError> {
         #[inline]
-        fn type_for_op<M: ModuleLoader>(
-            zelf: &mut Typechecker<M>,
+        fn type_for_op<R: ModuleReader>(
+            zelf: &mut Typechecker<R>,
             token: &Token,
             op: &BinaryOp,
             typed_left: &TypedAstNode,
@@ -1947,7 +1945,7 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         };
 
         #[inline]
-        fn get_type_generics<M: ModuleLoader>(zelf: &mut Typechecker<M>, typ: &Type) -> Vec<String> {
+        fn get_type_generics<R: ModuleReader>(zelf: &mut Typechecker<R>, typ: &Type) -> Vec<String> {
             match zelf.resolve_ref_type(typ) {
                 Type::Fn(FnType { type_args, .. }) => type_args,
                 Type::Struct(StructType { type_args, .. }) => type_args.iter().map(|a| a.0.clone()).collect(),
@@ -2155,7 +2153,7 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             }
             IndexingMode::Range(start, end) => {
                 #[inline]
-                fn visit_endpoint<M: ModuleLoader>(tc: &mut Typechecker<M>, node: Option<Box<AstNode>>) -> Result<Option<Box<TypedAstNode>>, TypecheckerError> {
+                fn visit_endpoint<R: ModuleReader>(tc: &mut Typechecker<R>, node: Option<Box<AstNode>>) -> Result<Option<Box<TypedAstNode>>, TypecheckerError> {
                     match node {
                         None => Ok(None),
                         Some(node) => {
@@ -2282,8 +2280,8 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let target_type = target.get_type();
 
         #[inline]
-        fn verify_named_args_invocation<M: ModuleLoader>(
-            zelf: &mut Typechecker<M>,
+        fn verify_named_args_invocation<R: ModuleReader>(
+            zelf: &mut Typechecker<R>,
             invocation_target: Token,
             args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
             expected_arg_types: &Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
@@ -2355,7 +2353,7 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         }
 
         #[inline]
-        fn typecheck_arg<M: ModuleLoader>(zelf: &mut Typechecker<M>, arg: AstNode, expected_arg_type: &Type, generics: &mut HashMap<String, Type>) -> Result<TypedAstNode, TypecheckerError> {
+        fn typecheck_arg<R: ModuleReader>(zelf: &mut Typechecker<R>, arg: AstNode, expected_arg_type: &Type, generics: &mut HashMap<String, Type>) -> Result<TypedAstNode, TypecheckerError> {
             let mut typed_arg = zelf.visit(arg)?;
             let arg_type = typed_arg.get_type();
 
@@ -2749,8 +2747,8 @@ impl<'a, M: ModuleLoader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         } else { unreachable!("The `field` field on AccessorNode must be an AstNode::Identifier"); };
         let field_name = Token::get_ident_name(&field_ident).clone();
 
-        fn get_field_data<M: ModuleLoader>(
-            zelf: &Typechecker<M>,
+        fn get_field_data<R: ModuleReader>(
+            zelf: &Typechecker<R>,
             target_type: &Type,
             field_name: &String,
             token: &Token,
@@ -2994,21 +2992,19 @@ mod tests {
     use super::*;
     use crate::lexer::tokens::Position;
     use crate::parser::ast::UnaryOp;
-    use crate::common::test_utils::MockLoader;
+    use crate::common::test_utils::MockModuleReader;
 
     type TestResult = Result<(), TypecheckerError>;
 
     fn test_typecheck(input: &str) -> Result<TypedModule, TypecheckerError> {
-        let mut mock_loader = MockLoader::default();
-        let module_path = "_test".to_string();
-        let module = crate::typecheck(module_path, &input.to_string(), &mut mock_loader)
-            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
-        Ok(module)
+        test_typecheck_with_modules(input, vec![])
     }
 
-    fn test_typecheck_with_modules<M: ModuleLoader>(input: &str, loader: &mut M) -> Result<TypedModule, TypecheckerError> {
+    fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerError> {
+        let mock_reader = MockModuleReader::new(modules);
+        let mut mock_loader = ModuleLoader::new(mock_reader);
         let module_path = "_test".to_string();
-        let module = crate::typecheck(module_path, &input.to_string(), loader)
+        let module = crate::typecheck(module_path, &input.to_string(), &mut mock_loader)
             .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
         Ok(module)
     }
@@ -8269,7 +8265,7 @@ mod tests {
           import a, b, Foo, Baz from .mod2\n\
           Baz(foo1: b(a: a), foo2: Foo.Bar)
         ";
-        let mut loader = MockLoader::new(vec![(
+        let modules = vec![(
             ".mod2",
             "\
               export val a = 1\n\
@@ -8277,8 +8273,8 @@ mod tests {
               export type Baz { foo1: Foo, foo2: Foo }
               export func b(a: Int): Foo = Foo.Bar
             "
-        )]);
-        let res = test_typecheck_with_modules(mod1, &mut loader);
+        )];
+        let res = test_typecheck_with_modules(mod1, modules);
         assert!(res.is_ok());
 
         // Verify all import kinds, with import-all wildcard
@@ -8286,7 +8282,7 @@ mod tests {
           import * from .mod2\n\
           Baz(foo1: b(a: a), foo2: Foo.Bar)
         ";
-        let mut loader = MockLoader::new(vec![(
+        let modules = vec![(
             ".mod2",
             "\
               export val a = 1\n\
@@ -8294,8 +8290,8 @@ mod tests {
               export type Baz { foo1: Foo, foo2: Foo }\n\
               export func b(a: Int): Foo = Foo.Bar\
             "
-        )]);
-        let res = test_typecheck_with_modules(mod1, &mut loader);
+        )];
+        let res = test_typecheck_with_modules(mod1, modules);
         assert!(res.is_ok());
 
         // Verify loading from multiple modules
@@ -8304,11 +8300,11 @@ mod tests {
           import b from .mod3\n\
           val _: Int = a + b\
         ";
-        let mut loader = MockLoader::new(vec![
+        let modules = vec![
             (".mod2", "export val a = 1"),
             (".mod3", "export val b = 2"),
-        ]);
-        let res = test_typecheck_with_modules(mod1, &mut loader);
+        ];
+        let res = test_typecheck_with_modules(mod1, modules);
         assert!(res.is_ok());
 
         // Verify nested module loading
@@ -8316,14 +8312,14 @@ mod tests {
           import a from .mod2\n\
           val _: Int = a\
         ";
-        let mut loader = MockLoader::new(vec![
+        let modules = vec![
             (".mod2", "\
               import b from .mod3\n\
               export val a = b + 1\
             "),
             (".mod3", "export val b = 2"),
-        ]);
-        let res = test_typecheck_with_modules(mod1, &mut loader);
+        ];
+        let res = test_typecheck_with_modules(mod1, modules);
         assert!(res.is_ok());
 
         Ok(())
@@ -8337,8 +8333,8 @@ mod tests {
           a + 4
         ";
         let mod2 = "export val b = 6";
-        let mut loader = MockLoader::new(vec![(".mod2", mod2)]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        let modules = vec![(".mod2", mod2)];
+        let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerError::InvalidImportValue { ident: ident_token!((1, 8), "a") };
         assert_eq!(expected, err);
 
@@ -8347,8 +8343,7 @@ mod tests {
           import a from .mod2.some_mod\n\
           a + 4
         ";
-        let mut loader = MockLoader::new(vec![]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        let err = test_typecheck_with_modules(mod1, vec![]).unwrap_err();
         let expected = TypecheckerError::InvalidModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2.some_mod".to_string(),
@@ -8361,7 +8356,7 @@ mod tests {
           import b from .mod2\n\
           b + 4
         ";
-        let mut loader = MockLoader::new(vec![
+        let modules = vec![
             (".mod2", "\
               import c from .mod3\n\
               export val b = 6\
@@ -8370,12 +8365,12 @@ mod tests {
               import b from .mod2\n\
               export val c = 6\
             ")
-        ]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        ];
+        let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerError::InvalidModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2".to_string(),
-            circular: true
+            circular: true,
         };
         assert_eq!(expected, err);
 
@@ -8385,8 +8380,8 @@ mod tests {
           fn(a: 4)
         ";
         let mod2 = "export func fn(a: String) {}";
-        let mut loader = MockLoader::new(vec![(".mod2", mod2)]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        let modules = vec![(".mod2", mod2)];
+        let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Int(Position::new(2, 7), 4),
             expected: Type::String,
@@ -8400,8 +8395,8 @@ mod tests {
           func fn() {}
         ";
         let mod2 = "export func fn() {}";
-        let mut loader = MockLoader::new(vec![(".mod2", mod2)]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        let modules = vec![(".mod2", mod2)];
+        let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerError::DuplicateBinding {
             ident: ident_token!((2, 6), "fn"),
             orig_ident: ident_token!((1, 8), "fn"),
@@ -8414,8 +8409,8 @@ mod tests {
           type A {}
         ";
         let mod2 = "export type A {}";
-        let mut loader = MockLoader::new(vec![(".mod2", mod2)]);
-        let err = test_typecheck_with_modules(mod1, &mut loader).unwrap_err();
+        let modules = vec![(".mod2", mod2)];
+        let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerError::DuplicateType {
             ident: ident_token!((2, 6), "A"),
             orig_ident: Some(ident_token!((1, 8), "A")),

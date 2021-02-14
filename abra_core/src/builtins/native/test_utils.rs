@@ -1,7 +1,7 @@
 use crate::vm::value::Value;
 use crate::vm::vm::{VM, VMContext};
 use crate::{Error, compile};
-use crate::common::test_utils::MockLoader;
+use crate::common::test_utils::MockModuleReader;
 
 pub fn new_string_obj(string: &str) -> Value {
     Value::new_string_obj(string.to_string())
@@ -32,23 +32,17 @@ macro_rules! string_array {
 }
 
 pub fn interpret(input: &str) -> Option<Value> {
-    let mut loader = MockLoader::default();
-    let module_path = "_test".to_string();
-    let (module, _) = compile(module_path, &input.to_string(), &mut loader).unwrap();
-
-    let mut vm = VM::new(module, VMContext::default());
-    vm.run().unwrap()
+    interpret_get_result(input).unwrap()
 }
 
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
-    let mut loader = MockLoader::default();
+    let mock_reader = MockModuleReader::default();
     let module_path = "_test".to_string();
-    let module = match compile(module_path, &input.as_ref().to_string(), &mut loader) {
+    let module = match compile(module_path, &input.as_ref().to_string(), mock_reader) {
         Ok((module, _)) => module,
         Err(error) => return Err(error)
     };
 
-    let ctx = VMContext { print: |input| print!("{}", input) };
-    let mut vm = VM::new(module, ctx);
+    let mut vm = VM::new(module, VMContext::default());
     vm.run().map_err(|e| Error::InterpretError(e))
 }
