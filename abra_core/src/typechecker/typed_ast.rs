@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern, ImportNode};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -32,6 +32,7 @@ pub enum TypedAstNode {
     Accessor(Token, TypedAccessorNode),
     MatchStatement(Token, TypedMatchNode),
     MatchExpression(Token, TypedMatchNode),
+    ImportStatement(Token, ImportNode),
     _Nil(Token),
 }
 
@@ -65,6 +66,7 @@ impl TypedAstNode {
             TypedAstNode::Accessor(token, _) |
             TypedAstNode::MatchStatement(token, _) |
             TypedAstNode::MatchExpression(token, _) |
+            TypedAstNode::ImportStatement(token, _) |
             TypedAstNode::_Nil(token) => token,
         }
     }
@@ -91,6 +93,7 @@ impl TypedAstNode {
             TypedAstNode::EnumDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
+            TypedAstNode::ImportStatement(_, _) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
             TypedAstNode::ReturnStatement(_, node) => node.typ.clone(),
             TypedAstNode::Identifier(_, node) => node.typ.clone(),

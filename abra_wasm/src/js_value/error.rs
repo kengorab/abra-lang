@@ -634,6 +634,24 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
+                TypecheckerError::InvalidImportValue { ident } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidImportValue")?;
+                    obj.serialize_entry("ident", &JsToken(ident))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerError::InvalidModuleImport { token, module_name, circular } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "invalidModuleImport")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("moduleName", module_name)?;
+                    obj.serialize_entry("circular", circular)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
             }
             Error::InterpretError(interpret_error) => match interpret_error {
                 InterpretError::StackEmpty => {

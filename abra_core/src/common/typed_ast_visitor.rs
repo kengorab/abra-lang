@@ -1,6 +1,7 @@
 use crate::lexer::tokens::Token;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedBinaryNode, TypedUnaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::typed_ast::TypedAstNode::*;
+use crate::parser::ast::ImportNode;
 
 pub trait TypedAstVisitor<V, E> {
     fn visit(&mut self, node: TypedAstNode) -> Result<V, E> {
@@ -32,6 +33,7 @@ pub trait TypedAstVisitor<V, E> {
             ReturnStatement(tok, node) => self.visit_return(tok, node),
             MatchStatement(tok, node) => self.visit_match_statement(true, tok, node),
             MatchExpression(tok, node) => self.visit_match_expression(tok, node),
+            ImportStatement(tok, node) => self.visit_import_statement(tok, node),
             _Nil(tok) => self.visit_nil(tok),
         }
     }
@@ -63,5 +65,6 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_return(&mut self, token: Token, node: TypedReturnNode) -> Result<V, E>;
     fn visit_match_statement(&mut self, is_stmt: bool, token: Token, node: TypedMatchNode) -> Result<V, E>;
     fn visit_match_expression(&mut self, token: Token, node: TypedMatchNode) -> Result<V, E>;
+    fn visit_import_statement(&mut self, token: Token, node: ImportNode) -> Result<V, E>;
     fn visit_nil(&mut self, token: Token) -> Result<V, E>;
 }

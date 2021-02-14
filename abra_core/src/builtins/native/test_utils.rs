@@ -1,10 +1,7 @@
 use crate::vm::value::Value;
-use crate::lexer::lexer::tokenize;
-use crate::parser::parser::parse;
-use crate::typechecker::typechecker::typecheck;
-use crate::vm::compiler::compile;
 use crate::vm::vm::{VM, VMContext};
-use crate::Error;
+use crate::{Error, compile};
+use crate::common::test_utils::MockLoader;
 
 pub fn new_string_obj(string: &str) -> Value {
     Value::new_string_obj(string.to_string())
@@ -35,20 +32,18 @@ macro_rules! string_array {
 }
 
 pub fn interpret(input: &str) -> Option<Value> {
-    let module_name = "_test.abra".to_string();
-
-    let tokens = tokenize(&input.to_string()).unwrap();
-    let ast = parse(tokens).unwrap();
-    let module = typecheck(module_name, ast).unwrap();
-    let (module, _) = compile(module).unwrap();
+    let mut loader = MockLoader::default();
+    let module_path = "_test".to_string();
+    let (module, _) = compile(module_path, &input.to_string(), &mut loader).unwrap();
 
     let mut vm = VM::new(module, VMContext::default());
     vm.run().unwrap()
 }
 
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
-    let module_name = "_test.abra".to_string();
-    let module = match crate::compile(module_name, &input.as_ref().to_string()) {
+    let mut loader = MockLoader::default();
+    let module_path = "_test".to_string();
+    let module = match compile(module_path, &input.as_ref().to_string(), &mut loader) {
         Ok((module, _)) => module,
         Err(error) => return Err(error)
     };

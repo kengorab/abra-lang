@@ -1,3 +1,13 @@
-//println("Running example2.abra!")
+import y from .example3
 
 export val a = 123
+
+export func b(a = 123): Int = a
+
+export type C {
+  c: String = "yay"
+}
+
+export enum D {
+  E
+}

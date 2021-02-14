@@ -1,0 +1,5 @@
+import a from .example2
+
+export val y = 4
+
+println(a + y)

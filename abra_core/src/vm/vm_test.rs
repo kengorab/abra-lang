@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use crate::lexer::lexer::tokenize;
-    use crate::parser::parser::parse;
+    use crate::parser::parser::{parse, ParseResult};
     use crate::typechecker::typechecker::typecheck;
     use crate::vm::compiler::compile;
     use crate::vm::prelude::PRELUDE_NUM_CONSTS;
@@ -12,6 +12,7 @@ mod tests {
     use crate::vm::value::{Value, FnValue};
     use crate::vm::vm::{VM, VMContext};
     use itertools::Itertools;
+    use crate::common::test_utils::MockLoader;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
@@ -22,11 +23,12 @@ mod tests {
     }
 
     fn interpret(input: &str) -> Option<Value> {
-        let module_name = "_test.abra".to_string();
+        let mut mock_loader = MockLoader::default();
+        let module_name = "_test".to_string();
 
         let tokens = tokenize(&input.to_string()).unwrap();
-        let ast = parse(tokens).unwrap();
-        let module = typecheck(module_name, ast).unwrap();
+        let ParseResult { nodes, .. } = parse(tokens).unwrap();
+        let module = typecheck(module_name, nodes, &mut mock_loader).unwrap();
         let (module, _) = compile(module).unwrap();
         let ctx = VMContext::default();
 

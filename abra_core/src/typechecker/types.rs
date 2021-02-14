@@ -618,7 +618,7 @@ impl Type {
 #[cfg(test)]
 mod test {
     use crate::typechecker::types::Type::*;
-    use crate::parser::parser::parse;
+    use crate::parser::parser::{parse, ParseResult};
     use crate::lexer::lexer::tokenize;
     use crate::parser::ast::{AstNode, BindingDeclNode};
     use super::*;
@@ -627,8 +627,8 @@ mod test {
         let type_ident: std::string::String = input.into();
         let val_stmt = format!("val a: {}", type_ident);
         let tokens = tokenize(&val_stmt).unwrap();
-        let ast = parse(tokens).unwrap();
-        match ast.first().unwrap() {
+        let ParseResult { nodes, .. } = parse(tokens).unwrap();
+        match nodes.first().unwrap() {
             AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
                 super::Type::from_type_ident(&type_ann, base_types).unwrap()
             }

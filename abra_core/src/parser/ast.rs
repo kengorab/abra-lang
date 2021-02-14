@@ -1,4 +1,5 @@
 use crate::lexer::tokens::Token;
+use itertools::Itertools;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
@@ -298,6 +299,34 @@ pub struct ImportNode {
     pub star_token: Option<Token>,
     pub leading_dot_token: Option<Token>,
     pub path: Vec<Token>,
+}
+
+impl ImportNode {
+    pub fn get_path(&self) -> (bool, String) {
+        let is_local_import = self.leading_dot_token.is_some();
+        let path = self.path.iter().map(|p| Token::get_ident_name(p)).join("/");
+        (is_local_import, path)
+    }
+
+    pub fn get_module_id(&self) -> ModuleId {
+        let is_local_import = self.leading_dot_token.is_some();
+        let path = self.path.iter().map(|p| Token::get_ident_name(p)).collect();
+        ModuleId(is_local_import, path)
+    }
+}
+
+pub struct ModuleId(pub bool, pub Vec<String>);
+
+impl ModuleId {
+    pub fn get_name(&self) -> String {
+        let name = self.1.join(".");
+        format!("{}{}", if self.0 { "." } else { "" }, name)
+    }
+
+    pub fn get_path(&self, extension: &str) -> String {
+        let path = self.1.join("/");
+        format!("{}.{}", path, extension)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

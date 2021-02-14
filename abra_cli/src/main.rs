@@ -1,11 +1,15 @@
 #[macro_use]
 extern crate clap;
 
+mod module_loader;
+
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::builtins::native::to_string;
+use crate::module_loader::Loader;
+use std::path::PathBuf;
 
 #[derive(Clap)]
 #[clap(name = "abra", version = "0.0.1")]
@@ -43,13 +47,16 @@ fn main() -> Result<(), ()> {
 }
 
 fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
-    let contents = read_file(&opts.file_name)?;
-
     let ctx = VMContext {
         print: |input| print!("{}", input)
     };
 
-    let module = match compile(opts.file_name, &contents) {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_name);
+    let contents = read_file(&file_path)?;
+
+    let mut module_loader = Loader::new(current_path);
+    let module = match compile(opts.file_name, &contents, &mut module_loader) {
         Ok((module, _)) => module,
         Err(error) => {
             match error {
@@ -72,9 +79,12 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 }
 
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
-    let contents = read_file(&opts.file_name)?;
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_name);
+    let contents = read_file(&file_path)?;
 
-    match compile_and_disassemble(opts.file_name, &contents) {
+    let mut module_loader = Loader::new(current_path);
+    match compile_and_disassemble(opts.file_name, &contents, &mut module_loader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),
@@ -92,9 +102,9 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     Ok(())
 }
 
-fn read_file(file_name: &String) -> Result<String, ()> {
+fn read_file(file_name: &PathBuf) -> Result<String, ()> {
     std::fs::read_to_string(file_name).map_err(|err| {
-        eprintln!("Could not read file {}: {}", file_name, err);
+        eprintln!("Could not read file {}: {}", file_name.to_str().unwrap(), err);
         std::process::exit(1);
     })
 }

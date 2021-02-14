@@ -71,6 +71,8 @@ pub enum TypecheckerError {
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
     InvalidAccess { token: Token, is_field: bool, is_get: bool },
+    InvalidModuleImport { token: Token, module_name: String, circular: bool },
+    InvalidImportValue { ident: Token },
 }
 
 impl TypecheckerError {
@@ -132,6 +134,8 @@ impl TypecheckerError {
             TypecheckerError::InvalidProtocolMethod { token, .. } => token,
             TypecheckerError::VarargMismatch { token, .. } => token,
             TypecheckerError::InvalidAccess { token, .. } => token,
+            TypecheckerError::InvalidModuleImport { token, .. } => token,
+            TypecheckerError::InvalidImportValue { ident: token } => token,
         }
     }
 }
@@ -751,6 +755,34 @@ impl DisplayError for TypecheckerError {
                     Cannot {} field '{}' since it is not {}table",
                     target_kind, target, pos.line, pos.col, cursor_line,
                     access_kind, target, access_str
+                )
+            }
+            TypecheckerError::InvalidModuleImport { module_name, circular, .. } => {
+                let reason = if *circular {
+                    format!(
+                        "Circular dependency detected within the module '{}'. It appears that some \
+                        module imported by '{}' is trying to import '{}', which resulted in a cycle.",
+                        module_name, module_name, module_name
+                    )
+                } else {
+                    format!(
+                        "The module '{}' could not be loaded. Please ensure that the import path of the \
+                        module is correct, and that there is a module at that location",
+                        module_name
+                    )
+                };
+
+                format!(
+                    "Could not import module: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line, reason
+                )
+            }
+            TypecheckerError::InvalidImportValue { ident } => {
+                format!(
+                    "Invalid import: ({}:{})\n{}\n\
+                    This module does not export any value called '{}'",
+                    pos.line, pos.col, cursor_line,
+                    Token::get_ident_name(ident)
                 )
             }
         }

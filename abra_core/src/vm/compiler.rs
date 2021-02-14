@@ -1,6 +1,6 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern, ImportNode};
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
@@ -1992,16 +1992,18 @@ impl TypedAstVisitor<(), ()> for Compiler {
         self.return_handles.push(return_jump_handle);
         Ok(())
     }
+
+    fn visit_import_statement(&mut self, _token: Token, _node: ImportNode) -> Result<(), ()> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::lexer::tokenize;
-    use crate::parser::parser::parse;
-    use crate::typechecker::typechecker::typecheck;
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
     use itertools::Itertools;
+    use crate::common::test_utils::MockLoader;
 
     fn with_prelude_const_offset(const_idx: usize) -> usize {
         PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
@@ -2015,13 +2017,10 @@ mod tests {
         Value::new_string_obj(string.to_string())
     }
 
-    fn compile(input: &str) -> Module {
-        let module_name = "_test.abra".to_string();
-
-        let tokens = tokenize(&input.to_string()).unwrap();
-        let ast = parse(tokens).unwrap();
-        let module = typecheck(module_name, ast).unwrap();
-        super::compile(module).unwrap().0
+    fn test_compile(input: &str) -> Module {
+        let mut mock_loader = MockLoader::default();
+        let module_name = "_test".to_string();
+        crate::compile(module_name, &input.to_string(), &mut mock_loader).unwrap().0
     }
 
     fn to_string_method() -> (String, Value) {
@@ -2035,7 +2034,7 @@ mod tests {
 
     #[test]
     fn compile_empty() {
-        let chunk = compile("");
+        let chunk = test_compile("");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![Opcode::Return],
@@ -2046,7 +2045,7 @@ mod tests {
 
     #[test]
     fn compile_literals() {
-        let chunk = compile("1 2.3 4 5.6 \"hello\" true false");
+        let chunk = test_compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2076,7 +2075,7 @@ mod tests {
 
     #[test]
     fn compile_unary() {
-        let chunk = compile("-5");
+        let chunk = test_compile("-5");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2088,7 +2087,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("-2.3");
+        let chunk = test_compile("-2.3");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2100,7 +2099,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("!false");
+        let chunk = test_compile("!false");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2115,7 +2114,7 @@ mod tests {
 
     #[test]
     fn compile_binary_numeric() {
-        let chunk = compile("5 + 6");
+        let chunk = test_compile("5 + 6");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2129,7 +2128,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Testing i2f and order of ops
-        let chunk = compile("1 - -5 * 3.4 / 5");
+        let chunk = test_compile("1 - -5 * 3.4 / 5");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2151,7 +2150,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Testing %, along with i2f
-        let chunk = compile("3.4 % 2.4 % 5");
+        let chunk = test_compile("3.4 % 2.4 % 5");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2168,7 +2167,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Testing **
-        let chunk = compile("3.4 ** 5");
+        let chunk = test_compile("3.4 ** 5");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2184,7 +2183,7 @@ mod tests {
 
     #[test]
     fn compile_binary_grouped() {
-        let chunk = compile("(1 + 2) * 3");
+        let chunk = test_compile("(1 + 2) * 3");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2202,7 +2201,7 @@ mod tests {
 
     #[test]
     fn compile_binary_str_concat() {
-        let chunk = compile("\"abc\" + \"def\"");
+        let chunk = test_compile("\"abc\" + \"def\"");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2218,7 +2217,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("1 + \"a\" + 3.4");
+        let chunk = test_compile("1 + \"a\" + 3.4");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2239,7 +2238,7 @@ mod tests {
 
     #[test]
     fn compile_binary_boolean() {
-        let chunk = compile("true && true || false");
+        let chunk = test_compile("true && true || false");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2259,7 +2258,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Testing xor
-        let chunk = compile("true ^ false");
+        let chunk = test_compile("true ^ false");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2275,7 +2274,7 @@ mod tests {
 
     #[test]
     fn compile_binary_comparisons() {
-        let chunk = compile("1 <= 5 == 3.4 >= 5.6");
+        let chunk = test_compile("1 <= 5 == 3.4 >= 5.6");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2292,7 +2291,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\"a\" < \"b\" != 4");
+        let chunk = test_compile("\"a\" < \"b\" != 4");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2313,7 +2312,7 @@ mod tests {
 
     #[test]
     fn compile_binary_coalesce() {
-        let chunk = compile("[\"a\", \"b\"][2] ?: \"c\"");
+        let chunk = test_compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2345,7 +2344,7 @@ mod tests {
 
     #[test]
     fn compile_array_literal() {
-        let chunk = compile("[1, 2]");
+        let chunk = test_compile("[1, 2]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2358,7 +2357,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("[\"a\", \"b\", \"c\"]");
+        let chunk = test_compile("[\"a\", \"b\", \"c\"]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2379,7 +2378,7 @@ mod tests {
 
     #[test]
     fn compile_array_nested() {
-        let chunk = compile("[[1, 2], [3, 4, 5]]");
+        let chunk = test_compile("[[1, 2], [3, 4, 5]]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2400,7 +2399,7 @@ mod tests {
 
     #[test]
     fn compile_set_literal() {
-        let chunk = compile("#{1, 2}");
+        let chunk = test_compile("#{1, 2}");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2413,7 +2412,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("#{\"a\", \"b\", \"c\"}");
+        let chunk = test_compile("#{\"a\", \"b\", \"c\"}");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2434,7 +2433,7 @@ mod tests {
 
     #[test]
     fn compile_map_literal() {
-        let chunk = compile("{ a: 1, b: \"c\", d: true }");
+        let chunk = test_compile("{ a: 1, b: \"c\", d: true }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2459,7 +2458,7 @@ mod tests {
 
     #[test]
     fn compile_binding_decl() {
-        let chunk = compile("val abc = 123");
+        let chunk = test_compile("val abc = 123");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2471,7 +2470,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("var unset: Bool\nvar set = true");
+        let chunk = test_compile("var unset: Bool\nvar set = true");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2488,7 +2487,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("val abc = \"a\" + \"b\"\nval def = 5");
+        let chunk = test_compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2513,7 +2512,7 @@ mod tests {
 
     #[test]
     fn compile_binding_decl_struct_type() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person { name: String }\n\
           val meg = Person(name: \"Meg\")\
         ");
@@ -2546,7 +2545,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Test assignment with default field values
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person { name: String, age: Int = 0 }\n\
           val someBaby = Person(name: \"Unnamed\")\n\
           val anAdult = Person(name: \"Some Name\", age: 29)\n\
@@ -2591,7 +2590,7 @@ mod tests {
 
     #[test]
     fn compile_binding_decl_destructuring_tuples() {
-        let chunk = compile("val (a, b) = (1, 2)");
+        let chunk = test_compile("val (a, b) = (1, 2)");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2617,7 +2616,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           func abc() {\n\
             val (a, b) = (1, 2)\n\
           }\
@@ -2664,7 +2663,7 @@ mod tests {
 
     #[test]
     fn compile_binding_decl_destructuring_arrays() {
-        let chunk = compile("val [a, b] = [1, 2]");
+        let chunk = test_compile("val [a, b] = [1, 2]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2690,7 +2689,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           func abc() {\n\
             val [a, b] = [1, 2]\n\
           }\
@@ -2737,7 +2736,7 @@ mod tests {
 
     #[test]
     fn compile_binding_decl_destructuring_strings() {
-        let chunk = compile("val [a, b] = \"hello\"");
+        let chunk = test_compile("val [a, b] = \"hello\"");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2765,7 +2764,7 @@ mod tests {
 
     #[test]
     fn compile_ident() {
-        let chunk = compile("val abc = 123\nabc");
+        let chunk = test_compile("val abc = 123\nabc");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2781,7 +2780,7 @@ mod tests {
 
     #[test]
     fn compile_ident_upvalues() {
-        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
+        let chunk = test_compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2839,7 +2838,7 @@ mod tests {
 
     #[test]
     fn compile_ident_upvalues_skip_level() {
-        let chunk = compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
+        let chunk = test_compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2920,7 +2919,7 @@ mod tests {
 
     #[test]
     fn compile_assignment() {
-        let chunk = compile("var a = 1\nvar b = 2\nval c = b = a = 3");
+        let chunk = test_compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2951,7 +2950,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("var a = 1\na = 2\nval b = 3");
+        let chunk = test_compile("var a = 1\na = 2\nval b = 3");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -2978,7 +2977,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_globals() {
-        let chunk = compile("var a = 1\nfunc abc(): Int { a = 3 }");
+        let chunk = test_compile("var a = 1\nfunc abc(): Int { a = 3 }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3012,7 +3011,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_upvalues() {
-        let chunk = compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
+        let chunk = test_compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3069,7 +3068,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_indexing() {
-        let chunk = compile("val a = [1]\na[0] = 0");
+        let chunk = test_compile("val a = [1]\na[0] = 0");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3088,7 +3087,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("val a = {b:1}\na[\"b\"] = 0");
+        let chunk = test_compile("val a = {b:1}\na[\"b\"] = 0");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3109,7 +3108,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("val a = (1, 2)\na[0] = 0");
+        let chunk = test_compile("val a = (1, 2)\na[0] = 0");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3132,7 +3131,7 @@ mod tests {
 
     #[test]
     fn compile_assignment_field_accessor() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person { name: String }\n\
           val p = Person(name: \"Ken\")\n\
           p.name = \"Meg\"\
@@ -3172,7 +3171,7 @@ mod tests {
 
     #[test]
     fn compile_indexing() {
-        let chunk = compile("[1, 2, 3, 4, 5][3 + 1]");
+        let chunk = test_compile("[1, 2, 3, 4, 5][3 + 1]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3192,7 +3191,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\"some string\"[1 + 1:]");
+        let chunk = test_compile("\"some string\"[1 + 1:]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3210,7 +3209,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\"some string\"[-1:4]");
+        let chunk = test_compile("\"some string\"[-1:4]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3227,7 +3226,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\"some string\"[:1 + 1]");
+        let chunk = test_compile("\"some string\"[:1 + 1]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3245,7 +3244,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("{ a: 1, b: 2 }[\"a\"]");
+        let chunk = test_compile("{ a: 1, b: 2 }[\"a\"]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3265,7 +3264,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("(1, true, 3)[2]");
+        let chunk = test_compile("(1, true, 3)[2]");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3284,7 +3283,7 @@ mod tests {
 
     #[test]
     fn compile_if_else_statements() {
-        let chunk = compile("if (1 == 2) 123 else 456");
+        let chunk = test_compile("if (1 == 2) 123 else 456");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3303,7 +3302,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("if (1 == 2) 123");
+        let chunk = test_compile("if (1 == 2) 123");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3319,7 +3318,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("if (1 == 2) { } else { 456 }");
+        let chunk = test_compile("if (1 == 2) { } else { 456 }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3336,7 +3335,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
+        let chunk = test_compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3362,7 +3361,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           val a = 123
           if (true) {\
             val a = 456\
@@ -3396,7 +3395,7 @@ mod tests {
 
     #[test]
     fn compile_if_else_statements_option_condition() {
-        let chunk = compile("if ([1, 2][0]) 123 else 456");
+        let chunk = test_compile("if ([1, 2][0]) 123 else 456");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3422,7 +3421,7 @@ mod tests {
 
     #[test]
     fn compile_if_else_statements_with_condition_binding() {
-        let chunk = compile("if [1, 2][0] |item| item else 456");
+        let chunk = test_compile("if [1, 2][0] |item| item else 456");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3452,7 +3451,7 @@ mod tests {
 
     #[test]
     fn compile_function_declaration() {
-        let chunk = compile(r#"
+        let chunk = test_compile(r#"
           val a = 1
           val b = 2
           val c = 3
@@ -3508,7 +3507,7 @@ mod tests {
 
     #[test]
     fn compile_function_declaration_returns_unit_type() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           func abc() {\n\
             val a = 1\n\
             println(\"hello\")\n\
@@ -3549,7 +3548,7 @@ mod tests {
 
     #[test]
     fn compile_function_declaration_default_args() {
-        let chunk = compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
+        let chunk = test_compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3599,7 +3598,7 @@ mod tests {
 
     #[test]
     fn compile_function_declaration_with_inner() {
-        let chunk = compile(r#"
+        let chunk = test_compile(r#"
           func abc(b: Int): Int {
             func def(g: Int): Int { g + 1 }
             val c = b + def(b)
@@ -3663,7 +3662,7 @@ mod tests {
 
     #[test]
     fn compile_type_decl_struct_type_methods() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person {\n\
             name: String\n\
             func getName(self): String = self.name\n\
@@ -3722,7 +3721,7 @@ mod tests {
 
     #[test]
     fn compile_enum_decl_variants() {
-        let chunk = compile("enum Status { On, Off }");
+        let chunk = test_compile("enum Status { On, Off }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3770,7 +3769,7 @@ mod tests {
 
     #[test]
     fn compile_function_invocation() {
-        let chunk = compile(r#"
+        let chunk = test_compile(r#"
           val one = 1
           func inc(number: Int): Int {
             number + 1
@@ -3816,7 +3815,7 @@ mod tests {
 
     #[test]
     fn compile_while_loop() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           var i = 0\n\
           while i < 1 {\n\
             i = i + 1\n\
@@ -3846,7 +3845,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("while ([1, 2][0]) { 123 }");
+        let chunk = test_compile("while ([1, 2][0]) { 123 }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3872,7 +3871,7 @@ mod tests {
 
     #[test]
     fn compile_while_loop_with_condition_binding() {
-        let chunk = compile("while ([1, 2][0]) |item| { item }");
+        let chunk = test_compile("while ([1, 2][0]) |item| { item }");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -3902,7 +3901,7 @@ mod tests {
 
     #[test]
     fn compile_while_loop_with_local() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           var i = 0\n\
           while i < 1 {\n\
             val newI = i + 1\n\
@@ -3939,7 +3938,7 @@ mod tests {
 
     #[test]
     fn compile_while_loop_with_break() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           while true {\n\
             val i = 1\n\
             break\n\
@@ -3961,7 +3960,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           while true {\n\
             val i = 1\n\
             if i == 1 {\n\
@@ -3996,7 +3995,7 @@ mod tests {
 
     #[test]
     fn compile_for_loop() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           val msg = \"Row: \"\n\
           val arr = [1, 2]\n\
           for a, i in arr {\n\
@@ -4100,7 +4099,7 @@ mod tests {
             }
           }
         "#;
-        let chunk = compile(input);
+        let chunk = test_compile(input);
         let expected = Module {
             name: "_test".to_string(),
             constants: with_prelude_consts(vec![
@@ -4428,7 +4427,7 @@ mod tests {
         let input = (0..150).into_iter()
             .map(|i| format!("val v{} = \"{}\"", i, i))
             .join("\n");
-        let chunk = compile(input.as_str());
+        let chunk = test_compile(input.as_str());
         let expected = Module {
             name: "_test".to_string(),
             constants: with_prelude_consts(
@@ -4455,7 +4454,7 @@ mod tests {
     #[test]
     fn compile_accessor() {
         // Accessing fields of structs
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person { name: String }\n\
           val ken = Person(name: \"Ken\")\n\
           ken.name\n\
@@ -4491,7 +4490,7 @@ mod tests {
         assert_eq!(expected, chunk);
 
         // Accessing fields of structs
-        let chunk = compile("\"hello\".length");
+        let chunk = test_compile("\"hello\".length");
         let expected = Module {
             name: "_test".to_string(),
             code: vec![
@@ -4508,7 +4507,7 @@ mod tests {
 
     #[test]
     fn compile_lambda_declaration_returns_unit_type() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           val abc = () => println(\"hello\")\
         ");
         let expected = Module {
@@ -4541,7 +4540,7 @@ mod tests {
 
     #[test]
     fn compile_match_statement() {
-        let chunk = compile("\
+        let chunk = test_compile("\
           val a: (String | Int)? = \"woo\"\n\
           match a {\n\
             None x => println(x)\n\
@@ -4580,7 +4579,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           val a: (String | Int)? = \"woo\"\n\
           match a {\n\
             None => println(4)\n\
@@ -4619,7 +4618,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           type Person { name: String }\n\
           val a: String | Person = \"woo\"\n\
           match a {\n\
@@ -4678,7 +4677,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           enum Direction { Left, Right }\n\
           val d: Direction = Direction.Left\n\
           match d {\n\
@@ -4753,7 +4752,7 @@ mod tests {
         };
         assert_eq!(expected, chunk);
 
-        let chunk = compile("\
+        let chunk = test_compile("\
           enum Foo { Bar(baz: Int) }\n\
           val f: Foo = Foo.Bar(baz: 24)\n\
           match f {\n\
@@ -4818,7 +4817,7 @@ mod tests {
 
     #[test]
     fn compile_return_statement() {
-        let chunk = compile(r#"
+        let chunk = test_compile(r#"
           func f(): Int {
             if true { return 24 }
             return 6

@@ -1,32 +1,43 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
+pub struct ParseResult {
+    pub(crate) imports: Vec<(Token, ModuleId)>,
+    pub(crate) nodes: Vec<AstNode>,
+}
+
+pub fn parse(tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
     let mut parser = Parser::new(tokens);
 
-    let mut nodes: Vec<AstNode> = vec![];
+    let mut nodes = Vec::new();
+    let mut imports = Vec::new();
     let mut imports_done = false;
     loop {
         match parser.peek() {
             Some(tok) => {
                 let node = if let Token::Import(_) = tok {
-                    parser.parse_import_statement(!imports_done)?
+                    let node = parser.parse_import_statement(!imports_done)?;
+                    if let AstNode::ImportStatement(import_tok, import_node) = &node {
+                        let module_id = import_node.get_module_id();
+                        imports.push((import_tok.clone(), module_id))
+                    }
+                    node
                 } else {
                     imports_done = true;
                     parser.parse_stmt(None)?
                 };
 
                 nodes.push(node);
-            },
+            }
             None => break
         }
     }
 
-    Ok(nodes)
+    Ok(ParseResult { imports, nodes })
 }
 
 #[derive(PartialEq)]
@@ -988,7 +999,7 @@ impl Parser {
             AstNode::Literal(first_chunk.clone(), AstLiteralNode::StringLiteral(val))
         } else { unreachable!() };
 
-        let args = parse(chunks.collect())?;
+        let ParseResult { nodes: args, .. } = parse(chunks.collect())?;
 
         Ok(AstNode::Invocation(
             Token::LParen(first_chunk.get_position(), false),
@@ -1420,7 +1431,7 @@ mod tests {
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
         let tokens = tokenize(&input.to_string()).unwrap();
-        super::parse(tokens)
+        super::parse(tokens).map(|ParseResult { nodes, .. }| nodes)
     }
 
     #[test]
@@ -4625,8 +4636,8 @@ mod tests {
                 binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
                 type_ann: None,
                 expr: Some(Box::new(int_literal!((1, 16), 14))),
-                is_mutable: false
-            }
+                is_mutable: false,
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -4639,8 +4650,8 @@ mod tests {
                 binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
                 type_ann: None,
                 expr: Some(Box::new(int_literal!((1, 16), 14))),
-                is_mutable: true
-            }
+                is_mutable: true,
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -4654,8 +4665,8 @@ mod tests {
                 type_args: vec![],
                 args: vec![],
                 ret_type: None,
-                body: vec![]
-            }
+                body: vec![],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -4668,8 +4679,8 @@ mod tests {
                 name: ident_token!((1, 13), "Person"),
                 type_args: vec![],
                 fields: vec![],
-                methods: vec![]
-            }
+                methods: vec![],
+            },
         );
         assert_eq!(expected, ast[0]);
 
@@ -4682,8 +4693,8 @@ mod tests {
                 name: ident_token!((1, 13), "Direction"),
                 type_args: vec![],
                 variants: vec![],
-                methods: vec![]
-            }
+                methods: vec![],
+            },
         );
         assert_eq!(expected, ast[0]);
 

@@ -178,7 +178,7 @@ mod test {
     use crate::vm::vm::VMContext;
 
     fn make_vm() -> VM {
-        let module = Module { name: "_test.abra".to_string(), code: vec![], constants: vec![] };
+        let module = Module { name: "_test".to_string(), code: vec![], constants: vec![] };
         VM::new(module, VMContext::default())
     }
 

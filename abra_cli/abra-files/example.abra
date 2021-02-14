@@ -1,3 +1,5 @@
-import a from .example2
+import a, b, C, D from .example2
+//import * from .example2
 
-println("a: $a")
+val c = C()
+println("a: $a, b: ${b()}")
