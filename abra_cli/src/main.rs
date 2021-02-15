@@ -57,8 +57,8 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let contents = read_file(&file_path)?;
 
     let module_reader = FsModuleReader::new(current_path);
-    let module_name = ModuleId::name_from_path(&opts.file_path);
-    let module = match compile(module_name, &contents, module_reader) {
+    let module_id = ModuleId::from_path(&opts.file_path);
+    let module = match compile(module_id, &contents, module_reader) {
         Ok((module, _)) => module,
         Err(error) => {
             match error {
@@ -86,8 +86,8 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let contents = read_file(&file_path)?;
 
     let module_reader = FsModuleReader::new(current_path);
-    let module_name = ModuleId::name_from_path(&opts.file_path);
-    match compile_and_disassemble(module_name, &contents, module_reader) {
+    let module_id = ModuleId::from_path(&opts.file_path);
+    match compile_and_disassemble(module_id, &contents, module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),

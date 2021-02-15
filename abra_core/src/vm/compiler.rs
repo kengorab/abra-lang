@@ -95,7 +95,7 @@ pub fn compile(module: TypedModule) -> Result<(Module, Metadata), ()> {
     );
 
     let mut compiler = Compiler {
-        module_name: module.module_name,
+        module_name: module.module_id.get_name(),
         code: Vec::new(),
         constants,
         str_constant_indexes: HashMap::new(),
@@ -2004,6 +2004,7 @@ mod tests {
     use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX};
     use itertools::Itertools;
     use crate::common::test_utils::MockModuleReader;
+    use crate::parser::ast::ModuleId;
 
     fn with_prelude_const_offset(const_idx: usize) -> usize {
         PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
@@ -2019,8 +2020,8 @@ mod tests {
 
     fn test_compile(input: &str) -> Module {
         let mock_reader = MockModuleReader::default();
-        let module_name = "_test".to_string();
-        crate::compile(module_name, &input.to_string(), mock_reader).unwrap().0
+        let module_id = ModuleId::from_name("_test");
+        crate::compile(module_id, &input.to_string(), mock_reader).unwrap().0
     }
 
     fn to_string_method() -> (String, Value) {

@@ -315,6 +315,7 @@ impl ImportNode {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct ModuleId(pub bool, pub Vec<String>);
 
 impl ModuleId {
@@ -328,8 +329,13 @@ impl ModuleId {
         format!("{}.{}", path, extension)
     }
 
-    pub fn name_from_path(path: &String) -> String {
-        path.replace(".abra", "").replace("/", ".")
+    pub fn from_path(path: &String) -> Self {
+        ModuleId(true, path.replace(".abra", "").split("/").map(|s| s.to_string()).collect())
+    }
+
+    pub fn from_name<S: AsRef<str>>(name: S) -> Self {
+        let is_local = name.as_ref().starts_with(".");
+        ModuleId(is_local, name.as_ref().split(".").map(|s| s.to_string()).collect())
     }
 }
 

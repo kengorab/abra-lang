@@ -11,6 +11,7 @@ use crate::common::display_error::DisplayError;
 use crate::parser::parser::ParseResult;
 use crate::typechecker::typechecker_error::TypecheckerError;
 use crate::module_loader::{ModuleLoader, ModuleReader, ModuleLoaderError};
+use crate::parser::ast::ModuleId;
 
 pub mod builtins;
 pub mod common;
@@ -49,44 +50,44 @@ fn tokenize_and_parse(input: &String) -> Result<ParseResult, Error> {
     }
 }
 
-pub fn typecheck<R>(module_name: String, input: &String, loader: &mut ModuleLoader<R>) -> Result<TypedModule, Error>
+pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoader<R>) -> Result<TypedModule, Error>
     where R: ModuleReader
 {
     let ParseResult { imports, nodes } = tokenize_and_parse(input)?;
-    for (import_token, module_id) in imports {
-        loader.load_module(&module_id).map_err(|e| match e {
+    for (import_token, import_module_id) in imports {
+        loader.load_module(&module_id, &import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
             ModuleLoaderError::CannotLoadModule => Error::TypecheckerError(TypecheckerError::InvalidModuleImport {
                 token: import_token,
-                module_name: module_id.get_name(),
+                module_name: import_module_id.get_name(),
                 circular: false,
             }),
             ModuleLoaderError::CircularDependency => Error::TypecheckerError(TypecheckerError::InvalidModuleImport {
                 token: import_token,
-                module_name: module_id.get_name(),
+                module_name: import_module_id.get_name(),
                 circular: true,
             })
         })?
     }
 
-    match typechecker::typechecker::typecheck(module_name, nodes, loader) {
+    match typechecker::typechecker::typecheck(module_id, nodes, loader) {
         Err(e) => Err(Error::TypecheckerError(e)),
         Ok(module) => Ok(module)
     }
 }
 
-pub fn compile<R>(module_name: String, input: &String, module_reader: R) -> Result<(Module, Metadata), Error>
+pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<(Module, Metadata), Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);
-    let module = typecheck(module_name, input, &mut loader)?;
+    let module = typecheck(module_id, input, &mut loader)?;
     let result = vm::compiler::compile(module).unwrap();
     Ok(result)
 }
 
-pub fn compile_and_disassemble<R>(module_name: String, input: &String, module_reader: R) -> Result<String, Error>
+pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<String, Error>
     where R: ModuleReader
 {
-    let (compiled_module, metadata) = compile(module_name, input, module_reader)?;
+    let (compiled_module, metadata) = compile(module_id, input, module_reader)?;
     Ok(vm::disassembler::disassemble(compiled_module, metadata))
 }

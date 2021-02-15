@@ -47,7 +47,7 @@ pub enum ExportedValue {
 
 #[derive(Debug, Default, Clone)]
 pub struct TypedModule {
-    pub module_name: String,
+    pub module_id: ModuleId,
     pub typed_nodes: Vec<TypedAstNode>,
     pub referencable_types: HashMap<String, Type>,
     pub global_bindings: HashMap<String, ScopeBinding>,
@@ -55,7 +55,7 @@ pub struct TypedModule {
     pub exports: HashMap<String, ExportedValue>,
 }
 
-pub fn typecheck<R: ModuleReader>(module_name: String, ast: Vec<AstNode>, loader: &ModuleLoader<R>) -> Result<TypedModule, TypecheckerError> {
+pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader: &ModuleLoader<R>) -> Result<TypedModule, TypecheckerError> {
     let mut typechecker = Typechecker {
         cur_typedef: None,
         scopes: vec![Scope::new(ScopeKind::Root)],
@@ -91,7 +91,7 @@ pub fn typecheck<R: ModuleReader>(module_name: String, ast: Vec<AstNode>, loader
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
 
     let module = TypedModule {
-        module_name,
+        module_id,
         typed_nodes,
         referencable_types: typechecker.referencable_types.clone(),
         global_bindings: scope.bindings,
@@ -3000,8 +3000,8 @@ mod tests {
     fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerError> {
         let mock_reader = MockModuleReader::new(modules);
         let mut mock_loader = ModuleLoader::new(mock_reader);
-        let module_path = "_test".to_string();
-        let module = crate::typecheck(module_path, &input.to_string(), &mut mock_loader)
+        let module_id = ModuleId::from_name("_test");
+        let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
             .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
         Ok(module)
     }

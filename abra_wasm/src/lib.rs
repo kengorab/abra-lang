@@ -230,9 +230,9 @@ extern "C" {
 
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
-    let module_name = "_repl.abra".to_string();
     let module_reader = WasmModuleReader;
-    let result = compile_and_disassemble(module_name, &input.to_string(), module_reader);
+    let module_id = ModuleId::from_name("_repl");
+    let result = compile_and_disassemble(module_id, &input.to_string(), module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -240,10 +240,10 @@ pub fn disassemble(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = typecheck)]
 pub fn typecheck_input(input: &str) -> JsValue {
-    let module_name = "_repl.abra".to_string();
     let module_reader = WasmModuleReader;
+    let module_id = ModuleId::from_name("_repl");
     let mut module_loader = ModuleLoader::new(module_reader);
-    let result = typecheck(module_name, &input.to_string(), &mut module_loader).map(|_| ());
+    let result = typecheck(module_id, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
@@ -251,18 +251,18 @@ pub fn typecheck_input(input: &str) -> JsValue {
 
 #[wasm_bindgen(js_name = compile)]
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
-    let module_name = "_repl.abra".to_string();
     let module_reader = WasmModuleReader;
-    let result = compile(module_name, &input.to_string(), module_reader).map(|(module, _)| module);
+    let module_id = ModuleId::from_name("_repl");
+    let result = compile(module_id, &input.to_string(), module_reader).map(|(module, _)| module);
     let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
 }
 
 fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
-    let module_name = "_repl.abra".to_string();
     let module_reader = WasmModuleReader;
-    let (module, _) = compile(module_name, &input, module_reader)?;
+    let module_id = ModuleId::from_name("_repl");
+    let (module, _) = compile(module_id, &input, module_reader)?;
     let mut vm = VM::new(module, ctx);
     match vm.run() {
         Ok(Some(v)) => Ok(Some(v)),

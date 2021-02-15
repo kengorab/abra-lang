@@ -6,6 +6,7 @@ use crate::vm::value::{Value, TypeValue};
 use std::collections::HashMap;
 use crate::typechecker::typechecker::{TypedModule, ExportedValue};
 use crate::builtins::native_value_trait::NativeTyp;
+use crate::parser::ast::ModuleId;
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {
@@ -61,7 +62,7 @@ impl Prelude {
         }
 
         TypedModule {
-            module_name: "prelude".to_string(),
+            module_id: ModuleId::from_name("prelude"),
             exports,
             ..TypedModule::default()
         }

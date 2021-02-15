@@ -25,12 +25,12 @@ impl<R: ModuleReader> ModuleLoader<R> {
         let mut cache = HashMap::new();
 
         let prelude = Prelude::typed_module();
-        cache.insert(prelude.module_name.clone(), Some(prelude));
+        cache.insert(prelude.module_id.get_name(), Some(prelude));
 
         Self { module_reader, cache }
     }
 
-    pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
+    pub fn load_module(&mut self, current_module_id: &ModuleId, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
         let module_name = module_id.get_name();
         match self.cache.get(&module_name) {
             Some(Some(_)) => return Ok(()),
@@ -44,7 +44,7 @@ impl<R: ModuleReader> ModuleLoader<R> {
         };
 
         self.cache.insert(module_name.clone(), None);
-        match typecheck(module_name.clone(), &contents, self) {
+        match typecheck(current_module_id.clone(), &contents, self) {
             Ok(module) => {
                 self.cache.insert(module_name, Some(module));
                 Ok(())

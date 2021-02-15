@@ -2,6 +2,7 @@ use crate::vm::value::Value;
 use crate::vm::vm::{VM, VMContext};
 use crate::{Error, compile};
 use crate::common::test_utils::MockModuleReader;
+use crate::parser::ast::ModuleId;
 
 pub fn new_string_obj(string: &str) -> Value {
     Value::new_string_obj(string.to_string())
@@ -37,8 +38,8 @@ pub fn interpret(input: &str) -> Option<Value> {
 
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
     let mock_reader = MockModuleReader::default();
-    let module_path = "_test".to_string();
-    let module = match compile(module_path, &input.as_ref().to_string(), mock_reader) {
+    let module_id = ModuleId::from_name("_test");
+    let module = match compile(module_id, &input.as_ref().to_string(), mock_reader) {
         Ok((module, _)) => module,
         Err(error) => return Err(error)
     };

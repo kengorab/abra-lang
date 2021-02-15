@@ -9,6 +9,7 @@ mod tests {
     use crate::vm::vm::{VM, VMContext};
     use itertools::Itertools;
     use crate::common::test_utils::MockModuleReader;
+    use crate::parser::ast::ModuleId;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
@@ -20,8 +21,8 @@ mod tests {
 
     fn interpret(input: &str) -> Option<Value> {
         let mock_reader = MockModuleReader::default();
-        let module_name = "_test".to_string();
-        let (module, _) = crate::compile(module_name, &input.to_string(), mock_reader).unwrap();
+        let module_id = ModuleId::from_name("_test");
+        let (module, _) = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
 
         let ctx = VMContext::default();
         let mut vm = VM::new(module, ctx);
