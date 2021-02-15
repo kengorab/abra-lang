@@ -327,6 +327,10 @@ impl ModuleId {
         let path = self.1.join("/");
         format!("{}.{}", path, extension)
     }
+
+    pub fn name_from_path(path: &String) -> String {
+        path.replace(".abra", "").replace("/", ".")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

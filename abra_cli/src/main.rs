@@ -3,11 +3,12 @@ extern crate clap;
 
 mod fs_module_reader;
 
+use abra_core::builtins::native::to_string;
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
+use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
-use abra_core::builtins::native::to_string;
 use crate::fs_module_reader::FsModuleReader;
 use std::path::PathBuf;
 
@@ -26,12 +27,12 @@ enum SubCommand {
 
 #[derive(Clap)]
 struct RunOpts {
-    file_name: String
+    file_path: String
 }
 
 #[derive(Clap)]
 struct DisassembleOpts {
-    file_name: String,
+    file_path: String,
 
     #[clap(short = "o", help = "Where to write bytecode to (default: stdout)")]
     out_file: Option<String>,
@@ -52,12 +53,12 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     };
 
     let current_path = std::env::current_dir().unwrap();
-    let file_path = current_path.join(&opts.file_name);
+    let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
     let module_reader = FsModuleReader::new(current_path);
-    // TODO: Fix, this is still passing in the path, _not_ the name
-    let module = match compile(opts.file_name, &contents, module_reader) {
+    let module_name = ModuleId::name_from_path(&opts.file_path);
+    let module = match compile(module_name, &contents, module_reader) {
         Ok((module, _)) => module,
         Err(error) => {
             match error {
@@ -81,11 +82,12 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let current_path = std::env::current_dir().unwrap();
-    let file_path = current_path.join(&opts.file_name);
+    let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
     let module_reader = FsModuleReader::new(current_path);
-    match compile_and_disassemble(opts.file_name, &contents, module_reader) {
+    let module_name = ModuleId::name_from_path(&opts.file_path);
+    match compile_and_disassemble(module_name, &contents, module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),
