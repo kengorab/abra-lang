@@ -183,12 +183,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateBinding { ident, orig_ident } => {
+                TypecheckerError::DuplicateBinding { ident, orig_ident} => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateBinding")?;
                     obj.serialize_entry("ident", &JsToken(ident))?;
-                    obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
+                    if let Some(orig_ident) = orig_ident {
+                        obj.serialize_entry("origIdent", &JsToken(orig_ident))?;
+                    }
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

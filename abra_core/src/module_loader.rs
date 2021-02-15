@@ -2,6 +2,7 @@ use crate::parser::ast::ModuleId;
 use crate::typechecker::typechecker::TypedModule;
 use std::collections::HashMap;
 use crate::{Error, typecheck};
+use crate::vm::prelude::Prelude;
 
 pub trait ModuleReader {
     fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
@@ -21,12 +22,15 @@ pub struct ModuleLoader<R: ModuleReader> {
 
 impl<R: ModuleReader> ModuleLoader<R> {
     pub fn new(module_reader: R) -> Self {
-        Self { module_reader, cache: HashMap::new() }
+        let mut cache = HashMap::new();
+
+        let prelude = Prelude::typed_module();
+        cache.insert(prelude.module_name.clone(), Some(prelude));
+
+        Self { module_reader, cache }
     }
 
     pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
-        if !module_id.0 { unimplemented!() }
-
         let module_name = module_id.get_name();
         match self.cache.get(&module_name) {
             Some(Some(_)) => return Ok(()),
@@ -50,8 +54,6 @@ impl<R: ModuleReader> ModuleLoader<R> {
     }
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
-        if !module_id.0 { unimplemented!() }
-
         let name = module_id.get_name();
         self.cache.get(&name)
             .expect("It should have been loaded previously")

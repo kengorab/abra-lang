@@ -1,5 +1,8 @@
-import a, b, C, D from .example2
+//import a, b, C, D from .example2
 //import * from .example2
 
-val c = C()
-println("a: $a, b: ${b()}")
+//val c = C()
+//println("a: $a, b: ${b()}")
+
+val d = Date(year: 2021, month: 2, day: 14)
+println(d)

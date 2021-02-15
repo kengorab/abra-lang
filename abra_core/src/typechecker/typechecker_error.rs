@@ -21,7 +21,7 @@ pub enum TypecheckerError {
     InvalidLoopTarget { token: Token, target_type: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
-    DuplicateBinding { ident: Token, orig_ident: Token },
+    DuplicateBinding { ident: Token, orig_ident: Option<Token> },
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
@@ -288,13 +288,17 @@ impl DisplayError for TypecheckerError {
                     ident, pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::DuplicateBinding { ident, orig_ident } => {
+            TypecheckerError::DuplicateBinding { ident, orig_ident} => {
                 let ident = Token::get_ident_name(&ident);
-                let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", &ident, pos.line, pos.col, cursor_line);
 
-                let pos = orig_ident.get_position();
-                let cursor_line = Self::get_underlined_line(lines, orig_ident);
-                let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+                let second_msg = if let Some(orig_ident) = orig_ident {
+                    let pos = orig_ident.get_position();
+                    let cursor_line = Self::get_underlined_line(lines, orig_ident);
+                    format!("'{}' already declared in scope at ({}:{})\n{}", ident, pos.line, pos.col, cursor_line)
+                } else {
+                    format!("'{}' already declared as built-in value", ident)
+                };
 
                 format!("{}\n{}", first_msg, second_msg)
             }
@@ -861,18 +865,30 @@ Variables declared with 'val' must be initialized"
         let src = "val abc = 123\nval abc = 5".to_string();
         let err = TypecheckerError::DuplicateBinding {
             ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
-            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+            orig_ident: Some(Token::Ident(Position::new(1, 5), "abc".to_string())),
         };
-
         let expected = format!("\
 Duplicate variable 'abc': (2:5)
   |  val abc = 5
          ^^^
-Binding already declared in scope at (1:5)
+'abc' already declared in scope at (1:5)
   |  val abc = 123
          ^^^"
         );
+        assert_eq!(expected, err.get_message(&src));
 
+        // Test with prelude
+        let src = "func println() {}".to_string();
+        let err = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(1, 6), "println".to_string()),
+            orig_ident: None,
+        };
+        let expected = format!("\
+Duplicate variable 'println': (1:6)
+  |  func println() {{}}
+          ^^^^^^^
+'println' already declared as built-in value"
+        );
         assert_eq!(expected, err.get_message(&src));
     }
 

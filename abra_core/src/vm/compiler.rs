@@ -2001,7 +2001,7 @@ impl TypedAstVisitor<(), ()> for Compiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_INT_INDEX};
+    use crate::vm::prelude::{PRELUDE_NUM_CONSTS, PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX};
     use itertools::Itertools;
     use crate::common::test_utils::MockModuleReader;
 
@@ -4650,7 +4650,7 @@ mod tests {
                 Opcode::Jump(12),
                 Opcode::Dup,
                 Opcode::Typeof,
-                Opcode::Constant(PRELUDE_INT_INDEX as usize),
+                Opcode::Constant(PRELUDE_STRING_INDEX as usize),
                 Opcode::Eq,
                 Opcode::JumpIfF(7),
                 Opcode::MarkLocal(0), // s

@@ -1,4 +1,4 @@
-import y from .example3
+//import y from .example3
 
 export val a = 123
 
