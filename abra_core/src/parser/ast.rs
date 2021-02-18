@@ -315,7 +315,7 @@ impl ImportNode {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModuleId(pub bool, pub Vec<String>);
 
 impl ModuleId {
@@ -335,7 +335,11 @@ impl ModuleId {
 
     pub fn from_name<S: AsRef<str>>(name: S) -> Self {
         let is_local = name.as_ref().starts_with(".");
-        ModuleId(is_local, name.as_ref().split(".").map(|s| s.to_string()).collect())
+        let parts = name.as_ref().split(".")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        ModuleId(is_local, parts)
     }
 }
 

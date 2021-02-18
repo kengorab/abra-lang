@@ -55,7 +55,7 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
 {
     let ParseResult { imports, nodes } = tokenize_and_parse(input)?;
     for (import_token, import_module_id) in imports {
-        loader.load_module(&module_id, &import_module_id).map_err(|e| match e {
+        loader.load_module(&import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
             ModuleLoaderError::CannotLoadModule => Error::TypecheckerError(TypecheckerError::InvalidModuleImport {
                 token: import_token,

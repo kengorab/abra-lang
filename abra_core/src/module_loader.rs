@@ -1,8 +1,8 @@
 use crate::parser::ast::ModuleId;
 use crate::typechecker::typechecker::TypedModule;
-use std::collections::HashMap;
 use crate::{Error, typecheck};
 use crate::vm::prelude::Prelude;
+use std::collections::HashMap;
 
 pub trait ModuleReader {
     fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
@@ -17,7 +17,8 @@ pub enum ModuleLoaderError {
 #[derive(Debug)]
 pub struct ModuleLoader<R: ModuleReader> {
     module_reader: R,
-    cache: HashMap<String, Option<TypedModule>>,
+    typed_module_cache: HashMap<String, Option<TypedModule>>,
+    pub(crate) ordering: Vec<ModuleId>,
 }
 
 impl<R: ModuleReader> ModuleLoader<R> {
@@ -25,14 +26,15 @@ impl<R: ModuleReader> ModuleLoader<R> {
         let mut cache = HashMap::new();
 
         let prelude = Prelude::typed_module();
+        let ordering = vec![prelude.module_id.clone()];
         cache.insert(prelude.module_id.get_name(), Some(prelude));
 
-        Self { module_reader, cache }
+        Self { module_reader, typed_module_cache: cache, ordering }
     }
 
-    pub fn load_module(&mut self, current_module_id: &ModuleId, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
+    pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
         let module_name = module_id.get_name();
-        match self.cache.get(&module_name) {
+        match self.typed_module_cache.get(&module_name) {
             Some(Some(_)) => return Ok(()),
             Some(None) => return Err(ModuleLoaderError::CircularDependency),
             _ => {}
@@ -43,10 +45,11 @@ impl<R: ModuleReader> ModuleLoader<R> {
             None => return Err(ModuleLoaderError::CannotLoadModule),
         };
 
-        self.cache.insert(module_name.clone(), None);
-        match typecheck(current_module_id.clone(), &contents, self) {
+        self.typed_module_cache.insert(module_name.clone(), None);
+        match typecheck(module_id.clone(), &contents, self) {
             Ok(module) => {
-                self.cache.insert(module_name, Some(module));
+                self.typed_module_cache.insert(module_name.clone(), Some(module));
+                self.ordering.push(module_id.clone());
                 Ok(())
             }
             Err(e) => Err(ModuleLoaderError::WrappedError(e))
@@ -55,7 +58,7 @@ impl<R: ModuleReader> ModuleLoader<R> {
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
         let name = module_id.get_name();
-        self.cache.get(&name)
+        self.typed_module_cache.get(&name)
             .expect("It should have been loaded previously")
             .as_ref()
             .expect("It should have completed loading")

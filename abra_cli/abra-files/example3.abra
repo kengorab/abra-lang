@@ -1,5 +1,4 @@
-import a from .example2
+import c from .example4
+import * from .example2
 
-export val y = 4
-
-println(a + y)
+export val b = 6

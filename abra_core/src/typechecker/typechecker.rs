@@ -8422,4 +8422,38 @@ mod tests {
         };
         assert_eq!(expected, err);
     }
+
+    #[test]
+    fn typecheck_import_dependency_order() {
+        let mod1 = "import A from .mod2";
+        let modules = vec![
+            (
+                ".mod2", "\
+                  import B from .mod3\n\
+                  import C from .mod4\n\
+                  export val A = 4\
+                "
+            ),
+            (
+                ".mod3", "\
+                  import C from .mod4\n\
+                  export val B = 4\
+                "
+            ),
+            (
+                ".mod4", "\
+                  export val C = 12\
+                "
+            ),
+        ];
+        let mut loader = ModuleLoader::new(MockModuleReader::new(modules));
+        crate::typecheck(ModuleId::from_name("_test"), &mod1.to_string(), &mut loader).unwrap();
+        let expected = vec![
+            ModuleId::from_name("prelude"),
+            ModuleId::from_name(".mod4"),
+            ModuleId::from_name(".mod3"),
+            ModuleId::from_name(".mod2"),
+        ];
+        assert_eq!(expected, loader.ordering);
+    }
 }
