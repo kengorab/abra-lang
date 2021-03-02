@@ -253,7 +253,10 @@ pub fn typecheck_input(input: &str) -> JsValue {
 pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
     let module_reader = WasmModuleReader;
     let module_id = ModuleId::from_name("_repl");
-    let result = compile(module_id, &input.to_string(), module_reader).map(|(module, _)| module);
+    let result = compile(module_id, &input.to_string(), module_reader).map(|modules| {
+        let it = modules.into_iter();
+        it.skip(1).next().unwrap()
+    });
     let compile_result = CompileResult(result, input.to_string());
     JsValue::from_serde(&compile_result)
         .unwrap_or(JsValue::NULL)
@@ -262,13 +265,17 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
 fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
     let module_reader = WasmModuleReader;
     let module_id = ModuleId::from_name("_repl");
-    let (module, _) = compile(module_id, &input, module_reader)?;
-    let mut vm = VM::new(module, ctx);
-    match vm.run() {
-        Ok(Some(v)) => Ok(Some(v)),
-        Ok(None) => Ok(None),
-        Err(e) => Err(Error::InterpretError(e)),
+    let modules = compile(module_id, &input, module_reader)?;
+    let mut vm = VM::new(ctx);
+    let mut res = None;
+    for module in modules {
+        match vm.run(module) {
+            Ok(Some(v)) => res = Some(v),
+            Ok(None) => res = None,
+            Err(e) => return Err(Error::InterpretError(e)),
+        }
     }
+    Ok(res)
 }
 
 #[wasm_bindgen(js_name = runSync)]

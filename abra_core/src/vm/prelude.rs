@@ -7,19 +7,13 @@ use std::collections::HashMap;
 use crate::typechecker::typechecker::{TypedModule, ExportedValue};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::parser::ast::ModuleId;
+use crate::vm::compiler::Module;
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {
     name: String,
     typ: Type,
     value: Value,
-}
-
-thread_local! {
-  static PRELUDE: Prelude = Prelude::new();
-  pub static PRELUDE_NUM_CONSTS: usize = PRELUDE.with(|p| p.num_bindings());
-  pub static PRELUDE_BINDINGS: Vec<(String, Value)> = PRELUDE.with(|p| p.get_bindings());
-  pub static PRELUDE_BINDING_VALUES: Vec<Value> = PRELUDE.with(|p| p.get_binding_values());
 }
 
 #[cfg(test)]
@@ -33,6 +27,22 @@ pub struct Prelude {
 
 impl Prelude {
     pub(crate) fn typed_module() -> TypedModule {
+        // let prelude = Prelude::new();
+        // let exports = prelude.bindings.into_iter()
+        //     .map(|b| {
+        //         let exported_value = if let Type::Type(_, _, _) = b.typ {
+        //             ExportedValue::Type {
+        //                 reference: None,
+        //                 backing_type: Type::Unit,
+        //                 node: None
+        //             }
+        //         } else {
+        //             ExportedValue::Binding(b.typ)
+        //         };
+        //         (b.name, exported_value)
+        //     })
+        //     .collect();
+
         let mut exports = HashMap::new();
 
         for (native_fn_desc, _) in native_fns() {
@@ -66,6 +76,52 @@ impl Prelude {
             exports,
             ..TypedModule::default()
         }
+    }
+
+    pub(crate) fn compiled_module() -> (Module, HashMap<String, usize>) {
+        let mut constants = Vec::new();
+        let mut constant_indexes_by_ident = HashMap::new();
+
+        let prelude = Prelude::new();
+        for PreludeBinding { name, value, .. } in prelude.bindings {
+            constants.push(value);
+            constant_indexes_by_ident.insert(name, constant_indexes_by_ident.len());
+        }
+
+        /*        let mut constants = Vec::new();
+
+                for (_, native_fn) in native_fns() {
+                    constants.push(Value::NativeFn(native_fn));
+                }
+
+                let prelude_types = vec![
+                    ("Int", Some(NativeInt::get_type_value())),
+                    ("Float", Some(NativeFloat::get_type_value())),
+                    ("Bool", None),
+                    ("String", Some(NativeString::get_type_value())),
+                    ("Unit", None),
+                    ("Any", None),
+                    ("Array", Some(NativeArray::get_type_value())),
+                    ("Map", Some(NativeMap::get_type_value())),
+                    ("Set", Some(NativeSet::get_type_value())),
+                    ("Date", Some(NativeDate::get_type_value())),
+                ];
+                for (type_name, type_value) in prelude_types {
+                    let value = match type_value {
+                        Some(type_value) => Value::Type(type_value),
+                        None => Value::Type(TypeValue {
+                            name: type_name.to_string(),
+                            fields: vec![],
+                            constructor: None,
+                            methods: vec![],
+                            static_fields: vec![],
+                        })
+                    };
+                    constants.push(value);
+                }
+        */
+        let module = Module { name: "prelude".to_string(), constants, code: vec![] };
+        (module, constant_indexes_by_ident)
     }
 
     fn new() -> Self {

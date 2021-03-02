@@ -1,4 +1,11 @@
-import c from .example4
-import b from .example3
+export type Person {
+  name: String
+  func introduce(self): String = "I am " + self.name
+}
 
-export val a = b + c
+export val names: String[] = []
+
+export func addName(name: String) {
+  names.push(name)
+  println(names)
+}

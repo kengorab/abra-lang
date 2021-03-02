@@ -58,8 +58,8 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 
     let module_reader = FsModuleReader::new(current_path);
     let module_id = ModuleId::from_path(&opts.file_path);
-    let module = match compile(module_id, &contents, module_reader) {
-        Ok((module, _)) => module,
+    let modules = match compile(module_id, &contents, module_reader) {
+        Ok(modules) => modules,
         Err(error) => {
             match error {
                 Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
@@ -70,12 +70,24 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
             std::process::exit(1);
         }
     };
-    let mut vm = VM::new(module, ctx);
-    match vm.run() {
-        Ok(Some(v)) if v != Value::Nil => println!("{}", to_string(&v, &mut vm)),
-        Err(e) => eprintln!("{:?}", e),
-        _ => {}
-    };
+    let mut vm = VM::new(ctx);
+
+    let mut result = Value::Nil;
+    for module in modules {
+        match vm.run(module) {
+            Ok(Some(v)) if v != Value::Nil => {
+                result = v;
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                break;
+            },
+            _ => {}
+        };
+    }
+    if result != Value::Nil {
+        println!("{}", to_string(&result, &mut vm));
+    }
 
     Ok(())
 }

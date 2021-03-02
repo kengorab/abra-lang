@@ -39,11 +39,15 @@ pub fn interpret(input: &str) -> Option<Value> {
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
     let mock_reader = MockModuleReader::default();
     let module_id = ModuleId::from_name("_test");
-    let module = match compile(module_id, &input.as_ref().to_string(), mock_reader) {
-        Ok((module, _)) => module,
+    let modules = match compile(module_id, &input.as_ref().to_string(), mock_reader) {
+        Ok(modules) => modules,
         Err(error) => return Err(error)
     };
 
-    let mut vm = VM::new(module, VMContext::default());
-    vm.run().map_err(|e| Error::InterpretError(e))
+    let mut vm = VM::new(VMContext::default());
+    let mut res = None;
+    for module in modules {
+        res = vm.run(module).map_err(|e| Error::InterpretError(e))?;
+    }
+    Ok(res)
 }

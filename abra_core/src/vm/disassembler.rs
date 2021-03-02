@@ -3,20 +3,23 @@ use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue};
 use std::collections::HashMap;
 
-pub fn disassemble(module: Module, metadata: Metadata) -> String {
+pub fn disassemble(modules: Vec<(Module, Metadata)>) -> String {
     let mut disassembler = Disassembler {
-        current_load: 0,
-        current_uv_load: 0,
-        current_uv_store: 0,
-        current_store: 0,
-        current_field_get: 0,
-        current_local_mark: 0,
-        module,
-        metadata,
+        modules,
+        ..Disassembler::default()
+        // current_load: 0,
+        // current_uv_load: 0,
+        // current_uv_store: 0,
+        // current_store: 0,
+        // current_field_get: 0,
+        // current_local_mark: 0,
+        // module,
+        // metadata,
     };
     disassembler.disassemble()
 }
 
+#[derive(Default)]
 struct Disassembler {
     current_load: usize,
     current_uv_load: usize,
@@ -24,12 +27,13 @@ struct Disassembler {
     current_store: usize,
     current_field_get: usize,
     current_local_mark: usize,
-    module: Module,
-    metadata: Metadata,
+    // module: Module,
+    // metadata: Metadata,
+    modules: Vec<(Module, Metadata)>,
 }
 
 impl Disassembler {
-    fn disassemble_bytecode(&mut self, name: String, code: Vec<Opcode>, is_native: bool) -> Vec<String> {
+    fn disassemble_bytecode(&mut self, name: String, code: &Vec<Opcode>, metadata: &Metadata, is_native: bool) -> Vec<String> {
         let mut output = Vec::<String>::new();
         output.push(format!("\n{}:\n", name).to_string());
 
@@ -51,8 +55,8 @@ impl Disassembler {
             acc.push(opcode.dis());
 
             match opcode {
-                Opcode::Constant(imm) => {
-                    let constant = self.module.constants.get(*imm)
+                Opcode::Constant(mod_idx, imm) => {
+                    let constant = self.modules[*mod_idx].0.constants.get(*imm)
                         .expect(format!("The constant at index {} should exist", imm).as_str());
                     acc.push(format!("\t; {}", constant))
                 }
@@ -67,7 +71,7 @@ impl Disassembler {
                     acc.push(format!("\t; {}", label))
                 }
                 Opcode::LLoad(_) => {
-                    let ident = self.metadata.loads.get(self.current_load)
+                    let ident = metadata.loads.get(self.current_load)
                         .expect(&format!("There should be a load in the metadata at index {}", self.current_load));
                     self.current_load += 1;
 
@@ -76,7 +80,7 @@ impl Disassembler {
                     }
                 }
                 Opcode::LStore(_) => {
-                    let ident = self.metadata.stores.get(self.current_store)
+                    let ident = metadata.stores.get(self.current_store)
                         .expect(&format!("There should be a store in the metadata at index {}", self.current_store));
                     self.current_store += 1;
                     if !ident.is_empty() {
@@ -84,7 +88,7 @@ impl Disassembler {
                     }
                 }
                 Opcode::ULoad(_) => {
-                    let ident = self.metadata.uv_loads.get(self.current_uv_load)
+                    let ident = metadata.uv_loads.get(self.current_uv_load)
                         .expect(&format!("There should be an upvalue load in the metadata at index {}", self.current_uv_load));
                     self.current_uv_load += 1;
 
@@ -93,7 +97,7 @@ impl Disassembler {
                     }
                 }
                 Opcode::UStore(_) => {
-                    let ident = self.metadata.uv_stores.get(self.current_uv_load)
+                    let ident = metadata.uv_stores.get(self.current_uv_load)
                         .expect(&format!("There should be an upvalue store in the metadata at index {}", self.current_uv_load));
                     self.current_uv_store += 1;
 
@@ -102,7 +106,7 @@ impl Disassembler {
                     }
                 }
                 Opcode::GetField(_) => {
-                    let ident = self.metadata.field_gets.get(self.current_field_get)
+                    let ident = metadata.field_gets.get(self.current_field_get)
                         .expect(&format!("There should be a field_name in the metadata at index {}", self.current_field_get));
                     self.current_field_get += 1;
                     if !ident.is_empty() {
@@ -110,7 +114,7 @@ impl Disassembler {
                     }
                 }
                 Opcode::MarkLocal(_) => {
-                    let ident = self.metadata.local_marks.get(self.current_local_mark)
+                    let ident = metadata.local_marks.get(self.current_local_mark)
                         .expect(&format!("There should be a local_mark in the metadata at index {}", self.current_local_mark));
                     self.current_local_mark += 1;
                     if !ident.is_empty() {
@@ -136,16 +140,14 @@ impl Disassembler {
         output
     }
 
-    pub fn disassemble(&mut self) -> String {
+    pub fn disassemble_module(&mut self, module: &Module, metadata: &Metadata) -> String {
         let mut output = Vec::<String>::new();
 
-        let main_name = "entrypoint $main".to_string();
-
-        let mut disassembled = self.disassemble_bytecode(main_name, self.module.code.clone(), false);
+        let header = format!("module {}", module.name);
+        let mut disassembled = self.disassemble_bytecode(header, &module.code, &metadata, false);
         output.append(&mut disassembled);
 
-        let constants = self.module.constants.clone();
-        let iter = constants.iter().filter_map(|val| {
+        let iter = module.constants.iter().filter_map(|val| {
             match val {
                 Value::Fn(FnValue { name, code, .. }) => {
                     let name = format!("fn {}", name.clone());
@@ -179,8 +181,23 @@ impl Disassembler {
             }
         }).flatten();
         for (name, code, is_native) in iter {
-            let mut disassembled = self.disassemble_bytecode(name, code, is_native);
+            let mut disassembled = self.disassemble_bytecode(name, &code, &metadata, is_native);
             output.append(&mut disassembled);
+        }
+
+        output.into_iter().collect()
+    }
+
+    pub fn disassemble(&mut self) -> String {
+        let mut output = Vec::<String>::new();
+
+        for (module, metadata) in self.modules.clone() {
+            if module.name == "prelude" {
+                continue;
+            }
+
+            output.push(self.disassemble_module(&module, &metadata));
+            output.push("\n".to_string());
         }
 
         output.into_iter().collect()
