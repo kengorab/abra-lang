@@ -4,18 +4,7 @@ use crate::vm::value::{Value, FnValue, TypeValue, EnumValue};
 use std::collections::HashMap;
 
 pub fn disassemble(modules: Vec<(Module, Metadata)>) -> String {
-    let mut disassembler = Disassembler {
-        modules,
-        ..Disassembler::default()
-        // current_load: 0,
-        // current_uv_load: 0,
-        // current_uv_store: 0,
-        // current_store: 0,
-        // current_field_get: 0,
-        // current_local_mark: 0,
-        // module,
-        // metadata,
-    };
+    let mut disassembler = Disassembler { modules, ..Disassembler::default() };
     disassembler.disassemble()
 }
 
@@ -27,8 +16,6 @@ struct Disassembler {
     current_store: usize,
     current_field_get: usize,
     current_local_mark: usize,
-    // module: Module,
-    // metadata: Metadata,
     modules: Vec<(Module, Metadata)>,
 }
 
