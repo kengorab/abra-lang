@@ -54,7 +54,7 @@ impl Hash for ClosureValue {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Hash, Eq, PartialEq)]
 pub struct TypeValue {
     pub name: String,
     pub constructor: Option<fn(usize, usize, Vec<Value>) -> Value>,
