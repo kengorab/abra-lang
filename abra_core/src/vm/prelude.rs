@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::typechecker::typechecker::{TypedModule, ExportedValue};
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::parser::ast::ModuleId;
+use crate::vm::compiler::Module;
 
 #[derive(Debug, Clone)]
 struct PreludeBinding {
@@ -15,24 +16,15 @@ struct PreludeBinding {
     value: Value,
 }
 
-thread_local! {
-  static PRELUDE: Prelude = Prelude::new();
-  pub static PRELUDE_NUM_CONSTS: usize = PRELUDE.with(|p| p.num_bindings());
-  pub static PRELUDE_BINDINGS: Vec<(String, Value)> = PRELUDE.with(|p| p.get_bindings());
-  pub static PRELUDE_BINDING_VALUES: Vec<Value> = PRELUDE.with(|p| p.get_binding_values());
-}
-
 #[cfg(test)]
 pub static PRELUDE_PRINTLN_INDEX: u8 = 0;
 #[cfg(test)]
 pub static PRELUDE_STRING_INDEX: u8 = 7;
 
-pub struct Prelude {
-    bindings: Vec<PreludeBinding>,
-}
+pub struct Prelude;
 
 impl Prelude {
-    pub(crate) fn typed_module() -> TypedModule {
+    pub fn typed_module() -> TypedModule {
         let mut exports = HashMap::new();
 
         for (native_fn_desc, _) in native_fns() {
@@ -68,73 +60,49 @@ impl Prelude {
         }
     }
 
-    fn new() -> Self {
-        let mut bindings = Vec::new();
+    pub fn compiled_module() -> (Module, HashMap<String, usize>) {
+        let mut constants = Vec::new();
+        let mut constant_names = Vec::new();
 
         for (native_fn_desc, native_fn) in native_fns() {
             let value = Value::NativeFn(native_fn);
-
             let name = native_fn_desc.name.to_string();
-            let typ = native_fn_desc.get_fn_type();
 
-            bindings.push(PreludeBinding { name, typ, value });
+            constants.push(value);
+            constant_names.push(name);
         }
 
-        // Insert None
-        bindings.push(PreludeBinding { name: "None".to_string(), typ: Type::Option(Box::new(Type::Placeholder)), value: Value::Nil });
+        constants.push(Value::Nil);
+        constant_names.push("None".to_string());
 
         let prelude_types = vec![
-            ("Int", Type::Int, Some(NativeInt::get_type_value())),
-            ("Float", Type::Float, Some(NativeFloat::get_type_value())),
-            ("Bool", Type::Bool, None),
-            ("String", Type::String, Some(NativeString::get_type_value())),
-            ("Unit", Type::Unit, None),
-            ("Any", Type::Any, None),
-            ("Array", Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeArray::get_type_value())),
-            ("Map", Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), Some(NativeMap::get_type_value())),
-            ("Set", Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), Some(NativeSet::get_type_value())),
-            ("Date", Type::Reference("Date".to_string(), vec![]), Some(NativeDate::get_type_value())),
+            ("Int", Some(NativeInt::get_type_value())),
+            ("Float", Some(NativeFloat::get_type_value())),
+            ("Bool", None),
+            ("String", Some(NativeString::get_type_value())),
+            ("Unit", None),
+            ("Any", None),
+            ("Array", Some(NativeArray::get_type_value())),
+            ("Map", Some(NativeMap::get_type_value())),
+            ("Set", Some(NativeSet::get_type_value())),
+            ("Date", Some(NativeDate::get_type_value())),
         ];
-        for (type_name, typ, type_value) in prelude_types {
+        for (type_name, type_value) in prelude_types {
             let value = match type_value {
                 Some(type_value) => Value::Type(type_value),
-                None => Value::Type(TypeValue {
-                    name: type_name.to_string(),
-                    fields: vec![],
-                    constructor: None,
-                    methods: vec![],
-                    static_fields: vec![],
-                })
+                None => Value::Type(TypeValue { name: type_name.to_string(), ..TypeValue::default() })
             };
 
-            bindings.push(PreludeBinding {
-                name: type_name.to_string(),
-                typ: Type::Type(type_name.to_string(), Box::new(typ.clone()), false), // TODO: is_enum should not be hard-coded false
-                value,
-            });
+            constants.push(value);
+            constant_names.push(type_name.to_string());
         }
 
-        Self { bindings }
-    }
+        let constant_indexes_by_ident = constant_names.into_iter()
+            .enumerate()
+            .map(|(idx, ident)| (ident, idx))
+            .collect();
 
-    pub fn get_bindings(&self) -> Vec<(String, Value)> {
-        self.bindings.iter()
-            .map(|PreludeBinding { name, value, .. }| (name.clone(), value.clone()))
-            .collect()
-    }
-
-    pub fn get_binding_values(&self) -> Vec<Value> {
-        self.bindings.iter()
-            .map(|PreludeBinding { value, .. }| value.clone())
-            .collect()
-    }
-
-    pub fn num_bindings(&self) -> usize {
-        self.bindings.len()
-    }
-
-    pub fn resolve_ident<S: AsRef<str>>(&self, ident: S) -> Option<Value> {
-        self.bindings.iter()
-            .find_map(|b| if b.name == ident.as_ref() { Some(b.value.clone()) } else { None })
+        let module = Module { name: "prelude".to_string(), constants, code: vec![] };
+        (module, constant_indexes_by_ident)
     }
 }

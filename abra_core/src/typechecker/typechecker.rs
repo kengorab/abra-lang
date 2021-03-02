@@ -4,7 +4,7 @@ use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField, FieldSpec};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use crate::{ModuleLoader, ModuleReader, tokenize_and_parse};
 use itertools::Itertools;
@@ -860,8 +860,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             if orig_ident != name {
                 let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                     .exports.contains_key(&func_name);
-                let orig_ident = if is_prelude { None } else {Some(orig_ident.clone())};
-                return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident});
+                let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+                return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident });
             }
         }
 
@@ -1074,8 +1074,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&name) {
                     let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                         .exports.contains_key(&name);
-                    let orig_ident = if is_prelude { None } else {Some(orig_ident.clone())};
-                    return Err(TypecheckerError::DuplicateBinding { ident: ident.clone(), orig_ident});
+                    let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+                    return Err(TypecheckerError::DuplicateBinding { ident: ident.clone(), orig_ident });
                 }
                 self.add_binding(&name, &ident, &typ, is_mutable);
                 Ok(vec![(name, typ.clone())])
@@ -1343,7 +1343,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         for (field_name_tok, field_value) in items {
             let field_name = Token::get_ident_name(&field_name_tok);
             if let Some(orig_ident) = field_names.get(&field_name) {
-                return Err(TypecheckerError::DuplicateBinding { orig_ident: Some(orig_ident.clone()), ident: field_name_tok});
+                return Err(TypecheckerError::DuplicateBinding { orig_ident: Some(orig_ident.clone()), ident: field_name_tok });
             } else {
                 field_names.insert(field_name.clone(), field_name_tok.clone());
             }
@@ -1474,8 +1474,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let is_exported = if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
             let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                 .exports.contains_key(&func_name);
-            let orig_ident = if is_prelude { None } else { Some(orig_ident.clone())};
-            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident});
+            let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
         } else if let Some(token) = export_token {
             if self.scopes.len() != 1 {
                 return Err(TypecheckerError::InvalidExportDepth { token });
@@ -2701,10 +2701,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             }).collect::<Result<Vec<_>, _>>()?
         };
 
+        let mut typed_imports = Vec::new();
         for (import_name, import_ident_token, exported_value) in imports {
             match exported_value {
                 ExportedValue::Binding(typ) => {
                     self.add_binding(&import_name, import_ident_token, &typ, false);
+                    typed_imports.push((import_name, false));
                 }
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {
@@ -2713,7 +2715,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             self.add_binding(&import_name, import_ident_token, &binding_type, false);
                             self.add_type(import_name.clone(), node.clone(), typeref.clone());
 
-                            self.referencable_types.insert(import_name, backing_type.clone());
+                            self.referencable_types.insert(import_name.clone(), backing_type.clone());
                         }
                         None => {
                             let binding_type = Type::Type(import_name.clone(), Box::new(backing_type.clone()), false);
@@ -2721,11 +2723,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             self.add_type(import_name.clone(), node.clone(), backing_type.clone());
                         }
                     }
+
+                    typed_imports.push((import_name, true));
                 }
             }
         }
 
-        Ok(TypedAstNode::_Nil(token))
+        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id }))
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {

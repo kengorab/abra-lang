@@ -1,3 +1,26 @@
-import a from .example2
+import Person, addName from .example2
 
-println("a: $a")
+//type Foo {
+//  qux: Int
+//}
+//
+//val f = Foo(qux: 24)
+//println("foo: $f")
+//
+//val names: Int[] = []
+
+//val ken = Person(name: "Ken")
+//addName(ken.name)
+//val brian = Person(name: "Brian")
+//addName(brian.name)
+//println(ken.introduce() + ", and " + brian.introduce())
+
+//names.push(123)
+//println("names: $names")
+
+val ken: Person? = Person(name: "Ken")
+//match ken {
+//  None => println("hmm?")
+//  Person p => println(p)
+//}
+println(ken)

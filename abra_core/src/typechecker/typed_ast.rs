@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern, ImportNode};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern, ModuleId};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -32,7 +32,7 @@ pub enum TypedAstNode {
     Accessor(Token, TypedAccessorNode),
     MatchStatement(Token, TypedMatchNode),
     MatchExpression(Token, TypedMatchNode),
-    ImportStatement(Token, ImportNode),
+    ImportStatement(Token, TypedImportNode),
     _Nil(Token),
 }
 
@@ -311,6 +311,12 @@ pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
     pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<BindingPattern>>)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedImportNode {
+    pub imports: Vec<(/* import_name: */ String, /* is_const: */ bool)>,
+    pub module_id: ModuleId,
 }
 
 #[derive(Clone, Debug, PartialEq)]

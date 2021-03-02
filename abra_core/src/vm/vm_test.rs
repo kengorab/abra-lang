@@ -3,7 +3,6 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::vm::prelude::PRELUDE_NUM_CONSTS;
     use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, FnValue};
     use crate::vm::vm::{VM, VMContext};
@@ -15,18 +14,32 @@ mod tests {
         Value::new_string_obj(string.to_string())
     }
 
-    fn with_prelude_const_offset(const_idx: usize) -> usize {
-        PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
-    }
-
     fn interpret(input: &str) -> Option<Value> {
         let mock_reader = MockModuleReader::default();
         let module_id = ModuleId::from_name("_test");
-        let (module, _) = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
 
         let ctx = VMContext::default();
-        let mut vm = VM::new(module, ctx);
-        vm.run().unwrap()
+        let mut vm = VM::new(ctx);
+        let mut res = None;
+        for module in modules {
+            res = vm.run(module).unwrap();
+        }
+        res
+    }
+
+    fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Option<Value> {
+        let mock_reader = MockModuleReader::new(modules);
+        let module_id = ModuleId::from_name("_test");
+        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+
+        let ctx = VMContext::default();
+        let mut vm = VM::new(ctx);
+        let mut res = None;
+        for module in modules {
+            res = vm.run(module).unwrap();
+        }
+        res
     }
 
     #[test]
@@ -743,7 +756,7 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant(with_prelude_const_offset(3) as usize),
+                Opcode::Constant(1, 3),
                 Opcode::LStore(0),
                 Opcode::Return
             ],
@@ -2185,5 +2198,41 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Int(4);
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_imports() {
+        // Importing types
+        let mod1 = r#"
+          import Person from .person
+          Person(name: "Ken").name
+        "#;
+        let modules = vec![
+            (".person", "export type Person { name: String }"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(new_string_obj("Ken")), chunk);
+
+        // Importing enums
+        let mod1 = r#"
+          import Direction from .direction
+          "${Direction.Up}"
+        "#;
+        let modules = vec![
+            (".direction", "export enum Direction { Up, Down }"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(new_string_obj("Direction.Up")), chunk);
+
+        // Importing bindings
+        let mod1 = r#"
+          import x from .constants
+          x + 4
+        "#;
+        let modules = vec![
+            (".constants", "export val x = 123"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(Value::Int(127)), chunk);
     }
 }

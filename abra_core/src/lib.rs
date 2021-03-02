@@ -5,7 +5,7 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
-use crate::vm::compiler::{Metadata, Module};
+use crate::vm::compiler::{Module, Metadata};
 use crate::typechecker::typechecker::TypedModule;
 use crate::common::display_error::DisplayError;
 use crate::parser::parser::ParseResult;
@@ -76,18 +76,33 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
     }
 }
 
-pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<(Module, Metadata), Error>
+pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<Vec<Module>, Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);
     let module = typecheck(module_id, input, &mut loader)?;
-    let result = vm::compiler::compile(module).unwrap();
-    Ok(result)
+    loader.add_typed_module(module);
+
+    loader.compile_all();
+
+    let modules = loader.compiled_modules.into_iter()
+        .map(|(module, _)| module)
+        .collect();
+    Ok(modules)
 }
 
 pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<String, Error>
     where R: ModuleReader
 {
-    let (compiled_module, metadata) = compile(module_id, input, module_reader)?;
-    Ok(vm::disassembler::disassemble(compiled_module, metadata))
+    let mut loader = ModuleLoader::new(module_reader);
+    let module = typecheck(module_id, input, &mut loader)?;
+    loader.add_typed_module(module);
+
+    loader.compile_all();
+
+    let modules = loader.compiled_modules.into_iter()
+        .map(|(module, metadata)| (module, metadata.unwrap_or(Metadata::default())))
+        .collect();
+    let dis = vm::disassembler::disassemble(modules);
+    Ok(dis)
 }

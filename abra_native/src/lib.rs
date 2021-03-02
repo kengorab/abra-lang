@@ -894,7 +894,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     };
 
     quote! {
-        fn construct(type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
+        fn construct(module_idx: usize, type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
             #body
         }
     }

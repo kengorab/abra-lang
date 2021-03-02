@@ -1,5 +1,6 @@
 use crate::lexer::tokens::Token;
 use itertools::Itertools;
+use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
@@ -315,8 +316,14 @@ impl ImportNode {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct ModuleId(pub bool, pub Vec<String>);
+
+impl Display for ModuleId {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self.get_name())
+    }
+}
 
 impl ModuleId {
     pub fn get_name(&self) -> String {

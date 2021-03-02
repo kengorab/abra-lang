@@ -174,17 +174,11 @@ fn read_file(_receiver: Option<Value>, args: Vec<Value>, _vm: &mut VM) -> Option
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::vm::compiler::Module;
     use crate::vm::vm::VMContext;
-
-    fn make_vm() -> VM {
-        let module = Module { name: "_test".to_string(), code: vec![], constants: vec![] };
-        VM::new(module, VMContext::default())
-    }
 
     #[test]
     fn range_returning_int_array() {
-        let mut vm = make_vm();
+        let mut vm = VM::new(VMContext::default());
 
         // Test w/ increment of 1
         let arr = range(None, vec![Value::Int(0), Value::Int(5), Value::Int(1)], &mut vm);
@@ -209,7 +203,7 @@ mod test {
 
     #[test]
     fn range_returning_single_element_int_array() {
-        let mut vm = make_vm();
+        let mut vm = VM::new(VMContext::default());
 
         // Test w/ increment larger than range
         let arr = range(None, vec![Value::Int(0), Value::Int(5), Value::Int(5)], &mut vm);
