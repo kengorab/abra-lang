@@ -2235,4 +2235,51 @@ mod tests {
         let chunk = interpret_with_modules(mod1, modules);
         assert_eq!(Some(Value::Int(127)), chunk);
     }
+
+    #[test]
+    fn interpret_imports_modifying_globals() {
+        let mod1 = r#"
+          import addName, names from .names
+          addName("Ken")
+          addName("Meg")
+          names
+        "#;
+        let modules = vec![
+            (".names", r#"
+              export val names: String[] = []
+              export func addName(name: String) = names.push(name)
+            "#),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("Ken"),
+            new_string_obj("Meg"),
+        ]);
+        assert_eq!(Some(expected), chunk);
+
+        // Bindings are scoped to modules
+        let mod1 = r#"
+          import addName, getNames from .names
+          val names: String[] = []
+          addName("Ken")
+          addName("Meg")
+          [getNames(), names]
+        "#;
+        let modules = vec![
+            (".names", r#"
+              export val names: String[] = []
+              export func addName(name: String) = names.push(name)
+              export func getNames(): String[] = names
+            "#),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        let expected = Value::new_array_obj(vec![
+            Value::new_array_obj(vec![
+                new_string_obj("Ken"),
+                new_string_obj("Meg"),
+            ]),
+            Value::new_array_obj(vec![])
+        ]);
+        assert_eq!(Some(expected), chunk);
+    }
 }
