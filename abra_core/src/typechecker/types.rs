@@ -160,7 +160,9 @@ pub struct EnumVariantType {
 }
 
 impl Type {
-    pub fn is_equivalent_to(&self, target_type: &Type, referencable_types: &HashMap<String, Type>) -> bool {
+    pub fn is_equivalent_to<'a, F>(&self, target_type: &Type, resolve_type: &'a F) -> bool
+        where F: Fn(&String) -> Option<&'a Type>
+    {
         use self::Type::*;
 
         // TODO: Test this, esp the complex cases
@@ -169,13 +171,13 @@ impl Type {
             (Unit, Unit) | (Int, Int) | (Float, Float) |
             (String, String) | (Bool, Bool) | (Any, Any) | (Unknown, Unknown) => true,
             // For Array / Option types, compare inner type
-            (Array(t1), Array(t2)) => t1.is_equivalent_to(t2, referencable_types),
-            (Set(t1), Set(t2)) => t1.is_equivalent_to(t2, referencable_types),
+            (Array(t1), Array(t2)) => t1.is_equivalent_to(t2, resolve_type),
+            (Set(t1), Set(t2)) => t1.is_equivalent_to(t2, resolve_type),
             (Tuple(ts1), Tuple(ts2)) => {
                 if ts1.len() != ts2.len() {
                     false
                 } else {
-                    ts1.iter().zip(ts2).all(|(t1, t2)| t1.is_equivalent_to(t2, referencable_types))
+                    ts1.iter().zip(ts2).all(|(t1, t2)| t1.is_equivalent_to(t2, resolve_type))
                 }
             }
             // When comparing Option types, make sure to flatten, and then compare the root inner type
@@ -187,11 +189,11 @@ impl Type {
                 let mut t2 = t2;
                 while let self::Type::Option(ref inner) = **t2 { t2 = inner }
 
-                t1.is_equivalent_to(t2, referencable_types)
+                t1.is_equivalent_to(t2, resolve_type)
             }
             // A non-optional instance of a type should be assignable up to an optional version of it
             // (ie. val i: Int? = 1)
-            (t1, Option(t2)) => t1.is_equivalent_to(t2, referencable_types),
+            (t1, Option(t2)) => t1.is_equivalent_to(t2, resolve_type),
             (Union(t1s), Union(t2s)) => {
                 // None of this is ideal, and it's all incredibly poorly written, shame on me. Since
                 // there should be no difference between `Int | Float` and `Float | Int`, but there is
@@ -207,7 +209,7 @@ impl Type {
 
                 for t1s in permutator {
                     'inner: for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                        if !t1.is_equivalent_to(t2, referencable_types) {
+                        if !t1.is_equivalent_to(t2, resolve_type) {
                             break 'inner;
                         }
                         return true;
@@ -217,7 +219,7 @@ impl Type {
             }
             (t1, Union(ts)) => {
                 for t in ts {
-                    if t1.is_equivalent_to(t, referencable_types) {
+                    if t1.is_equivalent_to(t, resolve_type) {
                         return true;
                     }
                 }
@@ -234,11 +236,11 @@ impl Type {
                 // If the provided type has non-required arguments, in addition to the arguments that match the
                 // target_type, then that's ok
                 for ((_, target_arg, _), (_, arg, _)) in target_args.iter().zip(args.iter()) {
-                    if !arg.is_equivalent_to(target_arg, referencable_types) {
+                    if !arg.is_equivalent_to(target_arg, resolve_type) {
                         return false;
                     }
                 }
-                if !ret.is_equivalent_to(target_ret, referencable_types) {
+                if !ret.is_equivalent_to(target_ret, resolve_type) {
                     return false;
                 }
                 true
@@ -258,7 +260,7 @@ impl Type {
                     // and test the equivalence of the two types, we'll be comparing List<T> (rhs) to List<String> (lhs),
                     // since the `T` on the rhs has yet to be resolved. In this case, essentially skip that type_arg.
                     if let Generic(_) = type1 { continue; }
-                    if !type1.is_equivalent_to(type2, referencable_types) { return false; }
+                    if !type1.is_equivalent_to(type2, resolve_type) { return false; }
                 }
                 true
             }
@@ -266,7 +268,7 @@ impl Type {
                 name1 == name2
             }
             (EnumVariant(enum_type, variant, _), t @ Enum(_)) => {
-                if !enum_type.is_equivalent_to(t, referencable_types) {
+                if !enum_type.is_equivalent_to(t, resolve_type) {
                     false
                 } else if let Enum(enum_type_target) = t {
                     enum_type_target.variants.contains(variant)
@@ -275,25 +277,25 @@ impl Type {
                 }
             }
             (EnumVariant(enum_type1, _, _), EnumVariant(enum_type2, _, _)) => {
-                enum_type1.is_equivalent_to(enum_type2, referencable_types)
+                enum_type1.is_equivalent_to(enum_type2, resolve_type)
             }
             (Map(k_type_1, v_type_1), Map(k_type_2, v_type_2)) => {
-                if !k_type_1.is_equivalent_to(&k_type_2, referencable_types) {
+                if !k_type_1.is_equivalent_to(&k_type_2, resolve_type) {
                     return false;
                 }
-                v_type_1.is_equivalent_to(&v_type_2, referencable_types)
+                v_type_1.is_equivalent_to(&v_type_2, resolve_type)
             }
             // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"]). Unit types should not be assignable to anything
             (t, Any) => t != &Unit,
             (Placeholder, _) | (_, Placeholder) => true,
             (Reference(name, _), other) => {
-                if let Some(referenced_type) = referencable_types.get(name) {
-                    referenced_type.is_equivalent_to(other, referencable_types)
+                if let Some(referenced_type) = resolve_type(name) {
+                    referenced_type.is_equivalent_to(other, resolve_type)
                 } else { false }
             }
             (other, Reference(name, type_args)) => {
-                if let Some(referenced_type) = Self::hydrate_reference_type(name, type_args, referencable_types) {
-                    other.is_equivalent_to(&referenced_type, referencable_types)
+                if let Some(referenced_type) = Self::hydrate_reference_type(name, type_args, resolve_type) {
+                    other.is_equivalent_to(&referenced_type, resolve_type)
                 } else { false }
             }
             (Generic(t1), Generic(t2)) => t1 == t2,
@@ -301,8 +303,10 @@ impl Type {
         }
     }
 
-    pub fn hydrate_reference_type(name: &String, type_args: &Vec<Type>, referencable_types: &HashMap<String, Type>) -> Option<Type> {
-        if let Some(referenced_type) = referencable_types.get(name) {
+    pub fn hydrate_reference_type<'a, F>(name: &String, type_args: &Vec<Type>, resolve_type: &'a F) -> Option<Type>
+        where F: Fn(&String) -> Option<&'a Type>
+    {
+        if let Some(referenced_type) = resolve_type(name) {
             match referenced_type.clone() {
                 Type::Struct(struct_type) => {
                     // Hydrate the struct's type arguments from the Reference
@@ -331,25 +335,27 @@ impl Type {
         } else { None }
     }
 
-    pub fn is_unknown(&self, referencable_types: &HashMap<String, Type>) -> bool {
+    pub fn is_unknown<'a, F>(&self, resolve_type: &'a F) -> bool
+        where F: Fn(&String) -> Option<&'a Type>
+    {
         match self {
             Type::Union(type_opts) |
-            Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(referencable_types)),
+            Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unknown(resolve_type)),
             Type::Array(inner_type) |
             Type::Set(inner_type) |
-            Type::Option(inner_type) => inner_type.is_unknown(referencable_types),
-            Type::Map(key_type, value_type) => key_type.is_unknown(referencable_types) || value_type.is_unknown(referencable_types),
+            Type::Option(inner_type) => inner_type.is_unknown(resolve_type),
+            Type::Map(key_type, value_type) => key_type.is_unknown(resolve_type) || value_type.is_unknown(resolve_type),
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
-                let has_unknown_arg = arg_types.iter().any(|(_, typ, _)| typ.is_unknown(referencable_types));
+                let has_unknown_arg = arg_types.iter().any(|(_, typ, _)| typ.is_unknown(resolve_type));
                 if has_unknown_arg {
                     return true;
                 } else {
-                    ret_type.is_unknown(referencable_types)
+                    ret_type.is_unknown(resolve_type)
                 }
             }
             Type::Reference(name, _) => {
-                if let Some(referenced_type) = referencable_types.get(name) {
-                    referenced_type.is_unknown(referencable_types)
+                if let Some(referenced_type) = resolve_type(name) {
+                    referenced_type.is_unknown(resolve_type)
                 } else { false }
             }
             Type::Unknown => true,
@@ -357,16 +363,18 @@ impl Type {
         }
     }
 
-    pub fn is_unit(&self, referencable_types: &HashMap<String, Type>) -> bool {
+    pub fn is_unit<'a, F>(&self, resolve_type: &'a F) -> bool
+        where F: Fn(&String) -> Option<&'a Type>
+    {
         match self {
             Type::Union(type_opts) |
-            Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unit(referencable_types)),
+            Type::Tuple(type_opts) => type_opts.iter().any(|typ| typ.is_unit(resolve_type)),
             Type::Array(inner_type) |
             Type::Set(inner_type) |
-            Type::Option(inner_type) => inner_type.is_unit(referencable_types),
+            Type::Option(inner_type) => inner_type.is_unit(resolve_type),
             Type::Reference(name, _) => {
-                if let Some(referenced_type) = referencable_types.get(name) {
-                    referenced_type.is_unit(referencable_types)
+                if let Some(referenced_type) = resolve_type(name) {
+                    referenced_type.is_unit(resolve_type)
                 } else { false }
             }
             Type::Unit => true,
@@ -711,43 +719,37 @@ mod test {
 
     #[test]
     fn is_equivalent_to_any() {
-        let referencable_types = HashMap::new();
+        assert_eq!(false, Any.is_equivalent_to(&Bool, &|_| None));
+        assert_eq!(true, Bool.is_equivalent_to(&Any, &|_| None));
 
-        assert_eq!(false, Any.is_equivalent_to(&Bool, &referencable_types));
-        assert_eq!(true, Bool.is_equivalent_to(&Any, &referencable_types));
-
-        assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any)), &referencable_types));
-        assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any)), &referencable_types));
+        assert_eq!(true, Array(Box::new(Int)).is_equivalent_to(&Array(Box::new(Any)), &|_| None));
+        assert_eq!(true, Array(Box::new(Array(Box::new(Int)))).is_equivalent_to(&Array(Box::new(Any)), &|_| None));
     }
 
     #[test]
     fn is_equivalent_to_flattening_optional() {
-        let referencable_types = HashMap::new();
-
         let t1 = Option(Box::new(Int));
         let t2 = Option(Box::new(Option(Box::new(Int))));
-        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
 
         let t1 = Option(Box::new(Option(Box::new(Int))));
         let t2 = Option(Box::new(Option(Box::new(Option(Box::new(Int))))));
-        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
     }
 
     #[test]
     fn is_equivalent_to_assigning_up_to_option() {
-        let referencable_types = HashMap::new();
-
         let t1 = Int;
         let t2 = Option(Box::new(Int));
-        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
 
         let t1 = Int;
         let t2 = Option(Box::new(Option(Box::new(Int))));
-        assert_eq!(true, t1.is_equivalent_to(&t2, &referencable_types));
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
 
         let t1 = Int;
         let t2 = Option(Box::new(Int));
-        assert_eq!(false, t2.is_equivalent_to(&t1, &referencable_types));
+        assert_eq!(false, t2.is_equivalent_to(&t1, &|_| None));
     }
 
     #[test]
@@ -771,7 +773,7 @@ mod test {
             ..struct_type.clone()
         });
         let lhs = Reference("List".to_string(), vec![Int]);
-        assert_eq!(true, rhs.is_equivalent_to(&lhs, &referencable_types));
+        assert_eq!(true, rhs.is_equivalent_to(&lhs, &|type_name| { referencable_types.get(type_name) }));
 
         // val l: List<Int> = List(items: [])
         let rhs = Struct(StructType {
@@ -779,7 +781,7 @@ mod test {
             ..struct_type.clone()
         });
         let lhs = Reference("List".to_string(), vec![Int]);
-        assert_eq!(true, rhs.is_equivalent_to(&lhs, &referencable_types));
+        assert_eq!(true, rhs.is_equivalent_to(&lhs, &|type_name| { referencable_types.get(type_name) }));
 
         // val l: List<String> = List(items: [1, 2])
         let rhs = Struct(StructType {
@@ -787,7 +789,7 @@ mod test {
             ..struct_type
         });
         let lhs = Reference("List".to_string(), vec![String]);
-        assert_eq!(false, rhs.is_equivalent_to(&lhs, &referencable_types));
+        assert_eq!(false, rhs.is_equivalent_to(&lhs, &|type_name| { referencable_types.get(type_name) }));
     }
 
     #[test]

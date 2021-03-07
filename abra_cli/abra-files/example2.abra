@@ -1,11 +1,3 @@
-export type Person {
-  name: String
-  func introduce(self): String = "I am " + self.name
-}
+export type Person { name: String }
 
-export val names: String[] = []
-
-export func addName(name: String) {
-  names.push(name)
-  println(names)
-}
+export val ken = Person(name: "Ken")
