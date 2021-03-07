@@ -4,6 +4,7 @@ use crate::{Error, typecheck};
 use crate::vm::prelude::Prelude;
 use std::collections::HashMap;
 use crate::vm::compiler::{compile, Module, Metadata};
+use crate::typechecker::types::Type;
 
 pub trait ModuleReader {
     fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
@@ -72,6 +73,16 @@ impl<R: ModuleReader> ModuleLoader<R> {
             .expect("It should have been loaded previously")
             .as_ref()
             .expect("It should have completed loading")
+    }
+
+    pub fn resolve_type(&self, type_name: &String) -> Option<&Type> {
+        let module_name = type_name.split("/").next()
+            .expect("Type name should be properly namespaced");
+        let typed_module = self.typed_module_cache.get(module_name)
+            .expect("It should have been loaded previously")
+            .as_ref()
+            .expect("It should have completed loading");
+        typed_module.referencable_types.get(type_name)
     }
 
     pub fn add_typed_module(&mut self, typed_module: TypedModule) {

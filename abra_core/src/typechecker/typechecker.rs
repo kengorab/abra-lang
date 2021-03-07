@@ -27,10 +27,10 @@ pub enum ScopeKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scope {
     pub kind: ScopeKind,
-    pub bindings: HashMap<String, ScopeBinding>,
+    pub bindings: HashMap<String, (ScopeBinding, /* is_import: */ bool)>,
     // Track hoisted fn defs for a scope; upon real visiting, binding will be stored in bindings
     pub fns: HashMap<String, ScopeBinding>,
-    pub types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>)>,
+    pub types: HashMap<String, (Type, /* Must be a TypedAstNode::TypeDecl */ Option<TypedAstNode>, /* is_import: */ bool)>,
 }
 
 impl Scope {
@@ -57,6 +57,7 @@ pub struct TypedModule {
 
 pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader: &ModuleLoader<R>) -> Result<TypedModule, TypecheckerError> {
     let mut typechecker = Typechecker {
+        module_id,
         cur_typedef: None,
         scopes: vec![Scope::new(ScopeKind::Root)],
         referencable_types: HashMap::new(),
@@ -89,13 +90,20 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
         .collect();
 
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
+    let module_name = typechecker.module_id.get_name();
 
     let module = TypedModule {
-        module_id,
+        module_id: typechecker.module_id,
         typed_nodes,
-        referencable_types: typechecker.referencable_types.clone(),
-        global_bindings: scope.bindings,
-        types: scope.types.into_iter().map(|(k, (t, _))| (k, t)).collect(),
+        referencable_types: typechecker.referencable_types.into_iter()
+            .filter(|(key, _)| key.starts_with(&module_name))
+            .collect(),
+        global_bindings: scope.bindings.into_iter()
+            .filter_map(|(name, (binding, is_import))| if !is_import { Some((name, binding)) } else { None })
+            .collect(),
+        types: scope.types.into_iter()
+            .filter_map(|(k, (t, _, is_import))| if !is_import { Some((k, t)) } else { None })
+            .collect(),
         exports: typechecker.exports,
     };
 
@@ -103,6 +111,7 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
 }
 
 pub struct Typechecker<'a, R: ModuleReader> {
+    module_id: ModuleId,
     cur_typedef: Option<Type>,
     scopes: Vec<Scope>,
     referencable_types: HashMap<String, Type>,
@@ -112,10 +121,6 @@ pub struct Typechecker<'a, R: ModuleReader> {
 }
 
 impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
-    pub fn get_referencable_types(&self) -> &HashMap<String, Type> {
-        &self.referencable_types
-    }
-
     fn get_binding(&self, name: &str) -> Option<(&ScopeBinding, usize)> {
         let mut depth = 0;
         let mut fn_depth = 0;
@@ -140,14 +145,14 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     depth += 1;
                     continue;
                 }
-                Some(binding) => return Some((binding, self.scopes.len() - depth - 1))
+                Some((binding, _)) => return Some((binding, self.scopes.len() - depth - 1))
             }
         }
         None
     }
 
     fn get_binding_in_current_scope(&self, name: &str) -> Option<&ScopeBinding> {
-        self.scopes.last().and_then(|scope| scope.bindings.get(name))
+        self.scopes.last().and_then(|scope| scope.bindings.get(name).map(|(b, _)| b))
     }
 
     fn get_fn_binding_in_current_scope(&self, name: &str) -> Option<&ScopeBinding> {
@@ -159,7 +164,15 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
         let scope = self.scopes.last_mut().unwrap();
         let binding = ScopeBinding(ident.clone(), typ.clone(), is_mutable);
-        scope.bindings.insert(name.to_string(), binding);
+        scope.bindings.insert(name.to_string(), (binding, false));
+    }
+
+    fn add_imported_binding(&mut self, name: &str, ident: &Token, typ: &Type) {
+        if name == "_" { return; }
+
+        let scope = self.scopes.last_mut().unwrap();
+        let binding = ScopeBinding(ident.clone(), typ.clone(), false);
+        scope.bindings.insert(name.to_string(), (binding, true));
     }
 
     fn add_fn_binding(&mut self, name: &str, ident: &Token, typ: &Type) {
@@ -172,18 +185,18 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         self.scopes.iter_mut().rev()
             .flat_map(|scope| scope.bindings.iter_mut())
             .find(|(binding_name, _)| binding_name == &name)
-            .map(|(_, binding)| binding)
+            .map(|(_, (binding, _))| binding)
     }
 
     fn get_types_in_scope(&self) -> HashMap<String, Type> {
         self.scopes.iter().rev().flat_map(|scope| scope.types.iter())
-            .map(|(name, (typ, _))| (name.clone(), typ.clone()))
+            .map(|(name, (typ, _, _))| (name.clone(), typ.clone()))
             .collect()
     }
 
     fn get_generics_in_scope(&self) -> HashSet<String> {
         self.scopes.iter().rev().flat_map(|scope| scope.types.iter())
-            .filter_map(|(_, (typ, _))| if let Type::Generic(name) = typ { Some(name.clone()) } else { None })
+            .filter_map(|(_, (typ, _, _))| if let Type::Generic(name) = typ { Some(name.clone()) } else { None })
             .collect()
     }
 
@@ -194,15 +207,15 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             Ok(typ) => {
                 let mut ret_typ = None;
                 if let Type::Reference(name, ref_type_args) = &typ {
-                    let expected_type_args = match &self.referencable_types[name] {
+                    let expected_type_args = match self.resolve_type(name).unwrap() {
                         Type::Struct(StructType { type_args, .. }) => type_args.len(),
                         Type::Enum(_) => 0,
                         Type::Array(_) | Type::Set(_) => {
-                            ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &self.referencable_types).unwrap());
+                            ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &|typ_name| self.resolve_type(typ_name)).unwrap());
                             1
                         }
                         Type::Map(_, _) => {
-                            ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &self.referencable_types).unwrap());
+                            ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &|typ_name| self.resolve_type(typ_name)).unwrap());
                             2
                         }
                         _ => unimplemented!()
@@ -211,7 +224,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     if ref_type_args.len() != expected_type_args {
                         return Err(TypecheckerError::InvalidTypeArgumentArity {
                             token: type_ident.get_ident(),
-                            actual_type: self.referencable_types[name].clone(),
+                            actual_type: self.resolve_type(name).unwrap().clone(),
                             actual: ref_type_args.len(),
                             expected: expected_type_args,
                         });
@@ -222,33 +235,38 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         }
     }
 
-    fn add_type(&mut self, name: String, type_decl_node: Option<TypedAstNode>, typ: Type) {
+    fn add_type(&mut self, name: String, type_decl_node: Option<TypedAstNode>, typ: Type, is_import: bool) {
         let scope = self.scopes.last_mut().unwrap();
-        scope.types.insert(name, (typ, type_decl_node));
+        scope.types.insert(name, (typ, type_decl_node, is_import));
     }
 
     fn get_type(&self, name: &String) -> Option<(Type, Option<TypedAstNode>)> {
         self.scopes.iter().rev()
             .flat_map(|scope| scope.types.iter())
             .find(|(type_name, _)| type_name == &name)
-            .map(|(_, pair)| pair.clone())
+            .map(|(_, (typ, type_decl_node, _))| (typ.clone(), type_decl_node.clone()))
     }
 
     fn get_type_mut(&mut self, name: &String) -> Option<(&mut Type, &mut Option<TypedAstNode>)> {
         self.scopes.iter_mut().rev()
             .flat_map(|scope| scope.types.iter_mut())
             .find(|(type_name, _)| type_name == &name)
-            .map(|(_, (typ, type_decl_node))| (typ, type_decl_node))
+            .map(|(_, (typ, type_decl_node, _))| (typ, type_decl_node))
     }
 
     fn resolve_ref_type(&self, typ: &Type) -> Type {
         match typ {
             Type::Reference(name, type_args) => {
-                Type::hydrate_reference_type(name, type_args, &self.referencable_types)
+                Type::hydrate_reference_type(name, type_args, &|typ_name| self.resolve_type(typ_name))
                     .expect(&format!("There should be a type referencable by name '{}'", name))
             }
             t @ _ => t.clone()
         }
+    }
+
+    fn resolve_type(&self, type_name: &String) -> Option<&Type> {
+        self.referencable_types.get(type_name)
+            .or_else(|| self.module_loader.resolve_type(type_name))
     }
 
     fn are_types_equivalent(&mut self, node: &mut TypedAstNode, target_type: &Type) -> Result<bool, TypecheckerError> {
@@ -264,7 +282,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         // this will re-typecheck the lambda using the captured scope, and will mutate the node (will rust allow this?).
         // Then when we get "back up to the top", set the type of the array node to be the target_type if nothing goes wrong,
         // and return true.
-        let typ = if node.get_type().is_unknown(&self.referencable_types) {
+        let typ = if node.get_type().is_unknown(&|type_name| self.resolve_type(type_name)) {
             match (node, target_type) {
                 (TypedAstNode::Lambda(token, lambda_node), Type::Fn(fn_type)) => {
                     let FnType { arg_types: expected_args, ret_type: expected_ret, .. } = fn_type;
@@ -337,7 +355,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 return Ok(true);
                             }
 
-                            if !ret.is_equivalent_to(expected_ret, &self.referencable_types) {
+                            if !ret.is_equivalent_to(expected_ret, &|typ_name| self.resolve_type(typ_name)) {
                                 return Err(TypecheckerError::Mismatch {
                                     token: token.clone(),
                                     expected: *(*expected_ret).clone(),
@@ -387,7 +405,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         // If the target_type contains an `Unknown` in some shape or form, we should compare by
         // structure; for example:
         //   [].contains("a"), [].concat([1, 3]) // Should both pass
-        if target_type.is_unknown(&self.referencable_types) {
+        if target_type.is_unknown(&|type_name| self.resolve_type(type_name)) {
             let is_same_shape = match (typ, target_type) {
                 (_, Type::Unknown) => true,
                 (Type::Array(_), Type::Array(i2)) if **i2 == Type::Unknown => true,
@@ -397,7 +415,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             };
             Ok(is_same_shape)
         } else {
-            Ok(typ.is_equivalent_to(target_type, &self.referencable_types))
+            Ok(typ.is_equivalent_to(target_type, &|typ_name| self.resolve_type(typ_name)))
         }
     }
 
@@ -477,16 +495,21 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
     }
 
     fn flatten_match_case_types(&self, typ: Type) -> Vec<Type> {
-        match self.resolve_ref_type(&typ) {
+        match typ {
             Type::Union(opts) => opts.into_iter().flat_map(|t| self.flatten_match_case_types(t)).collect(),
             Type::Option(t) => vec![self.flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
-            Type::Enum(enum_type) => {
-                let typ = Type::Reference(enum_type.name, vec![]);
-                enum_type.variants.into_iter()
-                    .map(|evt| Type::EnumVariant(Box::new(typ.clone()), evt, true))
-                    .collect()
+            Type::Reference(typeref_name, typeref_args) => {
+                let typ = Type::Reference(typeref_name, typeref_args);
+                match self.resolve_ref_type(&typ) {
+                    Type::Enum(enum_type) => {
+                        enum_type.variants.into_iter()
+                            .map(|evt| Type::EnumVariant(Box::new(typ.clone()), evt, true))
+                            .collect()
+                    }
+                    _ => vec![typ]
+                }
             }
-            _ => vec![typ]
+            t => vec![t]
         }
     }
 
@@ -496,9 +519,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         let MatchNode { target, branches } = node;
 
         let target = self.visit(*target)?;
-        let target_type = self.resolve_ref_type(&target.get_type());
-
-        let mut possibilities = self.flatten_match_case_types(target_type);
+        let mut possibilities = self.flatten_match_case_types(target.get_type());
         let mut seen_wildcard = false;
 
         let mut typed_branches = Vec::new();
@@ -875,7 +896,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
             }
             fn_type_arg_names.push(fn_type_arg_name.clone());
-            scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None));
+            scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None, false));
         }
         self.scopes.push(scope);
 
@@ -943,10 +964,11 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
                     // reference we must look it up by name in self.referencable_types. This level of indirection
                     // allows for cyclic/self-referential types.
-                    let typeref = Type::Reference(new_type_name.clone(), vec![]);
-                    let binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
+                    let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_type_name);
+                    let typeref = Type::Reference(typeref_name.clone(), vec![]);
+                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
                     self.add_binding(&new_type_name, &name, &binding_type, false);
-                    self.add_type(new_type_name.clone(), None, typeref.clone());
+                    self.add_type(new_type_name.clone(), None, typeref.clone(), false);
 
                     let referencable_type = if type_is_enum {
                         let typedef = EnumType { name: new_type_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
@@ -961,7 +983,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
                         Type::Struct(typedef)
                     };
-                    self.referencable_types.insert(new_type_name.clone(), referencable_type);
+                    self.referencable_types.insert(typeref_name, referencable_type);
                 }
                 _ => {}
             }
@@ -1441,9 +1463,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 return Err(TypecheckerError::UnannotatedUninitialized { ident: binding.get_token().clone(), is_mutable });
             }
         };
-        if typ.is_unknown(&self.referencable_types) {
+        if typ.is_unknown(&|type_name| self.resolve_type(type_name)) {
             return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unknown });
-        } else if typ.is_unit(&self.referencable_types) {
+        } else if typ.is_unit(&|type_name| self.resolve_type(type_name)) {
             return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unit });
         }
 
@@ -1493,7 +1515,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
-                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None));
+                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None, false));
                 }
             }
         }
@@ -1573,7 +1595,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         let ret_type = match &ret_ann_type {
             None => {
-                if !body_type.get_opt_unwrapped().is_equivalent_to(&Type::Unit, &self.referencable_types) {
+                if !body_type.get_opt_unwrapped().is_equivalent_to(&Type::Unit, &|typ_name| self.resolve_type(typ_name)) {
                     let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
                     return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: true, bare_return: false, expected: Type::Unit, actual: body_type });
                 }
@@ -1672,9 +1694,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 (name.clone(), Type::Generic(name))
             })
             .collect::<Vec<(String, Type)>>();
+        let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_type_name);
+        let typeref = Type::Reference(typeref_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
-        let typeref = Type::Reference(new_type_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
-        *binding_type = Type::Type(new_type_name.clone(), Box::new(typeref.clone()), false);
+        *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
         self.cur_typedef = Some(typeref);
 
         // Insert Generics for all type_args present
@@ -1688,7 +1711,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
-                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None));
+                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None, false));
                 }
             }
         }
@@ -1711,7 +1734,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             .collect::<Result<Vec<_>, _>>();
         let fields = fields?;
 
-        let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+        let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.fields = fields.iter()
             .map(|(name, typ, default_value_node, settable)| {
                 StructTypeField {
@@ -1724,7 +1747,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             .collect();
 
         let (static_methods, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
-        let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&new_type_name) { typedef } else { unreachable!() };
+        let typedef = if let Some(Type::Struct(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.static_fields = static_methods;
         typedef.methods = typed_methods;
 
@@ -1773,7 +1796,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let node = if let (_, Some(node)) = self.get_type_mut(&new_type_name).unwrap() { node.clone() } else { unreachable!() };
             let export = ExportedValue::Type {
                 reference: self.get_type(&new_type_name).map(|(typ, _)| typ),
-                backing_type: self.referencable_types[&new_type_name].clone(),
+                backing_type: self.referencable_types[&typeref_name].clone(),
                 node: Some(node),
             };
             self.exports.insert(new_type_name.clone(), export);
@@ -1804,9 +1827,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         // Note: much like type declarations, enum declarations are also hoisted to the top of their
         // scope. As such, by this point there will already be an entry in self.referencable_types.
 
+        let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_enum_name);
+        let typeref = Type::Reference(typeref_name.clone(), vec![]);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
-        let typeref = Type::Reference(new_enum_name.clone(), vec![]);
-        *binding_type = Type::Type(new_enum_name.clone(), Box::new(typeref.clone()), true);
+        *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), true);
         self.cur_typedef = Some(typeref);
 
         let scope = Scope::new(ScopeKind::TypeDef);
@@ -1849,12 +1873,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             typed_variants.push(variant_type);
         }
 
-        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&new_enum_name) { typedef } else { unreachable!() };
+        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.variants = typed_variants.clone();
 
         let type_args = vec![];
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
-        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&new_enum_name) { typedef } else { unreachable!() };
+        let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.static_fields = static_fields;
         typedef.methods = typed_methods;
 
@@ -1900,7 +1924,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let node = if let (_, Some(node)) = self.get_type_mut(&new_enum_name).unwrap() { node.clone() } else { unreachable!() };
             let export = ExportedValue::Type {
                 reference: self.get_type(&new_enum_name).map(|(typ, _)| typ),
-                backing_type: self.referencable_types[&new_enum_name].clone(),
+                backing_type: self.referencable_types[&typeref_name].clone(),
                 node: Some(node),
             };
             self.exports.insert(new_enum_name.clone(), export);
@@ -2122,7 +2146,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 match (&target_type, idx.get_type()) {
                     (Type::Array(_), Type::Int) | (Type::String, Type::Int) => Ok(IndexingMode::Index(Box::new(idx))),
                     (Type::Map(key_type, _), ref selector_type @ _) => {
-                        if !selector_type.is_equivalent_to(&key_type, &self.referencable_types) {
+                        if !selector_type.is_equivalent_to(&key_type, &|typ_name| self.resolve_type(typ_name)) {
                             Err(TypecheckerError::InvalidIndexingSelector {
                                 token: idx.get_token().clone(),
                                 target_type: target_type.clone(),
@@ -2469,7 +2493,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                 Ok(TypedAstNode::Invocation(token, TypedInvocationNode { typ: ret_type, target: Box::new(target), args: typed_args }))
             }
-            Type::Type(_, t, _) => match self.resolve_ref_type(&*t) {
+            Type::Type(typeref_name, t, _) => match self.resolve_ref_type(&*t) {
                 Type::Struct(struct_type) => {
                     let StructType { name, fields: expected_fields, type_args, .. } = &struct_type;
                     let target_token = target.get_token().clone();
@@ -2534,7 +2558,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                                 pairs.push(unbound_generic.clone())
                             }
                         }
-                        Type::Reference(name.clone(), pairs)
+                        Type::Reference(typeref_name, pairs)
                     };
 
                     Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ, target: Box::new(target), fields }))
@@ -2705,22 +2729,23 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         for (import_name, import_ident_token, exported_value) in imports {
             match exported_value {
                 ExportedValue::Binding(typ) => {
-                    self.add_binding(&import_name, import_ident_token, &typ, false);
+                    self.add_imported_binding(&import_name, import_ident_token, &typ);
                     typed_imports.push((import_name, false));
                 }
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {
                         Some(typeref) => {
-                            let binding_type = Type::Type(import_name.clone(), Box::new(typeref.clone()), false);
-                            self.add_binding(&import_name, import_ident_token, &binding_type, false);
-                            self.add_type(import_name.clone(), node.clone(), typeref.clone());
+                            let typeref_name = format!("{}/{}", module_id.get_name(), &import_name);
+                            let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
+                            self.add_imported_binding(&import_name, import_ident_token, &binding_type);
+                            self.add_type(import_name.clone(), node.clone(), typeref.clone(), true);
 
                             self.referencable_types.insert(import_name.clone(), backing_type.clone());
                         }
                         None => {
                             let binding_type = Type::Type(import_name.clone(), Box::new(backing_type.clone()), false);
-                            self.add_binding(&import_name, import_ident_token, &binding_type, false);
-                            self.add_type(import_name.clone(), node.clone(), backing_type.clone());
+                            self.add_imported_binding(&import_name, import_ident_token, &binding_type);
+                            self.add_type(import_name.clone(), node.clone(), backing_type.clone(), true);
                         }
                     }
 
@@ -2794,7 +2819,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     let field_data = NativeMap::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
-                Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
+                Type::Type(typeref_name, typ, _) => match zelf.resolve_ref_type(&*typ) {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()
                             .find(|(_, (name, _, _))| field_name == name)
@@ -2802,11 +2827,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Enum(enum_type) => {
-                        let EnumType { name: enum_name, variants, static_fields, .. } = &enum_type;
+                        let EnumType { variants, static_fields, .. } = &enum_type;
                         let field_data = variants.iter().enumerate()
                             .find(|(_, EnumVariantType { name, .. })| field_name == name)
                             .map(|(idx, variant_type)| {
-                                let enum_type_ref = Type::Reference(enum_name.clone(), vec![]);
+                                let enum_type_ref = Type::Reference(typeref_name, vec![]);
                                 let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
                                 FieldSpec { idx, typ, is_method: false, readonly: true }
                             })
@@ -4729,7 +4754,7 @@ mod tests {
             },
         );
         assert_eq!(expected, module.typed_nodes[0]);
-        assert_eq!(Type::Reference("Person".to_string(), vec![]), module.types["Person"]);
+        assert_eq!(Type::Reference("_test/Person".to_string(), vec![]), module.types["Person"]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4737,7 +4762,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         let module = test_typecheck("type Person { name: String, age: Int = 0 }")?;
         let expected = TypedAstNode::TypeDecl(
@@ -4761,7 +4786,7 @@ mod tests {
             },
         );
         assert_eq!(expected, module.typed_nodes[0]);
-        assert_eq!(Type::Reference("Person".to_string(), vec![]), module.types["Person"]);
+        assert_eq!(Type::Reference("_test/Person".to_string(), vec![]), module.types["Person"]);
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
@@ -4772,7 +4797,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         Ok(())
     }
@@ -4788,7 +4813,7 @@ mod tests {
           node\n\
         ")?;
 
-        let expected = identifier!((6, 1), "node", Type::Reference("Node".to_string(), vec![]), 0);
+        let expected = identifier!((6, 1), "node", Type::Reference("_test/Node".to_string(), vec![]), 0);
         assert_eq!(expected, module.typed_nodes[2]);
         let expected_type = Type::Struct(StructType {
             name: "Node".to_string(),
@@ -4797,7 +4822,7 @@ mod tests {
                 StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
                 StructTypeField {
                     name: "next".to_string(),
-                    typ: Type::Option(Box::new(Type::Reference("Node".to_string(), vec![]))),
+                    typ: Type::Option(Box::new(Type::Reference("_test/Node".to_string(), vec![]))),
                     has_default_value: true,
                     readonly: false,
                 },
@@ -4805,7 +4830,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Node"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Node"]);
 
         Ok(())
     }
@@ -4828,7 +4853,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Foo"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Foo"]);
 
         Ok(())
     }
@@ -4889,7 +4914,7 @@ mod tests {
           }
         ";
         let module = test_typecheck(input)?;
-        let person_type = Type::Reference("Person".to_string(), vec![]);
+        let person_type = Type::Reference("_test/Person".to_string(), vec![]);
         let expected = TypedAstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypedTypeDeclNode {
@@ -5003,7 +5028,7 @@ mod tests {
                 ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }))
             ],
         });
-        Ok(assert_eq!(expected_type, module.referencable_types["Person"]))
+        Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
     }
 
     #[test]
@@ -5060,7 +5085,7 @@ mod tests {
             ],
             methods: vec![to_string_method_type()],
         });
-        Ok(assert_eq!(expected_type, module.referencable_types["Person"]))
+        Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
     }
 
     #[test]
@@ -5119,7 +5144,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["List"]);
+        assert_eq!(expected_type, module.referencable_types["_test/List"]);
 
         let input = r#"
           type List<T> { items: T[] }
@@ -5128,7 +5153,7 @@ mod tests {
         "#;
         let module = test_typecheck(input)?;
         let actual_type = module.typed_nodes.last().unwrap().get_type();
-        let expected_type = Type::Reference("List".to_string(), vec![Type::Int]);
+        let expected_type = Type::Reference("_test/List".to_string(), vec![Type::Int]);
         assert_eq!(expected_type, actual_type);
 
         let input = r#"
@@ -5187,8 +5212,8 @@ mod tests {
         let error = test_typecheck(input).unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::LParen(Position::new(2, 27), false),
-            expected: Type::Reference("List".to_string(), vec![Type::String]),
-            actual: Type::Reference("List".to_string(), vec![Type::Int]),
+            expected: Type::Reference("_test/List".to_string(), vec![Type::String]),
+            actual: Type::Reference("_test/List".to_string(), vec![Type::Int]),
         };
         assert_eq!(expected, error);
 
@@ -5380,12 +5405,12 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 13), "Hot"),
-                        Type::EnumVariant(Box::new(Type::Reference("Temp".to_string(), vec![])), EnumVariantType { name: "Hot".to_string(), variant_idx: 0, arg_types: None }, false),
+                        Type::EnumVariant(Box::new(Type::Reference("_test/Temp".to_string(), vec![])), EnumVariantType { name: "Hot".to_string(), variant_idx: 0, arg_types: None }, false),
                         EnumVariantKind::Basic
                     ),
                     (
                         ident_token!((1, 18), "Cold"),
-                        Type::EnumVariant(Box::new(Type::Reference("Temp".to_string(), vec![])), EnumVariantType { name: "Cold".to_string(), variant_idx: 1, arg_types: None }, false),
+                        Type::EnumVariant(Box::new(Type::Reference("_test/Temp".to_string(), vec![])), EnumVariantType { name: "Cold".to_string(), variant_idx: 1, arg_types: None }, false),
                         EnumVariantKind::Basic
                     ),
                 ],
@@ -5406,7 +5431,7 @@ mod tests {
                     (
                         ident_token!((1, 18), "Radians"),
                         Type::EnumVariant(
-                            Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                            Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
                             EnumVariantType { name: "Radians".to_string(), variant_idx: 0, arg_types: Some(vec![("rads".to_string(), Type::Float, false)]) },
                             false,
                         ),
@@ -5417,7 +5442,7 @@ mod tests {
                     (
                         ident_token!((1, 40), "Degrees"),
                         Type::EnumVariant(
-                            Box::new(Type::Reference("AngleMode".to_string(), vec![])),
+                            Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
                             EnumVariantType { name: "Degrees".to_string(), variant_idx: 1, arg_types: Some(vec![("degs".to_string(), Type::Float, false)]) },
                             false,
                         ),
@@ -5444,7 +5469,7 @@ mod tests {
                     (
                         ident_token!((1, 14), "Red"),
                         Type::EnumVariant(
-                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                             EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
                             false,
                         ),
@@ -5453,12 +5478,12 @@ mod tests {
                     (
                         ident_token!((1, 19), "Darken"),
                         Type::EnumVariant(
-                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                             EnumVariantType {
                                 name: "Darken".to_string(),
                                 variant_idx: 1,
                                 arg_types: Some(vec![
-                                    ("base".to_string(), Type::Reference("Color".to_string(), vec![]), true),
+                                    ("base".to_string(), Type::Reference("_test/Color".to_string(), vec![]), true),
                                     ("amount".to_string(), Type::Float, true),
                                 ]),
                             },
@@ -5467,12 +5492,12 @@ mod tests {
                         EnumVariantKind::Constructor(vec![
                             (
                                 ident_token!((1, 26), "base"),
-                                Type::Reference("Color".to_string(), vec![]),
+                                Type::Reference("_test/Color".to_string(), vec![]),
                                 Some(TypedAstNode::Accessor(
                                     Token::Dot(Position::new(1, 45)),
                                     TypedAccessorNode {
                                         typ: Type::EnumVariant(
-                                            Box::new(Type::Reference("Color".to_string(), vec![])),
+                                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                                             EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
                                             false,
                                         ),
@@ -5480,8 +5505,8 @@ mod tests {
                                             (1, 40),
                                             "Color",
                                             Type::Type(
-                                                "Color".to_string(),
-                                                Box::new(Type::Reference("Color".to_string(), vec![])),
+                                                "_test/Color".to_string(),
+                                                Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                                                 true,
                                             ),
                                             0
@@ -5590,7 +5615,7 @@ mod tests {
         let expected = TypecheckerError::Mismatch {
             token: Token::Int(Position::new(2, 46), 123),
             actual: Type::Int,
-            expected: Type::Reference("Scale".to_string(), vec![]),
+            expected: Type::Reference("_test/Scale".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 
@@ -5644,7 +5669,7 @@ mod tests {
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((6, 11), "hex"),
             target_type: Type::EnumVariant(
-                Box::new(Type::Reference("Color".to_string(), vec![])),
+                Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                 EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
                 false,
             ),
@@ -5662,8 +5687,8 @@ mod tests {
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((6, 7), "white"),
             target_type: Type::Type(
-                "Color".to_string(),
-                Box::new(Type::Reference("Color".to_string(), vec![])),
+                "_test/Color".to_string(),
+                Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                 true,
             ),
         };
@@ -5817,7 +5842,7 @@ mod tests {
                     Token::Dot(Position::new(3, 2)),
                     TypedAccessorNode {
                         typ: Type::String,
-                        target: Box::new(identifier!((3, 1), "a", Type::Reference("Person".to_string(), vec![]), 0)),
+                        target: Box::new(identifier!((3, 1), "a", Type::Reference("_test/Person".to_string(), vec![]), 0)),
                         field_idx: 0,
                         field_ident: ident_token!((3, 3), "name"),
                         is_opt_safe: false,
@@ -5838,7 +5863,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         // Test setting inner property of readonly field
         let res = test_typecheck("\
@@ -5896,7 +5921,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "bogusField"),
-            target_type: Type::Reference("Person".to_string(), vec![]),
+            target_type: Type::Reference("_test/Person".to_string(), vec![]),
         };
         assert_eq!(expected, err);
 
@@ -6565,9 +6590,9 @@ mod tests {
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
-                typ: Type::Reference("Person".to_string(), vec![]),
+                typ: Type::Reference("_test/Person".to_string(), vec![]),
                 target: Box::new(
-                    identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)
+                    identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)
                 ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken"))
@@ -6584,7 +6609,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         // Test with default parameters
         let module = test_typecheck("\
@@ -6594,9 +6619,9 @@ mod tests {
         let expected = TypedAstNode::Instantiation(
             Token::LParen(Position::new(2, 7), false),
             TypedInstantiationNode {
-                typ: Type::Reference("Person".to_string(), vec![]),
+                typ: Type::Reference("_test/Person".to_string(), vec![]),
                 target: Box::new(
-                    identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)
+                    identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)
                 ),
                 fields: vec![
                     ("name".to_string(), string_literal!((2, 14), "Ken")),
@@ -6615,7 +6640,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         Ok(())
     }
@@ -7099,7 +7124,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::String,
-                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
                 field_ident: ident_token!((3, 3), "name"),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -7117,7 +7142,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_typ, module.referencable_types["Person"]);
+        assert_eq!(expected_typ, module.referencable_types["_test/Person"]);
 
         // Getting fields off structs with default field values
         let module = test_typecheck("\
@@ -7129,7 +7154,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::Int,
-                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
                 field_ident: ident_token!((3, 3), "age"),
                 field_idx: 1,
                 is_opt_safe: false,
@@ -7148,7 +7173,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         // Getting field of builtin Array type
         let module = test_typecheck("[1, 2, 3].length")?;
@@ -7214,7 +7239,7 @@ mod tests {
             Token::Dot(Position::new(2, 7)),
             TypedAccessorNode {
                 typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
-                target: Box::new(identifier!((2, 1), "Person", Type::Type("Person".to_string(), Box::new(Type::Reference("Person".to_string(), vec![])), false), 0)),
+                target: Box::new(identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)),
                 field_ident: ident_token!((2, 8), "getName"),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -7230,7 +7255,7 @@ mod tests {
             static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true)],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         Ok(())
     }
@@ -7250,7 +7275,7 @@ mod tests {
                     Token::Dot(Position::new(3, 2)),
                     TypedAccessorNode {
                         typ: Type::Option(Box::new(Type::String)),
-                        target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
+                        target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
                         field_ident: ident_token!((3, 3), "name"),
                         field_idx: 0,
                         is_opt_safe: false,
@@ -7275,7 +7300,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         // Verify that it also works for non-optional fields, converting QuestionDot to just Dot
         let module = test_typecheck("\
@@ -7287,7 +7312,7 @@ mod tests {
             Token::Dot(Position::new(3, 2)),
             TypedAccessorNode {
                 typ: Type::String,
-                target: Box::new(identifier!((3, 1), "p", Type::Reference("Person".to_string(), vec![]), 0)),
+                target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
                 field_ident: ident_token!((3, 4), "name"),
                 field_idx: 0,
                 is_opt_safe: false,
@@ -7305,7 +7330,7 @@ mod tests {
             static_fields: vec![],
             methods: vec![to_string_method_type()],
         });
-        assert_eq!(expected_type, module.referencable_types["Person"]);
+        assert_eq!(expected_type, module.referencable_types["_test/Person"]);
 
         Ok(())
     }
@@ -7319,7 +7344,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
-            target_type: Type::Reference("Person".to_string(), vec![]),
+            target_type: Type::Reference("_test/Person".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 
@@ -7346,9 +7371,10 @@ mod tests {
         assert_eq!(expected, module.typed_nodes[0]);
 
         let module = test_typecheck("a => \"hello\"")?;
-        let mut orig_node_scope = Scope::new(ScopeKind::Root);
-        orig_node_scope.bindings = module.global_bindings;
-        orig_node_scope.types = module.types.into_iter().map(|(k, t)| (k, (t, None))).collect();
+        // Not great: this performs no actual assertions on the original scopes. But the original scopes are hard to construct for testing purposes so this'll do for now
+        let orig_scopes = if let TypedAstNode::Lambda(_, TypedLambdaNode { orig_node: Some((_, orig_scopes)), .. }) = &module.typed_nodes[0] {
+            orig_scopes.clone()
+        } else { unreachable!() };
 
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 3)),
@@ -7366,16 +7392,17 @@ mod tests {
                             )
                         ],
                     },
-                    vec![orig_node_scope]
+                    orig_scopes
                 )),
             },
         );
         assert_eq!(&expected, &module.typed_nodes[0]);
 
         let module = test_typecheck("(a, b = \"b\") => \"hello\"")?;
-        let mut orig_node_scope = Scope::new(ScopeKind::Root);
-        orig_node_scope.bindings = module.global_bindings;
-        orig_node_scope.types = module.types.into_iter().map(|(k, t)| (k, (t, None))).collect();
+        // Not great: this performs no actual assertions on the original scopes. But the original scopes are hard to construct for testing purposes so this'll do for now
+        let orig_scopes = if let TypedAstNode::Lambda(_, TypedLambdaNode { orig_node: Some((_, orig_scopes)), .. }) = &module.typed_nodes[0] {
+            orig_scopes.clone()
+        } else { unreachable!() };
 
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 14)),
@@ -7406,7 +7433,7 @@ mod tests {
                             )
                         ],
                     },
-                    vec![orig_node_scope]
+                    orig_scopes
                 )),
                 typed_body: None,
             },
@@ -7687,7 +7714,7 @@ mod tests {
             Direction.Down => 3\n\
           }
         ")?;
-        let enum_ref_type = Type::Reference("Direction".to_string(), vec![]);
+        let enum_ref_type = Type::Reference("_test/Direction".to_string(), vec![]);
         let expected = TypedAstNode::MatchStatement(
             Token::Match(Position::new(3, 1)),
             TypedMatchNode {
@@ -7851,7 +7878,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((4, 11), "Sideways"),
-            target_type: Type::Reference("Direction".to_string(), vec![]),
+            target_type: Type::Reference("_test/Direction".to_string(), vec![]),
         };
         assert_eq!(expected, err);
 
@@ -7865,7 +7892,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((4, 16), "A"),
-            target_type: Type::Reference("Direction".to_string(), vec![]),
+            target_type: Type::Reference("_test/Direction".to_string(), vec![]),
         };
         assert_eq!(expected, err);
 
@@ -7880,7 +7907,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnreachableMatchCase {
             token: ident_token!((5, 23), "Left"),
-            typ: Some(Type::EnumVariant(Box::new(Type::Reference("Direction".to_string(), vec![])), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true)),
+            typ: Some(Type::EnumVariant(Box::new(Type::Reference("_test/Direction".to_string(), vec![])), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true)),
             is_unreachable_none: false,
         };
         assert_eq!(expected, err);
@@ -7895,7 +7922,7 @@ mod tests {
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
             typ: Type::EnumVariant(
-                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
                 EnumVariantType {
                     name: "Bar".to_string(),
                     variant_idx: 0,
@@ -7920,7 +7947,7 @@ mod tests {
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
             typ: Type::EnumVariant(
-                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
                 EnumVariantType {
                     name: "Bar".to_string(),
                     variant_idx: 0,
@@ -7946,7 +7973,7 @@ mod tests {
         let expected = TypecheckerError::InvalidMatchCaseDestructuring {
             token: ident_token!((4, 5), "Bar"),
             typ: Type::EnumVariant(
-                Box::new(Type::Reference("Foo".to_string(), vec![])),
+                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
                 EnumVariantType {
                     name: "Bar".to_string(),
                     variant_idx: 0,
@@ -8327,6 +8354,20 @@ mod tests {
               export val a = b + 1\
             "),
             (".mod3", "export val b = 2"),
+        ];
+        let res = test_typecheck_with_modules(mod1, modules);
+        assert!(res.is_ok());
+
+        // Verify working with (non-imported) type from another module
+        let mod1 = "\
+          import me from .me\n\
+          me.name\
+        ";
+        let modules = vec![
+            (".me", "\
+              type Person { name: String }\n\
+              export val me = Person(name: \"Ken\")\
+            ")
         ];
         let res = test_typecheck_with_modules(mod1, modules);
         assert!(res.is_ok());
