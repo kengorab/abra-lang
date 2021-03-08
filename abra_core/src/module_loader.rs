@@ -1,7 +1,7 @@
 use crate::parser::ast::ModuleId;
 use crate::typechecker::typechecker::TypedModule;
 use crate::{Error, typecheck};
-use crate::vm::prelude::Prelude;
+use crate::vm::prelude;
 use std::collections::HashMap;
 use crate::vm::compiler::{compile, Module, Metadata};
 use crate::typechecker::types::Type;
@@ -31,15 +31,19 @@ const PRELUDE_MODULE_IDX: usize = 0;
 impl<R: ModuleReader> ModuleLoader<R> {
     pub fn new(module_reader: R) -> Self {
         let mut cache = HashMap::new();
+        let mut compiled_modules = Vec::new();
+        let mut compiled_module_constants = HashMap::new();
+        let mut compiled_modules_indices = HashMap::new();
 
-        let prelude = Prelude::typed_module();
-        let ordering = vec![prelude.module_id.clone()];
-        cache.insert(prelude.module_id.get_name(), Some(prelude));
+        let prelude_mod_spec = prelude::load_module();
+        let module_id = prelude_mod_spec.typed_module.module_id.clone();
 
-        let compiled_modules = Vec::new();
-        let compiled_module_constants = HashMap::new();
-        let compiled_modules_indices = HashMap::new();
+        cache.insert(module_id.get_name(), Some(prelude_mod_spec.typed_module));
+        compiled_modules.push((prelude_mod_spec.compiled_module, None));
+        compiled_module_constants.insert(module_id.clone(), prelude_mod_spec.constant_indexes_by_ident);
+        compiled_modules_indices.insert(module_id.clone(), 0);
 
+        let ordering = vec![module_id];
         Self { module_reader, typed_module_cache: cache, compiled_modules, compiled_module_constants, compiled_modules_indices, ordering }
     }
 
@@ -94,13 +98,7 @@ impl<R: ModuleReader> ModuleLoader<R> {
         let ordering = self.ordering.clone();
         for module_id in ordering {
             if module_id == ModuleId::from_name("prelude") {
-                let (prelude_module, constants_by_idx) = Prelude::compiled_module();
-                self.compiled_modules.push((prelude_module, None));
-                self.compiled_module_constants.insert(module_id.clone(), constants_by_idx);
-
-                let module_idx = self.compiled_modules.len() - 1;
-                debug_assert!(module_idx == PRELUDE_MODULE_IDX);
-                self.compiled_modules_indices.insert(module_id.clone(), module_idx);
+                debug_assert!(self.compiled_modules.iter().find(|(m, _)| m.name == "prelude").is_some());
                 continue;
             }
 
