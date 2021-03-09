@@ -5,7 +5,7 @@ use std::hash::Hash;
 use crate::vm::vm::VM;
 use itertools::Itertools;
 use crate::builtins::arguments::Arguments;
-use crate::builtins::native::to_string;
+use crate::builtins::common::to_string;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
 #[abra_type(signature = "String", noconstruct = true, variant = "StringObj")]
@@ -171,7 +171,7 @@ impl NativeString {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
+    use crate::builtins::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]

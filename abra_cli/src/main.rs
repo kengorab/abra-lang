@@ -3,7 +3,7 @@ extern crate clap;
 
 mod fs_module_reader;
 
-use abra_core::builtins::native::to_string;
+use abra_core::builtins::common::to_string;
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::ModuleId;

@@ -1,6 +1,7 @@
 use abra_native::abra_function;
 use crate::typechecker::types::Type;
-use crate::builtins::native::{NativeInt, NativeSet, NativeDate, to_string, NativeFloat, NativeString, NativeArray, NativeMap};
+use crate::builtins::prelude::{NativeInt, NativeSet, NativeFloat, NativeString, NativeArray, NativeMap};
+use crate::builtins::common::to_string;
 use crate::builtins::native_module_builder::{ModuleSpec, TypeSpec, ModuleSpecBuilder};
 use crate::vm::value::Value;
 use crate::builtins::arguments::Arguments;
@@ -87,6 +88,52 @@ pub fn load_module() -> ModuleSpec {
                 .with_typeref()
                 .with_native_value::<NativeSet>()
         )
-        .add_type_impl::<NativeDate>()
         .build()
+}
+
+#[cfg(test)]
+mod test {
+    use crate::builtins::test_utils::{interpret, interpret_get_result};
+    use crate::vm::value::Value;
+
+    #[test]
+    fn test_importing_module_explicitly_fails() {
+        let imports = &["println", "range", "readFile", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set"];
+        for import in imports {
+            let result = interpret_get_result(format!("import {} from prelude", import));
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn test_range() {
+        let result = interpret("range(0, 4)");
+        let expected = array![Value::Int(0), Value::Int(1), Value::Int(2), Value::Int(3)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("range(0, -4)");
+        let expected = array![];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("range(0, 10, 2)");
+        let expected = array![Value::Int(0), Value::Int(2), Value::Int(4), Value::Int(6), Value::Int(8)];
+        assert_eq!(Some(expected), result);
+
+        let result = interpret("range(1, 10, 3)");
+        let expected = array![Value::Int(1), Value::Int(4), Value::Int(7)];
+        assert_eq!(Some(expected), result);
+    }
+
+    // TODO: Convert VMContext to a trait to allow for mocked-out testing?
+    // #[test]
+    // fn test_println() {
+    //     let mut printed = None;
+    //     let ctx = VMContext {
+    //         print: |val| printed = Some(val)
+    //     };
+    //     let result = interpret_get_result_with_vm_ctx("println(\"hello world\")", ctx);
+    //
+    //     assert!(result.is_ok());
+    //     assert_eq!(Some("hello world"), printed);
+    // }
 }

@@ -1013,7 +1013,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         quote! {
-            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: #name,
                 receiver: None,
                 native_fn: #body,
@@ -1074,7 +1074,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         quote! {
-            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: #name,
                 receiver: None,
                 native_fn: |rcv, args, vm| { #body },
@@ -1085,12 +1085,12 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
 
     let to_string_method_code = if type_spec.is_pseudotype || type_spec.value_variant.is_some() {
         quote! {
-            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
                     Some(Value::new_string_obj(
-                        crate::builtins::native::common::to_string(&rcv.unwrap(), vm))
+                        crate::builtins::common::to_string(&rcv.unwrap(), vm))
                     )
                 },
                 has_return: true,
@@ -1098,7 +1098,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         }
     } else {
         quote! {
-            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
@@ -1145,7 +1145,7 @@ fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_mac
 
                 let typ_val = Self::get_type_value();
                 let fields = typ_val.fields.into_iter().zip(self.get_field_values())
-                    .map(|(field_name, field_value)| format!("{}: {}", field_name, crate::builtins::native::common::to_string(&field_value, vm)))
+                    .map(|(field_name, field_value)| format!("{}: {}", field_name, crate::builtins::common::to_string(&field_value, vm)))
                     .join(", ");
 
                 crate::vm::value::Value::new_string_obj(format!("{}({})", typ_val.name, fields))
@@ -1318,7 +1318,7 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
     };
 
     let native_value = quote! {
-        crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+        crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
             name: #name,
             receiver: None,
             native_fn: |rcv, args, vm| { #body },

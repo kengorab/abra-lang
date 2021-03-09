@@ -1,6 +1,5 @@
 use crate::vm::vm::VM;
-use crate::vm::value::{Value, FnValue, ClosureValue, TypeValue, EnumValue, EnumVariantObj};
-use crate::builtins::native_fns::NativeFn;
+use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, EnumValue, EnumVariantObj};
 use itertools::Itertools;
 
 pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {

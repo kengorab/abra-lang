@@ -1,5 +1,5 @@
 use crate::builtins::native_value_trait::NativeTyp;
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
+use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
@@ -2727,6 +2727,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         let mut typed_imports = Vec::new();
         for (import_name, import_ident_token, exported_value) in imports {
+            if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&import_name) {
+                let is_prelude = module_id == ModuleId::from_name("prelude");
+                let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+                return Err(TypecheckerError::DuplicateBinding { ident: import_ident_token.clone(), orig_ident });
+            }
+
             match exported_value {
                 ExportedValue::Binding(typ) => {
                     self.add_imported_binding(&import_name, import_ident_token, &typ);

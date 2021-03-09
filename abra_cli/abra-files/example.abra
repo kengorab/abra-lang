@@ -1,5 +1,13 @@
-import ken, Person from .example2
+//import println, range, readFile, Int, Float, Bool, String, Unit, Any, Array, Map, Set from prelude
 
-println(ken.name)
+//println(range)
+//import Person from .example2
+//import ken from .example2
+//
+//println(ken.name)
+//
+//println(Person(name: "Meg"))
 
-println(Person(name: "Meg"))
+import Date from date
+
+println(Date)

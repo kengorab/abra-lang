@@ -1,7 +1,7 @@
 use crate::parser::ast::ModuleId;
 use crate::typechecker::typechecker::TypedModule;
 use crate::{Error, typecheck};
-use crate::vm::prelude;
+use crate::builtins::{load_module};
 use std::collections::HashMap;
 use crate::vm::compiler::{compile, Module, Metadata};
 use crate::typechecker::types::Type;
@@ -30,21 +30,15 @@ const PRELUDE_MODULE_IDX: usize = 0;
 
 impl<R: ModuleReader> ModuleLoader<R> {
     pub fn new(module_reader: R) -> Self {
-        let mut cache = HashMap::new();
-        let mut compiled_modules = Vec::new();
-        let mut compiled_module_constants = HashMap::new();
-        let mut compiled_modules_indices = HashMap::new();
+        let typed_module_cache = HashMap::new();
+        let compiled_modules = Vec::new();
+        let compiled_module_constants = HashMap::new();
+        let compiled_modules_indices = HashMap::new();
+        let ordering = Vec::new();
 
-        let prelude_mod_spec = prelude::load_module();
-        let module_id = prelude_mod_spec.typed_module.module_id.clone();
-
-        cache.insert(module_id.get_name(), Some(prelude_mod_spec.typed_module));
-        compiled_modules.push((prelude_mod_spec.compiled_module, None));
-        compiled_module_constants.insert(module_id.clone(), prelude_mod_spec.constant_indexes_by_ident);
-        compiled_modules_indices.insert(module_id.clone(), 0);
-
-        let ordering = vec![module_id];
-        Self { module_reader, typed_module_cache: cache, compiled_modules, compiled_module_constants, compiled_modules_indices, ordering }
+        let mut loader = Self { module_reader, typed_module_cache, compiled_modules, compiled_module_constants, compiled_modules_indices, ordering };
+        loader.load_builtin("prelude");
+        loader
     }
 
     pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
@@ -53,6 +47,10 @@ impl<R: ModuleReader> ModuleLoader<R> {
             Some(Some(_)) => return Ok(()),
             Some(None) => return Err(ModuleLoaderError::CircularDependency),
             _ => {}
+        }
+
+        if self.load_builtin(&module_name) {
+            return Ok(())
         }
 
         let contents = match self.module_reader.read_module(&module_id) {
@@ -69,6 +67,23 @@ impl<R: ModuleReader> ModuleLoader<R> {
             }
             Err(e) => Err(ModuleLoaderError::WrappedError(e))
         }
+    }
+
+    fn load_builtin(&mut self, module_name: &str) -> bool {
+        let mod_spec = match load_module(module_name){
+            None => return false,
+            Some(get_mod_spec) => get_mod_spec()
+        };
+
+        let module_id = mod_spec.typed_module.module_id.clone();
+
+        self.ordering.push(module_id.clone());
+        self.typed_module_cache.insert(module_id.get_name(), Some(mod_spec.typed_module));
+        self.compiled_modules.push((mod_spec.compiled_module, None));
+        self.compiled_module_constants.insert(module_id.clone(), mod_spec.constant_indexes_by_ident);
+        self.compiled_modules_indices.insert(module_id.clone(), self.compiled_modules_indices.len());
+
+        true
     }
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
@@ -97,12 +112,14 @@ impl<R: ModuleReader> ModuleLoader<R> {
     pub fn compile_all(&mut self) {
         let ordering = self.ordering.clone();
         for module_id in ordering {
-            if module_id == ModuleId::from_name("prelude") {
-                debug_assert!(self.compiled_modules.iter().find(|(m, _)| m.name == "prelude").is_some());
+            let module_name = module_id.get_name();
+
+            if load_module(&module_name).is_some() {
+                debug_assert!(self.compiled_modules.iter().find(|(m, _)| m.name == module_name).is_some());
                 continue;
             }
 
-            let typed_module = self.typed_module_cache.get(&module_id.get_name()).unwrap().as_ref().unwrap().clone();
+            let typed_module = self.typed_module_cache.get(&module_name).unwrap().as_ref().unwrap().clone();
 
             let module_idx = self.compiled_modules.len();
             self.compiled_modules_indices.insert(module_id.clone(), module_idx);

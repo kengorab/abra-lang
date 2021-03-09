@@ -50,7 +50,7 @@ impl NativeFloat {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj};
+    use crate::builtins::test_utils::{interpret, new_string_obj};
     use crate::vm::value::Value;
 
     #[test]
