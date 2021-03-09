@@ -1,4 +1,6 @@
 use crate::lexer::tokens::Token;
+use itertools::Itertools;
+use std::fmt::{Display, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
@@ -28,6 +30,7 @@ pub enum AstNode {
     MatchExpression(Token, MatchNode),
     Tuple(Token, Vec<AstNode>),
     ReturnStatement(Token, Option<Box<AstNode>>),
+    ImportStatement(Token, ImportNode),
 }
 
 impl AstNode {
@@ -56,9 +59,10 @@ impl AstNode {
             AstNode::WhileLoop(token, _) |
             AstNode::Break(token) |
             AstNode::ReturnStatement(token, _) |
+            AstNode::ImportStatement(token, _) |
             AstNode::Accessor(token, _) |
             AstNode::MatchStatement(token, _) |
-            AstNode::MatchExpression(token, _) => token
+            AstNode::MatchExpression(token, _) => token,
         }
     }
 }
@@ -157,6 +161,7 @@ impl BindingPattern {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BindingDeclNode {
+    pub export_token: Option<Token>,
     pub binding: BindingPattern,
     pub type_ann: Option<TypeIdentifier>,
     pub expr: Option<Box<AstNode>>,
@@ -165,6 +170,7 @@ pub struct BindingDeclNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
+    pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
     // Must be a Token::Idents
@@ -183,6 +189,7 @@ pub struct LambdaNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeDeclNode {
+    pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
     // Must be Token::Idents
@@ -201,6 +208,7 @@ pub struct TypeDeclField {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumDeclNode {
+    pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
     // Must be Token::Idents
@@ -284,6 +292,62 @@ pub enum MatchCaseType {
     Ident(Token),
     Compound(Vec<Token>),
     Wildcard(Token),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImportNode {
+    pub imports: Vec<Token>,
+    pub star_token: Option<Token>,
+    pub leading_dot_token: Option<Token>,
+    pub path: Vec<Token>,
+}
+
+impl ImportNode {
+    pub fn get_path(&self) -> (bool, String) {
+        let is_local_import = self.leading_dot_token.is_some();
+        let path = self.path.iter().map(|p| Token::get_ident_name(p)).join("/");
+        (is_local_import, path)
+    }
+
+    pub fn get_module_id(&self) -> ModuleId {
+        let is_local_import = self.leading_dot_token.is_some();
+        let path = self.path.iter().map(|p| Token::get_ident_name(p)).collect();
+        ModuleId(is_local_import, path)
+    }
+}
+
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
+pub struct ModuleId(pub bool, pub Vec<String>);
+
+impl Display for ModuleId {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self.get_name())
+    }
+}
+
+impl ModuleId {
+    pub fn get_name(&self) -> String {
+        let name = self.1.join(".");
+        format!("{}{}", if self.0 { "." } else { "" }, name)
+    }
+
+    pub fn get_path(&self, extension: &str) -> String {
+        let path = self.1.join("/");
+        format!("{}.{}", path, extension)
+    }
+
+    pub fn from_path(path: &String) -> Self {
+        ModuleId(true, path.replace(".abra", "").split("/").map(|s| s.to_string()).collect())
+    }
+
+    pub fn from_name<S: AsRef<str>>(name: S) -> Self {
+        let is_local = name.as_ref().starts_with(".");
+        let parts = name.as_ref().split(".")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        ModuleId(is_local, parts)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

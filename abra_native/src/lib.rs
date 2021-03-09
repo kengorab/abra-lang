@@ -894,7 +894,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     };
 
     quote! {
-        fn construct(type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
+        fn construct(module_idx: usize, type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
             #body
         }
     }
@@ -1013,7 +1013,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         quote! {
-            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: #name,
                 receiver: None,
                 native_fn: #body,
@@ -1074,7 +1074,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         };
 
         quote! {
-            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            (#name.to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: #name,
                 receiver: None,
                 native_fn: |rcv, args, vm| { #body },
@@ -1085,12 +1085,12 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
 
     let to_string_method_code = if type_spec.is_pseudotype || type_spec.value_variant.is_some() {
         quote! {
-            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
                     Some(Value::new_string_obj(
-                        crate::builtins::native::common::to_string(&rcv.unwrap(), vm))
+                        crate::builtins::common::to_string(&rcv.unwrap(), vm))
                     )
                 },
                 has_return: true,
@@ -1098,7 +1098,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         }
     } else {
         quote! {
-            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::builtins::native_fns::NativeFn {
+            ("toString".to_string(), crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
@@ -1145,7 +1145,7 @@ fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_mac
 
                 let typ_val = Self::get_type_value();
                 let fields = typ_val.fields.into_iter().zip(self.get_field_values())
-                    .map(|(field_name, field_value)| format!("{}: {}", field_name, crate::builtins::native::common::to_string(&field_value, vm)))
+                    .map(|(field_name, field_value)| format!("{}: {}", field_name, crate::builtins::common::to_string(&field_value, vm)))
                     .join(", ");
 
                 crate::vm::value::Value::new_string_obj(format!("{}({})", typ_val.name, fields))
@@ -1205,6 +1205,135 @@ fn gen_set_field_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenSt
     }
 }
 
+#[proc_macro_attribute]
+pub fn abra_function(attr: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr as syn::AttributeArgs);
+    let args = args.into_iter()
+        .filter_map(|arg| parse_attr_meta(arg))
+        .collect::<HashMap<_, _>>();
+
+    let input = parse_macro_input!(input as syn::ItemFn);
+
+    let gen_spec_method_code = match parse_function(args, &input) {
+        Err(e) => return e.to_compile_error().into(),
+        Ok(method_spec) => generate_function_code(method_spec),
+    };
+
+    let ts = quote! {
+        #input
+        #gen_spec_method_code
+    };
+    ts.into()
+}
+
+fn parse_function(attr_args: HashMap<String, String>, function: &syn::ItemFn) -> Result<MethodSpec, syn::Error> {
+    if let Some(FnArg::Receiver(_)) = function.sig.inputs.first() {
+        let msg = format!("The function bound via #[abra_function] must not receive self");
+        return Err(syn::Error::new(function.span(), msg));
+    }
+    let native_method_arity = function.sig.inputs.len();
+    if native_method_arity > 2 {
+        let msg = format!("The function bound via #[abra_function] receives too many parameters; bound functions can only receive up to 2 parameters (Arguments and VM)");
+        return Err(syn::Error::new(function.sig.inputs.span(), msg));
+    }
+
+    let signature = match attr_args.get("signature") {
+        Some(signature) => match parse_fn_signature(None, &vec![], signature) {
+            Ok(s) => s,
+            Err(e) => {
+                let msg = format!("Invalid signature provided to #[abra_function]: {}", e);
+                return Err(syn::Error::new(Span::call_site(), msg));
+            }
+        }
+        None => {
+            let msg = "Missing required parameter `signature` in #[abra_function] attribute".to_string();
+            return Err(syn::Error::new(Span::call_site(), msg));
+        }
+    };
+    let Signature { func_name, args, return_type } = signature;
+
+    if return_type == TypeRepr::Unit && function.sig.output != syn::ReturnType::Default {
+        let msg = format!("The function bound via #[abra_function] has no return type in its signature, and therefore must not have a return value");
+        return Err(syn::Error::new(function.sig.output.span(), msg));
+    }
+
+    let is_variadic = args.iter().any(|arg| arg.is_variadic);
+
+    let method_name = function.sig.ident.to_string();
+    Ok(MethodSpec {
+        native_method_name: method_name.clone(),
+        native_method_arity,
+        name: func_name,
+        args,
+        return_type,
+        is_static: true,
+        is_mut: false,
+        is_variadic,
+        is_pseudomethod: false,
+    })
+}
+
+fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream {
+    let name = &static_method.name;
+    let num_args = static_method.args.len();
+    let has_return = static_method.return_type != TypeRepr::Unit;
+    let native_name_ident = format_ident!("{}", &static_method.native_method_name);
+    let native_method_arity = static_method.native_method_arity;
+
+    let arguments = match native_method_arity {
+        0 => quote! {},
+        1 => quote! { crate::builtins::arguments::Arguments::new(#name, #num_args, args) },
+        2 => quote! { crate::builtins::arguments::Arguments::new(#name, #num_args, args), vm },
+        _ => unreachable!()
+    };
+
+    let body = if has_return {
+        quote! { Some(#native_name_ident(#arguments)) }
+    } else {
+        quote! {
+            #native_name_ident(#arguments);
+            None
+        }
+    };
+
+    let fn_type = {
+        let args = static_method.args.iter().map(|arg| {
+            let MethodArgSpec { name, typ, is_optional, .. } = arg;
+            let typ = gen_rust_type_path(typ, &"BOGUS".to_string());
+
+            quote! { (#name.to_string(), #typ, #is_optional) }
+        });
+
+        let return_type = gen_rust_type_path(&static_method.return_type, &"BOGUS".to_string());
+        let is_variadic = &static_method.is_variadic;
+
+        quote! {
+            crate::typechecker::types::Type::Fn(crate::typechecker::types::FnType {
+                arg_types: vec![#(#args),*],
+                type_args: vec![],
+                ret_type: Box::new(#return_type),
+                is_variadic: #is_variadic,
+            })
+        }
+    };
+
+    let native_value = quote! {
+        crate::vm::value::Value::NativeFn(crate::vm::value::NativeFn {
+            name: #name,
+            receiver: None,
+            native_fn: |rcv, args, vm| { #body },
+            has_return: #has_return,
+        })
+    };
+
+    let gen_fn_name = format_ident!("{}__gen_spec", static_method.native_method_name);
+    quote!{
+        fn #gen_fn_name() -> (std::string::String, crate::typechecker::types::Type, crate::vm::value::Value) {
+            (#name.to_string(), #fn_type, #native_value)
+        }
+    }
+}
+
 fn find_attr<'a>(attrs: &'a Vec<syn::Attribute>, name: &str) -> Option<(usize, &'a syn::Attribute)> {
     attrs.into_iter().enumerate().find(|(_, attr)| {
         attr.path.segments.first().map_or(false, |s| {
@@ -1220,26 +1349,43 @@ fn parse_attr(attr: &syn::Attribute) -> HashMap<String, String> {
         Err(e) => eprintln!("{:#?}", e),
         Ok(syn::Meta::List(meta)) => {
             for nested in meta.nested {
-                match nested {
-                    NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
-                        let arg = nv.path.segments[0].ident.to_string();
-                        let val = match nv.lit {
-                            syn::Lit::Str(s) => s.value(),
-                            syn::Lit::Bool(b) => b.value.to_string(),
-                            _ => unreachable!()
-                        };
-                        map.insert(arg, val);
-                    }
-                    NestedMeta::Meta(syn::Meta::Path(path)) => {
-                        let bool_arg = path.segments[0].ident.to_string();
-                        map.insert(bool_arg, "true".to_string());
-                    }
-                    _ => {}
+                if let Some((arg, val)) = parse_attr_meta(nested) {
+                    map.insert(arg, val);
                 }
+                // match nested {
+                //     NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
+                //         let (arg, val) = parse_attr_namevalue(nv);
+                //         map.insert(arg, val);
+                //     }
+                //     NestedMeta::Meta(syn::Meta::Path(path)) => {
+                //         let bool_arg = path.segments[0].ident.to_string();
+                //         map.insert(bool_arg, "true".to_string());
+                //     }
+                //     _ => {}
+                // }
             }
         }
         _ => {}
     }
 
     map
+}
+
+fn parse_attr_meta(nested: syn::NestedMeta) -> Option<(String, String)> {
+    match nested {
+        NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
+            let arg = nv.path.segments[0].ident.to_string();
+            let val = match nv.lit {
+                syn::Lit::Str(s) => s.value(),
+                syn::Lit::Bool(b) => b.value.to_string(),
+                _ => unreachable!()
+            };
+            Some((arg, val))
+        }
+        NestedMeta::Meta(syn::Meta::Path(path)) => {
+            let bool_arg = path.segments[0].ident.to_string();
+            Some((bool_arg, "true".to_string()))
+        }
+        _ => None
+    }
 }

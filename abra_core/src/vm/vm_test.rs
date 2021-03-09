@@ -3,35 +3,43 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::lexer::tokenize;
-    use crate::parser::parser::parse;
-    use crate::typechecker::typechecker::typecheck;
-    use crate::vm::compiler::compile;
-    use crate::vm::prelude::PRELUDE_NUM_CONSTS;
     use crate::vm::opcode::Opcode;
     use crate::vm::value::{Value, FnValue};
     use crate::vm::vm::{VM, VMContext};
     use itertools::Itertools;
+    use crate::common::test_utils::MockModuleReader;
+    use crate::parser::ast::ModuleId;
 
     fn new_string_obj(string: &str) -> Value {
         Value::new_string_obj(string.to_string())
     }
 
-    fn with_prelude_const_offset(const_idx: usize) -> usize {
-        PRELUDE_NUM_CONSTS.with(|n| *n + const_idx)
+    fn interpret(input: &str) -> Option<Value> {
+        let mock_reader = MockModuleReader::default();
+        let module_id = ModuleId::from_name("_test");
+        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+
+        let ctx = VMContext::default();
+        let mut vm = VM::new(ctx);
+        let mut res = None;
+        for module in modules {
+            res = vm.run(module).unwrap();
+        }
+        res
     }
 
-    fn interpret(input: &str) -> Option<Value> {
-        let module_name = "_test.abra".to_string();
+    fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Option<Value> {
+        let mock_reader = MockModuleReader::new(modules);
+        let module_id = ModuleId::from_name("_test");
+        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
 
-        let tokens = tokenize(&input.to_string()).unwrap();
-        let ast = parse(tokens).unwrap();
-        let module = typecheck(module_name, ast).unwrap();
-        let (module, _) = compile(module).unwrap();
         let ctx = VMContext::default();
-
-        let mut vm = VM::new(module, ctx);
-        vm.run().unwrap()
+        let mut vm = VM::new(ctx);
+        let mut res = None;
+        for module in modules {
+            res = vm.run(module).unwrap();
+        }
+        res
     }
 
     #[test]
@@ -748,7 +756,7 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant(with_prelude_const_offset(3) as usize),
+                Opcode::Constant(1, 3),
                 Opcode::LStore(0),
                 Opcode::Return
             ],
@@ -2190,5 +2198,88 @@ mod tests {
         let result = interpret(input).unwrap();
         let expected = Value::Int(4);
         assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn interpret_imports() {
+        // Importing types
+        let mod1 = r#"
+          import Person from .person
+          Person(name: "Ken").name
+        "#;
+        let modules = vec![
+            (".person", "export type Person { name: String }"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(new_string_obj("Ken")), chunk);
+
+        // Importing enums
+        let mod1 = r#"
+          import Direction from .direction
+          "${Direction.Up}"
+        "#;
+        let modules = vec![
+            (".direction", "export enum Direction { Up, Down }"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(new_string_obj("Direction.Up")), chunk);
+
+        // Importing bindings
+        let mod1 = r#"
+          import x from .constants
+          x + 4
+        "#;
+        let modules = vec![
+            (".constants", "export val x = 123"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Some(Value::Int(127)), chunk);
+    }
+
+    #[test]
+    fn interpret_imports_modifying_globals() {
+        let mod1 = r#"
+          import addName, names from .names
+          addName("Ken")
+          addName("Meg")
+          names
+        "#;
+        let modules = vec![
+            (".names", r#"
+              export val names: String[] = []
+              export func addName(name: String) = names.push(name)
+            "#),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("Ken"),
+            new_string_obj("Meg"),
+        ]);
+        assert_eq!(Some(expected), chunk);
+
+        // Bindings are scoped to modules
+        let mod1 = r#"
+          import addName, getNames from .names
+          val names: String[] = []
+          addName("Ken")
+          addName("Meg")
+          [getNames(), names]
+        "#;
+        let modules = vec![
+            (".names", r#"
+              export val names: String[] = []
+              export func addName(name: String) = names.push(name)
+              export func getNames(): String[] = names
+            "#),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        let expected = Value::new_array_obj(vec![
+            Value::new_array_obj(vec![
+                new_string_obj("Ken"),
+                new_string_obj("Meg"),
+            ]),
+            Value::new_array_obj(vec![])
+        ]);
+        assert_eq!(Some(expected), chunk);
     }
 }

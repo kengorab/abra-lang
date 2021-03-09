@@ -1,4 +1,13 @@
-val m: Map<Int[], Int> = {}
-m[[1, 2]] = 2
-m[[1, 2, 3]] = 3
-m.keys()
+//import println, range, readFile, Int, Float, Bool, String, Unit, Any, Array, Map, Set from prelude
+
+//println(range)
+//import Person from .example2
+//import ken from .example2
+//
+//println(ken.name)
+//
+//println(Person(name: "Meg"))
+
+import Date from date
+
+println(Date)

@@ -1,15 +1,15 @@
 use std::hash::{Hash, Hasher};
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString};
+use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeString};
 use crate::builtins::native_value_trait::NativeValue;
-use crate::builtins::native_fns::NativeFn;
 use crate::common::util::integer_decode;
 use crate::vm::vm;
 use crate::vm::compiler::Upvalue;
-use std::fmt::{Display, Formatter, Error};
+use std::fmt::{Display, Formatter, Error, Debug};
 use std::cell::RefCell;
 use std::sync::Arc;
 use crate::vm::opcode::Opcode;
 use itertools::Itertools;
+use crate::vm::vm::VM;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FnValue {
@@ -54,20 +54,50 @@ impl Hash for ClosureValue {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+// If a native function's return type is Unit, it should return None
+type NativeAbraFn = fn(Option<Value>, Vec<Value>, &mut VM) -> Option<Value>;
+
+#[derive(Clone)]
+pub struct NativeFn {
+    pub name: &'static str,
+    pub receiver: Option<Box<Value>>,
+    pub native_fn: NativeAbraFn,
+    pub has_return: bool,
+}
+
+impl Debug for NativeFn {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NativeFn {{ name: {}, .. }}", self.name)
+    }
+}
+
+impl PartialEq for NativeFn {
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(other.name)
+    }
+}
+
+impl NativeFn {
+    pub fn invoke(&self, args: Vec<Value>, vm_ref: &mut VM) -> Option<Value> {
+        let func = self.native_fn;
+        func(self.receiver.as_ref().map(|v| *v.clone()), args, vm_ref)
+    }
+}
+
+#[derive(Debug, Default, Clone, Hash, Eq, PartialEq)]
 pub struct TypeValue {
     pub name: String,
-    pub constructor: Option<fn(usize, Vec<Value>) -> Value>,
+    pub constructor: Option<fn(usize, usize, Vec<Value>) -> Value>,
     pub fields: Vec<String>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
 
 impl TypeValue {
-    pub fn construct(self, type_id: usize, args: Vec<Value>) -> Value {
+    pub fn construct(self, module_idx: usize, type_id: usize, args: Vec<Value>) -> Value {
         match self.constructor {
-            Some(constructor) => constructor(type_id, args),
-            None => Value::new_instance_obj(type_id, args)
+            Some(constructor) => constructor(module_idx, type_id, args),
+            None => Value::new_instance_obj(module_idx, type_id, args)
         }
     }
 }
@@ -126,13 +156,13 @@ impl Value {
         Value::MapObj(Arc::new(RefCell::new(NativeMap::new(items))))
     }
 
-    pub fn new_instance_obj(type_id: usize, fields: Vec<Value>) -> Value {
-        let inst = InstanceObj { type_id, fields };
+    pub fn new_instance_obj(module_idx: usize, type_id: usize, fields: Vec<Value>) -> Value {
+        let inst = InstanceObj { type_id: (module_idx, type_id), fields };
         Value::InstanceObj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn new_native_instance_obj(type_id: usize, inst: Box<dyn NativeValue>) -> Value {
-        let inst = NativeInstanceObj { type_id, inst };
+        let inst = NativeInstanceObj { type_id: (0, type_id), inst };
         Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
@@ -223,11 +253,11 @@ impl Display for Value {
             },
             Value::InstanceObj(o) => {
                 let inst = &*o.borrow();
-                write!(f, "<instance type_id={}>", &inst.type_id)
+                write!(f, "<instance type_id={:?}>", &inst.type_id)
             }
             Value::NativeInstanceObj(o) => {
                 let inst = &*o.borrow();
-                write!(f, "<instance type_id={}>", &inst.type_id)
+                write!(f, "<instance type_id={:?}>", &inst.type_id)
             }
             Value::EnumVariantObj(o) => {
                 let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
@@ -289,7 +319,7 @@ impl Eq for Value {}
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct InstanceObj {
-    pub type_id: usize,
+    pub type_id: (usize, usize),
     pub fields: Vec<Value>,
 }
 
@@ -305,7 +335,7 @@ pub struct EnumVariantObj {
 
 #[derive(Debug)]
 pub struct NativeInstanceObj {
-    pub type_id: usize,
+    pub type_id: (usize, usize),
     pub inst: Box<dyn NativeValue>,
 }
 

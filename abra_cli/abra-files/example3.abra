@@ -1,0 +1,4 @@
+import c from .example4
+import * from .example2
+
+export val b = 6

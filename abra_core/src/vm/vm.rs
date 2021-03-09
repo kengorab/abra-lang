@@ -1,13 +1,12 @@
-use crate::builtins::native::to_string;
+use crate::builtins::common::to_string;
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
+use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::cell::RefCell;
 use std::sync::Arc;
-use crate::builtins::native_fns::NativeFn;
 use crate::builtins::native_value_trait::NativeValue;
 
 // Helper macros
@@ -59,6 +58,7 @@ pub struct Upvalue {
     pub val: Option<Value>,
 }
 
+#[derive(Default)]
 struct CallFrame {
     ip: usize,
     code: Vec<Opcode>,
@@ -87,8 +87,8 @@ impl VMContext {
 
 pub struct VM {
     pub ctx: VMContext,
-    constants: Vec<Value>,
-    type_constant_indexes: HashMap<String, usize>,
+    constants: Vec<Vec<Value>>,
+    type_constant_indexes: HashMap<String, (usize, usize)>,
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
     globals: HashMap<String, Value>,
@@ -98,26 +98,12 @@ pub struct VM {
 const STACK_LIMIT: usize = 1024;
 
 impl VM {
-    pub fn new(module: Module, ctx: VMContext) -> Self {
-        let name = "$main".to_string();
-        let Module { code, constants, .. } = module;
-        let root_frame = CallFrame { ip: 0, code, start_stack_idx: 0, name, upvalues: vec![], local_addrs: vec![] };
-
-        let type_constant_indexes = constants.iter().enumerate()
-            .filter_map(|(idx, a)|
-                match a {
-                    Value::Type(TypeValue { name, .. }) |
-                    Value::Enum(EnumValue { name, .. }) => Some((name.clone(), idx)),
-                    _ => None
-                }
-            )
-            .collect();
-
+    pub fn new(ctx: VMContext) -> Self {
         VM {
             ctx,
-            constants,
-            type_constant_indexes,
-            call_stack: vec![root_frame],
+            constants: vec![],
+            type_constant_indexes: HashMap::new(),
+            call_stack: vec![],
             stack: Vec::new(),
             globals: HashMap::new(),
             open_upvalues: HashMap::new(),
@@ -179,23 +165,23 @@ impl VM {
         }
     }
 
-    fn load_constant(&mut self, const_idx: usize) -> Result<(), InterpretError> {
-        let val = self.constants.get(const_idx)
+    fn load_constant(&mut self, (module_idx, const_idx): (usize, usize)) -> Result<(), InterpretError> {
+        let val = self.constants[module_idx].get(const_idx)
             .ok_or(InterpretError::ConstIdxOutOfBounds)?
             .clone();
         self.push(val);
         Ok(())
     }
 
-    pub fn load_type(&self, type_id: usize) -> &TypeValue {
-        if let Some(Value::Type(tv)) = self.constants.get(type_id) {
+    pub fn load_type(&self, (module_idx, type_id): (usize, usize)) -> &TypeValue {
+        if let Some(Value::Type(tv)) = self.constants[module_idx].get(type_id) {
             tv
         } else { panic!("Could not load type for id: {}", type_id) }
     }
 
     pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> usize {
         let name = name.as_ref();
-        self.type_constant_indexes[name]
+        self.type_constant_indexes[name].1
     }
 
     fn stack_slot_for_local(&mut self, local_idx: usize) -> usize {
@@ -463,7 +449,30 @@ impl VM {
         }
     }
 
-    pub fn run(&mut self) -> Result<Option<Value>, InterpretError> {
+    pub fn run(&mut self, module: Module) -> Result<Option<Value>, InterpretError> {
+        let module_idx = self.constants.len();
+
+        let Module { name, code, constants, .. } = module;
+
+        let type_constant_indexes = constants.iter().enumerate()
+            .filter_map(|(idx, a)|
+                match a {
+                    Value::Type(TypeValue { name, .. }) |
+                    Value::Enum(EnumValue { name, .. }) => Some((name.clone(), (module_idx, idx))),
+                    _ => None
+                }
+            );
+
+        self.type_constant_indexes.extend(type_constant_indexes);
+        self.constants.push(constants);
+
+        if code.is_empty() {
+            return Ok(None);
+        }
+
+        let frame = CallFrame { code, name, ..CallFrame::default() };
+        self.call_stack.push(frame);
+
         self.run_from_call_stack_depth(1)
     }
 
@@ -476,7 +485,7 @@ impl VM {
             let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
             match instr {
-                Opcode::Constant(const_idx) => self.load_constant(const_idx)?,
+                Opcode::Constant(mod_idx, const_idx) => self.load_constant((mod_idx, const_idx))?,
                 Opcode::Nil => self.push(Value::Nil),
                 Opcode::IConst0 => self.push(Value::Int(0)),
                 Opcode::IConst1 => self.push(Value::Int(1)),
@@ -559,7 +568,7 @@ impl VM {
 
                     let type_value = if let Value::Type(tv) = self.pop_expect()? { tv } else { unreachable!() };
                     let type_id = self.type_constant_indexes[&type_value.name];
-                    let inst = type_value.construct(type_id, fields);
+                    let inst = type_value.construct(type_id.0, type_id.1, fields);
 
                     self.push(inst);
                 }
@@ -836,8 +845,8 @@ impl VM {
                     };
                     self.push(value);
                 }
-                Opcode::GStore(const_idx) => {
-                    let global_name = match self.constants.get(const_idx) {
+                Opcode::GStore(module_idx, const_idx) => {
+                    let global_name = match self.constants[module_idx].get(const_idx) {
                         Some(Value::Str(value)) => Ok(value.clone()),
                         None => Err(InterpretError::ConstIdxOutOfBounds),
                         Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
@@ -847,8 +856,8 @@ impl VM {
                 }
                 Opcode::LStore(stack_slot) => self.store_local(stack_slot)?,
                 Opcode::UStore(upvalue_idx) => self.store_upvalue(upvalue_idx)?,
-                Opcode::GLoad(const_idx) => {
-                    let global_name = match self.constants.get(const_idx) {
+                Opcode::GLoad(module_idx, const_idx) => {
+                    let global_name = match self.constants[module_idx].get(const_idx) {
                         Some(Value::Str(value)) => Ok(value),
                         None => Err(InterpretError::ConstIdxOutOfBounds),
                         Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))

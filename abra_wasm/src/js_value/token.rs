@@ -142,6 +142,24 @@ impl<'a> Serialize for JsToken<'a> {
                 obj.serialize_entry("pos", &JsPosition(pos))?;
                 obj.end()
             }
+            Token::Import(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "import")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::Export(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "export")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
+            Token::From(pos) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("kind", "from")?;
+                obj.serialize_entry("pos", &JsPosition(pos))?;
+                obj.end()
+            }
             Token::Return(pos, _) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("kind", "return")?;

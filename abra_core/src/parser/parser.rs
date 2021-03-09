@@ -1,22 +1,43 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
 
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<AstNode>, ParseError> {
+pub struct ParseResult {
+    pub(crate) imports: Vec<(Token, ModuleId)>,
+    pub(crate) nodes: Vec<AstNode>,
+}
+
+pub fn parse(tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
     let mut parser = Parser::new(tokens);
 
-    let mut nodes: Vec<AstNode> = vec![];
+    let mut nodes = Vec::new();
+    let mut imports = Vec::new();
+    let mut imports_done = false;
     loop {
         match parser.peek() {
-            Some(_) => nodes.push(parser.parse_stmt()?),
+            Some(tok) => {
+                let node = if let Token::Import(_) = tok {
+                    let node = parser.parse_import_statement(!imports_done)?;
+                    if let AstNode::ImportStatement(import_tok, import_node) = &node {
+                        let module_id = import_node.get_module_id();
+                        imports.push((import_tok.clone(), module_id))
+                    }
+                    node
+                } else {
+                    imports_done = true;
+                    parser.parse_stmt(None)?
+                };
+
+                nodes.push(node);
+            }
             None => break
         }
     }
 
-    Ok(nodes)
+    Ok(ParseResult { imports, nodes })
 }
 
 #[derive(PartialEq)]
@@ -190,18 +211,20 @@ impl Parser {
 
     // End Pratt plumbing
 
-    fn parse_stmt(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_stmt(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
         match self.expect_peek()? {
-            Token::Func(_) => self.parse_func_decl(),
-            Token::Val(_) => self.parse_binding_decl(),
-            Token::Var(_) => self.parse_binding_decl(),
-            Token::Type(_) | Token::Enum(_) => self.parse_type_decl(),
+            Token::Func(_) => self.parse_func_decl(export_token),
+            Token::Val(_) => self.parse_binding_decl(export_token),
+            Token::Var(_) => self.parse_binding_decl(export_token),
+            Token::Type(_) | Token::Enum(_) => self.parse_type_decl(export_token),
             Token::If(_) => self.parse_if_statement(),
             Token::Match(_) => self.parse_match_statement(),
             Token::While(_) => self.parse_while_statement(),
             Token::For(_) => self.parse_for_statement(),
             Token::Break(_) => self.parse_break_statement(),
             Token::Return(_, _) => self.parse_return_statement(),
+            Token::Import(_) => self.parse_import_statement(false),
+            Token::Export(_) => self.parse_exported_statement(),
             _ => self.parse_expr(),
         }
     }
@@ -443,6 +466,16 @@ impl Parser {
         Ok(args)
     }
 
+    fn parse_exported_statement(&mut self) -> Result<AstNode, ParseError> {
+        let export_token = self.expect_next()?; // Consume 'export'
+        match self.expect_peek()? {
+            Token::Func(_) | Token::Val(_) | Token::Var(_) | Token::Type(_) | Token::Enum(_) => {
+                self.parse_stmt(Some(export_token))
+            }
+            tok => Err(ParseError::UnexpectedToken(tok.clone()))
+        }
+    }
+
     fn parse_type_args(&mut self) -> Result<Vec<Token>, ParseError> {
         let mut type_args = Vec::new();
         if let Token::LT(_) = self.expect_peek()? {
@@ -469,7 +502,7 @@ impl Parser {
         Ok(type_args)
     }
 
-    fn parse_func_decl(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
         let name = self.expect_next_token(TokenType::Ident)?;
 
@@ -495,10 +528,10 @@ impl Parser {
             t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
         }?;
 
-        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { name, type_args, args, ret_type, body }))
+        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
     }
 
-    fn parse_binding_decl(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_binding_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
         let is_mutable = match &token {
             Token::Val(_) => false,
@@ -535,10 +568,10 @@ impl Parser {
             Some(Box::new(expr))
         } else { None };
 
-        Ok(AstNode::BindingDecl(token, BindingDeclNode { binding, is_mutable, type_ann, expr }))
+        Ok(AstNode::BindingDecl(token, BindingDeclNode { export_token, binding, is_mutable, type_ann, expr }))
     }
 
-    fn parse_type_decl(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_type_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
         let keyword_tok = self.expect_next()?;
         let is_enum = if let Token::Enum(_) = &keyword_tok { true } else { false };
 
@@ -590,7 +623,7 @@ impl Parser {
                     }
                 }
                 Token::Func(_) => {
-                    let method = self.parse_func_decl()?;
+                    let method = self.parse_func_decl(None)?;
                     methods.push(method);
                 }
                 _ => return Err(ParseError::UnexpectedToken(token.clone()))
@@ -601,9 +634,9 @@ impl Parser {
 
         if is_enum {
             let type_args = vec![];
-            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { name, variants, methods, type_args }))
+            Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { export_token, name, variants, methods, type_args }))
         } else {
-            Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { name, fields, methods, type_args }))
+            Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { export_token, name, fields, methods, type_args }))
         }
     }
 
@@ -619,7 +652,7 @@ impl Parser {
                             self.expect_next()?; // Consume '}'
                             break Ok(body);
                         }
-                        Some(_) => body.push(self.parse_stmt()?),
+                        Some(_) => body.push(self.parse_stmt(None)?),
                         None => break Err(ParseError::UnexpectedEof)
                     }
                 }
@@ -698,6 +731,51 @@ impl Parser {
         } else { None };
 
         Ok(AstNode::ReturnStatement(token, expr))
+    }
+
+    fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?; // Consume 'import' token
+        if !is_proper {
+            return Err(ParseError::UnexpectedToken(token));
+        }
+
+        let mut star_token = None;
+        let mut imports = Vec::new();
+        if let Token::Star(_) = self.expect_peek()? {
+            let token = self.expect_next()?; // Consume '*'
+            star_token = Some(token);
+        } else {
+            loop {
+                let ident = self.expect_next_token(TokenType::Ident)?;
+                imports.push(ident);
+
+                if let Token::Comma(_) = self.expect_peek()? {
+                    self.expect_next()?; // Consume ','
+                } else {
+                    break;
+                }
+            }
+        }
+
+        self.expect_next_token(TokenType::From)?;
+
+        let mut path = Vec::new();
+        let dot_token = if let Token::Dot(_) = self.expect_peek()? {
+            let token = self.expect_next()?; // Consume '.'
+            Some(token)
+        } else { None };
+        loop {
+            let ident = self.expect_next_token(TokenType::Ident)?;
+            path.push(ident);
+
+            if let Some(Token::Dot(_)) = self.peek() {
+                self.expect_next()?; // Consume '.'
+            } else {
+                break;
+            }
+        }
+
+        Ok(AstNode::ImportStatement(token, ImportNode { imports, star_token, leading_dot_token: dot_token, path }))
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
@@ -921,7 +999,7 @@ impl Parser {
             AstNode::Literal(first_chunk.clone(), AstLiteralNode::StringLiteral(val))
         } else { unreachable!() };
 
-        let args = parse(chunks.collect())?;
+        let ParseResult { nodes: args, .. } = parse(chunks.collect())?;
 
         Ok(AstNode::Invocation(
             Token::LParen(first_chunk.get_position(), false),
@@ -1353,7 +1431,7 @@ mod tests {
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
         let tokens = tokenize(&input.to_string()).unwrap();
-        super::parse(tokens)
+        super::parse(tokens).map(|ParseResult { nodes, .. }| nodes)
     }
 
     #[test]
@@ -2095,6 +2173,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
+                    export_token: None,
                     binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
@@ -2104,6 +2183,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
+                    export_token: None,
                     binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
@@ -2123,6 +2203,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Val(Position::new(1, 1)),
                 BindingDeclNode {
+                    export_token: None,
                     binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                     is_mutable: false,
                     type_ann: None,
@@ -2141,6 +2222,7 @@ mod tests {
             AstNode::BindingDecl(
                 Token::Var(Position::new(2, 1)),
                 BindingDeclNode {
+                    export_token: None,
                     binding: BindingPattern::Variable(ident_token!((2, 5), "abc")),
                     is_mutable: true,
                     type_ann: None,
@@ -2588,6 +2670,7 @@ mod tests {
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
+                export_token: None,
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
                 type_args: vec![],
                 args: vec![],
@@ -2603,6 +2686,7 @@ mod tests {
         let expected = AstNode::FunctionDecl(
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
+                export_token: None,
                 name: Token::Ident(Position::new(1, 6), "abc".to_string()),
                 type_args: vec![],
                 args: vec![],
@@ -2611,6 +2695,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 14)),
                         BindingDeclNode {
+                            export_token: None,
                             binding: BindingPattern::Variable(ident_token!((1, 18), "a")),
                             is_mutable: false,
                             type_ann: None,
@@ -2754,6 +2839,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            export_token: None,
                             binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             type_ann: None,
                             expr: Some(Box::new(int_literal!((2, 9), 123))),
@@ -2967,6 +3053,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![],
@@ -2979,6 +3066,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
@@ -3000,6 +3088,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
@@ -3026,6 +3115,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
@@ -3052,6 +3142,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![
@@ -3077,6 +3168,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "List"),
                 type_args: vec![ident_token!((1, 11), "T")],
                 fields: vec![],
@@ -3090,6 +3182,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "List"),
                 type_args: vec![
                     ident_token!((1, 11), "T"),
@@ -3136,6 +3229,7 @@ mod tests {
         let expected = AstNode::TypeDecl(
             Token::Type(Position::new(1, 1)),
             TypeDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Person"),
                 type_args: vec![],
                 fields: vec![],
@@ -3143,6 +3237,7 @@ mod tests {
                     AstNode::FunctionDecl(
                         Token::Func(Position::new(2, 1)),
                         FunctionDeclNode {
+                            export_token: None,
                             name: Token::Ident(Position::new(2, 6), "hello".to_string()),
                             type_args: vec![],
                             args: vec![
@@ -3203,6 +3298,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Color"),
                 type_args: vec![],
                 variants: vec![
@@ -3219,6 +3315,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Direction"),
                 type_args: vec![],
                 variants: vec![
@@ -3235,6 +3332,7 @@ mod tests {
         let expected = AstNode::EnumDecl(
             Token::Enum(Position::new(1, 1)),
             EnumDeclNode {
+                export_token: None,
                 name: ident_token!((1, 6), "Direction"),
                 type_args: vec![],
                 variants: vec![
@@ -3420,6 +3518,7 @@ mod tests {
         let ast = parse("val a = 1\n+\na\n[a]\nprintln(a)\n[a]")?;
         let expected = vec![
             AstNode::BindingDecl(Token::Val(Position::new(1, 1)), BindingDeclNode {
+                export_token: None,
                 binding: BindingPattern::Variable(ident_token!((1, 5), "a")),
                 type_ann: None,
                 expr: Some(Box::new(AstNode::Binary(Token::Plus(Position::new(2, 1)), BinaryNode {
@@ -3600,6 +3699,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 12)),
                         BindingDeclNode {
+                            export_token: None,
                             binding: BindingPattern::Variable(ident_token!((1, 16), "a")),
                             is_mutable: false,
                             type_ann: None,
@@ -3622,6 +3722,7 @@ mod tests {
         let expected = AstNode::BindingDecl(
             Token::Val(Position::new(1, 1)),
             BindingDeclNode {
+                export_token: None,
                 binding: BindingPattern::Variable(ident_token!((1, 5), "str")),
                 is_mutable: false,
                 type_ann: None,
@@ -4053,6 +4154,7 @@ mod tests {
                     AstNode::BindingDecl(
                         Token::Val(Position::new(2, 1)),
                         BindingDeclNode {
+                            export_token: None,
                             binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                             is_mutable: false,
                             type_ann: None,
@@ -4471,5 +4573,152 @@ mod tests {
         let error = parse("return return").unwrap_err();
         let expected = ParseError::UnexpectedToken(Token::Return(Position::new(1, 8), true));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_import_statement() -> TestResult {
+        let ast = parse("import * from abc.def")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    imports: vec![],
+                    star_token: Some(Token::Star(Position::new(1, 8))),
+                    leading_dot_token: None,
+                    path: vec![ident_token!((1, 15), "abc"), ident_token!((1, 19), "def")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("import Date from time.date")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    imports: vec![ident_token!((1, 8), "Date")],
+                    star_token: None,
+                    leading_dot_token: None,
+                    path: vec![ident_token!((1, 18), "time"), ident_token!((1, 23), "date")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("import SomeType, someFunc from .local.module")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    imports: vec![
+                        ident_token!((1, 8), "SomeType"),
+                        ident_token!((1, 18), "someFunc"),
+                    ],
+                    star_token: None,
+                    leading_dot_token: Some(Token::Dot(Position::new(1, 32))),
+                    path: vec![ident_token!((1, 33), "local"), ident_token!((1, 39), "module")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_exported_statements() -> TestResult {
+        // Val binding
+        let ast = parse("export val x = 14")?;
+        let expected = AstNode::BindingDecl(
+            Token::Val(Position::new(1, 8)),
+            BindingDeclNode {
+                export_token: Some(Token::Export(Position::new(1, 1))),
+                binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
+                type_ann: None,
+                expr: Some(Box::new(int_literal!((1, 16), 14))),
+                is_mutable: false,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Var binding
+        let ast = parse("export var x = 14")?;
+        let expected = AstNode::BindingDecl(
+            Token::Var(Position::new(1, 8)),
+            BindingDeclNode {
+                export_token: Some(Token::Export(Position::new(1, 1))),
+                binding: BindingPattern::Variable(ident_token!((1, 12), "x")),
+                type_ann: None,
+                expr: Some(Box::new(int_literal!((1, 16), 14))),
+                is_mutable: true,
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Function declaration
+        let ast = parse("export func abc() {}")?;
+        let expected = AstNode::FunctionDecl(
+            Token::Func(Position::new(1, 8)),
+            FunctionDeclNode {
+                export_token: Some(Token::Export(Position::new(1, 1))),
+                name: ident_token!((1, 13), "abc"),
+                type_args: vec![],
+                args: vec![],
+                ret_type: None,
+                body: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Type declaration
+        let ast = parse("export type Person {}")?;
+        let expected = AstNode::TypeDecl(
+            Token::Type(Position::new(1, 8)),
+            TypeDeclNode {
+                export_token: Some(Token::Export(Position::new(1, 1))),
+                name: ident_token!((1, 13), "Person"),
+                type_args: vec![],
+                fields: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        // Enum declaration
+        let ast = parse("export enum Direction {}")?;
+        let expected = AstNode::EnumDecl(
+            Token::Enum(Position::new(1, 8)),
+            EnumDeclNode {
+                export_token: Some(Token::Export(Position::new(1, 1))),
+                name: ident_token!((1, 13), "Direction"),
+                type_args: vec![],
+                variants: vec![],
+                methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_exported_statements_errors() {
+        let error = parse("export 123").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 8), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("export if true {} else {}").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::If(Position::new(1, 8)));
+        assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_imports_errors() {
+        let err = parse("\
+          func abc() {}\n\
+          import abc from def.ghi\
+        ").unwrap_err();
+        let expected = ParseError::UnexpectedToken(Token::Import(Position::new(2, 1)));
+        assert_eq!(expected, err);
     }
 }

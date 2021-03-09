@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::vm::vm::VM;
 use std::hash::{Hash, Hasher};
 use crate::builtins::arguments::Arguments;
-use crate::builtins::native::common::invoke_fn;
+use crate::builtins::common::invoke_fn;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
 #[abra_type(signature = "Map<K, V>", variant = "MapObj")]
@@ -150,7 +150,7 @@ impl Hash for NativeMap {
 
 #[cfg(test)]
 mod test {
-    use crate::builtins::native::test_utils::{interpret, new_string_obj, interpret_get_result};
+    use crate::builtins::test_utils::{interpret, new_string_obj, interpret_get_result};
     use crate::vm::value::Value;
 
     #[test]

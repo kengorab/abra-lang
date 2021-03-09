@@ -1,11 +1,16 @@
 #[macro_use]
 extern crate clap;
 
+mod fs_module_reader;
+
+use abra_core::builtins::common::to_string;
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
+use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
-use abra_core::builtins::native::to_string;
+use crate::fs_module_reader::FsModuleReader;
+use std::path::PathBuf;
 
 #[derive(Clap)]
 #[clap(name = "abra", version = "0.0.1")]
@@ -22,12 +27,12 @@ enum SubCommand {
 
 #[derive(Clap)]
 struct RunOpts {
-    file_name: String
+    file_path: String
 }
 
 #[derive(Clap)]
 struct DisassembleOpts {
-    file_name: String,
+    file_path: String,
 
     #[clap(short = "o", help = "Where to write bytecode to (default: stdout)")]
     out_file: Option<String>,
@@ -43,14 +48,18 @@ fn main() -> Result<(), ()> {
 }
 
 fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
-    let contents = read_file(&opts.file_name)?;
-
     let ctx = VMContext {
         print: |input| print!("{}", input)
     };
 
-    let module = match compile(opts.file_name, &contents) {
-        Ok((module, _)) => module,
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+    let contents = read_file(&file_path)?;
+
+    let module_reader = FsModuleReader::new(current_path);
+    let module_id = ModuleId::from_path(&opts.file_path);
+    let modules = match compile(module_id, &contents, module_reader) {
+        Ok(modules) => modules,
         Err(error) => {
             match error {
                 Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
@@ -61,20 +70,36 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
             std::process::exit(1);
         }
     };
-    let mut vm = VM::new(module, ctx);
-    match vm.run() {
-        Ok(Some(v)) if v != Value::Nil => println!("{}", to_string(&v, &mut vm)),
-        Err(e) => eprintln!("{:?}", e),
-        _ => {}
-    };
+    let mut vm = VM::new(ctx);
+
+    let mut result = Value::Nil;
+    for module in modules {
+        match vm.run(module) {
+            Ok(Some(v)) if v != Value::Nil => {
+                result = v;
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                break;
+            },
+            _ => {}
+        };
+    }
+    if result != Value::Nil {
+        println!("{}", to_string(&result, &mut vm));
+    }
 
     Ok(())
 }
 
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
-    let contents = read_file(&opts.file_name)?;
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+    let contents = read_file(&file_path)?;
 
-    match compile_and_disassemble(opts.file_name, &contents) {
+    let module_reader = FsModuleReader::new(current_path);
+    let module_id = ModuleId::from_path(&opts.file_path);
+    match compile_and_disassemble(module_id, &contents, module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),
@@ -92,9 +117,9 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     Ok(())
 }
 
-fn read_file(file_name: &String) -> Result<String, ()> {
+fn read_file(file_name: &PathBuf) -> Result<String, ()> {
     std::fs::read_to_string(file_name).map_err(|err| {
-        eprintln!("Could not read file {}: {}", file_name, err);
+        eprintln!("Could not read file {}: {}", file_name.to_str().unwrap(), err);
         std::process::exit(1);
     })
 }

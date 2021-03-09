@@ -21,7 +21,7 @@ pub enum TypecheckerError {
     InvalidLoopTarget { token: Token, target_type: Type },
     InvalidOperator { token: Token, op: BinaryOp, ltype: Type, rtype: Type },
     MissingRequiredAssignment { ident: Token },
-    DuplicateBinding { ident: Token, orig_ident: Token },
+    DuplicateBinding { ident: Token, orig_ident: Option<Token> },
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
@@ -52,6 +52,7 @@ pub enum TypecheckerError {
     InvalidSelfParamPosition { token: Token },
     InvalidSelfParam { token: Token },
     InvalidTypeDeclDepth { token: Token },
+    InvalidExportDepth { token: Token },
     ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
@@ -70,6 +71,8 @@ pub enum TypecheckerError {
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
     InvalidAccess { token: Token, is_field: bool, is_get: bool },
+    InvalidModuleImport { token: Token, module_name: String, circular: bool },
+    InvalidImportValue { ident: Token },
 }
 
 impl TypecheckerError {
@@ -112,6 +115,7 @@ impl TypecheckerError {
             TypecheckerError::InvalidSelfParamPosition { token } => token,
             TypecheckerError::InvalidSelfParam { token } => token,
             TypecheckerError::InvalidTypeDeclDepth { token } => token,
+            TypecheckerError::InvalidExportDepth { token } => token,
             TypecheckerError::ForbiddenVariableType { binding, .. } => binding.get_token(),
             TypecheckerError::InvalidInstantiation { token, .. } => token,
             TypecheckerError::InvalidTypeArgumentArity { token, .. } => token,
@@ -130,6 +134,8 @@ impl TypecheckerError {
             TypecheckerError::InvalidProtocolMethod { token, .. } => token,
             TypecheckerError::VarargMismatch { token, .. } => token,
             TypecheckerError::InvalidAccess { token, .. } => token,
+            TypecheckerError::InvalidModuleImport { token, .. } => token,
+            TypecheckerError::InvalidImportValue { ident: token } => token,
         }
     }
 }
@@ -282,13 +288,17 @@ impl DisplayError for TypecheckerError {
                     ident, pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::DuplicateBinding { ident, orig_ident } => {
+            TypecheckerError::DuplicateBinding { ident, orig_ident} => {
                 let ident = Token::get_ident_name(&ident);
-                let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", ident, pos.line, pos.col, cursor_line);
+                let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", &ident, pos.line, pos.col, cursor_line);
 
-                let pos = orig_ident.get_position();
-                let cursor_line = Self::get_underlined_line(lines, orig_ident);
-                let second_msg = format!("Binding already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+                let second_msg = if let Some(orig_ident) = orig_ident {
+                    let pos = orig_ident.get_position();
+                    let cursor_line = Self::get_underlined_line(lines, orig_ident);
+                    format!("'{}' already declared in scope at ({}:{})\n{}", ident, pos.line, pos.col, cursor_line)
+                } else {
+                    format!("'{}' already declared as built-in value", ident)
+                };
 
                 format!("{}\n{}", first_msg, second_msg)
             }
@@ -565,6 +575,13 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
+            TypecheckerError::InvalidExportDepth { .. } => {
+                format!(
+                    "Invalid export modifier: ({}:{})\n{}\n\
+                    Exported values may only appear at the top level scope",
+                    pos.line, pos.col, cursor_line
+                )
+            }
             TypecheckerError::ForbiddenVariableType { typ, .. } => {
                 match typ {
                     Type::Unknown => format!(
@@ -744,6 +761,34 @@ impl DisplayError for TypecheckerError {
                     access_kind, target, access_str
                 )
             }
+            TypecheckerError::InvalidModuleImport { module_name, circular, .. } => {
+                let reason = if *circular {
+                    format!(
+                        "Circular dependency detected within the module '{}'. It appears that some \
+                        module imported by '{}' is trying to import '{}', which resulted in a cycle.",
+                        module_name, module_name, module_name
+                    )
+                } else {
+                    format!(
+                        "The module '{}' could not be loaded. Please ensure that the import path of the \
+                        module is correct, and that there is a module at that location",
+                        module_name
+                    )
+                };
+
+                format!(
+                    "Could not import module: ({}:{})\n{}\n{}",
+                    pos.line, pos.col, cursor_line, reason
+                )
+            }
+            TypecheckerError::InvalidImportValue { ident } => {
+                format!(
+                    "Invalid import: ({}:{})\n{}\n\
+                    This module does not export any value called '{}'",
+                    pos.line, pos.col, cursor_line,
+                    Token::get_ident_name(ident)
+                )
+            }
         }
     }
 }
@@ -820,18 +865,30 @@ Variables declared with 'val' must be initialized"
         let src = "val abc = 123\nval abc = 5".to_string();
         let err = TypecheckerError::DuplicateBinding {
             ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
-            orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
+            orig_ident: Some(Token::Ident(Position::new(1, 5), "abc".to_string())),
         };
-
         let expected = format!("\
 Duplicate variable 'abc': (2:5)
   |  val abc = 5
          ^^^
-Binding already declared in scope at (1:5)
+'abc' already declared in scope at (1:5)
   |  val abc = 123
          ^^^"
         );
+        assert_eq!(expected, err.get_message(&src));
 
+        // Test with prelude
+        let src = "func println() {}".to_string();
+        let err = TypecheckerError::DuplicateBinding {
+            ident: Token::Ident(Position::new(1, 6), "println".to_string()),
+            orig_ident: None,
+        };
+        let expected = format!("\
+Duplicate variable 'println': (1:6)
+  |  func println() {{}}
+          ^^^^^^^
+'println' already declared as built-in value"
+        );
         assert_eq!(expected, err.get_message(&src));
     }
 
