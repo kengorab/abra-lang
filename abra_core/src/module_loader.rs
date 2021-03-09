@@ -1,7 +1,7 @@
 use crate::parser::ast::ModuleId;
 use crate::typechecker::typechecker::TypedModule;
 use crate::{Error, typecheck};
-use crate::vm::prelude::Prelude;
+use crate::builtins::{load_module};
 use std::collections::HashMap;
 use crate::vm::compiler::{compile, Module, Metadata};
 use crate::typechecker::types::Type;
@@ -30,17 +30,15 @@ const PRELUDE_MODULE_IDX: usize = 0;
 
 impl<R: ModuleReader> ModuleLoader<R> {
     pub fn new(module_reader: R) -> Self {
-        let mut cache = HashMap::new();
-
-        let prelude = Prelude::typed_module();
-        let ordering = vec![prelude.module_id.clone()];
-        cache.insert(prelude.module_id.get_name(), Some(prelude));
-
+        let typed_module_cache = HashMap::new();
         let compiled_modules = Vec::new();
         let compiled_module_constants = HashMap::new();
         let compiled_modules_indices = HashMap::new();
+        let ordering = Vec::new();
 
-        Self { module_reader, typed_module_cache: cache, compiled_modules, compiled_module_constants, compiled_modules_indices, ordering }
+        let mut loader = Self { module_reader, typed_module_cache, compiled_modules, compiled_module_constants, compiled_modules_indices, ordering };
+        loader.load_builtin("prelude");
+        loader
     }
 
     pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
@@ -49,6 +47,10 @@ impl<R: ModuleReader> ModuleLoader<R> {
             Some(Some(_)) => return Ok(()),
             Some(None) => return Err(ModuleLoaderError::CircularDependency),
             _ => {}
+        }
+
+        if self.load_builtin(&module_name) {
+            return Ok(())
         }
 
         let contents = match self.module_reader.read_module(&module_id) {
@@ -65,6 +67,23 @@ impl<R: ModuleReader> ModuleLoader<R> {
             }
             Err(e) => Err(ModuleLoaderError::WrappedError(e))
         }
+    }
+
+    fn load_builtin(&mut self, module_name: &str) -> bool {
+        let mod_spec = match load_module(module_name){
+            None => return false,
+            Some(get_mod_spec) => get_mod_spec()
+        };
+
+        let module_id = mod_spec.typed_module.module_id.clone();
+
+        self.ordering.push(module_id.clone());
+        self.typed_module_cache.insert(module_id.get_name(), Some(mod_spec.typed_module));
+        self.compiled_modules.push((mod_spec.compiled_module, None));
+        self.compiled_module_constants.insert(module_id.clone(), mod_spec.constant_indexes_by_ident);
+        self.compiled_modules_indices.insert(module_id.clone(), self.compiled_modules_indices.len());
+
+        true
     }
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
@@ -93,18 +112,14 @@ impl<R: ModuleReader> ModuleLoader<R> {
     pub fn compile_all(&mut self) {
         let ordering = self.ordering.clone();
         for module_id in ordering {
-            if module_id == ModuleId::from_name("prelude") {
-                let (prelude_module, constants_by_idx) = Prelude::compiled_module();
-                self.compiled_modules.push((prelude_module, None));
-                self.compiled_module_constants.insert(module_id.clone(), constants_by_idx);
+            let module_name = module_id.get_name();
 
-                let module_idx = self.compiled_modules.len() - 1;
-                debug_assert!(module_idx == PRELUDE_MODULE_IDX);
-                self.compiled_modules_indices.insert(module_id.clone(), module_idx);
+            if load_module(&module_name).is_some() {
+                debug_assert!(self.compiled_modules.iter().find(|(m, _)| m.name == module_name).is_some());
                 continue;
             }
 
-            let typed_module = self.typed_module_cache.get(&module_id.get_name()).unwrap().as_ref().unwrap().clone();
+            let typed_module = self.typed_module_cache.get(&module_name).unwrap().as_ref().unwrap().clone();
 
             let module_idx = self.compiled_modules.len();
             self.compiled_modules_indices.insert(module_id.clone(), module_idx);

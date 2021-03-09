@@ -4,11 +4,11 @@ use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, Bindin
 use crate::vm::opcode::Opcode;
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedImportNode};
 use crate::typechecker::types::{Type, FnType, EnumVariantType};
-use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj};
-use crate::builtins::native::{NativeArray, NativeMap, NativeSet, NativeString, default_to_string_method};
+use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj, NativeFn};
+use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeString};
+use crate::builtins::common::default_to_string_method;
 use crate::builtins::native_value_trait::NativeTyp;
 use crate::common::util::random_string;
-use crate::builtins::native_fns::NativeFn;
 use crate::typechecker::typechecker::TypedModule;
 use std::collections::HashMap;
 use crate::module_loader::{ModuleLoader, ModuleReader};
@@ -2023,7 +2023,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vm::prelude::{PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX};
+    use crate::builtins::prelude::{PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX};
     use crate::common::test_utils::MockModuleReader;
     use crate::parser::ast::ModuleId;
     use itertools::Itertools;

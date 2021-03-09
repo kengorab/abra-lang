@@ -178,6 +178,7 @@ impl Disassembler {
     pub fn disassemble(&mut self) -> String {
         let mut output = Vec::<String>::new();
 
+        dbg!(&self.modules);
         for (module, metadata) in self.modules.clone() {
             if module.name == "prelude" {
                 continue;

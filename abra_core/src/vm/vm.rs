@@ -1,13 +1,12 @@
-use crate::builtins::native::to_string;
+use crate::builtins::common::to_string;
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, FnValue, ClosureValue, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
+use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::cell::RefCell;
 use std::sync::Arc;
-use crate::builtins::native_fns::NativeFn;
 use crate::builtins::native_value_trait::NativeValue;
 
 // Helper macros
