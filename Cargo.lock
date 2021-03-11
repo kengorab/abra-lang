@@ -44,7 +44,7 @@ dependencies = [
 
 [[package]]
 name = "abra_wasm"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "abra_core",
  "futures 0.1.29",
