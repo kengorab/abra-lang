@@ -59,7 +59,7 @@ export type RunResult = RunSuccess | RunFailure
  * Compiles and executes the input string as Abra code, returning the result. This could
  * result in a runtime error.
  */
-export function runSync(input: string): RunResult;
+export function run(input: string): RunResult;
 
 export interface DisassembleSuccess {
     success: true,

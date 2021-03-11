@@ -284,7 +284,7 @@ fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<(Value, Strin
     Ok(res)
 }
 
-#[wasm_bindgen(js_name = runSync)]
+#[wasm_bindgen(js_name = run)]
 pub fn run(input: &str) -> JsValue {
     let ctx = VMContext {
         print: |input| println(input)
