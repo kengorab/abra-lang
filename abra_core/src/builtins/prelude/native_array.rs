@@ -9,7 +9,7 @@ use std::collections::{HashSet, HashMap};
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "Array<T>", variant = "ArrayObj")]
+#[abra_type(module = "prelude", signature = "Array<T>", variant = "ArrayObj")]
 pub struct NativeArray {
     // This field needs to be public so vararg handlers can access the received array's values
     pub _inner: Vec<Value>,

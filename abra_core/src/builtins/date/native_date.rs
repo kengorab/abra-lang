@@ -5,7 +5,7 @@ use std::hash::Hash;
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "Date")]
+#[abra_type(module = "date", signature = "Date")]
 pub struct NativeDate {
     #[abra_field(name = "year", field_type = "Int")]
     year: i64,
@@ -105,5 +105,50 @@ impl NativeDate {
     #[abra_static_method(signature = "now(): Date")]
     fn now() -> Self {
         Self { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0 }
+    }
+
+    #[abra_method(signature = "addDays(amount: Int): Date")]
+    fn add_days(&self, mut args: Arguments) -> Self {
+        let amount = args.next_int();
+        Self {
+            day: self.day + amount,
+            ..self.clone()
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::builtins::test_utils::{interpret, new_string_obj};
+
+    #[test]
+    fn test_date_construct() {
+        let result = interpret(r#"
+          import Date from date
+          Date(year: 2021, month: 3, day: 9).toString()
+        "#);
+        let expected = new_string_obj("Date(year: 2021, month: 3, day: 9, hour: 0, minute: 0, second: 0)");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_date_static_now() {
+        let result = interpret(r#"
+          import Date from date
+          Date.now().toString()
+        "#);
+        let expected = new_string_obj("Date(year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0)");
+        assert_eq!(Some(expected), result);
+    }
+
+    #[test]
+    fn test_date_add_days() {
+        let result = interpret(r#"
+          import Date from date
+          val now = Date.now()
+          now.addDays(1).addDays(1).toString()
+        "#);
+        let expected = new_string_obj("Date(year: 0, month: 0, day: 2, hour: 0, minute: 0, second: 0)");
+        assert_eq!(Some(expected), result);
     }
 }

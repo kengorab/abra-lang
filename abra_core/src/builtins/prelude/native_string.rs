@@ -8,7 +8,7 @@ use crate::builtins::arguments::Arguments;
 use crate::builtins::common::to_string;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "String", noconstruct = true, variant = "StringObj")]
+#[abra_type(module = "prelude", signature = "String", noconstruct = true, variant = "StringObj")]
 pub struct NativeString {
     pub _inner: String,
 

@@ -179,9 +179,9 @@ impl VM {
         } else { panic!("Could not load type for id: {}", type_id) }
     }
 
-    pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> usize {
+    pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> (usize, usize) {
         let name = name.as_ref();
-        self.type_constant_indexes[name].1
+        self.type_constant_indexes[name]
     }
 
     fn stack_slot_for_local(&mut self, local_idx: usize) -> usize {
@@ -457,8 +457,11 @@ impl VM {
         let type_constant_indexes = constants.iter().enumerate()
             .filter_map(|(idx, a)|
                 match a {
-                    Value::Type(TypeValue { name, .. }) |
-                    Value::Enum(EnumValue { name, .. }) => Some((name.clone(), (module_idx, idx))),
+                    Value::Type(TypeValue { name, module_name, .. }) |
+                    Value::Enum(EnumValue { name, module_name, .. }) => {
+                        let fully_qualified_type_name = format!("{}/{}", module_name, name);
+                        Some((fully_qualified_type_name, (module_idx, idx)))
+                    },
                     _ => None
                 }
             );
@@ -567,7 +570,8 @@ impl VM {
                     }
 
                     let type_value = if let Value::Type(tv) = self.pop_expect()? { tv } else { unreachable!() };
-                    let type_id = self.type_constant_indexes[&type_value.name];
+                    let fully_qualified_type_name = format!("{}/{}", type_value.module_name, type_value.name);
+                    let type_id = self.type_constant_indexes[&fully_qualified_type_name];
                     let inst = type_value.construct(type_id.0, type_id.1, fields);
 
                     self.push(inst);
@@ -629,12 +633,12 @@ impl VM {
                         // Otherwise, handle remaining value kinds
                         v => {
                             let type_id = match &v {
-                                Value::Int(_) => self.type_constant_indexes["Int"],
-                                Value::Float(_) => self.type_constant_indexes["Float"],
-                                Value::ArrayObj(_) => self.type_constant_indexes["Array"],
-                                Value::StringObj(_) => self.type_constant_indexes["String"],
-                                Value::SetObj(_) => self.type_constant_indexes["Set"],
-                                Value::MapObj(_) => self.type_constant_indexes["Map"],
+                                Value::Int(_) => self.type_constant_indexes["prelude/Int"],
+                                Value::Float(_) => self.type_constant_indexes["prelude/Float"],
+                                Value::ArrayObj(_) => self.type_constant_indexes["prelude/Array"],
+                                Value::StringObj(_) => self.type_constant_indexes["prelude/String"],
+                                Value::SetObj(_) => self.type_constant_indexes["prelude/Set"],
+                                Value::MapObj(_) => self.type_constant_indexes["prelude/Map"],
                                 Value::InstanceObj(o) => o.borrow().type_id,
                                 Value::NativeInstanceObj(o) => o.borrow().type_id,
                                 _ => unreachable!("Remaining value kinds should have been handled above")
@@ -937,13 +941,13 @@ impl VM {
                 Opcode::Typeof => {
                     let v = self.pop_expect()?;
                     match v {
-                        Value::Int(_) => self.load_constant(self.type_constant_indexes["Int"])?,
-                        Value::Float(_) => self.load_constant(self.type_constant_indexes["Float"])?,
-                        Value::Bool(_) => self.load_constant(self.type_constant_indexes["Bool"])?,
-                        Value::StringObj(_) => self.load_constant(self.type_constant_indexes["String"])?,
-                        Value::ArrayObj(_) => self.load_constant(self.type_constant_indexes["Array"])?,
-                        Value::SetObj(_) => self.load_constant(self.type_constant_indexes["Set"])?,
-                        Value::MapObj(_) => self.load_constant(self.type_constant_indexes["Map"])?,
+                        Value::Int(_) => self.load_constant(self.type_constant_indexes["prelude/Int"])?,
+                        Value::Float(_) => self.load_constant(self.type_constant_indexes["prelude/Float"])?,
+                        Value::Bool(_) => self.load_constant(self.type_constant_indexes["prelude/Bool"])?,
+                        Value::StringObj(_) => self.load_constant(self.type_constant_indexes["prelude/String"])?,
+                        Value::ArrayObj(_) => self.load_constant(self.type_constant_indexes["prelude/Array"])?,
+                        Value::SetObj(_) => self.load_constant(self.type_constant_indexes["prelude/Set"])?,
+                        Value::MapObj(_) => self.load_constant(self.type_constant_indexes["prelude/Map"])?,
                         Value::InstanceObj(o) => {
                             let i = &*o.borrow();
                             let type_value = self.load_type(i.type_id).clone();

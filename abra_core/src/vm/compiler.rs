@@ -1211,6 +1211,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let type_value = Value::Type(TypeValue {
             name: type_name.clone(),
+            module_name: self.module_id.get_name(),
             fields: fields.iter().map(|f| Token::get_ident_name(&f.ident)).collect(),
             constructor: None,
             methods: compiled_methods,
@@ -1251,7 +1252,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
                     EnumVariantKind::Constructor(args) => args.len()
                 };
 
-                (name.clone(), EnumVariantObj { enum_name: enum_name.clone(), name, idx, arity, methods: vec![], values: None })
+                (name.clone(), EnumVariantObj { enum_name: enum_name.clone(), enum_module_name: self.module_id.get_name(), name, idx, arity, methods: vec![], values: None })
             })
             .collect();
 
@@ -1301,6 +1302,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let enum_value = Value::Enum(EnumValue {
             name: enum_name.clone(),
+            module_name: self.module_id.get_name(),
             variants,
             methods: compiled_methods,
             static_fields: compiled_static_fields,
@@ -2541,6 +2543,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -2581,6 +2584,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string(), "age".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -3160,6 +3164,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -3677,6 +3682,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![
@@ -3730,6 +3736,7 @@ mod tests {
                 Value::Str("_test/Status".to_string()),
                 Value::Enum(EnumValue {
                     name: "Status".to_string(),
+                    module_name: "_test".to_string(),
                     methods: vec![to_string_method()],
                     static_fields: vec![],
                     variants: vec![
@@ -3737,6 +3744,7 @@ mod tests {
                             "On".to_string(),
                             EnumVariantObj {
                                 enum_name: "Status".to_string(),
+                                enum_module_name: "_test".to_string(),
                                 name: "On".to_string(),
                                 idx: 0,
                                 methods: vec![],
@@ -3748,6 +3756,7 @@ mod tests {
                             "Off".to_string(),
                             EnumVariantObj {
                                 enum_name: "Status".to_string(),
+                                enum_module_name: "_test".to_string(),
                                 name: "Off".to_string(),
                                 idx: 1,
                                 methods: vec![],
@@ -4465,6 +4474,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -4651,6 +4661,7 @@ mod tests {
                 Value::Str("_test/Person".to_string()),
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
+                    module_name: "_test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -4704,11 +4715,13 @@ mod tests {
                 Value::Str("_test/Direction".to_string()),
                 Value::Enum(EnumValue {
                     name: "Direction".to_string(),
+                    module_name: "_test".to_string(),
                     variants: vec![
                         (
                             "Left".to_string(),
                             EnumVariantObj {
                                 enum_name: "Direction".to_string(),
+                                enum_module_name: "_test".to_string(),
                                 name: "Left".to_string(),
                                 idx: 0,
                                 methods: vec![],
@@ -4720,6 +4733,7 @@ mod tests {
                             "Right".to_string(),
                             EnumVariantObj {
                                 enum_name: "Direction".to_string(),
+                                enum_module_name: "_test".to_string(),
                                 name: "Right".to_string(),
                                 idx: 1,
                                 methods: vec![],
@@ -4777,11 +4791,13 @@ mod tests {
                 Value::Str("_test/Foo".to_string()),
                 Value::Enum(EnumValue {
                     name: "Foo".to_string(),
+                    module_name: "_test".to_string(),
                     variants: vec![
                         (
                             "Bar".to_string(),
                             EnumVariantObj {
                                 enum_name: "Foo".to_string(),
+                                enum_module_name: "_test".to_string(),
                                 name: "Bar".to_string(),
                                 idx: 0,
                                 methods: vec![],

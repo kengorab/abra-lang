@@ -16,6 +16,7 @@ pub struct ModuleSpec {
 pub struct ModuleSpecBuilder {
     name: String,
     exports: HashMap<String, ExportedValue>,
+    referencable_types: HashMap<String, Type>,
     constants: Vec<Value>,
     constant_names: Vec<String>,
 }
@@ -33,7 +34,7 @@ impl ModuleSpecBuilder {
 
         let module_id = ModuleId::from_name(self.name.as_str());
         ModuleSpec {
-            typed_module: TypedModule { module_id, exports: self.exports, ..TypedModule::default() },
+            typed_module: TypedModule { module_id, exports: self.exports, referencable_types: self.referencable_types, ..TypedModule::default() },
             compiled_module: Module { name: self.name, constants: self.constants, code: vec![] },
             constant_indexes_by_ident,
         }
@@ -58,12 +59,15 @@ impl ModuleSpecBuilder {
 
     pub fn add_type(mut self, type_spec: TypeSpec) -> Self {
         let TypeSpec { name, typ, reference_type, native_value } = type_spec;
+        if reference_type.is_some() {
+            self.referencable_types.insert(format!("{}/{}", &self.name, &name), typ.clone());
+        }
         self.exports.insert(name.clone(), ExportedValue::Type { reference: reference_type, backing_type: typ, node: None });
 
         self.constant_names.push(name.clone());
         let type_value = match native_value {
             Some(type_value) => type_value,
-            None => Value::Type(TypeValue { name, ..TypeValue::default() })
+            None => Value::Type(TypeValue { name, module_name: self.name.clone(), ..TypeValue::default() })
         };
         self.constants.push(type_value);
 
@@ -77,6 +81,7 @@ impl ModuleSpecBuilder {
         self.constant_names.push(type_name.clone());
         self.constants.push(Value::Type(V::get_type_value()));
 
+        self.referencable_types.insert(format!("{}/{}", &self.name, type_name), Type::Struct(t.clone()));
         let reference = Type::Reference(
             type_name.clone(),
             t.type_args.iter().map(|(_, t)| t.clone()).collect(),

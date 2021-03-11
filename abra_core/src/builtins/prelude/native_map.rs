@@ -7,7 +7,7 @@ use crate::builtins::arguments::Arguments;
 use crate::builtins::common::invoke_fn;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(signature = "Map<K, V>", variant = "MapObj")]
+#[abra_type(module = "prelude", signature = "Map<K, V>", variant = "MapObj")]
 pub struct NativeMap {
     pub _inner: HashMap<Value, Value>,
 

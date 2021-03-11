@@ -1,13 +1,13 @@
-//import println, range, readFile, Int, Float, Bool, String, Unit, Any, Array, Map, Set from prelude
-
-//println(range)
-//import Person from .example2
-//import ken from .example2
+//import Date from date
 //
-//println(ken.name)
+//val d = Date(year: 2021, month: 3, day: 8)
 //
-//println(Person(name: "Meg"))
+//println(d)
 
-import Date from date
+//import Date from date
+//Date(year: 2021, month: 3, day: 9).toString()
+//Date.now().toString()
 
-println(Date)
+type Person { name: String }
+val ken = Person(name: "Ken")
+ken.name

@@ -13,6 +13,7 @@ mod signature;
 struct TypeSpec {
     native_type_name: String,
     name: String,
+    module_name: String,
     type_args: Vec<String>,
     constructor: Option<ConstructorSpec>,
     to_string_method: Option<String>,
@@ -67,6 +68,7 @@ struct SetterSpec {
 #[derive(Debug)]
 struct FirstPass {
     type_name: String,
+    module_name: String,
     type_args: Vec<String>,
     field_specs: Vec<FieldSpec>,
     is_pseudotype: bool,
@@ -83,9 +85,8 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::ItemStruct);
     let native_type_name = input.ident.to_string();
 
-    let (type_name, type_args, is_pseudotype, is_noconstruct, value_variant) = match parse_abra_type_attr(&input.attrs) {
-        Ok(Some(res)) => res,
-        Ok(None) => (native_type_name.clone(), vec![], false, false, None),
+    let (type_name, module_name, type_args, is_pseudotype, is_noconstruct, value_variant) = match parse_abra_type_attr(&input.attrs) {
+        Ok(res) => res,
         Err(e) => return e.to_compile_error().into()
     };
 
@@ -99,7 +100,7 @@ pub fn abra_type(input: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into()
     };
 
-    let first_pass = FirstPass { type_name, type_args, field_specs, is_pseudotype, is_noconstruct, value_variant };
+    let first_pass = FirstPass { type_name, module_name, type_args, field_specs, is_pseudotype, is_noconstruct, value_variant };
     TYPES.with(|types| {
         types.borrow_mut().insert(native_type_name, first_pass)
     });
@@ -150,7 +151,7 @@ fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, type
     }))
 }
 
-fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, Vec<String>, bool, bool, Option<String>)>, syn::Error> {
+fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<(String, String, Vec<String>, bool, bool, Option<String>), syn::Error> {
     match find_attr(attrs, "abra_type") {
         Some((_, attr)) => {
             let attr_span = attr.span();
@@ -158,6 +159,14 @@ fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, V
             let is_pseudotype = attr.get("pseudotype").map(|v| v == "true").unwrap_or(false);
             let is_noconstruct = attr.get("noconstruct").map(|v| v == "true").unwrap_or(false);
             let value_variant = attr.get("variant").map(|v| v.clone());
+
+            let module_name = match attr.get("module") {
+                Some(module_name) => module_name.clone(),
+                None => {
+                    let msg = "Missing required parameter `module` in #[abra_type] attribute".to_string();
+                    return Err(syn::Error::new(attr_span, msg));
+                }
+            };
 
             match attr.get("signature") {
                 Some(signature) => match parse_type(None, &vec![], signature) {
@@ -169,7 +178,7 @@ fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, V
                                     r => unreachable!(format!("Unexpected type {:?}", r))
                                 })
                                 .collect();
-                            Ok(Some((type_name, type_args, is_pseudotype, is_noconstruct, value_variant)))
+                            Ok((type_name, module_name, type_args, is_pseudotype, is_noconstruct, value_variant))
                         }
                         r => unreachable!(format!("Unexpected type {:?}", r))
                     },
@@ -184,7 +193,10 @@ fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<(String, V
                 }
             }
         }
-        None => Ok(None)
+        None => {
+            let msg = "Missing required attribute `#[abra_type]`".to_string();
+            Err(syn::Error::new(Span::call_site(), msg))
+        }
     }
 }
 
@@ -207,7 +219,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
         let msg = format!("Cannot implement methods for struct {}, which does not derive AbraType", native_type_name);
         return syn::Error::new(Span::call_site(), msg).to_compile_error().into();
     };
-    let FirstPass { type_name, type_args, mut field_specs, is_pseudotype, is_noconstruct, value_variant } = first_pass_data;
+    let FirstPass { type_name, module_name, type_args, mut field_specs, is_pseudotype, is_noconstruct, value_variant } = first_pass_data;
 
     let mut methods = Vec::new();
     let mut static_methods = Vec::new();
@@ -363,6 +375,7 @@ pub fn abra_methods(_args: TokenStream, input: TokenStream) -> TokenStream {
     let type_spec = TypeSpec {
         native_type_name,
         name: type_name,
+        module_name,
         type_args,
         constructor,
         to_string_method: to_string_method_name,
@@ -663,24 +676,24 @@ fn parse_setter(method: &mut syn::ImplItemMethod) -> Result<Option<(String, Sett
     Ok(Some((field, SetterSpec { native_method_name: method_name })))
 }
 
-fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macro2::TokenStream {
+fn gen_rust_type_path(type_repr: &TypeRepr, module_name: &String, type_ref_name: &String) -> proc_macro2::TokenStream {
     match type_repr {
         TypeRepr::SelfType(type_args) => {
             if type_ref_name == "Array" {
                 let arr_type_repr = TypeRepr::Array(Box::new(type_args[0].clone()));
-                gen_rust_type_path(&arr_type_repr, type_ref_name)
+                gen_rust_type_path(&arr_type_repr, module_name, type_ref_name)
             } else if type_ref_name == "String" {
                 quote! { crate::typechecker::types::Type::String }
             } else if type_ref_name == "Set" {
                 let inner_type = type_args.get(0).expect("Sets require T value");
-                let inner_type_repr = gen_rust_type_path(inner_type, type_ref_name);
+                let inner_type_repr = gen_rust_type_path(inner_type, module_name, type_ref_name);
 
                 quote! { crate::typechecker::types::Type::Set(std::boxed::Box::new(#inner_type_repr)) }
             } else if type_ref_name == "Map" {
                 let key_type = type_args.get(0).expect("Maps require K value");
-                let key_type_repr = gen_rust_type_path(key_type, type_ref_name);
+                let key_type_repr = gen_rust_type_path(key_type, module_name, type_ref_name);
                 let val_type = type_args.get(1).expect("Maps require V value");
-                let val_type_repr = gen_rust_type_path(val_type, type_ref_name);
+                let val_type_repr = gen_rust_type_path(val_type, module_name, type_ref_name);
 
                 quote! {
                     crate::typechecker::types::Type::Map(
@@ -690,7 +703,7 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
                 }
             } else {
                 let type_args = type_args.iter().map(|type_arg| {
-                    gen_rust_type_path(type_arg, type_ref_name)
+                    gen_rust_type_path(type_arg, module_name, type_ref_name)
                 });
 
                 quote! { crate::typechecker::types::Type::Reference(#type_ref_name.to_string(), vec![ #(#type_args),* ]) }
@@ -706,7 +719,7 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
                 }
                 i => {
                     let type_args = type_args.iter().map(|type_arg| {
-                        gen_rust_type_path(type_arg, type_ref_name)
+                        gen_rust_type_path(type_arg, module_name, type_ref_name)
                     });
 
                     quote! { crate::typechecker::types::Type::Reference(#i.to_string(), vec![ #(#type_args),* ]) }
@@ -715,10 +728,10 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
         }
         TypeRepr::Fn(args, ret) => {
             let args = args.iter().map(|arg| {
-                let arg_type = gen_rust_type_path(arg, type_ref_name);
+                let arg_type = gen_rust_type_path(arg, module_name, type_ref_name);
                 quote! { ("_".to_string(), #arg_type, false) }
             });
-            let ret = gen_rust_type_path(ret, type_ref_name);
+            let ret = gen_rust_type_path(ret, module_name, type_ref_name);
 
             quote! {
                 crate::typechecker::types::Type::Fn(crate::typechecker::types::FnType {
@@ -730,19 +743,19 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
             }
         }
         TypeRepr::Tuple(types) => {
-            let types = types.iter().map(|t| gen_rust_type_path(t, type_ref_name));
+            let types = types.iter().map(|t| gen_rust_type_path(t, module_name, type_ref_name));
             quote! { crate::typechecker::types::Type::Tuple(vec![ #(#types),* ]) }
         }
         TypeRepr::Union(types) => {
-            let types = types.iter().map(|t| gen_rust_type_path(t, type_ref_name));
+            let types = types.iter().map(|t| gen_rust_type_path(t, module_name, type_ref_name));
             quote! { crate::typechecker::types::Type::Union(vec![ #(#types),* ]) }
         }
         TypeRepr::Array(t) => {
-            let t = gen_rust_type_path(t, type_ref_name);
+            let t = gen_rust_type_path(t, module_name, type_ref_name);
             quote! { crate::typechecker::types::Type::Array(std::boxed::Box::new(#t)) }
         }
         TypeRepr::Opt(t) => {
-            let t = gen_rust_type_path(t, type_ref_name);
+            let t = gen_rust_type_path(t, module_name, type_ref_name);
             quote! { crate::typechecker::types::Type::Option(std::boxed::Box::new(#t)) }
         }
     }
@@ -750,6 +763,7 @@ fn gen_rust_type_path(type_repr: &TypeRepr, type_ref_name: &String) -> proc_macr
 
 fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     let type_name = &type_spec.name;
+    let module_name = &type_spec.module_name;
 
     let type_args = type_spec.type_args.iter().map(|type_arg_name| {
         quote! {
@@ -759,7 +773,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 
     let fields = type_spec.fields.iter().map(|field| {
         let FieldSpec { name, typ, has_default, readonly, .. } = field;
-        let typ = gen_rust_type_path(typ, type_name);
+        let typ = gen_rust_type_path(typ, module_name, type_name);
 
         quote! {
             crate::typechecker::types::StructTypeField {
@@ -777,12 +791,12 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 
         let args = args.iter().map(|arg| {
             let MethodArgSpec { name, typ, is_optional, .. } = arg;
-            let typ = gen_rust_type_path(typ, type_name);
+            let typ = gen_rust_type_path(typ, module_name, type_name);
 
             quote! { (#name.to_string(), #typ, #is_optional) }
         });
 
-        let return_type = gen_rust_type_path(return_type, type_name);
+        let return_type = gen_rust_type_path(return_type, module_name, type_name);
 
         quote! {
             (
@@ -802,12 +816,12 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 
         let args = args.iter().map(|arg| {
             let MethodArgSpec { name, typ, is_optional, .. } = arg;
-            let typ = gen_rust_type_path(typ, type_name);
+            let typ = gen_rust_type_path(typ, module_name, type_name);
 
             quote! { (#name.to_string(), #typ, #is_optional) }
         });
 
-        let return_type = gen_rust_type_path(return_type, type_name);
+        let return_type = gen_rust_type_path(return_type, module_name, type_name);
 
         quote! {
             (
@@ -882,7 +896,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
             let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
             quote! {
                 let inst = Self::#constructor_fn_name_ident(args);
-                crate::vm::value::Value::new_native_instance_obj(type_id, std::boxed::Box::new(inst))
+                crate::vm::value::Value::new_native_instance_obj(module_idx, type_id, std::boxed::Box::new(inst))
             }
         }
         None => {
@@ -902,6 +916,8 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
 
 fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     let type_name = &type_spec.name;
+    let module_name = &type_spec.module_name;
+    let fully_qualified_type_name = format!("{}/{}", module_name, type_name);
 
     let fields = type_spec.fields.iter().map(|field| {
         let name = &field.name;
@@ -949,7 +965,9 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                         None => {
                             quote! {
                                 let inst = inst.#native_name_ident(#arguments);
+                                let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
                                 Some(crate::vm::value::Value::new_native_instance_obj(
+                                    module_idx,
                                     type_id,
                                     std::boxed::Box::new(inst)
                                 ))
@@ -1055,8 +1073,9 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     if let TypeRepr::SelfType(_) = &static_method.return_type {
                         quote! {
                             let inst = Self::#native_name_ident(#arguments);
-                            let type_id = vm.type_id_for_name(#type_name);
+                            let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
                             Some(crate::vm::value::Value::new_native_instance_obj(
+                                module_idx,
                                 type_id,
                                 std::boxed::Box::new(inst)
                             ))
@@ -1117,6 +1136,7 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
         fn get_type_value() -> crate::vm::value::TypeValue where Self: core::marker::Sized {
             crate::vm::value::TypeValue {
                 name: #type_name.to_string(),
+                module_name: #module_name.to_string(),
                 fields: vec![ #(#fields),* ],
                 constructor: Some(Self::construct),
                 methods: vec![
@@ -1299,12 +1319,12 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
     let fn_type = {
         let args = static_method.args.iter().map(|arg| {
             let MethodArgSpec { name, typ, is_optional, .. } = arg;
-            let typ = gen_rust_type_path(typ, &"BOGUS".to_string());
+            let typ = gen_rust_type_path(typ, &"BOGUS".to_string(), &"BOGUS".to_string());
 
             quote! { (#name.to_string(), #typ, #is_optional) }
         });
 
-        let return_type = gen_rust_type_path(&static_method.return_type, &"BOGUS".to_string());
+        let return_type = gen_rust_type_path(&static_method.return_type, &"BOGUS".to_string(), &"BOGUS".to_string());
         let is_variadic = &static_method.is_variadic;
 
         quote! {
@@ -1327,7 +1347,7 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
     };
 
     let gen_fn_name = format_ident!("{}__gen_spec", static_method.native_method_name);
-    quote!{
+    quote! {
         fn #gen_fn_name() -> (std::string::String, crate::typechecker::types::Type, crate::vm::value::Value) {
             (#name.to_string(), #fn_type, #native_value)
         }

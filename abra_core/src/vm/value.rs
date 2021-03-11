@@ -87,6 +87,7 @@ impl NativeFn {
 #[derive(Debug, Default, Clone, Hash, Eq, PartialEq)]
 pub struct TypeValue {
     pub name: String,
+    pub module_name: String,
     pub constructor: Option<fn(usize, usize, Vec<Value>) -> Value>,
     pub fields: Vec<String>,
     pub methods: Vec<(String, Value)>,
@@ -105,6 +106,7 @@ impl TypeValue {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct EnumValue {
     pub name: String,
+    pub module_name: String,
     pub variants: Vec<(String, EnumVariantObj)>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
@@ -161,8 +163,8 @@ impl Value {
         Value::InstanceObj(Arc::new(RefCell::new(inst)))
     }
 
-    pub fn new_native_instance_obj(type_id: usize, inst: Box<dyn NativeValue>) -> Value {
-        let inst = NativeInstanceObj { type_id: (0, type_id), inst };
+    pub fn new_native_instance_obj(module_idx: usize, type_id: usize, inst: Box<dyn NativeValue>) -> Value {
+        let inst = NativeInstanceObj { type_id: (module_idx, type_id), inst };
         Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
@@ -326,6 +328,7 @@ pub struct InstanceObj {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct EnumVariantObj {
     pub enum_name: String,
+    pub enum_module_name: String,
     pub name: String,
     pub idx: usize,
     pub methods: Vec<Value>,

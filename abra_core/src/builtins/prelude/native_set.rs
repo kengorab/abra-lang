@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, PartialEq)]
-#[abra_type(signature = "Set<T>", variant = "SetObj")]
+#[abra_type(module = "prelude", signature = "Set<T>", variant = "SetObj")]
 pub struct NativeSet {
     pub _inner: HashSet<Value>,
 

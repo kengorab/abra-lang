@@ -5,7 +5,7 @@ use std::hash::Hash;
 use crate::builtins::arguments::Arguments;
 
 #[derive(AbraType, Debug, Clone, Eq, Hash, PartialEq)]
-#[abra_type(signature = "Int", pseudotype = true, noconstruct = true)]
+#[abra_type(module = "prelude", signature = "Int", pseudotype = true, noconstruct = true)]
 pub struct NativeInt;
 
 #[abra_methods]
