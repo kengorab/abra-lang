@@ -2,19 +2,14 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate wasm_bindgen;
-extern crate wasm_bindgen_futures;
-extern crate js_sys;
-extern crate futures;
 
 mod js_value;
 
 use crate::js_value::module::JsModule;
 use crate::js_value::error::JsWrappedError;
-use futures::Future;
 use serde::ser::{Serializer, SerializeSeq};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
 use abra_core::{Error, typecheck, compile, compile_and_disassemble};
 use abra_core::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, EnumValue, NativeInstanceObj};
 use abra_core::vm::vm::{VMContext, VM};
@@ -22,6 +17,7 @@ use abra_core::vm::compiler::Module;
 use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::ModuleId;
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
+use abra_core::builtins::common::to_string;
 
 pub struct RunResultValue(Option<Value>);
 
@@ -110,7 +106,7 @@ impl Serialize for RunResultValue {
     }
 }
 
-pub struct RunResult(Result<Option<Value>, Error>, String);
+pub struct RunResult(Result<Option<(Value, String)>, Error>, String);
 
 impl Serialize for RunResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -123,7 +119,13 @@ impl Serialize for RunResult {
         match &self.0 {
             Ok(value) => {
                 obj.serialize_entry("success", &true)?;
-                obj.serialize_entry("data", &RunResultValue((*value).clone()))?;
+                match value {
+                    None => {}
+                    Some((value, to_str_value)) => {
+                        obj.serialize_entry("data", &RunResultValue(Some((*value).clone())))?;
+                        obj.serialize_entry("dataToString", to_str_value)?;
+                    }
+                }
             }
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
@@ -261,12 +263,13 @@ pub fn parse_typecheck_and_compile(input: &str) -> JsValue {
         .unwrap_or(JsValue::NULL)
 }
 
-fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error> {
+fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<(Value, String)>, Error> {
     let module_reader = WasmModuleReader;
     let module_id = ModuleId::from_name("_repl");
     let modules = compile(module_id, &input, module_reader)?;
     let mut vm = VM::new(ctx);
     let mut res = None;
+
     for module in modules {
         match vm.run(module) {
             Ok(Some(v)) => res = Some(v),
@@ -274,6 +277,10 @@ fn compile_and_run(input: String, ctx: VMContext) -> Result<Option<Value>, Error
             Err(e) => return Err(Error::InterpretError(e)),
         }
     }
+    let res = res.map(|r| {
+        let as_str = to_string(&r, &mut vm);
+        (r, as_str)
+    });
     Ok(res)
 }
 
@@ -287,21 +294,4 @@ pub fn run(input: &str) -> JsValue {
     let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)
-}
-
-#[wasm_bindgen(js_name = runAsync)]
-pub fn run_async(input: &str) -> js_sys::Promise {
-    let ctx = VMContext {
-        print: |input| println(input)
-    };
-
-    let future = futures::future::ok(input.to_string())
-        .and_then(move |input| {
-            let result = compile_and_run(input.to_string(), ctx);
-            let run_result = RunResult(result, input.to_string());
-            let val = JsValue::from_serde(&run_result)
-                .unwrap_or(JsValue::NULL);
-            Ok(val)
-        });
-    future_to_promise(future)
 }

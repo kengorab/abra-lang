@@ -43,7 +43,8 @@ export function compile(input: string): CompileResult | null;
 
 export interface RunSuccess {
     success: true,
-    data: any
+    data: any,
+    dataToString: string
 }
 
 export interface RunFailure {
@@ -59,12 +60,6 @@ export type RunResult = RunSuccess | RunFailure
  * result in a runtime error.
  */
 export function runSync(input: string): RunResult;
-
-/**
- * Compiles and executes the input string as Abra code, resolving with the
- * result. This could result in a runtime error, which will also resolve as a successful Promise
- */
-export function runAsync(input: string): Promise<RunResult>;
 
 export interface DisassembleSuccess {
     success: true,

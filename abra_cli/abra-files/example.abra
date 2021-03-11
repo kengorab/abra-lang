@@ -1,13 +1,5 @@
-//import Date from date
-//
-//val d = Date(year: 2021, month: 3, day: 8)
-//
-//println(d)
+import Date from date
 
-//import Date from date
-//Date(year: 2021, month: 3, day: 9).toString()
-//Date.now().toString()
+val d = Date(year: 2021, month: 3, day: 8)
 
-type Person { name: String }
-val ken = Person(name: "Ken")
-ken.name
+println(d)
