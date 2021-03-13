@@ -1687,6 +1687,25 @@ mod tests {
             new_string_obj("0xffffff"),
             new_string_obj("0x808080"),
         ]);
+
+        assert_eq!(expected, result);
+        let input = r#"
+          enum Color {
+            Red
+            Green
+            Blue
+            RGB(red: Int, green: Int, blue: Int)
+
+            func hexCode(self): String {
+              if self == Color.Red "0xff0000"
+              else if self == Color.Green "0x00ff00"
+              else "0x0000ff"
+            }
+          }
+          Color.Red.hexCode()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("0xff0000");
         assert_eq!(expected, result);
     }
 

@@ -234,25 +234,25 @@ impl Display for Value {
                     .map(|v| v.to_string())
                     .join(", ");
                 write!(f, "[{}]", items)
-            },
+            }
             Value::TupleObj(o) => {
                 let items = &*o.borrow().iter()
                     .map(|v| v.to_string())
                     .join(", ");
                 write!(f, "({})", items)
-            },
+            }
             Value::SetObj(o) => {
                 let items = &*o.borrow()._inner.iter()
                     .map(|v| v.to_string())
                     .join(", ");
                 write!(f, "#{{{}}}", items)
-            },
+            }
             Value::MapObj(o) => {
                 let items = &*o.borrow()._inner.iter()
                     .map(|(k, v)| format!("{}: {}", k.to_string(), v.to_string()))
                     .join(", ");
                 write!(f, "{{ {} }}", items)
-            },
+            }
             Value::InstanceObj(o) => {
                 let inst = &*o.borrow();
                 write!(f, "<instance type_id={:?}>", &inst.type_id)
@@ -325,7 +325,7 @@ pub struct InstanceObj {
     pub fields: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Hash, Eq)]
 pub struct EnumVariantObj {
     pub enum_name: String,
     pub enum_module_name: String,
@@ -334,6 +334,14 @@ pub struct EnumVariantObj {
     pub methods: Vec<Value>,
     pub arity: usize,
     pub values: Option<Vec<Value>>,
+}
+
+impl PartialEq for EnumVariantObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.enum_module_name == other.enum_module_name &&
+            self.enum_name == other.enum_name &&
+            self.idx == other.idx
+    }
 }
 
 #[derive(Debug)]
