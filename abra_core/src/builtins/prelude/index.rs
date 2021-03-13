@@ -6,19 +6,15 @@ use crate::builtins::native_module_builder::{ModuleSpec, TypeSpec, ModuleSpecBui
 use crate::vm::value::Value;
 use crate::builtins::arguments::Arguments;
 use crate::vm::vm::VM;
+use itertools::Itertools;
 
 #[abra_function(signature = "println(*items: Any[])")]
 fn println(args: Arguments, vm: &mut VM) {
-    let print_fn = vm.ctx.print;
-
     let vals = args.varargs();
-    let num_vals = vals.len();
-    for (idx, val) in vals.into_iter().enumerate() {
-        let sp = if idx == num_vals - 1 { "" } else { " " };
-        print_fn(&format!("{}{}", to_string(&val, vm), sp));
-    }
-
-    print_fn("\n");
+    let string = vals.into_iter()
+        .map(|val| to_string(&val, vm))
+        .join(" ");
+    (vm.ctx.print)(&format!("{}\n", string));
 }
 
 #[abra_function(signature = "range(from: Int, to: Int, increment?: Int): Int[]")]

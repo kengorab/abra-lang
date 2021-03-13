@@ -1,7 +1,14 @@
 /* tslint:disable */
 
 import { Error } from './types/error'
-import { Module } from './types/module'
+
+export interface Context {
+    println(value: string): void;
+}
+
+export interface ModuleReader {
+    readModule(moduleName: string): string | null;
+}
 
 export interface TypecheckSuccess {
     success: true,
@@ -16,30 +23,15 @@ export interface TypecheckFailure {
 export type TypecheckResult = TypecheckSuccess | TypecheckFailure
 
 /**
- * Reads the input string as Abra code, and typechecks it, using the wasm implementation
- * of the compiler.
- * This will either return an error if unsuccessful, or nothing if successful.
+ * Reads the input string as Abra code, and typechecks it.
  */
 export function typecheck(input: string): TypecheckResult | null;
 
-export interface CompileSuccess {
-    success: true,
-    module: Module
-}
-
-export interface CompileFailure {
-    success: false,
-    error: Error,
-    errorMessage: string
-}
-
-export type CompileResult = CompileSuccess | CompileFailure
-
 /**
- * Compiles the input string as Abra code, using the wasm implementation of the compiler.
- * This will either return an error if unsuccessful, or a compiled module if successful.
+ * Performs typechecking on the given module, using the moduleReader to resolve it. Imported
+ * modules are resolved via the moduleReader as well.
  */
-export function compile(input: string): CompileResult | null;
+export function typecheckModule(moduleName: string, moduleReader: ModuleReader): TypecheckResult | null;
 
 export interface RunSuccess {
     success: true,
@@ -57,9 +49,17 @@ export type RunResult = RunSuccess | RunFailure
 
 /**
  * Compiles and executes the input string as Abra code, returning the result. This could
- * result in a runtime error.
+ * result in a runtime error. An optional Context may be provided,
+ * but sane defaults are used within runModule itself.
  */
-export function run(input: string): RunResult;
+export function run(input: string, context?: Context): RunResult;
+
+/**
+ * Compiles and executes the given module, using the moduleReader to resolve it. Imported
+ * modules are resolved via the moduleReader as well. An optional Context may be provided,
+ * but sane defaults are used within runModule itself.
+ */
+export function runModule(moduleName: string, moduleReader: ModuleReader, context?: Context): RunResult;
 
 export interface DisassembleSuccess {
     success: true,
@@ -78,3 +78,9 @@ export type DisassembleResult = DisassembleSuccess | DisassembleFailure
  * Compiles the input and returns a stringified disassembly
  */
 export function disassemble(input: string): DisassembleResult | null;
+
+/**
+ * Compiles and disassembles the given module, using the moduleReader to resolve it. Imported
+ * modules are resolved via the moduleReader as well.
+ */
+export function disassembleModule(moduleName: string, moduleReader: ModuleReader): DisassembleResult | null;

@@ -68,20 +68,19 @@ struct CallFrame {
     local_addrs: Vec<usize>,
 }
 
-#[derive(Clone)]
 pub struct VMContext {
-    pub print: fn(&str) -> ()
+    pub print: Box<dyn Fn(&str)>
 }
 
 impl VMContext {
     pub fn default() -> Self {
         VMContext {
-            print: VMContext::print
+            print: Box::new(VMContext::print)
         }
     }
 
     pub fn print(input: &str) {
-        print!("{}\n", input)
+        print!("{}", input)
     }
 }
 

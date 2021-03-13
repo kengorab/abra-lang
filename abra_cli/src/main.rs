@@ -48,10 +48,6 @@ fn main() -> Result<(), ()> {
 }
 
 fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
-    let ctx = VMContext {
-        print: |input| print!("{}", input)
-    };
-
     let current_path = std::env::current_dir().unwrap();
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
@@ -70,6 +66,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
             std::process::exit(1);
         }
     };
+    let ctx = VMContext::default();
     let mut vm = VM::new(ctx);
 
     let mut result = Value::Nil;

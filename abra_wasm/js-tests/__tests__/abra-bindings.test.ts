@@ -9,7 +9,7 @@ describe('bindings', () => {
             c
         `;
 
-        expect(run(input)).toEqual(6);
+        expect(run(input)).toEqual('6');
     });
 
     test('reassigning to variables', () => {
@@ -20,7 +20,7 @@ describe('bindings', () => {
             a = a * 3
             a
         `;
-        expect(run(input)).toEqual(6);
+        expect(run(input)).toEqual('6');
     });
 
     test('chained reassignment', () => {
@@ -32,6 +32,6 @@ describe('bindings', () => {
             val e = a + b + c + d
             e
         `;
-        expect(run(input)).toEqual(76);
+        expect(run(input)).toEqual('76');
     });
 });

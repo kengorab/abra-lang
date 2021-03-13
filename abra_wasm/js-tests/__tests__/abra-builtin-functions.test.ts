@@ -7,25 +7,13 @@ describe('builtin functions', () => {
           arr
         `;
 
-        expect(run(input)).toEqual([0, 1, 2, 3]);
+        expect(run(input)).toEqual('[0, 1, 2, 3]');
     });
 
     test('println', () => {
-        // @ts-ignore
-        const oldConsole = global.console;
-        // @ts-ignore
-        global.console = {
-            log: jest.fn()
-        };
-
-        const input = `
-          println("Hello world")
-        `;
-        run(input);
-        // @ts-ignore
-        expect(global.console.log).toHaveBeenCalledWith('Hello world');
-
-        // @ts-ignore
-        global.console = oldConsole;
+        const input = 'println("Hello world")';
+        const printlnFn = jest.fn();
+        run(input, printlnFn);
+        expect(printlnFn).toHaveBeenCalledWith('Hello world');
     });
 });

@@ -1,10 +1,10 @@
-import Abra, { CompileFailure, CompileResult } from 'abra_wasm'
+import Abra from 'abra_wasm'
 
 describe('errors', () => {
     describe('parse errors', () => {
         test('ExpectedToken error', () => {
-            const result: CompileResult = Abra.compile('func 1')!
-            const expected: CompileFailure = {
+            const result = Abra.typecheck('func 1')!
+            const expected = {
                 success: false,
                 error: {
                     kind: 'parseError',
