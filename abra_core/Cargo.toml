@@ -9,7 +9,6 @@ abra_native = { path = "../abra_native" }
 downcast-rs = "1.2.0"
 itertools = "0.9.0"
 peekmore = "0.5.2"
-permutate = "0.3.2"
 strum = "0.15.0"
 strum_macros = "0.15.0"
 rand = "0.7.3"
