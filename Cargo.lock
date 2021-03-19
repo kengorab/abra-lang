@@ -26,7 +26,6 @@ dependencies = [
  "downcast-rs",
  "itertools",
  "peekmore",
- "permutate",
  "rand",
  "strum",
  "strum_macros",
@@ -588,12 +587,6 @@ name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
-
-[[package]]
-name = "permutate"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53b7d5b19a715ffab38693a9dd44b067fdfa2b18eef65bd93562dfe507022fae"
 
 [[package]]
 name = "pin-project"

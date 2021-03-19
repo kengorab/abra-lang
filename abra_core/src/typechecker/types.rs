@@ -195,27 +195,15 @@ impl Type {
             // (ie. val i: Int? = 1)
             (t1, Option(t2)) => t1.is_equivalent_to(t2, resolve_type),
             (Union(t1s), Union(t2s)) => {
-                // None of this is ideal, and it's all incredibly poorly written, shame on me. Since
-                // there should be no difference between `Int | Float` and `Float | Int`, but there is
-                // no simple equivalence check, we can't just do a hash set comparison. At least, not as far
-                // as I could see, because we need to test equivalence w.r.t. `referencable_types`. So what I
-                // regretfully decided to do was take all permutations of the target type's union values and
-                // compare against each of them. It's awful, I'm sorry.
-                let types_as_refs = t1s.into_iter()
-                    .map(|t| t)
-                    .collect::<Vec<&Self>>();
-                let all_refs = &[types_as_refs.as_slice()];
-                let permutator = permutate::Permutator::new(all_refs);
-
-                for t1s in permutator {
-                    'inner: for (t1, t2) in t1s.iter().zip(t2s.iter()) {
-                        if !t1.is_equivalent_to(t2, resolve_type) {
-                            break 'inner;
-                        }
-                        return true;
+                for t1 in t1s {
+                    let has_match = t2s.iter()
+                        .find(|t2| t1.is_equivalent_to(t2, resolve_type))
+                        .is_some();
+                    if !has_match {
+                        return false
                     }
                 }
-                return false;
+                true
             }
             (t1, Union(ts)) => {
                 for t in ts {
@@ -790,6 +778,34 @@ mod test {
         });
         let lhs = Reference("List".to_string(), vec![String]);
         assert_eq!(false, rhs.is_equivalent_to(&lhs, &|type_name| { referencable_types.get(type_name) }));
+    }
+
+    #[test]
+    fn is_equivalent_to_unions() {
+        // Int | String  vs  String | Int  => true
+        let t1 = Union(vec![Int, String]);
+        let t2 = Union(vec![String, Int]);
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
+
+        // Int | String | (Int | String)[]  vs  String | Int | (String | Int)[]  => true
+        let t1 = Union(vec![Int, String, Array(Box::new(Union(vec![Int, String])))]);
+        let t2 = Union(vec![String, Int, Array(Box::new(Union(vec![String, Int])))]);
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
+
+        // String? | Int  vs  Int | String?  => true
+        let t1 = Union(vec![Option(Box::new(String)), Int]);
+        let t2 = Union(vec![Int, Option(Box::new(String))]);
+        assert_eq!(true, t1.is_equivalent_to(&t2, &|_| None));
+
+        // String | Int  vs  Int | Bool  => false
+        let t1 = Union(vec![String, Int]);
+        let t2 = Union(vec![Int, Bool]);
+        assert_eq!(false, t1.is_equivalent_to(&t2, &|_| None));
+
+        // String? | Int  vs  Int? | String  => false
+        let t1 = Union(vec![Option(Box::new(String)), Int]);
+        let t2 = Union(vec![Option(Box::new(Int)), String]);
+        assert_eq!(false, t1.is_equivalent_to(&t2, &|_| None));
     }
 
     #[test]

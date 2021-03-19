@@ -1,6 +1,5 @@
 extern crate abra_native;
 extern crate itertools;
-extern crate permutate;
 extern crate strum;
 #[macro_use]
 extern crate strum_macros;
