@@ -255,7 +255,8 @@ impl Type {
             (Enum(EnumType { name: name1, .. }), Enum(EnumType { name: name2, .. })) => {
                 name1 == name2
             }
-            (EnumVariant(enum_type, variant, _), t @ Enum(_)) => {
+            (EnumVariant(enum_type, variant, _), t @ Enum(_)) |
+            (t @ Enum(_), EnumVariant(enum_type, variant, _)) => {
                 if !enum_type.is_equivalent_to(t, resolve_type) {
                     false
                 } else if let Enum(enum_type_target) = t {

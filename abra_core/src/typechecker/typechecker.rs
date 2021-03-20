@@ -5716,6 +5716,16 @@ mod tests {
     }
 
     #[test]
+    fn typecheck_enum_decl_variant_returns() {
+        let is_ok = test_typecheck(r#"
+          enum Foo { Bar }
+          func a(): Foo = if true { b() } else { Foo.Bar }
+          func b(): Foo = Foo.Bar
+        "#).is_ok();
+        assert!(is_ok);
+    }
+
+    #[test]
     fn typecheck_ident() -> TestResult {
         let module = test_typecheck("val abc = 123\nabc")?;
         let expected = vec![
