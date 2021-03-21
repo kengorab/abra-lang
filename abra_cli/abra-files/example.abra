@@ -1,5 +1,4 @@
-import Date from date
-
-val d = Date(year: 2021, month: 3, day: 8)
-
-println(d)
+val bools = [true, false]
+val a = if bools[0] { 1 } else { 0 }
+val b = if bools[1] { 1 } else { 0 }
+a + b

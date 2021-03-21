@@ -2301,4 +2301,27 @@ mod tests {
         ]);
         assert_eq!(Some(expected), chunk);
     }
+
+    #[test]
+    fn interpret_boolean_operations_on_optionals() {
+        let chunk = interpret(r#"
+          val bools = [true, false]
+          val a = if bools[0] { 1 } else { 0 }
+          val b = if bools[1] { 1 } else { 0 }
+          a + b
+        "#);
+        let expected = Value::Int(1);
+        assert_eq!(Some(expected), chunk);
+
+        let chunk = interpret(r#"
+          val bools = [true, true, false, true]
+          var idx = 0
+          while bools[idx] {
+            idx += 1
+          }
+          idx
+        "#);
+        let expected = Value::Int(2);
+        assert_eq!(Some(expected), chunk);
+    }
 }

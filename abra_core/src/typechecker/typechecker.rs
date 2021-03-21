@@ -469,6 +469,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         if let Some(pat) = &mut condition_binding {
             let binding_type = match condition.get_type() {
                 Type::Bool => Type::Bool,
+                Type::Option(inner) if *inner == Type::Bool => Type::Bool,
                 Type::Option(inner) => inner.get_opt_unwrapped(),
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
@@ -2647,6 +2648,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let ident_name = Token::get_ident_name(ident).clone();
             let binding_type = match condition.get_type() {
                 Type::Bool => Type::Bool,
+                Type::Option(inner) if *inner == Type::Bool => Type::Bool,
                 Type::Option(inner) => inner.get_opt_unwrapped(),
                 _ => unreachable!("No other types should be allowable as conditionals")
             };
