@@ -1435,7 +1435,10 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let TypedIfNode { condition, condition_binding, if_block, else_block, .. } = node;
 
-        let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
+        let is_opt = match condition.get_type() {
+            Type::Option(inner) if *inner != Type::Bool => true,
+            _ => false
+        };
         self.visit(*condition)?;
         if let Some(_) = &condition_binding {
             // If there is a condition binding, duplicate the condition value. After the condition
@@ -1884,7 +1887,10 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         let loop_start_jump_handle = self.begin_jump_back();
 
         self.push_scope(ScopeKind::Loop);
-        let is_opt = if let Type::Option(_) = condition.get_type() { true } else { false };
+        let is_opt = match condition.get_type() {
+            Type::Option(inner) if *inner != Type::Bool => true,
+            _ => false
+        };
         if let Some(ident) = &condition_binding {
             // If there is a condition binding, create a new local with initial value of Nil
             self.write_opcode(Opcode::Nil, line);
