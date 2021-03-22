@@ -1178,7 +1178,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let expr_type = typed_expr.get_type();
         match (&node.op, &expr_type) {
             (UnaryOp::Minus, Type::Int) | (UnaryOp::Minus, Type::Float) |
-            (UnaryOp::Negate, Type::Bool) => {
+            (UnaryOp::Negate, Type::Bool) | (UnaryOp::Negate, Type::Option(_)) => {
                 let node = TypedUnaryNode { typ: expr_type, op: node.op, expr: Box::new(typed_expr) };
                 Ok(TypedAstNode::Unary(token, node))
             }
@@ -1186,7 +1186,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let expected = if op == &UnaryOp::Minus {
                     Type::Union(vec![Type::Int, Type::Float])
                 } else {
-                    Type::Bool
+                    Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))])
                 };
                 Err(TypecheckerError::Mismatch { token, expected, actual: expr_type })
             }
@@ -1235,7 +1235,15 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
-                BinaryOp::And | BinaryOp::AndEq | BinaryOp::Or | BinaryOp::OrEq | BinaryOp::Xor =>
+                BinaryOp::And | BinaryOp::Or | BinaryOp::Xor =>
+                    match (&ltype, &rtype) {
+                        (Type::Option(_), Type::Bool) |
+                        (Type::Bool, Type::Option(_)) |
+                        (Type::Option(_), Type::Option(_)) |
+                        (Type::Bool, Type::Bool) => Ok(Type::Bool),
+                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                    }
+                BinaryOp::AndEq | BinaryOp::OrEq =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
                         (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
@@ -3098,6 +3106,18 @@ mod tests {
             ),
         ];
         assert_eq!(expected, module.typed_nodes);
+
+        let module = test_typecheck("val item = [1, 2][0]\n!item")?;
+        let expected = TypedAstNode::Unary(
+            Token::Bang(Position::new(2, 1)),
+            TypedUnaryNode {
+                typ: Type::Option(Box::new(Type::Int)),
+                op: UnaryOp::Negate,
+                expr: Box::new(identifier!((2, 2), "item", Type::Option(Box::new(Type::Int)), 0)),
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+
         Ok(())
     }
 
@@ -3122,7 +3142,7 @@ mod tests {
         let err = test_typecheck("!4.5").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Bang(Position::new(1, 1)),
-            expected: Type::Bool,
+            expected: Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))]),
             actual: Type::Float,
         };
         assert_eq!(expected, err);
@@ -3130,7 +3150,7 @@ mod tests {
         let err = test_typecheck("!\"abc\"").unwrap_err();
         let expected = TypecheckerError::Mismatch {
             token: Token::Bang(Position::new(1, 1)),
-            expected: Type::Bool,
+            expected: Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))]),
             actual: Type::String,
         };
         Ok(assert_eq!(expected, err))
@@ -3418,6 +3438,65 @@ mod tests {
             },
         );
         assert_eq!(expected, module.typed_nodes[0]);
+
+        // Testing boolean operators with Option types
+        let module = test_typecheck("val item = [1, 2][0]\nitem && true")?;
+        let expected = TypedAstNode::IfExpression(
+            Token::If(Position::new(2, 6)),
+            TypedIfNode {
+                typ: Type::Bool,
+                condition: Box::new(identifier!((2, 1), "item", Type::Option(Box::new(Type::Int)), 0)),
+                condition_binding: None,
+                if_block: vec![
+                    bool_literal!((2, 9), true),
+                ],
+                else_block: Some(vec![
+                    bool_literal!((2, 6), false), // <- pos is derived from && position
+                ]),
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+        let res = test_typecheck("val item = [1, 2][0]\ntrue && item");
+        assert!(res.is_ok());
+        let res = test_typecheck("val item = [1, 2][0]\nitem && item");
+        assert!(res.is_ok());
+
+        let module = test_typecheck("val item = [1, 2][0]\nitem || false")?;
+        let expected = TypedAstNode::IfExpression(
+            Token::If(Position::new(2, 6)),
+            TypedIfNode {
+                typ: Type::Bool,
+                condition: Box::new(identifier!((2, 1), "item", Type::Option(Box::new(Type::Int)), 0)),
+                condition_binding: None,
+                if_block: vec![
+                    bool_literal!((2, 6), true), // <- pos is derived from || position
+                ],
+                else_block: Some(vec![
+                    bool_literal!((2, 9), false),
+                ]),
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+        let res = test_typecheck("val item = [1, 2][0]\nfalse || item");
+        assert!(res.is_ok());
+        let res = test_typecheck("val item = [1, 2][0]\nitem || item");
+        assert!(res.is_ok());
+
+        let module = test_typecheck("val item = [1, 2][0]\nitem ^ false")?;
+        let expected = TypedAstNode::Binary(
+            Token::Caret(Position::new(2, 6)),
+            TypedBinaryNode {
+                typ: Type::Bool,
+                left: Box::new(identifier!((2, 1), "item", Type::Option(Box::new(Type::Int)), 0)),
+                op: BinaryOp::Xor,
+                right: Box::new(bool_literal!((2, 8), false)),
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+        let res = test_typecheck("val item = [1, 2][0]\nfalse ^ item");
+        assert!(res.is_ok());
+        let res = test_typecheck("val item = [1, 2][0]\nitem ^ item");
+        assert!(res.is_ok());
 
         Ok(())
     }

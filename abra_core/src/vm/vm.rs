@@ -28,15 +28,6 @@ macro_rules! pop_expect_float {
     );
 }
 
-macro_rules! pop_expect_bool {
-    ($self: expr) => (
-        match $self.pop_expect()? {
-            Value::Bool(value) => Ok(value),
-            v @ _ => Err(InterpretError::TypeError("Bool".to_string(), v.to_string()))
-        }
-    );
-}
-
 // Helper to get the current frame, without having to worry about lifetimes
 macro_rules! current_frame {
     ($self: expr) => { $self.call_stack.last_mut().expect("There needs to be at least 1 active call stack member") };
@@ -150,6 +141,16 @@ impl VM {
             let new_size = self.stack.len() - num;
             self.stack.truncate(new_size);
             Ok(())
+        }
+    }
+
+    #[inline]
+    fn pop_expect_boolish(&mut self) -> Result<bool, InterpretError> {
+        let val = self.stack.pop().ok_or(InterpretError::StackEmpty)?;
+        match val {
+            Value::Bool(b) => Ok(b),
+            Value::Nil => Ok(false),
+            _ => unreachable!("Cannot implicitly convert value to boolean")
         }
     }
 
@@ -546,7 +547,7 @@ impl VM {
                 Opcode::T => self.push(Value::Bool(true)),
                 Opcode::F => self.push(Value::Bool(false)),
                 Opcode::Negate => {
-                    let val = pop_expect_bool!(self)?;
+                    let val = self.pop_expect_boolish()?;
                     self.push(Value::Bool(!val));
                 }
                 Opcode::LT => self.comp_values(Opcode::LT)?,
@@ -556,8 +557,8 @@ impl VM {
                 Opcode::Neq => self.comp_values(Opcode::Neq)?,
                 Opcode::Eq => self.comp_values(Opcode::Eq)?,
                 Opcode::Xor => {
-                    let b = pop_expect_bool!(self)?;
-                    let a = pop_expect_bool!(self)?;
+                    let b = self.pop_expect_boolish()?;
+                    let a = self.pop_expect_boolish()?;
                     let val = if a && b { false } else { a || b };
                     self.push(Value::Bool(val));
                 }
@@ -877,7 +878,7 @@ impl VM {
                     frame.ip += offset;
                 }
                 Opcode::JumpIfF(offset) => {
-                    let cond = pop_expect_bool!(self)?;
+                    let cond = self.pop_expect_boolish()?;
                     if !cond {
                         let frame = current_frame!(self);
                         frame.ip += offset;
