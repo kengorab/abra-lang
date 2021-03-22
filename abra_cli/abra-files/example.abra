@@ -1,4 +1,6 @@
 val bools = [true, false]
-val a = if bools[0] { 1 } else { 0 }
-val b = if bools[1] { 1 } else { 0 }
-a + b
+if bools[1] {
+  println("yup")
+} else {
+  println("nope")
+}

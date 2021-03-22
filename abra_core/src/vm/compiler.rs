@@ -1436,7 +1436,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         let TypedIfNode { condition, condition_binding, if_block, else_block, .. } = node;
 
         let is_opt = match condition.get_type() {
-            Type::Option(inner) if *inner != Type::Bool => true,
+            Type::Option(inner) => *inner != Type::Bool,
             _ => false
         };
         self.visit(*condition)?;
@@ -1888,7 +1888,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         self.push_scope(ScopeKind::Loop);
         let is_opt = match condition.get_type() {
-            Type::Option(inner) if *inner != Type::Bool => true,
+            Type::Option(inner) => *inner != Type::Bool,
             _ => false
         };
         if let Some(ident) = &condition_binding {
