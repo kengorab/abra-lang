@@ -1,6 +1,14 @@
-val bools = [true, false]
-if bools[1] {
-  println("yup")
-} else {
-  println("nope")
+enum LL<T> {
+  Cons(item: T, next: LL<T>)
+  Empty
+
+  //func getValue(self): T? {
+  //  match self {
+  //    LL.Cons(item, _) => item
+  //    LL.Empty => None
+  //  }
+  //}
 }
+
+val l = LL.Cons(1, LL.Cons("2", LL.Empty))
+l.toString()

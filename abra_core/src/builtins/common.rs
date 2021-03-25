@@ -15,15 +15,31 @@ pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
 
 pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
     let rcv = receiver.unwrap();
-    let obj = &*rcv.as_instance_obj().borrow();
-
-    let type_value = vm.load_type(obj.type_id);
-    let type_name = type_value.name.clone();
-    let field_names = type_value.fields.clone();
-    let values = field_names.iter().zip(&obj.fields)
-        .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
-        .join(", ");
-    let str_val = format!("{}({})", type_name, values);
+    let str_val = match rcv {
+        Value::InstanceObj(rcv) => {
+            let obj = &*rcv.borrow();
+            let type_value = vm.load_type(obj.type_id);
+            let type_name = type_value.name.clone();
+            let field_names = type_value.fields.clone();
+            let values = field_names.iter().zip(&obj.fields)
+                .map(|(field_name, field_value)| format!("{}: {}", field_name, to_string(field_value, vm)))
+                .join(", ");
+            format!("{}({})", type_name, values)
+        }
+        Value::EnumVariantObj(o) => {
+            let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
+            match values {
+                None => format!("{}.{}", enum_name, name),
+                Some(values) => {
+                    let values = values.iter()
+                        .map(|v| to_string(v, vm))
+                        .join(", ");
+                    format!("{}.{}({})", enum_name, name, values)
+                }
+            }
+        }
+        _ => unimplemented!("The default toString implementation should only ever be attached to instances of types/enums")
+    };
 
     Some(Value::new_string_obj(str_val))
 }
@@ -86,16 +102,18 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
             v._inner.clone()
         }
         Value::EnumVariantObj(o) => {
-            let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
-            match values {
-                None => format!("{}.{}", enum_name, name),
-                Some(values) => {
-                    let values = values.iter()
-                        .map(|v| to_string(v, vm))
-                        .join(", ");
-                    format!("{}.{}({})", enum_name, name, values)
-                }
-            }
+            let type_value = &*o.borrow();
+            let mut tostring_method = type_value.methods.iter()
+                .find(|v| match v {
+                    Value::NativeFn(NativeFn { name, .. }) if *name == "toString" => true,
+                    _ => false
+                })
+                .expect("Every instance should have at least the default toString method")
+                .clone();
+            tostring_method.bind_fn_value(value.clone());
+            let ret = invoke_fn(vm, &tostring_method, vec![]);
+            let ret = &*ret.as_string().borrow();
+            ret._inner.clone()
         }
         Value::Fn(FnValue { name, .. }) |
         Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),

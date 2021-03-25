@@ -147,6 +147,7 @@ impl StructType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct EnumType {
     pub name: String,
+    pub type_args: Vec<(String, Type)>,
     pub variants: Vec<EnumVariantType>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
@@ -237,7 +238,8 @@ impl Type {
             (Type(_name1, _t1, _is_enum1), Type(_name2, _t2, _is_enum2)) => {
                 false
             }
-            (Struct(StructType { name: name1, type_args: type_args1, .. }), Struct(StructType { name: name2, type_args: type_args2, .. })) => {
+            (Struct(StructType { name: name1, type_args: type_args1, .. }), Struct(StructType { name: name2, type_args: type_args2, .. })) |
+            (Enum(EnumType { name: name1, type_args: type_args1, .. }), Enum(EnumType { name: name2, type_args: type_args2, .. })) => {
                 if name1 != name2 { return false; }
 
                 if type_args1.len() != type_args2.len() { return false; }
@@ -252,11 +254,12 @@ impl Type {
                 }
                 true
             }
-            (Enum(EnumType { name: name1, .. }), Enum(EnumType { name: name2, .. })) => {
-                name1 == name2
-            }
             (EnumVariant(enum_type, variant, _), t @ Enum(_)) |
             (t @ Enum(_), EnumVariant(enum_type, variant, _)) => {
+                let enum_type = match &**enum_type {
+                    Reference(name, type_args) => Self::hydrate_reference_type(name, type_args, resolve_type).unwrap(),
+                    _ => unreachable!()
+                };
                 if !enum_type.is_equivalent_to(t, resolve_type) {
                     false
                 } else if let Enum(enum_type_target) = t {
@@ -277,7 +280,7 @@ impl Type {
             // All types can be assignable up to Any (ie. val a: Any = 1; val b: Any = ["asdf"]). Unit types should not be assignable to anything
             (t, Any) => t != &Unit,
             (Placeholder, _) | (_, Placeholder) => true,
-            (Reference(name, _), other) => {
+            (Reference(name, _type_args), other) => {
                 if let Some(referenced_type) = resolve_type(name) {
                     referenced_type.is_equivalent_to(other, resolve_type)
                 } else { false }
@@ -304,7 +307,13 @@ impl Type {
                         .collect();
                     Some(Type::Struct(StructType { type_args, ..struct_type }))
                 }
-                Type::Enum(enum_type) => Some(Type::Enum(enum_type)),
+                Type::Enum(enum_type) => {
+                    // Hydrate the enum's type arguments from the Reference
+                    let type_args = enum_type.type_args.iter().zip(type_args.iter())
+                        .map(|((name, _), typ)| (name.clone(), typ.clone()))
+                        .collect();
+                    Some(Type::Enum(EnumType { type_args, ..enum_type }))
+                }
                 Type::Array(_) => {
                     let inner_type = type_args.iter().next().unwrap_or(&Type::Unknown).clone();
                     Some(Type::Array(Box::new(inner_type)))
@@ -406,6 +415,7 @@ impl Type {
                     .flat_map(|typ| typ.extract_unbound_generics())
                     .collect::<Vec<String>>()
             }
+            Type::EnumVariant(enum_type, _, _) => enum_type.extract_unbound_generics(),
             Type::Reference(_, type_args) => {
                 type_args.iter()
                     .flat_map(|typ| typ.extract_unbound_generics())
@@ -439,6 +449,10 @@ impl Type {
                     .collect();
                 let ret_type = Type::substitute_generics(ret_type, available_generics);
                 Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type), is_variadic: is_variadic.clone() })
+            }
+            Type::EnumVariant(enum_type, variant_type, is_constructed) => {
+                let enum_type = Type::substitute_generics(enum_type, available_generics);
+                Type::EnumVariant(Box::new(enum_type), variant_type.clone(), *is_constructed)
             }
             Type::Reference(name, type_args) => {
                 let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();

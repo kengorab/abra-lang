@@ -1710,6 +1710,21 @@ mod tests {
     }
 
     #[test]
+    fn interpret_enum_generic() {
+        let input = r#"
+          enum LL<T> {
+            Cons(item: T, next: LL<T>)
+            Empty
+          }
+          val l = LL.Cons(1, LL.Cons(2, LL.Empty))
+          l.toString()
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = new_string_obj("LL.Cons(1, LL.Cons(2, LL.Empty))");
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_match_destructuring_enum() {
         let input = r#"
           enum Foo { Bar(baz: Int, qux: Int) }

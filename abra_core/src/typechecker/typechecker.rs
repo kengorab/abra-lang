@@ -208,8 +208,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let mut ret_typ = None;
                 if let Type::Reference(name, ref_type_args) = &typ {
                     let expected_type_args = match self.resolve_type(name).unwrap() {
-                        Type::Struct(StructType { type_args, .. }) => type_args.len(),
-                        Type::Enum(_) => 0,
+                        Type::Struct(StructType { type_args, .. }) |
+                        Type::Enum(EnumType { type_args, .. }) => type_args.len(),
                         Type::Array(_) | Type::Set(_) => {
                             ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &|typ_name| self.resolve_type(typ_name)).unwrap());
                             1
@@ -971,16 +971,16 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     self.add_binding(&new_type_name, &name, &binding_type, false);
                     self.add_type(new_type_name.clone(), None, typeref.clone(), false);
 
+                    let type_arg_names = type_args.iter()
+                        .map(|name| {
+                            let name = Token::get_ident_name(name);
+                            (name.clone(), Type::Generic(name))
+                        })
+                        .collect::<Vec<(String, Type)>>();
                     let referencable_type = if type_is_enum {
-                        let typedef = EnumType { name: new_type_name.clone(), variants: vec![], static_fields: vec![], methods: vec![] };
+                        let typedef = EnumType { name: new_type_name.clone(), type_args: type_arg_names, variants: vec![], static_fields: vec![], methods: vec![] };
                         Type::Enum(typedef)
                     } else {
-                        let type_arg_names = type_args.iter()
-                            .map(|name| {
-                                let name = Token::get_ident_name(name);
-                                (name.clone(), Type::Generic(name))
-                            })
-                            .collect::<Vec<(String, Type)>>();
                         let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
                         Type::Struct(typedef)
                     };
@@ -1697,14 +1697,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         // Update the Reference type of the type's identifier to include the generics, and establish
         // that Reference as the cur_typedef
-        let type_arg_names = type_args.iter()
-            .map(|name| {
-                let name = Token::get_ident_name(name);
-                (name.clone(), Type::Generic(name))
-            })
-            .collect::<Vec<(String, Type)>>();
+        let type_arg_names = type_args.iter().map(|name| Type::Generic(Token::get_ident_name(name))).collect();
         let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_type_name);
-        let typeref = Type::Reference(typeref_name.clone(), type_arg_names.iter().map(|p| p.1.clone()).collect());
+        let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
         self.cur_typedef = Some(typeref);
@@ -1820,7 +1815,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             return Err(TypecheckerError::InvalidTypeDeclDepth { token });
         }
 
-        let EnumDeclNode { export_token, name, variants, methods, .. } = node;
+        let EnumDeclNode { export_token, name, variants, methods, type_args } = node;
         let new_enum_name = Token::get_ident_name(&name);
         let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
@@ -1836,13 +1831,29 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         // Note: much like type declarations, enum declarations are also hoisted to the top of their
         // scope. As such, by this point there will already be an entry in self.referencable_types.
 
+        // Update the Reference type of the type's identifier to include the generics, and establish
+        // that Reference as the cur_typedef
+        let type_arg_names = type_args.iter().map(|name| Type::Generic(Token::get_ident_name(name))).collect();
         let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_enum_name);
-        let typeref = Type::Reference(typeref_name.clone(), vec![]);
+        let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), true);
         self.cur_typedef = Some(typeref);
 
-        let scope = Scope::new(ScopeKind::TypeDef);
+        let mut scope = Scope::new(ScopeKind::TypeDef);
+        let mut seen = HashMap::<String, Token>::new();
+        for type_arg in &type_args {
+            let name = Token::get_ident_name(type_arg);
+            match seen.get(&name) {
+                Some(orig_ident) => {
+                    return Err(TypecheckerError::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
+                }
+                None => {
+                    seen.insert(name.clone(), type_arg.clone());
+                    scope.types.insert(name.clone(), (Type::Generic(name.clone()), None, false));
+                }
+            }
+        }
         self.scopes.push(scope);
 
         let mut variant_names = HashMap::<String, Token>::new();
@@ -1885,7 +1896,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.variants = typed_variants.clone();
 
-        let type_args = vec![];
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_1(&type_args, &methods)?;
         let typedef = if let Some(Type::Enum(typedef)) = self.referencable_types.get_mut(&typeref_name) { typedef } else { unreachable!() };
         typedef.static_fields = static_fields;
@@ -2432,7 +2442,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     Type::EnumVariant(enum_type, enum_variant_type, is_constructed) => {
                         if let Some(arg_types) = &enum_variant_type.arg_types {
                             let arg_types = arg_types.clone();
-                            let type_args = vec![];
+                            let type_args = if let Type::Enum(EnumType { type_args, .. }) = self.resolve_ref_type(&enum_type) {
+                                type_args.iter().map(|type_arg| type_arg.0.clone()).collect::<Vec<_>>()
+                            } else { unreachable!() };
                             let ret_type = Box::new(Type::EnumVariant(enum_type, enum_variant_type, true));
                             (arg_types, type_args, ret_type, false)
                         } else {
@@ -2847,7 +2859,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         let field_data = variants.iter().enumerate()
                             .find(|(_, EnumVariantType { name, .. })| field_name == name)
                             .map(|(idx, variant_type)| {
-                                let enum_type_ref = Type::Reference(typeref_name, vec![]);
+                                let type_args = enum_type.type_args.iter().map(|type_arg| type_arg.1.clone()).collect();
+                                let enum_type_ref = Type::Reference(typeref_name, type_args);
                                 let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
                                 FieldSpec { idx, typ, is_method: false, readonly: true }
                             })
@@ -5717,6 +5730,46 @@ mod tests {
             expected: Type::Float,
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_variants_generics() {
+        let is_ok = test_typecheck("\
+          enum LL<T> {\n\
+            Cons(item: T, next: LL<T>)\n\
+            Empty\n\
+          }\n\
+          LL.Cons(1, LL.Cons(2, LL.Empty))\n\
+        ").is_ok();
+        assert!(is_ok);
+    }
+
+    #[test]
+    fn typecheck_enum_decl_variants_generics_errors() {
+        let err = test_typecheck("\
+          enum LL<T> {\n\
+            Cons(item: T, next: LL<T>)\n\
+            Empty\n\
+          }\n\
+          LL.Cons(1, LL.Cons(\"2\", LL.Empty))\n\
+        ").unwrap_err();
+        let expected = TypecheckerError::Mismatch {
+            token: Token::LParen(Position::new(5, 19), false),
+            expected: Type::Reference("_test/LL".to_string(), vec![Type::Int]),
+            actual: Type::EnumVariant(
+                Box::new(Type::Reference("_test/LL".to_string(), vec![Type::String])),
+                EnumVariantType {
+                    name: "Cons".to_string(),
+                    variant_idx: 0,
+                    arg_types: Some(vec![
+                        ("item".to_string(), Type::Generic("T".to_string()), false),
+                        ("next".to_string(), Type::Reference("_test/LL".to_string(), vec![Type::Generic("T".to_string())]), false)
+                    ])
+                },
+                true
+            )
+        };
+        assert_eq!(expected, err);
     }
 
     #[test]

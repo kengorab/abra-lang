@@ -633,7 +633,6 @@ impl Parser {
         self.expect_next_token(TokenType::RBrace)?;
 
         if is_enum {
-            let type_args = vec![];
             Ok(AstNode::EnumDecl(keyword_tok, EnumDeclNode { export_token, name, variants, methods, type_args }))
         } else {
             Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { export_token, name, fields, methods, type_args }))
