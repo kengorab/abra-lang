@@ -2,7 +2,7 @@
 # It is not intended for manual editing.
 [[package]]
 name = "abra"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "abra_core",
  "clap",
@@ -20,7 +20,7 @@ dependencies = [
 
 [[package]]
 name = "abra_core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "abra_native",
  "downcast-rs",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "abra_wasm"
-version = "0.6.9"
+version = "0.6.10"
 dependencies = [
  "abra_core",
  "js-sys",
