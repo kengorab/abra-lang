@@ -62,8 +62,8 @@ pub enum TypecheckerError {
     EmptyMatchBlock { token: Token },
     MatchBranchMismatch { token: Token, expected: Type, actual: Type },
     InvalidUninitializedEnumVariant { token: Token },
-    InvalidMatchCaseDestructuring { token: Token, typ: Type },
-    InvalidMatchCaseDestructuringArity { token: Token, typ: Type, expected: usize, actual: usize },
+    InvalidMatchCaseDestructuring { token: Token, typ: Option<Type>, enum_variant: Option<String> },
+    InvalidMatchCaseDestructuringArity { token: Token, typ: Type, enum_variant: Option<String>, expected: usize, actual: usize },
     InvalidAssignmentDestructuring { binding: BindingPattern, typ: Type },
     DuplicateSplatDestructuring { token: Token },
     UnreachableCode { token: Token },
@@ -193,7 +193,6 @@ fn type_repr(t: &Type) -> String {
             format!("{}<{}>", name, type_args_repr)
         }
         Type::Enum(EnumType { name, .. }) => format!("{}", name),
-        Type::EnumVariant(enum_type, variant, _) => format!("{}.{}", type_repr(enum_type), variant.name),
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
@@ -208,7 +207,6 @@ fn type_repr(t: &Type) -> String {
     }
 }
 
-// TODO: Replace this
 fn op_repr(op: &BinaryOp) -> String {
     match op {
         BinaryOp::Add => "+",
@@ -288,7 +286,7 @@ impl DisplayError for TypecheckerError {
                     ident, pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::DuplicateBinding { ident, orig_ident} => {
+            TypecheckerError::DuplicateBinding { ident, orig_ident } => {
                 let ident = Token::get_ident_name(&ident);
                 let first_msg = format!("Duplicate variable '{}': ({}:{})\n{}", &ident, pos.line, pos.col, cursor_line);
 
@@ -659,19 +657,29 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line
                 )
             }
-            TypecheckerError::InvalidMatchCaseDestructuring { typ, .. } => {
+            TypecheckerError::InvalidMatchCaseDestructuring { typ, enum_variant, .. } => {
+                let msg = match typ {
+                    Some(typ) => match enum_variant {
+                        Some(variant_name) => format!("Cannot destructure variant {} of enum {}", variant_name, type_repr(typ)),
+                        None => format!("Cannot destructure an instance of type {}", type_repr(typ))
+                    },
+                    None => "Cannot destructure instance of None".to_string(),
+                };
                 format!(
-                    "Invalid destructuring for match: ({}:{})\n{}\n\
-                    Cannot destructure an instance of type {}",
-                    pos.line, pos.col, cursor_line, type_repr(typ)
+                    "Invalid destructuring for match: ({}:{})\n{}\n\n{}",
+                    pos.line, pos.col, cursor_line, msg
                 )
             }
-            TypecheckerError::InvalidMatchCaseDestructuringArity { typ, expected, actual, .. } => {
+            TypecheckerError::InvalidMatchCaseDestructuringArity { typ, enum_variant, expected, actual, .. } => {
+                let type_displ = match enum_variant {
+                    Some(variant_name) => format!("{}.{}", type_repr(typ), variant_name),
+                    None => format!("type {}", type_repr(typ))
+                };
                 format!(
                     "Invalid destructuring pattern for match: ({}:{})\n{}\n\
-                    Instances of type {} have {} field{}, but the pattern attempts to extract {}",
+                    Instances of {} have {} field{}, but the pattern attempts to extract {}",
                     pos.line, pos.col, cursor_line,
-                    type_repr(typ), expected, if *expected == 1 { "" } else { "s" }, actual
+                    type_displ, expected, if *expected == 1 { "" } else { "s" }, actual
                 )
             }
             TypecheckerError::InvalidAssignmentDestructuring { binding, typ } => {

@@ -1,5 +1,5 @@
 use crate::vm::vm::VM;
-use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, EnumValue, EnumVariantObj};
+use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, EnumValue};
 use itertools::Itertools;
 
 pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
@@ -26,15 +26,17 @@ pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: 
                 .join(", ");
             format!("{}({})", type_name, values)
         }
-        Value::EnumVariantObj(o) => {
-            let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
-            match values {
-                None => format!("{}.{}", enum_name, name),
+        Value::EnumInstanceObj(rcv) => {
+            let obj = &*rcv.borrow();
+            let enum_value = vm.load_enum(obj.type_id);
+            let enum_name = enum_value.name.clone();
+            let variant_name = enum_value.variants[obj.idx].0.clone();
+
+            match &obj.values {
+                None => format!("{}.{}", enum_name, variant_name),
                 Some(values) => {
-                    let values = values.iter()
-                        .map(|v| to_string(v, vm))
-                        .join(", ");
-                    format!("{}.{}({})", enum_name, name, values)
+                    let values = values.iter().map(|v| to_string(v, vm)).join(", ");
+                    format!("{}.{}({})", enum_name, variant_name, values)
                 }
             }
         }
@@ -79,7 +81,7 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
                 })
                 .join(", ");
             format!("{{ {} }}", fields)
-        },
+        }
         Value::InstanceObj(o) => {
             let o = &*o.borrow();
 
@@ -101,13 +103,12 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
             let v = &*v.as_string().borrow();
             v._inner.clone()
         }
-        Value::EnumVariantObj(o) => {
-            let type_value = &*o.borrow();
-            let mut tostring_method = type_value.methods.iter()
-                .find(|v| match v {
-                    Value::NativeFn(NativeFn { name, .. }) if *name == "toString" => true,
-                    _ => false
-                })
+        Value::EnumInstanceObj(o) => {
+            let o = &*o.borrow();
+            let enum_value = vm.load_enum(o.type_id);
+            let mut tostring_method = enum_value.methods.iter()
+                .find(|(name, _)| name == "toString")
+                .map(|(_, m)| m)
                 .expect("Every instance should have at least the default toString method")
                 .clone();
             tostring_method.bind_fn_value(value.clone());

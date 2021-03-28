@@ -20,7 +20,6 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
-    EnumVariant(/* enum_type_ref: */ Box<Type>, /* variant_type: */ EnumVariantType, /* constructed: */ bool),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
@@ -49,9 +48,6 @@ impl PartialEq for Type {
             }
             (Type::Struct(st1), Type::Struct(st2)) => st1.eq(&st2),
             (Type::Enum(et1), Type::Enum(et2)) => et1.eq(&et2),
-            (Type::EnumVariant(et1, vt1, c1), Type::EnumVariant(et2, vt2, c2)) => {
-                et1.eq(&et2) && vt1.eq(&vt2) && c1 == c2
-            }
             (Type::Generic(n1), Type::Generic(n2)) => n1.eq(n2),
             (Type::Reference(n1, g1), Type::Reference(n2, g2)) => {
                 n1.eq(n2) && g1.eq(g2)
@@ -75,6 +71,7 @@ pub struct FnType {
     pub type_args: Vec<String>,
     pub ret_type: Box<Type>,
     pub is_variadic: bool,
+    pub is_enum_constructor: bool,
 }
 
 impl PartialEq for FnType {
@@ -148,16 +145,9 @@ impl StructType {
 pub struct EnumType {
     pub name: String,
     pub type_args: Vec<(String, Type)>,
-    pub variants: Vec<EnumVariantType>,
+    pub variants: Vec<(String, Type)>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct EnumVariantType {
-    pub name: String,
-    pub variant_idx: usize,
-    pub arg_types: Option<Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>>,
 }
 
 impl Type {
@@ -201,7 +191,7 @@ impl Type {
                         .find(|t2| t1.is_equivalent_to(t2, resolve_type))
                         .is_some();
                     if !has_match {
-                        return false
+                        return false;
                     }
                 }
                 true
@@ -253,23 +243,6 @@ impl Type {
                     if !type1.is_equivalent_to(type2, resolve_type) { return false; }
                 }
                 true
-            }
-            (EnumVariant(enum_type, variant, _), t @ Enum(_)) |
-            (t @ Enum(_), EnumVariant(enum_type, variant, _)) => {
-                let enum_type = match &**enum_type {
-                    Reference(name, type_args) => Self::hydrate_reference_type(name, type_args, resolve_type).unwrap(),
-                    _ => unreachable!()
-                };
-                if !enum_type.is_equivalent_to(t, resolve_type) {
-                    false
-                } else if let Enum(enum_type_target) = t {
-                    enum_type_target.variants.contains(variant)
-                } else {
-                    unreachable!()
-                }
-            }
-            (EnumVariant(enum_type1, _, _), EnumVariant(enum_type2, _, _)) => {
-                enum_type1.is_equivalent_to(enum_type2, resolve_type)
             }
             (Map(k_type_1, v_type_1), Map(k_type_2, v_type_2)) => {
                 if !k_type_1.is_equivalent_to(&k_type_2, resolve_type) {
@@ -415,7 +388,6 @@ impl Type {
                     .flat_map(|typ| typ.extract_unbound_generics())
                     .collect::<Vec<String>>()
             }
-            Type::EnumVariant(enum_type, _, _) => enum_type.extract_unbound_generics(),
             Type::Reference(_, type_args) => {
                 type_args.iter()
                     .flat_map(|typ| typ.extract_unbound_generics())
@@ -441,18 +413,14 @@ impl Type {
                 Type::Map(key_type, value_type)
             }
             Type::Option(inner_type) => Type::Option(Box::new(Type::substitute_generics(inner_type, available_generics))),
-            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic }) => {
+            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic, is_enum_constructor }) => {
                 let arg_types = arg_types.iter()
                     .map(|(name, typ, is_optional)| {
                         (name.clone(), Type::substitute_generics(typ, available_generics), is_optional.clone())
                     })
                     .collect();
                 let ret_type = Type::substitute_generics(ret_type, available_generics);
-                Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type), is_variadic: is_variadic.clone() })
-            }
-            Type::EnumVariant(enum_type, variant_type, is_constructed) => {
-                let enum_type = Type::substitute_generics(enum_type, available_generics);
-                Type::EnumVariant(Box::new(enum_type), variant_type.clone(), *is_constructed)
+                Type::Fn(FnType { arg_types, type_args: type_args.clone(), ret_type: Box::new(ret_type), is_variadic: is_variadic.clone(), is_enum_constructor: *is_enum_constructor })
             }
             Type::Reference(name, type_args) => {
                 let type_args = type_args.iter().map(|t| Type::substitute_generics(t, available_generics)).collect();
@@ -619,7 +587,7 @@ impl Type {
                     .collect::<Result<Vec<_>, _>>();
                 let arg_types = arg_types?.into_iter().map(|arg_type| ("_".to_string(), arg_type, false)).collect();
                 let ret_type = Type::from_type_ident(ret, types)?;
-                Ok(Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(ret_type), is_variadic: false }))
+                Ok(Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(ret_type), is_variadic: false, is_enum_constructor: false }))
             }
             // TODO: Choice type ident, eg. Int | Float
         }
@@ -699,6 +667,7 @@ mod test {
             ],
             ret_type: Box::new(Union(vec![Int, Float])),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         assert_eq!(expected, parse_type_ident("(Int | Float) => Int | Float"));
 
@@ -867,8 +836,8 @@ mod test {
         assert_eq!(Some(expected), result);
 
         // Given: (T) => Int & (String) => Int; Expect: { T: String }
-        let t = Fn(FnType { arg_types: vec![("_".to_string(), String, false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false });
-        let target = Fn(FnType { arg_types: vec![("_".to_string(), Generic("T".to_string()), false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false });
+        let t = Fn(FnType { arg_types: vec![("_".to_string(), String, false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false, is_enum_constructor: false });
+        let target = Fn(FnType { arg_types: vec![("_".to_string(), Generic("T".to_string()), false)], type_args: vec![], ret_type: Box::new(Int), is_variadic: false, is_enum_constructor: false });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), String)];
         assert_eq!(Some(expected), result);
@@ -879,12 +848,14 @@ mod test {
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Array(Box::new(Generic("T".to_string()))), false), ("_".to_string(), Int, false)],
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), Array(Box::new(Int)))];
@@ -896,12 +867,14 @@ mod test {
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false), ("_".to_string(), Generic("U".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![
@@ -916,12 +889,14 @@ mod test {
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false), ("_".to_string(), Generic("T".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![("T".to_string(), Int)];
@@ -933,12 +908,14 @@ mod test {
             type_args: vec![],
             ret_type: Box::new(Int),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let target = Fn(FnType {
             arg_types: vec![("_".to_string(), Generic("T".to_string()), false)],
             type_args: vec![],
             ret_type: Box::new(Generic("U".to_string())),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![
@@ -955,12 +932,14 @@ mod test {
                     type_args: vec![],
                     ret_type: Box::new(String),
                     is_variadic: false,
+                    is_enum_constructor: false,
                 }),
                  false
                 )],
             type_args: vec![],
             ret_type: Box::new(String),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let target = Fn(FnType {
             arg_types: vec![
@@ -970,12 +949,14 @@ mod test {
                      type_args: vec![],
                      ret_type: Box::new(Generic("U".to_string())),
                      is_variadic: false,
+                     is_enum_constructor: false,
                  }),
                  false)
             ],
             type_args: vec![],
             ret_type: Box::new(Generic("U".to_string())),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         let result = super::Type::try_fit_generics(&t, &target);
         let expected = vec![

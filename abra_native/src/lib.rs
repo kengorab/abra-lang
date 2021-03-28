@@ -738,7 +738,8 @@ fn gen_rust_type_path(type_repr: &TypeRepr, module_name: &String, type_ref_name:
                     arg_types: vec![ #(#args),* ],
                     type_args: vec![],
                     ret_type: std::boxed::Box::new(#ret),
-                    is_variadic: false
+                    is_variadic: false,
+                    is_enum_constructor: false,
                 })
             }
         }
@@ -806,6 +807,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
                     type_args: vec![],
                     ret_type: Box::new(#return_type),
                     is_variadic: #is_variadic,
+                    is_enum_constructor: false,
                 })
             )
         }
@@ -831,6 +833,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
                     type_args: vec![],
                     ret_type: Box::new(#return_type),
                     is_variadic: #is_variadic,
+                    is_enum_constructor: false,
                 }),
                 true
             )
@@ -852,6 +855,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
                             type_args: vec![],
                             ret_type: std::boxed::Box::new(crate::typechecker::types::Type::String),
                             is_variadic: false,
+                            is_enum_constructor: false,
                         })),
                         #(#methods),*
                     ],
@@ -1333,6 +1337,7 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
                 type_args: vec![],
                 ret_type: Box::new(#return_type),
                 is_variadic: #is_variadic,
+                is_enum_constructor: false,
             })
         }
     };

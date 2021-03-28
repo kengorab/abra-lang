@@ -3,8 +3,8 @@ use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, N
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
-use crate::typechecker::types::{Type, StructType, FnType, EnumType, EnumVariantType, StructTypeField, FieldSpec};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode};
+use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind};
 use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
 use crate::{ModuleLoader, ModuleReader, tokenize_and_parse};
 use itertools::Itertools;
@@ -499,17 +499,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         match typ {
             Type::Union(opts) => opts.into_iter().flat_map(|t| self.flatten_match_case_types(t)).collect(),
             Type::Option(t) => vec![self.flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
-            Type::Reference(typeref_name, typeref_args) => {
-                let typ = Type::Reference(typeref_name, typeref_args);
-                match self.resolve_ref_type(&typ) {
-                    Type::Enum(enum_type) => {
-                        enum_type.variants.into_iter()
-                            .map(|evt| Type::EnumVariant(Box::new(typ.clone()), evt, true))
-                            .collect()
-                    }
-                    _ => vec![typ]
-                }
-            }
+            typ @ Type::Reference(_, _) => vec![self.resolve_ref_type(&typ)],
             t => vec![t]
         }
     }
@@ -521,22 +511,51 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
         let target = self.visit(*target)?;
         let mut possibilities = self.flatten_match_case_types(target.get_type());
+        let mut enum_variant_possibilities = possibilities.iter()
+            .filter_map(|t| match t {
+                Type::Enum(EnumType { name, variants, .. }) => Some((name.clone(), variants.iter().map(|(name, _)| name.clone()).collect())),
+                _ => None
+            })
+            .collect::<HashMap<_, Vec<_>>>();
         let mut seen_wildcard = false;
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
             let MatchCase { token, match_type, case_binding, args } = case;
-            let ((match_type, match_type_ident), case_token) = match match_type {
+
+            self.scopes.push(Scope::new(ScopeKind::Block));
+
+            if block.is_empty() && !is_stmt {
+                let token = match match_type {
+                    MatchCaseType::Ident(ident) => ident,
+                    MatchCaseType::Wildcard(token) => token,
+                    MatchCaseType::Compound(idents) => idents.get(1).expect("There should be at least 2 idents").clone(),
+                };
+                return Err(TypecheckerError::EmptyMatchBlock { token });
+            }
+
+            let branch_cond = match match_type {
                 MatchCaseType::Ident(ident) => {
                     if seen_wildcard {
                         return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
                     }
 
-                    let t = if let Token::None(_) = &ident {
+                    if let Token::None(_) = &ident {
+                        if args.is_some() {
+                            return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: None, enum_variant: None });
+                        }
+
                         if possibilities.contains(&Type::Unknown) {
                             let idx = possibilities.iter().position(|t| t == &Type::Unknown).unwrap();
                             possibilities.remove(idx);
-                            (Type::Unknown, None)
+
+                            let binding = if let Some(ident) = case_binding {
+                                let ident_name = Token::get_ident_name(&ident).clone();
+                                self.add_binding(ident_name.as_str(), &ident, &Type::Unknown, false);
+                                Some(ident_name)
+                            } else { None };
+
+                            TypedMatchKind::None { binding }
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
                         }
@@ -545,16 +564,25 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         let typ = self.type_from_type_ident(&type_ident)?;
                         if let Type::Generic(_) = &typ {
                             return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
+                        } else if args.is_some() {
+                            return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
                         }
-                        if possibilities.contains(&typ) {
-                            let idx = possibilities.iter().position(|t| t == &typ).unwrap();
+
+                        if possibilities.contains(&self.resolve_ref_type(&typ)) {
+                            let idx = possibilities.iter().position(|t| t == &self.resolve_ref_type(&typ)).unwrap();
                             possibilities.remove(idx);
-                            (typ, Some(type_ident))
+
+                            let binding = if let Some(ident) = case_binding {
+                                let ident_name = Token::get_ident_name(&ident).clone();
+                                self.add_binding(ident_name.as_str(), &ident, &typ, false);
+                                Some(ident_name)
+                            } else { None };
+
+                            TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), binding, args: None }
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
                         }
-                    };
-                    (t, ident)
+                    }
                 }
                 MatchCaseType::Compound(idents) => {
                     let mut idents = idents.into_iter();
@@ -564,11 +592,10 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         Type::Enum(enum_type) => enum_type,
                         _ => unreachable!("Unexpected non-enum compound type used as match condition")
                     };
-                    let variants = enum_type.variants.iter().map(|v| v.name.clone()).collect::<Vec<_>>();
 
                     let variant_ident = idents.next().expect("There should be at least 2 idents");
                     let variant_name = Token::get_ident_name(&variant_ident);
-                    let variant_idx = variants.iter().position(|v| v == &variant_name);
+                    let variant_idx = enum_type.variants.iter().position(|(name, _)| name == &variant_name);
                     if variant_idx.is_none() {
                         return Err(TypecheckerError::UnknownMember { token: variant_ident, target_type: typ });
                     } else if let Some(token) = idents.next() {
@@ -576,57 +603,36 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
-                    let idx = possibilities.iter().enumerate().find_map(|(idx, possibility)| {
-                        if let Type::EnumVariant(variant_enum_type, variant, _) = possibility {
-                            if let Type::Enum(variant_enum_type) = self.resolve_ref_type(&variant_enum_type) {
-                                if enum_type == variant_enum_type && variant_idx == variant.variant_idx {
-                                    return Some(idx);
+                    match &mut enum_variant_possibilities.get_mut(&enum_type.name) {
+                        None => return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false }),
+                        Some(variants) => {
+                            match variants.iter().position(|v| *v == variant_name) {
+                                None => return Err(TypecheckerError::DuplicateMatchCase { token: variant_ident }),
+                                Some(variant_idx) => {
+                                    variants.remove(variant_idx);
+                                    if variants.is_empty() {
+                                        enum_variant_possibilities.remove(&enum_type.name);
+                                        possibilities.remove(possibilities.iter().position(|p| *p == self.resolve_ref_type(&typ)).unwrap());
+                                    }
                                 }
                             }
                         }
-                        None
-                    });
-                    match idx {
-                        Some(idx) => {
-                            let enum_variant_typ = possibilities.remove(idx);
-                            ((enum_variant_typ, Some(type_ident)), variant_ident)
-                        }
-                        None => {
-                            let enum_variant_typ = Type::EnumVariant(Box::new(typ), EnumVariantType { name: variant_name, variant_idx, arg_types: None }, true);
-                            return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(enum_variant_typ), is_unreachable_none: false });
-                        }
                     }
-                }
-                MatchCaseType::Wildcard(token) => {
-                    if seen_wildcard {
-                        return Err(TypecheckerError::DuplicateMatchCase { token });
-                    }
-                    seen_wildcard = true;
-                    let t = if possibilities.is_empty() {
-                        return Err(TypecheckerError::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
-                    } else if possibilities.len() == 1 {
-                        (possibilities.drain(..).next().unwrap(), None)
-                    } else {
-                        (Type::Union(possibilities.drain(..).collect()), None)
-                    };
-                    (t, token)
-                }
-            };
 
-            self.scopes.push(Scope::new(ScopeKind::Block));
-            let case_binding_name = if let Some(ident) = case_binding {
-                let ident_name = Token::get_ident_name(&ident).clone();
-                self.add_binding(ident_name.as_str(), &ident, &match_type, false);
-                Some(ident_name)
-            } else { None };
+                    let binding = if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &typ, false);
+                        Some(ident_name)
+                    } else { None };
 
-            let args = if let Some(mut destructured_args) = args {
-                match &match_type {
-                    Type::EnumVariant(_, variant, _) => {
-                        match &variant.arg_types {
-                            Some(arg_types) => {
+                    let args = if let Some(mut destructured_args) = args {
+                        match &enum_type.variants[variant_idx].1 {
+                            Type::Fn(fn_type) => {
+                                let FnType { is_enum_constructor, arg_types, .. } = &fn_type;
+                                debug_assert!(is_enum_constructor);
                                 if arg_types.len() != destructured_args.len() {
-                                    return Err(TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ: match_type.clone(), expected: arg_types.len(), actual: destructured_args.len() });
+                                    let arg_types_len = arg_types.len();
+                                    return Err(TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ, enum_variant: Some(variant_name), expected: arg_types_len, actual: destructured_args.len() });
                                 }
 
                                 for ((_, arg_type, _), ref mut pat) in arg_types.iter().zip(destructured_args.iter_mut()) {
@@ -634,21 +640,42 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 }
                                 Some(destructured_args)
                             }
-                            None => return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: case_token, typ: match_type.clone() })
+                            _ => {
+                                let variant_name = enum_type.variants[variant_idx].0.clone();
+                                return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: variant_ident, typ: Some(typ), enum_variant: Some(variant_name) });
+                            }
                         }
-                    }
-                    _ => return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: case_token, typ: match_type.clone() })
-                }
-            } else { None };
+                    } else { None };
 
-            if block.is_empty() && !is_stmt {
-                return Err(TypecheckerError::EmptyMatchBlock { token: case_token });
-            }
+                    TypedMatchKind::EnumVariant { variant_idx, binding, args }
+                }
+                MatchCaseType::Wildcard(token) => {
+                    if seen_wildcard {
+                        return Err(TypecheckerError::DuplicateMatchCase { token });
+                    }
+                    seen_wildcard = true;
+                    let match_type = if possibilities.is_empty() {
+                        return Err(TypecheckerError::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
+                    } else if possibilities.len() == 1 {
+                        possibilities.drain(..).next().unwrap()
+                    } else {
+                        Type::Union(possibilities.drain(..).collect())
+                    };
+                    let binding = if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &match_type, false);
+                        Some(ident_name)
+                    } else { None };
+
+                    TypedMatchKind::Wildcard { binding }
+                }
+            };
+
             self.hoist_declarations_in_scope(&block)?;
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
-            typed_branches.push((match_type, match_type_ident, case_binding_name, typed_block, args));
+            typed_branches.push((branch_cond, typed_block));
         }
         if !possibilities.is_empty() {
             return Err(TypecheckerError::NonExhaustiveMatch { token: match_token.clone() });
@@ -782,7 +809,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             }
             TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
             TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
-                branches.iter().all(|(_, _, _, body, _)| {
+                branches.iter().all(|(_, body)| {
                     body.last().map(|n| Self::all_branches_return(n)).unwrap_or(false)
                 })
             }
@@ -930,7 +957,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             }
         }
 
-        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()), is_variadic });
+        let fn_type = Type::Fn(FnType { arg_types, type_args: fn_type_arg_names, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false });
         let ret = if is_static {
             // TODO: Handle static methods referencing type's type_args
             (true, name.clone(), fn_type)
@@ -1011,7 +1038,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     // TODO: Proper protocol/interface implementation
                     if fn_name == "toString".to_string() {
                         if **ret_type != Type::String {
-                            let expected = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false });
+                            let expected = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false });
                             return Err(TypecheckerError::InvalidProtocolMethod { token: name, fn_name, expected, actual: typ });
                         }
                     }
@@ -1024,7 +1051,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         if typed_methods.iter().find(|(name, _)| name == "toString").is_none() {
             typed_methods.insert(0, (
                 "toString".to_string(),
-                Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false })
+                Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false })
             ));
         }
 
@@ -1583,7 +1610,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         // ...we pop off the scope, add the function there, and then push the scope back on.
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
         // let is_variadic = arg_types.iter().find(|(_, _, is_variadic)| *is_variadic).is_some();
-        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(initial_ret_type.clone()), is_variadic });
+        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(initial_ret_type.clone()), is_variadic, is_enum_constructor: false });
         let scope = self.scopes.pop().unwrap();
         self.add_binding(&func_name, &name, &func_type, false);
         self.scopes.push(scope);
@@ -1858,7 +1885,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         let mut variant_names = HashMap::<String, Token>::new();
         let mut typed_variants = Vec::new();
-        for (variant_idx, (name, args)) in variants.iter().enumerate() {
+        for (name, args) in variants.iter() {
             let variant_name = Token::get_ident_name(name).clone();
             if let Some(orig_ident) = variant_names.get(&variant_name) {
                 return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name.clone(), orig_is_field: false, orig_is_enum_variant: true });
@@ -1866,28 +1893,26 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 variant_names.insert(variant_name.clone(), name.clone());
             }
             let variant_type = match args {
-                None => EnumVariantType { name: variant_name, variant_idx, arg_types: None },
+                None => (variant_name, self.cur_typedef.as_ref().unwrap().clone()),
                 Some(args) => {
-                    // Handle the case where a variant arg's default value is itself a variant - since
-                    // we haven't finished typechecking variants yet, that will fail. This is a dirty hack
-                    // to still reuse the `visit_fn_args` method while forcibly not checking args' default values.
                     let faked_args = args.clone().into_iter()
                         .map(|(tok, ident, is_vararg, _)| (tok, ident, is_vararg, None))
                         .collect();
                     let faked_args = self.visit_fn_args(faked_args, false, false, false)?;
-                    EnumVariantType {
-                        name: variant_name,
-                        variant_idx,
-                        arg_types: Some(
-                            faked_args.iter().zip(args.iter())
-                                .map(|((arg_name, arg_type, _, _), (_, _, _, default_value_node))| {
-                                    let arg_name = Token::get_ident_name(arg_name).clone();
-                                    // Since we forced the default_value_node to be None in `faked_args`, we need to
-                                    // obtain the `is_some` status from the original arg. This is gross
-                                    (arg_name, arg_type.clone(), default_value_node.is_some())
-                                }).collect()
-                        ),
-                    }
+                    let constructor_type = Type::Fn(FnType {
+                        arg_types: faked_args.into_iter().zip(args.iter())
+                            .map(|((arg_name, arg_type, _, _), (_, _, _, default_value_node))| {
+                                let arg_name = Token::get_ident_name(&arg_name).clone();
+                                // Since we forced the default_value_node to be None in `faked_args`, we need to
+                                // obtain the `is_some` status from the original arg. This is gross
+                                (arg_name, arg_type.clone(), default_value_node.is_some())
+                            }).collect(),
+                        type_args: type_args.iter().map(|a| Token::get_ident_name(a)).collect(),
+                        ret_type: Box::new(self.cur_typedef.as_ref().unwrap().clone()),
+                        is_variadic: false,
+                        is_enum_constructor: true,
+                    });
+                    (variant_name, constructor_type)
                 }
             };
             typed_variants.push(variant_type);
@@ -1907,20 +1932,28 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         // --------------------------------------------------------------------------------- \\
         // ----------------------- Begin Variant/Method Typechecking ----------------------- \\
         let mut variant_nodes = Vec::new();
-        for ((name, args), variant_type) in variants.into_iter().zip(typed_variants) {
-            let variant_node = match args {
-                None => EnumVariantKind::Basic,
+        for ((name, args), _variant_type) in variants.into_iter().zip(typed_variants) {
+            let variant_type = match args {
+                None => (self.cur_typedef.as_ref().unwrap().clone(), None),
                 Some(args) => {
-                    let args = self.visit_fn_args(args, false, false, false)?
-                        .into_iter()
-                        .map(|(tok, typ, _, default)| (tok, typ, default))
-                        .collect();
-                    EnumVariantKind::Constructor(args)
+                    let args = self.visit_fn_args(args, false, false, false)?;
+                    let fn_type = Type::Fn(FnType {
+                        arg_types: args.iter()
+                            .map(|(tok, typ, has_default, _)| {
+                                let arg_name = Token::get_ident_name(&tok);
+                                (arg_name, typ.clone(), *has_default)
+                            })
+                            .collect(),
+                        type_args: type_args.iter().map(|a| Token::get_ident_name(a)).collect(),
+                        ret_type: Box::new(self.cur_typedef.as_ref().unwrap().clone()),
+                        is_variadic: false,
+                        is_enum_constructor: true,
+                    });
+                    let default_arg_nodes = args.into_iter().map(|(_, _, _, default_value)| default_value).collect();
+                    (fn_type, Some(default_arg_nodes))
                 }
             };
-            let enum_type = self.cur_typedef.as_ref().unwrap().clone();
-            let variant_type = Type::EnumVariant(Box::new(enum_type), variant_type, false);
-            variant_nodes.push((name, variant_type, variant_node));
+            variant_nodes.push((name, variant_type));
         }
 
         // Record EnumDecl for enum, registering the freshly-typed variants. Later on, we'll mutate
@@ -2280,7 +2313,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let mut node = self.visit_match_node(false, &token, node)?;
 
         let mut typ = None;
-        for (_, _, _, ref mut block, _) in &mut node.branches {
+        for (_, ref mut block) in &mut node.branches {
             if block.last().as_ref().map_or(false, |n| Self::all_branches_return(n)) {
                 continue;
             }
@@ -2436,24 +2469,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             _ => {}
         };
         match target_type {
-            t @ Type::Fn(_) | t @ Type::EnumVariant(_, _, false) => {
-                let (arg_types, type_args, ret_type, is_variadic) = match t {
-                    Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic }) => (arg_types, type_args, ret_type, is_variadic),
-                    Type::EnumVariant(enum_type, enum_variant_type, is_constructed) => {
-                        if let Some(arg_types) = &enum_variant_type.arg_types {
-                            let arg_types = arg_types.clone();
-                            let type_args = if let Type::Enum(EnumType { type_args, .. }) = self.resolve_ref_type(&enum_type) {
-                                type_args.iter().map(|type_arg| type_arg.0.clone()).collect::<Vec<_>>()
-                            } else { unreachable!() };
-                            let ret_type = Box::new(Type::EnumVariant(enum_type, enum_variant_type, true));
-                            (arg_types, type_args, ret_type, false)
-                        } else {
-                            let target_type = Type::EnumVariant(enum_type, enum_variant_type, is_constructed);
-                            return Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type });
-                        }
-                    }
-                    _ => unreachable!()
-                };
+            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic, .. }) => {
                 let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
                 if num_named != 0 && num_named != args.len() {
                     return Err(TypecheckerError::InvalidMixedParamType { token: target.get_token().clone() });
@@ -2847,7 +2863,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     let field_data = NativeMap::get_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
-                Type::Type(typeref_name, typ, _) => match zelf.resolve_ref_type(&*typ) {
+                Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
                     Type::Struct(StructType { static_fields, .. }) => {
                         let field_data = static_fields.iter().enumerate()
                             .find(|(_, (name, _, _))| field_name == name)
@@ -2855,14 +2871,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Enum(enum_type) => {
-                        let EnumType { variants, static_fields, .. } = &enum_type;
-                        let field_data = variants.iter().enumerate()
-                            .find(|(_, EnumVariantType { name, .. })| field_name == name)
-                            .map(|(idx, variant_type)| {
-                                let type_args = enum_type.type_args.iter().map(|type_arg| type_arg.1.clone()).collect();
-                                let enum_type_ref = Type::Reference(typeref_name, type_args);
-                                let typ = Type::EnumVariant(Box::new(enum_type_ref), variant_type.clone(), false);
-                                FieldSpec { idx, typ, is_method: false, readonly: true }
+                        let EnumType { variants, static_fields, .. } = enum_type;
+                        let field_data = variants.into_iter().enumerate()
+                            .find_map(|(idx, (name, typ))| {
+                                if *field_name == name {
+                                    Some(FieldSpec { idx, typ, is_method: false, readonly: true })
+                                } else { None }
                             })
                             .or_else(|| {
                                 static_fields.iter().enumerate().find_map(|(idx, (name, typ, _))| {
@@ -2891,30 +2905,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     });
                     Ok((field_data, HashMap::new()))
                 }
-                Type::EnumVariant(enum_type_ref, EnumVariantType { variant_idx, .. }, is_constructed) => {
-                    if let Type::Enum(enum_type) = zelf.resolve_ref_type(&*enum_type_ref) {
-                        let variant_type = &enum_type.variants[variant_idx];
-                        let field_data = if let Some(arg_types) = &variant_type.arg_types {
-                            if is_constructed {
-                                arg_types.iter().enumerate()
-                                    .find_map(|(idx, (arg_name, arg_type, _))| {
-                                        if field_name == arg_name {
-                                            Some(FieldSpec { idx, typ: arg_type.clone(), is_method: false, readonly: false })
-                                        } else { None }
-                                    })
-                            } else {
-                                return Err(TypecheckerError::InvalidUninitializedEnumVariant { token: token.clone() });
-                            }
-                        } else { None };
-                        match field_data {
-                            Some(field_data) => Ok((Some(field_data), HashMap::new())),
-                            None => get_field_data(&zelf, &Type::Enum(enum_type), field_name, token)
-                        }
-                    } else { unreachable!("The enum_type_ref shouldn't be anything other than an Enum type") }
-                }
                 Type::Union(opts) => {
                     let all_enums_or_variants = opts.iter().all(|o| match zelf.resolve_ref_type(o) {
-                        Type::Enum(_) | Type::EnumVariant(_, _, _) => true,
+                        Type::Enum(_) => true,
+                        Type::Fn(FnType { is_enum_constructor, .. }) if is_enum_constructor => true,
                         _ => false
                     });
                     if !all_enums_or_variants {
@@ -2923,11 +2917,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                     let enum_types = opts.iter().filter_map(|o| {
                         match zelf.resolve_ref_type(o) {
-                            Type::Enum(enum_type) => Some(enum_type),
-                            Type::EnumVariant(enum_type, _, _) => match zelf.resolve_ref_type(&*enum_type) {
-                                Type::Enum(enum_type) => Some(enum_type),
-                                _ => unreachable!()
-                            }
+                            t @ Type::Enum(_) => Some(t),
+                            Type::Fn(FnType { is_enum_constructor, ret_type, .. }) if is_enum_constructor => Some(*ret_type),
                             _ => None
                         }
                     }).collect::<Vec<_>>();
@@ -2936,7 +2927,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         Ok((None, HashMap::new()))
                     } else {
                         let enum_type = enum_types.into_iter().next().unwrap();
-                        let enum_type = Type::Enum(enum_type);
                         get_field_data(&zelf, &enum_type, field_name, token)
                     }
                 }
@@ -3014,7 +3004,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             .collect::<Vec<_>>();
 
         let typed_node = if has_unknown {
-            let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false });
+            let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false });
             let orig_node = Some((orig_node, orig_scopes));
             let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node };
             TypedAstNode::Lambda(token, node)
@@ -3022,7 +3012,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let typed_body = self.visit_fn_body(body)?;
             let body_type = typed_body.last().map_or(Type::Unit, |node| node.get_type());
 
-            let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(body_type), is_variadic: false });
+            let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(body_type), is_variadic: false, is_enum_constructor: false });
             let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };
             TypedAstNode::Lambda(token, node)
         };
@@ -3065,7 +3055,7 @@ mod tests {
     }
 
     fn to_string_method_type() -> (String, Type) {
-        ("toString".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }))
+        ("toString".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }))
     }
 
     #[test]
@@ -4347,7 +4337,7 @@ mod tests {
         );
         assert_eq!(expected, module.typed_nodes[0]);
         let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
-        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false });
+        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false });
         assert_eq!(&expected_type, typ);
 
         let module = test_typecheck("func abc(a: Int): Int = a + 1")?;
@@ -4409,7 +4399,7 @@ mod tests {
         );
         assert_eq!(expected, module.typed_nodes[0]);
         let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
-        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Array(Box::new(Type::Int))), is_variadic: false });
+        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Array(Box::new(Type::Int))), is_variadic: false, is_enum_constructor: false });
         assert_eq!(&expected_type, typ);
 
         let module = test_typecheck("func abc(): Int = 123")?;
@@ -4422,7 +4412,7 @@ mod tests {
         // Test that bindings assigned to functions have the proper type
         let module = test_typecheck("func abc(a: Int): Bool = a == 1\nval def = abc")?;
         let ScopeBinding(_, typ, _) = &module.global_bindings["def"];
-        assert_eq!(&Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Bool), is_variadic: false }), typ);
+        assert_eq!(&Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Bool), is_variadic: false, is_enum_constructor: false }), typ);
 
         let module = test_typecheck("func abc(): Bool[] = []")?;
         let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
@@ -4431,6 +4421,7 @@ mod tests {
             type_args: vec![],
             ret_type: Box::new(Type::Array(Box::new(Type::Bool))),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         assert_eq!(&expected_type, typ);
 
@@ -4441,6 +4432,7 @@ mod tests {
             type_args: vec![],
             ret_type: Box::new(Type::Option(Box::new(Type::Array(Box::new(Type::Bool))))),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         assert_eq!(&expected_type, typ);
 
@@ -4553,6 +4545,7 @@ mod tests {
             type_args: vec![],
             ret_type: Box::new(Type::Int),
             is_variadic: true,
+            is_enum_constructor: false,
         });
         assert_eq!(&expected_type, typ);
 
@@ -4607,7 +4600,7 @@ mod tests {
     fn typecheck_function_decl_recursion() -> TestResult {
         let module = test_typecheck("func abc(): Int {\nabc()\n}")?;
         let ScopeBinding(_, typ, _) = &module.global_bindings["abc"];
-        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false });
+        let expected_type = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false });
         assert_eq!(&expected_type, typ);
 
         let is_recursive = match module.typed_nodes.first().unwrap() {
@@ -4637,7 +4630,7 @@ mod tests {
         let expected = TypecheckerError::InvalidOperator {
             token: Token::Plus(Position::new(3, 4)),
             op: BinaryOp::Add,
-            ltype: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false }),
+            ltype: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false }),
             rtype: Type::Int,
         };
         assert_eq!(expected, error);
@@ -4761,6 +4754,7 @@ mod tests {
             type_args: vec![],
             ret_type: Box::new(Type::Array(Box::new(Type::Int))),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         assert_eq!(expected, typ);
 
@@ -4785,6 +4779,7 @@ mod tests {
             type_args: vec![],
             ret_type: Box::new(Type::Array(Box::new(Type::Int))),
             is_variadic: false,
+            is_enum_constructor: false,
         });
         assert_eq!(expected, typ);
 
@@ -4989,8 +4984,8 @@ mod tests {
         let expected = TypecheckerError::InvalidProtocolMethod {
             token: ident_token!((3, 6), "toString"),
             fn_name: "toString".to_string(),
-            expected: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
-            actual: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false }),
+            expected: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
+            actual: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false }),
         };
         assert_eq!(expected, error);
     }
@@ -5085,7 +5080,7 @@ mod tests {
                                                 TypedAstNode::Accessor(
                                                     Token::Dot(Position::new(4, 35)),
                                                     TypedAccessorNode {
-                                                        typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                                                        typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                                                         target: Box::new(TypedAstNode::Identifier(
                                                             Token::Self_(Position::new(4, 31)),
                                                             TypedIdentifierNode {
@@ -5124,8 +5119,8 @@ mod tests {
             static_fields: vec![],
             methods: vec![
                 to_string_method_type(),
-                ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false })),
-                ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }))
+                ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false })),
+                ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }))
             ],
         });
         Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
@@ -5154,7 +5149,7 @@ mod tests {
                 static_fields: vec![
                     (
                         Token::Func(Position::new(3, 1)),
-                        Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                        Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                         Some(TypedAstNode::FunctionDecl(
                             Token::Func(Position::new(3, 1)),
                             TypedFunctionDeclNode {
@@ -5181,7 +5176,7 @@ mod tests {
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
             static_fields: vec![
-                ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true),
+                ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), true),
             ],
             methods: vec![to_string_method_type()],
         });
@@ -5505,13 +5500,11 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 13), "Hot"),
-                        Type::EnumVariant(Box::new(Type::Reference("_test/Temp".to_string(), vec![])), EnumVariantType { name: "Hot".to_string(), variant_idx: 0, arg_types: None }, false),
-                        EnumVariantKind::Basic
+                        (Type::Reference("_test/Temp".to_string(), vec![]), None)
                     ),
                     (
                         ident_token!((1, 18), "Cold"),
-                        Type::EnumVariant(Box::new(Type::Reference("_test/Temp".to_string(), vec![])), EnumVariantType { name: "Cold".to_string(), variant_idx: 1, arg_types: None }, false),
-                        EnumVariantKind::Basic
+                        (Type::Reference("_test/Temp".to_string(), vec![]), None)
                     ),
                 ],
             },
@@ -5530,25 +5523,29 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 18), "Radians"),
-                        Type::EnumVariant(
-                            Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
-                            EnumVariantType { name: "Radians".to_string(), variant_idx: 0, arg_types: Some(vec![("rads".to_string(), Type::Float, false)]) },
-                            false,
-                        ),
-                        EnumVariantKind::Constructor(vec![
-                            (ident_token!((1, 26), "rads"), Type::Float, None)
-                        ])
+                        (
+                            Type::Fn(FnType {
+                                arg_types: vec![("rads".to_string(), Type::Float, false)],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
+                                is_variadic: false,
+                                is_enum_constructor: true,
+                            }),
+                            Some(vec![None])
+                        )
                     ),
                     (
                         ident_token!((1, 40), "Degrees"),
-                        Type::EnumVariant(
-                            Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
-                            EnumVariantType { name: "Degrees".to_string(), variant_idx: 1, arg_types: Some(vec![("degs".to_string(), Type::Float, false)]) },
-                            false,
-                        ),
-                        EnumVariantKind::Constructor(vec![
-                            (ident_token!((1, 48), "degs"), Type::Float, None)
-                        ])
+                        (
+                            Type::Fn(FnType {
+                                arg_types: vec![("degs".to_string(), Type::Float, false)],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
+                                is_variadic: false,
+                                is_enum_constructor: true,
+                            }),
+                            Some(vec![None])
+                        )
                     ),
                 ],
             },
@@ -5568,39 +5565,26 @@ mod tests {
                 variants: vec![
                     (
                         ident_token!((1, 14), "Red"),
-                        Type::EnumVariant(
-                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
-                            EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
-                            false,
-                        ),
-                        EnumVariantKind::Basic
+                        (Type::Reference("_test/Color".to_string(), vec![]), None)
                     ),
                     (
                         ident_token!((1, 19), "Darken"),
-                        Type::EnumVariant(
-                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
-                            EnumVariantType {
-                                name: "Darken".to_string(),
-                                variant_idx: 1,
-                                arg_types: Some(vec![
-                                    ("base".to_string(), Type::Reference("_test/Color".to_string(), vec![]), true),
-                                    ("amount".to_string(), Type::Float, true),
-                                ]),
-                            },
-                            false,
-                        ),
-                        EnumVariantKind::Constructor(vec![
-                            (
-                                ident_token!((1, 26), "base"),
-                                Type::Reference("_test/Color".to_string(), vec![]),
+                        (
+                            Type::Fn(FnType {
+                                arg_types: vec![
+                                    ("base".to_string(), Type::Reference("_test/Color".to_string(), vec![]), false),
+                                    ("amount".to_string(), Type::Float, false),
+                                ],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::Reference("_test/Color".to_string(), vec![])),
+                                is_variadic: false,
+                                is_enum_constructor: true,
+                            }),
+                            Some(vec![
                                 Some(TypedAstNode::Accessor(
                                     Token::Dot(Position::new(1, 45)),
                                     TypedAccessorNode {
-                                        typ: Type::EnumVariant(
-                                            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
-                                            EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
-                                            false,
-                                        ),
+                                        typ: Type::Reference("_test/Color".to_string(), vec![]),
                                         target: Box::new(identifier!(
                                             (1, 40),
                                             "Color",
@@ -5617,14 +5601,10 @@ mod tests {
                                         is_method: false,
                                         is_readonly: true,
                                     },
-                                ))
-                            ),
-                            (
-                                ident_token!((1, 51), "amount"),
-                                Type::Float,
+                                )),
                                 Some(float_literal!((1, 67), 10.0))
-                            )
-                        ])
+                            ])
+                        )
                     ),
                 ],
             },
@@ -5756,18 +5736,7 @@ mod tests {
         let expected = TypecheckerError::Mismatch {
             token: Token::LParen(Position::new(5, 19), false),
             expected: Type::Reference("_test/LL".to_string(), vec![Type::Int]),
-            actual: Type::EnumVariant(
-                Box::new(Type::Reference("_test/LL".to_string(), vec![Type::String])),
-                EnumVariantType {
-                    name: "Cons".to_string(),
-                    variant_idx: 0,
-                    arg_types: Some(vec![
-                        ("item".to_string(), Type::Generic("T".to_string()), false),
-                        ("next".to_string(), Type::Reference("_test/LL".to_string(), vec![Type::Generic("T".to_string())]), false)
-                    ])
-                },
-                true
-            )
+            actual: Type::Reference("_test/LL".to_string(), vec![Type::String]),
         };
         assert_eq!(expected, err);
     }
@@ -5808,11 +5777,7 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::UnknownMember {
             token: ident_token!((6, 11), "hex"),
-            target_type: Type::EnumVariant(
-                Box::new(Type::Reference("_test/Color".to_string(), vec![])),
-                EnumVariantType { name: "Red".to_string(), variant_idx: 0, arg_types: None },
-                false,
-            ),
+            target_type: Type::Reference("_test/Color".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 
@@ -6593,7 +6558,7 @@ mod tests {
                                 Token::LParen(Position::new(2, 18), false),
                                 TypedInvocationNode {
                                     typ: Type::Unit,
-                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Any)), true)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: true }), 0)),
+                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Any)), true)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: true, is_enum_constructor: false }), 0)),
                                     args: vec![
                                         Some(TypedAstNode::Array(
                                             Token::LBrack(Position::new(2, 19), false),
@@ -6670,7 +6635,7 @@ mod tests {
             TypedInvocationNode {
                 typ: Type::Unit,
                 target: Box::new(
-                    identifier!((2, 1), "abc", Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: false }), 0)
+                    identifier!((2, 1), "abc", Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: false, is_enum_constructor: false }), 0)
                 ),
                 args: vec![],
             },
@@ -6692,7 +6657,8 @@ mod tests {
                         arg_types: vec![("a".to_string(), Type::Int, false), ("b".to_string(), Type::String, false)],
                         type_args: vec![],
                         ret_type: Box::new(Type::String),
-                        is_variadic: false
+                        is_variadic: false,
+                        is_enum_constructor: false
                     }),
                     0
                 )),
@@ -7388,7 +7354,7 @@ mod tests {
         let expected = TypedAstNode::Accessor(
             Token::Dot(Position::new(2, 7)),
             TypedAccessorNode {
-                typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                 target: Box::new(identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)),
                 field_ident: ident_token!((2, 8), "getName"),
                 field_idx: 0,
@@ -7402,7 +7368,7 @@ mod tests {
             name: "Person".to_string(),
             type_args: vec![],
             fields: vec![],
-            static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), true)],
+            static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), true)],
             methods: vec![to_string_method_type()],
         });
         assert_eq!(expected_type, module.referencable_types["_test/Person"]);
@@ -7512,7 +7478,7 @@ mod tests {
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 4)),
             TypedLambdaNode {
-                typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                 args: vec![],
                 typed_body: Some(vec![string_literal!((1, 7), "hello")]),
                 orig_node: None,
@@ -7529,7 +7495,7 @@ mod tests {
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 3)),
             TypedLambdaNode {
-                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false }),
+                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
                 args: vec![(ident_token!((1, 1), "a"), Type::Unknown, None)],
                 typed_body: None,
                 orig_node: Some((
@@ -7557,7 +7523,7 @@ mod tests {
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 14)),
             TypedLambdaNode {
-                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false), ("b".to_string(), Type::String, true)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false }),
+                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false), ("b".to_string(), Type::String, true)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
                 args: vec![
                     (ident_token!((1, 2), "a"), Type::Unknown, None),
                     (ident_token!((1, 5), "b"), Type::String, Some(string_literal!((1, 9), "b"))),
@@ -7594,7 +7560,7 @@ mod tests {
         let expected = TypedAstNode::Lambda(
             Token::Arrow(Position::new(1, 13)),
             TypedLambdaNode {
-                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                 args: vec![
                     (ident_token!((1, 2), "a"), Type::String, None),
                 ],
@@ -7623,7 +7589,7 @@ mod tests {
                 args: vec![
                     (ident_token!((1, 15), "x"), Type::Int, false, None)
                 ],
-                ret_type: Type::Fn(FnType { arg_types: vec![("y".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false }),
+                ret_type: Type::Fn(FnType { arg_types: vec![("y".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false }),
                 body: vec![
                     TypedAstNode::Lambda(
                         Token::Arrow(Position::new(2, 3)),
@@ -7633,6 +7599,7 @@ mod tests {
                                 type_args: vec![],
                                 ret_type: Box::new(Type::Int),
                                 is_variadic: false,
+                                is_enum_constructor: false,
                             }),
                             args: vec![
                                 (ident_token!((2, 1), "y"), Type::Int, None)
@@ -7690,12 +7657,13 @@ mod tests {
                     type_args: vec![],
                     ret_type: Box::new(Type::String),
                     is_variadic: false,
+                    is_enum_constructor: false,
                 }),
-                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), 0)),
+                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), 0)),
                 expr: Box::new(TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 8)),
                     TypedLambdaNode {
-                        typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
+                        typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                         args: vec![
                             (ident_token!((2, 6), "a"), Type::String, None)
                         ],
@@ -7717,8 +7685,8 @@ mod tests {
             Token::Assign(Position::new(2, 4)),
             TypedAssignmentNode {
                 kind: AssignmentTargetKind::Identifier,
-                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }),
-                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false }), 0)),
+                typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
+                target: Box::new(identifier_mut!((2, 1), "fn", Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), 0)),
                 expr: Box::new(TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 19)),
                     TypedLambdaNode {
@@ -7727,6 +7695,7 @@ mod tests {
                             type_args: vec![],
                             ret_type: Box::new(Type::String),
                             is_variadic: false,
+                            is_enum_constructor: false,
                         }),
                         args: vec![
                             (ident_token!((2, 7), "a"), Type::String, None),
@@ -7817,8 +7786,18 @@ mod tests {
                 typ: Type::Unit,
                 target: Box::new(identifier!((2, 7), "i", Type::Option(Box::new(Type::Int)), 0)),
                 branches: vec![
-                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)], None),
-                    (Type::Unknown, None, None, vec![int_literal!((4, 9), 0)], None)
+                    (
+                        TypedMatchKind::Type {
+                            type_name: "Int".to_string(),
+                            binding: Some("i".to_string()),
+                            args: None,
+                        },
+                        vec![identifier!((3, 10), "i", Type::Int, 1)]
+                    ),
+                    (
+                        TypedMatchKind::None { binding: None },
+                        vec![int_literal!((4, 9), 0)]
+                    )
                 ],
             },
         );
@@ -7840,14 +7819,20 @@ mod tests {
                     identifier!((2, 7), "i", Type::Option(Box::new(Type::Union(vec![Type::Int, Type::String]))), 0)
                 ),
                 branches: vec![
-                    (Type::Int, Some(TypeIdentifier::Normal { ident: ident_token!((3, 1), "Int"), type_args: None }), Some("i".to_string()), vec![identifier!((3, 10), "i", Type::Int, 1)], None),
                     (
-                        Type::Union(vec![Type::String, Type::Unknown]),
-                        None,
-                        Some("v".to_string()),
-                        vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)],
-                        None,
-                    )
+                        TypedMatchKind::Type {
+                            type_name: "Int".to_string(),
+                            binding: Some("i".to_string()),
+                            args: None,
+                        },
+                        vec![identifier!((3, 10), "i", Type::Int, 1)]
+                    ),
+                    (
+                        TypedMatchKind::Wildcard {
+                            binding: Some("v".to_string()),
+                        },
+                        vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)]
+                    ),
                 ],
             },
         );
@@ -7872,32 +7857,36 @@ mod tests {
                 target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
                 branches: vec![
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true),
-                        Some(TypeIdentifier::Normal { ident: ident_token!((4, 1), "Direction"), type_args: None }),
-                        None,
+                        TypedMatchKind::EnumVariant {
+                            variant_idx: 0,
+                            binding: None,
+                            args: None,
+                        },
                         vec![int_literal!((4, 19), 0)],
-                        None,
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Right".to_string(), variant_idx: 1, arg_types: None }, true),
-                        Some(TypeIdentifier::Normal { ident: ident_token!((5, 1), "Direction"), type_args: None }),
-                        None,
+                        TypedMatchKind::EnumVariant {
+                            variant_idx: 1,
+                            binding: None,
+                            args: None,
+                        },
                         vec![int_literal!((5, 20), 1)],
-                        None,
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Up".to_string(), variant_idx: 2, arg_types: None }, true),
-                        Some(TypeIdentifier::Normal { ident: ident_token!((6, 1), "Direction"), type_args: None }),
-                        None,
+                        TypedMatchKind::EnumVariant {
+                            variant_idx: 2,
+                            binding: None,
+                            args: None,
+                        },
                         vec![int_literal!((6, 17), 2)],
-                        None,
                     ),
                     (
-                        Type::EnumVariant(Box::new(enum_ref_type.clone()), EnumVariantType { name: "Down".to_string(), variant_idx: 3, arg_types: None }, true),
-                        Some(TypeIdentifier::Normal { ident: ident_token!((7, 1), "Direction"), type_args: None }),
-                        None,
+                        TypedMatchKind::EnumVariant {
+                            variant_idx: 3,
+                            binding: None,
+                            args: None,
+                        },
                         vec![int_literal!((7, 19), 3)],
-                        None,
                     )
                 ],
             },
@@ -8055,10 +8044,8 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableMatchCase {
+        let expected = TypecheckerError::DuplicateMatchCase {
             token: ident_token!((5, 23), "Left"),
-            typ: Some(Type::EnumVariant(Box::new(Type::Reference("_test/Direction".to_string(), vec![])), EnumVariantType { name: "Left".to_string(), variant_idx: 0, arg_types: None }, true)),
-            is_unreachable_none: false,
         };
         assert_eq!(expected, err);
 
@@ -8071,17 +8058,8 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
-            typ: Type::EnumVariant(
-                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
-                EnumVariantType {
-                    name: "Bar".to_string(),
-                    variant_idx: 0,
-                    arg_types: Some(vec![
-                        ("baz".to_string(), Type::Int, false)
-                    ]),
-                },
-                true,
-            ),
+            typ: Type::Reference("_test/Foo".to_string(), vec![]),
+            enum_variant: Some("Bar".to_string()),
             expected: 1,
             actual: 2,
         };
@@ -8096,18 +8074,8 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
-            typ: Type::EnumVariant(
-                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
-                EnumVariantType {
-                    name: "Bar".to_string(),
-                    variant_idx: 0,
-                    arg_types: Some(vec![
-                        ("baz".to_string(), Type::Int, false),
-                        ("qux".to_string(), Type::Int, false),
-                    ]),
-                },
-                true,
-            ),
+            typ: Type::Reference("_test/Foo".to_string(), vec![]),
+            enum_variant: Some("Bar".to_string()),
             expected: 2,
             actual: 1,
         };
@@ -8122,15 +8090,36 @@ mod tests {
         ").unwrap_err();
         let expected = TypecheckerError::InvalidMatchCaseDestructuring {
             token: ident_token!((4, 5), "Bar"),
-            typ: Type::EnumVariant(
-                Box::new(Type::Reference("_test/Foo".to_string(), vec![])),
-                EnumVariantType {
-                    name: "Bar".to_string(),
-                    variant_idx: 0,
-                    arg_types: None,
-                },
-                true,
-            ),
+            typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
+            enum_variant: Some("Bar".to_string()),
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          val x: Int? = 0\n\
+          val i = match x {\n\
+            None(z) => 0\n\
+            _ => 1\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidMatchCaseDestructuring {
+            token: Token::None(Position::new(3, 1)),
+            typ: None,
+            enum_variant: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          val x: Int? = 0\n\
+          val i = match x {\n\
+            Int(z) => 0\n\
+            _ => 1\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerError::InvalidMatchCaseDestructuring {
+            token: ident_token!((3, 1), "Int"),
+            typ: Some(Type::Int),
+            enum_variant: None,
         };
         assert_eq!(expected, err);
     }
