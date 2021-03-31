@@ -107,7 +107,7 @@ impl TypeValue {
 pub struct EnumValue {
     pub name: String,
     pub module_name: String,
-    pub variants: Vec<(String, EnumVariantObj)>,
+    pub variants: Vec<(String, Value)>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
@@ -128,7 +128,7 @@ pub enum Value {
     MapObj(Arc<RefCell<NativeMap>>),
     InstanceObj(Arc<RefCell<InstanceObj>>),
     NativeInstanceObj(Arc<RefCell<NativeInstanceObj>>),
-    EnumVariantObj(Arc<RefCell<EnumVariantObj>>),
+    EnumInstanceObj(Arc<RefCell<EnumInstanceObj>>),
     Fn(FnValue),
     Closure(ClosureValue),
     NativeFn(NativeFn),
@@ -168,8 +168,8 @@ impl Value {
         Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
-    pub fn new_enum_variant_obj(evv: EnumVariantObj) -> Value {
-        Value::EnumVariantObj(Arc::new(RefCell::new(evv)))
+    pub fn new_enum_instance_obj(o: EnumInstanceObj) -> Value {
+        Value::EnumInstanceObj(Arc::new(RefCell::new(o)))
     }
 
     pub fn bind_fn_value(&mut self, instance: Value) {
@@ -216,8 +216,8 @@ impl Value {
         if let Value::InstanceObj(o) = self { o } else { unreachable!() }
     }
 
-    pub fn as_enum_variant(&self) -> &Arc<RefCell<EnumVariantObj>> {
-        if let Value::EnumVariantObj(o) = self { o } else { unreachable!() }
+    pub fn as_enum_variant(&self) -> &Arc<RefCell<EnumInstanceObj>> {
+        if let Value::EnumInstanceObj(o) = self { o } else { unreachable!() }
     }
 }
 
@@ -261,15 +261,9 @@ impl Display for Value {
                 let inst = &*o.borrow();
                 write!(f, "<instance type_id={:?}>", &inst.type_id)
             }
-            Value::EnumVariantObj(o) => {
-                let EnumVariantObj { enum_name, name, values, .. } = &*o.borrow();
-                match values {
-                    None => write!(f, "{}.{}", enum_name, name),
-                    Some(values) => {
-                        let values = values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
-                        write!(f, "{}.{}({})", enum_name, name, values)
-                    }
-                }
+            Value::EnumInstanceObj(o) => {
+                let inst = &*o.borrow();
+                write!(f, "<enum type_id={:?}>", &inst.type_id)
             }
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
@@ -293,13 +287,9 @@ impl Hash for Value {
             Value::TupleObj(o) => (&*o.borrow()).hash(hasher),
             Value::SetObj(o) => (&*o.borrow()).hash(hasher),
             Value::MapObj(o) => (&*o.borrow()).hash(hasher),
-            Value::InstanceObj(o) => {
-                let i = &*o.borrow();
-                i.type_id.hash(hasher);
-                i.fields.hash(hasher);
-            }
+            Value::InstanceObj(o) => (&*o.borrow()).hash(hasher),
             Value::NativeInstanceObj(o) => (&*o.borrow()).inst.hash(hasher),
-            Value::EnumVariantObj(o) => (&*o.borrow()).hash(hasher),
+            Value::EnumInstanceObj(o) => (&*o.borrow()).hash(hasher),
             Value::Fn(f) => f.hash(hasher),
             Value::Closure(c) => c.hash(hasher),
             Value::NativeFn(NativeFn { name, receiver, has_return, .. }) => {
@@ -323,6 +313,13 @@ impl Eq for Value {}
 pub struct InstanceObj {
     pub type_id: (usize, usize),
     pub fields: Vec<Value>,
+}
+
+#[derive(Debug, Hash, Eq, PartialEq)]
+pub struct EnumInstanceObj {
+    pub type_id: (usize, usize),
+    pub idx: usize,
+    pub values: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Hash, Eq)]

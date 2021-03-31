@@ -1,7 +1,7 @@
 use crate::builtins::common::to_string;
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
-use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, InstanceObj, EnumValue, EnumVariantObj};
+use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, InstanceObj, EnumValue, EnumInstanceObj};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
@@ -179,6 +179,20 @@ impl VM {
         } else { panic!("Could not load type for id: {}", type_id) }
     }
 
+    pub fn load_enum(&self, (module_idx, type_id): (usize, usize)) -> &EnumValue {
+        if let Some(Value::Enum(ev)) = self.constants[module_idx].get(type_id) {
+            ev
+        } else { panic!("Could not load enum for id: {}", type_id) }
+    }
+
+    fn load_type_methods(&self, (module_idx, type_id): (usize, usize)) -> &Vec<(String, Value)> {
+        match &self.constants[module_idx].get(type_id) {
+            Some(Value::Type(tv)) => &tv.methods,
+            Some(Value::Enum(ev)) => &ev.methods,
+            _ => unreachable!()
+        }
+    }
+
     pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> (usize, usize) {
         let name = name.as_ref();
         self.type_constant_indexes[name]
@@ -208,7 +222,6 @@ impl VM {
         let uv = uv.borrow();
 
         if uv.is_closed {
-            // TODO: Note, this won't work for mutable upvalues, ie. `myArray.push(1)`
             let val = uv.val.as_ref()
                 .expect("A closed upvalue should have a val")
                 .clone();
@@ -223,7 +236,7 @@ impl VM {
     fn store_local(&mut self, local_idx: usize) -> Result<(), InterpretError> {
         let stack_slot = self.stack_slot_for_local(local_idx);
         let value = self.pop_expect()?;
-        self.stack_insert_at(stack_slot, value); // TODO: Raise InterpretError when OOB stack_slot
+        self.stack_insert_at(stack_slot, value);
         Ok(())
     }
 
@@ -350,10 +363,7 @@ impl VM {
             (Value::Float(a), Value::Float(b)) => a.partial_cmp(&b),
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
             (Value::Type(TypeValue { name: name1, .. }), Value::Type(TypeValue { name: name2, .. })) => name1.partial_cmp(&name2),
-            (Value::EnumVariantObj(o), Value::Int(b)) => {
-                let evv = &*o.borrow();
-                evv.idx.partial_cmp(&(b as usize))
-            }
+            (Value::EnumInstanceObj(o), Value::Int(b)) => o.borrow().idx.partial_cmp(&(b as usize)),
             (Value::StringObj(s1), Value::StringObj(s2)) => {
                 s1.borrow()._inner.partial_cmp(&s2.borrow()._inner)
             }
@@ -569,10 +579,21 @@ impl VM {
                         fields.push(field_value);
                     }
 
-                    let type_value = if let Value::Type(tv) = self.pop_expect()? { tv } else { unreachable!() };
-                    let fully_qualified_type_name = format!("{}/{}", type_value.module_name, type_value.name);
-                    let type_id = self.type_constant_indexes[&fully_qualified_type_name];
-                    let inst = type_value.construct(type_id.0, type_id.1, fields);
+                    let inst = match self.pop_expect()? {
+                        Value::Type(tv) => {
+                            let fully_qualified_type_name = format!("{}/{}", tv.module_name, tv.name);
+                            let type_id = self.type_constant_indexes[&fully_qualified_type_name];
+                            tv.construct(type_id.0, type_id.1, fields)
+                        }
+                        Value::Enum(ev) => {
+                            let idx = pop_expect_int!(self)? as usize;
+                            let fully_qualified_type_name = format!("{}/{}", ev.module_name, ev.name);
+                            let type_id = self.type_constant_indexes[&fully_qualified_type_name];
+                            let inst = EnumInstanceObj { idx, type_id, values: Some(fields) };
+                            Value::new_enum_instance_obj(inst)
+                        }
+                        _ => unreachable!()
+                    };
 
                     self.push(inst);
                 }
@@ -592,23 +613,15 @@ impl VM {
                             let i = &*o.borrow();
                             i.inst.get_field_value(idx)
                         }
-                        Value::EnumVariantObj(o) => {
+                        Value::EnumInstanceObj(o) => {
                             let inst = &*o.borrow();
                             if let Some(values) = &inst.values {
                                 values[idx].clone()
                             } else { unreachable!() }
                         }
-                        Value::Enum(EnumValue { variants, methods, .. }) => {
+                        Value::Enum(EnumValue { variants, ..}) => {
                             let (_, variant_value) = variants[idx].clone();
-                            let instance_value = Value::new_enum_variant_obj(variant_value);
-
-                            // TODO: Don't eagerly bind method values
-                            for (_, mut method_value) in methods {
-                                method_value.bind_fn_value(instance_value.clone());
-
-                                instance_value.as_enum_variant().borrow_mut().methods.push(method_value);
-                            }
-                            instance_value
+                            variant_value
                         }
                         v => unreachable!("Value {} has no fields", v)
                     };
@@ -625,11 +638,6 @@ impl VM {
                             self.push(field_value);
                             continue;
                         }
-                        // Then we handle enum variant objects, since their methods are pre-cloned
-                        Value::EnumVariantObj(o) => {
-                            let inst = &*o.borrow();
-                            inst.methods[idx].clone()
-                        }
                         // Otherwise, handle remaining value kinds
                         v => {
                             let type_id = match &v {
@@ -640,10 +648,11 @@ impl VM {
                                 Value::SetObj(_) => self.type_constant_indexes["prelude/Set"],
                                 Value::MapObj(_) => self.type_constant_indexes["prelude/Map"],
                                 Value::InstanceObj(o) => o.borrow().type_id,
+                                Value::EnumInstanceObj(o) => o.borrow().type_id,
                                 Value::NativeInstanceObj(o) => o.borrow().type_id,
                                 _ => unreachable!("Remaining value kinds should have been handled above")
                             };
-                            let (_, method) = self.load_type(type_id).methods[idx].clone();
+                            let (_, method) = self.load_type_methods(type_id)[idx].clone();
                             method
                         }
                     };
@@ -664,11 +673,12 @@ impl VM {
                             let inst = &mut *o.borrow_mut();
                             inst.inst.set_field_value(field_idx, value.clone())
                         }
-                        Value::EnumVariantObj(o) => {
-                            let EnumVariantObj { ref mut values, .. } = &mut *o.borrow_mut();
-                            match values {
-                                Some(values) => values[field_idx] = value.clone(),
-                                None => unreachable!()
+                        Value::EnumInstanceObj(o) => {
+                            match &mut (&mut *o.borrow_mut()).values {
+                                None => unreachable!(),
+                                Some(values) => {
+                                    values[field_idx] = value.clone();
+                                }
                             }
                         }
                         _ => unimplemented!("No builtin types have mutable fields")
@@ -892,30 +902,13 @@ impl VM {
                     let fn_idx = self.stack.len() - arity - 1;
                     let target = self.stack.remove(fn_idx);
 
-                    match &target {
-                        Value::NativeFn(native_fn) => {
-                            if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
-                                self.push(value);
-                            }
-                            continue;
+                    if let Value::NativeFn(native_fn) = &target {
+                        if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
+                            self.push(value);
                         }
-                        Value::EnumVariantObj(o) => {
-                            let evv = &mut *o.borrow_mut();
-                            let arity = evv.arity;
-                            let num_args = self.stack.len() - arity;
-                            let args = self.stack.split_off(num_args);
-
-                            evv.values = Some(args);
-                        }
-                        _ => {
-                            self.start_call_frame(arity, target)?;
-                            continue;
-                        }
+                    } else {
+                        self.start_call_frame(arity, target)?;
                     }
-
-                    // The Value::Obj(Obj::EnumVariant) path above is the only way to reach here; since
-                    // it mutates `target` as an Arc<RefCell<Obj>>, we can't push it until the match ends.
-                    self.push(target);
                 }
                 Opcode::ClosureMk => self.make_closure()?,
                 Opcode::CloseUpvalue => self.close_upvalue()?,
@@ -958,7 +951,11 @@ impl VM {
                             let type_value = self.load_type(i.type_id).clone();
                             self.push(Value::Type(type_value))
                         }
-                        Value::EnumVariantObj(o) => self.load_constant(self.type_constant_indexes[&*o.borrow().enum_name])?,
+                        Value::EnumInstanceObj(o) => {
+                            let i = &*o.borrow();
+                            let enum_value = self.load_enum(i.type_id).clone();
+                            self.push(Value::Enum(enum_value))
+                        }
                         Value::Nil => self.push(Value::Nil),
                         Value::TupleObj(_) |
                         Value::Fn(_) |

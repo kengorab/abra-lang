@@ -1,10 +1,10 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
-use crate::lexer::tokens::Token;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, TypeIdentifier, BindingPattern, ModuleId};
+use crate::lexer::tokens::{Token, Position};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, BindingPattern, ModuleId};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, EnumVariantKind, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedImportNode};
-use crate::typechecker::types::{Type, FnType, EnumVariantType};
-use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, EnumVariantObj, NativeFn};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedImportNode, TypedMatchKind};
+use crate::typechecker::types::{Type, FnType};
+use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, NativeFn, EnumInstanceObj};
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeString};
 use crate::builtins::common::default_to_string_method;
 use crate::builtins::native_value_trait::NativeTyp;
@@ -220,12 +220,17 @@ impl<'a, R: ModuleReader> Compiler<'a, R> {
         }
     }
 
-    fn write_int_constant(&mut self, number: u32, line: usize) {
+    fn int_constant_op(&mut self, number: u32) -> Opcode {
         let ops = vec![Opcode::IConst0, Opcode::IConst1, Opcode::IConst2, Opcode::IConst3, Opcode::IConst4];
         match ops.get(number as usize) {
-            Some(op) => self.write_opcode((*op).clone(), line),
-            None => { self.add_and_write_constant(Value::Int(number as i64), line); }
+            Some(op) => *op,
+            None => Opcode::Constant(self.module_idx, self.add_constant(Value::Int(number as i64)))
         }
+    }
+
+    fn write_int_constant(&mut self, number: u32, line: usize) {
+        let op = self.int_constant_op(number);
+        self.write_opcode(op, line);
     }
 
     fn write_store_local_instr<S: AsRef<str>>(&mut self, name: S, stack_slot: usize, line: usize) {
@@ -1244,17 +1249,67 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             unreachable!("Enum declarations are only allowed at the root scope");
         }
 
-        let variants = variants.into_iter().enumerate()
-            .map(|(idx, (ident_tok, _typ, variant_kind))| {
-                let name = Token::get_ident_name(&ident_tok);
-                let arity = match variant_kind {
-                    EnumVariantKind::Basic => 0,
-                    EnumVariantKind::Constructor(args) => args.len()
-                };
+        // Since we need the const_idx of the enum in order to generate the GLoad instruction in the generated function,
+        // we need to pre-allocate a slot for it. Later on, the real constant value is inserted in at this index.
+        self.constants.push(Value::Nil);
+        let const_idx = self.constants.len() - 1;
+        let const_name = self.namespaced_str(&self.module_id.get_name(), &enum_name);
+        let enum_name_str_const_idx = *self.str_constant_cache.get(&const_name).unwrap();
 
-                (name.clone(), EnumVariantObj { enum_name: enum_name.clone(), enum_module_name: self.module_id.get_name(), name, idx, arity, methods: vec![], values: None })
+        let variants = variants.into_iter().enumerate()
+            .map(|(idx, (ident_tok, (typ, variant_args)))| {
+                let variant_name = Token::get_ident_name(&ident_tok);
+
+                match typ {
+                    Type::Fn(FnType { is_enum_constructor, arg_types, ret_type, .. }) => {
+                        debug_assert!(is_enum_constructor);
+
+                        // Jank: for enum variants with arguments, we need to generate a function. To generate the bytecode for the
+                        // function preamble (default argument handling, which pushes locals), use `compile_function_decl`. Then,
+                        // remove the final Opcode::Return, and append additional bytecode to construct the enum instance.
+                        let num_args = arg_types.len();
+                        let variant_args = match variant_args {
+                            Some(args) => args,
+                            None => std::iter::repeat(None).take(num_args).collect()
+                        };
+                        let args = arg_types.into_iter().zip(variant_args)
+                            .map(|(at, va)| {
+                                (Token::Ident(Position::new(0, 0), at.0), at.1, at.2, va)
+                            })
+                            .collect();
+                        let constructor_fn_name = format!("{}.{}", &enum_name, &variant_name);
+                        let fn_name_ident = Token::Ident(Position::new(0, 0), constructor_fn_name);
+                        let mut fn_value = self.compile_function_decl(ident_tok, Some(fn_name_ident), args, *ret_type, vec![], self.get_fn_depth())?;
+                        for _ in 0..num_args {
+                            // When compiling the function declaration, a local is pushed for each argument; we need to pop these off so we don't pollute
+                            self.locals.pop();
+                        }
+                        fn_value.code.pop(); // Remove Opcode::Return
+
+                        // Extend fn with code to initialize enum variant
+                        fn_value.code.extend(vec![
+                            vec![
+                                self.int_constant_op(idx as u32),
+                                Opcode::GLoad(self.module_idx, enum_name_str_const_idx),
+                            ],
+                            (0..num_args).rev().map(|i| Opcode::LLoad(i)).collect(),
+                            vec![
+                                Opcode::New(num_args),
+                                Opcode::LStore(0),
+                                Opcode::Pop(num_args - 1),
+                                Opcode::Return,
+                            ]
+                        ].concat());
+                        Ok((variant_name, Value::Fn(fn_value)))
+                    }
+                    Type::Reference(_, _) => {
+                        let inst = EnumInstanceObj { idx, type_id: (self.module_idx, const_idx), values: None };
+                        Ok((variant_name, Value::new_enum_instance_obj(inst)))
+                    }
+                    _ => unreachable!()
+                }
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut compiled_methods = Vec::with_capacity(methods.len());
         if methods.iter().find(|(name, _)| name == "toString").is_none() {
@@ -1307,7 +1362,8 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             methods: compiled_methods,
             static_fields: compiled_static_fields,
         });
-        let const_idx = self.add_and_write_constant(enum_value, line);
+        self.constants[const_idx] = enum_value;
+        self.write_constant(self.module_idx, const_idx, line);
         self.module_loader.add_const_idx(&self.module_id, &enum_name, const_idx);
 
         // Overwrite placeholder created at start
@@ -1510,39 +1566,41 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let mut end_match_jumps = Vec::new();
 
-        for (branch_type, branch_type_ident, binding, block, args) in branches {
+        for (match_kind, block) in branches {
             self.push_scope(ScopeKind::Block);
 
-            let is_wildcard_case = branch_type != Type::Unknown && branch_type_ident.is_none();
-            if is_wildcard_case { // Handle `_ => ...` case
-                if let Some(binding_name) = &binding {
-                    self.push_local(binding_name, token.get_position().line, true);
-                } else {
-                    // Pop match target if it's not bound as a local
-                    self.write_opcode(Opcode::Pop(1), token.get_position().line);
+            let (binding, args) = match match_kind {
+                TypedMatchKind::Wildcard { binding } => {
+                    if let Some(binding_name) = &binding {
+                        self.push_local(binding_name, token.get_position().line, true);
+                    } else {
+                        // Pop match target if it's not bound as a local
+                        self.write_opcode(Opcode::Pop(1), token.get_position().line);
+                    }
+                    self.visit_block(block, is_stmt)?;
+
+                    self.pop_scope();
+                    continue;
                 }
-                self.visit_block(block, is_stmt)?;
+                TypedMatchKind::None { binding } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.write_opcode(Opcode::Nil, token.get_position().line);
+                    (binding, None)
+                }
+                TypedMatchKind::Type { type_name, binding, args } => {
+                    let (module_idx, type_const_idx) = self.get_type_constant_index(&type_name);
 
-                self.pop_scope();
-                continue;
-            }
-
-            if branch_type == Type::Unknown { // Handle `None => ...` case
-                self.write_opcode(Opcode::Dup, token.get_position().line);
-                self.write_opcode(Opcode::Nil, token.get_position().line);
-            } else if let Type::EnumVariant(_, EnumVariantType { variant_idx, .. }, _) = branch_type {
-                self.write_opcode(Opcode::Dup, token.get_position().line);
-                self.write_int_constant(variant_idx as u32, token.get_position().line);
-            } else if let Some(TypeIdentifier::Normal { ident, .. }) = branch_type_ident { // Handle `Int => ...` case
-                let type_name = Token::get_ident_name(&ident);
-                let (module_idx, type_const_idx) = self.get_type_constant_index(&type_name);
-
-                self.write_opcode(Opcode::Dup, token.get_position().line);
-                self.write_opcode(Opcode::Typeof, token.get_position().line);
-                self.write_constant(module_idx, type_const_idx, token.get_position().line);
-            } else {
-                unimplemented!()
-            }
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.write_opcode(Opcode::Typeof, token.get_position().line);
+                    self.write_constant(module_idx, type_const_idx, token.get_position().line);
+                    (binding, args)
+                }
+                TypedMatchKind::EnumVariant { variant_idx, binding, args } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.write_int_constant(variant_idx as u32, token.get_position().line);
+                    (binding, args)
+                }
+            };
 
             self.write_opcode(Opcode::Eq, token.get_position().line);
             let next_case_jump_handle = self.begin_jump(Opcode::JumpIfF(0), token.get_position().line);
@@ -1594,10 +1652,6 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             Type::Fn(FnType { arg_types, ret_type, .. }) => {
                 let returns_fn = if let Type::Fn(_) = &*ret_type { true } else { false };
                 (arg_types.len(), returns_fn)
-            }
-            Type::EnumVariant(_, EnumVariantType { arg_types, .. }, _) => {
-                let arity = arg_types.as_ref().map(|ts| ts.len()).expect("Typechecking should have caught invocation of non-constructor enum variants");
-                (arity, false)
             }
             _ => unreachable!() // This should have been caught during typechecking
         };
@@ -3748,27 +3802,11 @@ mod tests {
                     variants: vec![
                         (
                             "On".to_string(),
-                            EnumVariantObj {
-                                enum_name: "Status".to_string(),
-                                enum_module_name: "_test".to_string(),
-                                name: "On".to_string(),
-                                idx: 0,
-                                methods: vec![],
-                                arity: 0,
-                                values: None,
-                            }
+                            Value::new_enum_instance_obj(EnumInstanceObj { type_id: (1, 1), idx: 0, values: None })
                         ),
                         (
                             "Off".to_string(),
-                            EnumVariantObj {
-                                enum_name: "Status".to_string(),
-                                enum_module_name: "_test".to_string(),
-                                name: "Off".to_string(),
-                                idx: 1,
-                                methods: vec![],
-                                arity: 0,
-                                values: None,
-                            }
+                            Value::new_enum_instance_obj(EnumInstanceObj { type_id: (1, 1), idx: 1, values: None })
                         )
                     ],
                 }),
@@ -4725,27 +4763,11 @@ mod tests {
                     variants: vec![
                         (
                             "Left".to_string(),
-                            EnumVariantObj {
-                                enum_name: "Direction".to_string(),
-                                enum_module_name: "_test".to_string(),
-                                name: "Left".to_string(),
-                                idx: 0,
-                                methods: vec![],
-                                arity: 0,
-                                values: None,
-                            }
+                            Value::new_enum_instance_obj(EnumInstanceObj { type_id: (1, 1), idx: 0, values: None })
                         ),
                         (
                             "Right".to_string(),
-                            EnumVariantObj {
-                                enum_name: "Direction".to_string(),
-                                enum_module_name: "_test".to_string(),
-                                name: "Right".to_string(),
-                                idx: 1,
-                                methods: vec![],
-                                arity: 0,
-                                values: None,
-                            }
+                            Value::new_enum_instance_obj(EnumInstanceObj { type_id: (1, 1), idx: 1, values: None })
                         )
                     ],
                     methods: vec![to_string_method()],
@@ -4801,15 +4823,21 @@ mod tests {
                     variants: vec![
                         (
                             "Bar".to_string(),
-                            EnumVariantObj {
-                                enum_name: "Foo".to_string(),
-                                enum_module_name: "_test".to_string(),
-                                name: "Bar".to_string(),
-                                idx: 0,
-                                methods: vec![],
-                                arity: 1,
-                                values: None,
-                            }
+                            Value::Fn(FnValue {
+                                name: "Foo.Bar".to_string(),
+                                code: vec![
+                                    Opcode::IConst0,
+                                    Opcode::GLoad(1, 0),
+                                    Opcode::LLoad(0),
+                                    Opcode::New(1),
+                                    Opcode::LStore(0),
+                                    Opcode::Pop(0),
+                                    Opcode::Return
+                                ],
+                                upvalues: vec![],
+                                receiver: None,
+                                has_return: true,
+                            })
                         ),
                     ],
                     methods: vec![to_string_method()],

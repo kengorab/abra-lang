@@ -524,21 +524,29 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidMatchCaseDestructuring { token, typ } => {
+                TypecheckerError::InvalidMatchCaseDestructuring { token, typ , enum_variant } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
                     obj.serialize_entry("token", &JsToken(token))?;
-                    obj.serialize_entry("type", &JsType(typ))?;
+                    if let Some(typ) = typ {
+                        obj.serialize_entry("type", &JsType(typ))?;
+                    }
+                    if let Some(variant_name) = enum_variant {
+                        obj.serialize_entry("variantName", variant_name)?;
+                    }
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ, expected, actual } => {
+                TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ, enum_variant, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(7))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("type", &JsType(typ))?;
+                    if let Some(variant_name) = enum_variant {
+                        obj.serialize_entry("variantName", variant_name)?;
+                    }
                     obj.serialize_entry("expected", expected)?;
                     obj.serialize_entry("actual", actual)?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;

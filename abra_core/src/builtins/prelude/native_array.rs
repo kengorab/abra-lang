@@ -697,7 +697,6 @@ mod test {
         assert_eq!(Some(expected), result);
 
         // Verify closures work
-        // TODO: See #172
         let result = interpret(r#"
           var total = 0
           val arr = [1, 2, 3, 4]

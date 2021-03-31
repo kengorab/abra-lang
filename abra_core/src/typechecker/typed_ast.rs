@@ -1,5 +1,5 @@
 use crate::typechecker::types::Type;
-use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, TypeIdentifier, BindingPattern, ModuleId};
+use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, BindingPattern, ModuleId};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
 
@@ -206,7 +206,7 @@ pub struct TypedTypeDeclNode {
 pub struct TypedTypeDeclField {
     pub ident: Token,
     pub typ: Type,
-    pub default_value: Option<TypedAstNode>
+    pub default_value: Option<TypedAstNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -220,7 +220,7 @@ pub struct TypedEnumDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub variants: Vec<(Token, Type, EnumVariantKind)>,
+    pub variants: Vec<(Token, (Type, Option<Vec<Option<TypedAstNode>>>))>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub methods: Vec<(String, TypedAstNode)>,
 }
@@ -310,7 +310,15 @@ pub struct TypedAccessorNode {
 pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub branches: Vec<(/* match_type: */ Type, /* match_type_ident: */ Option<TypeIdentifier>, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>, /* args: */ Option<Vec<BindingPattern>>)>,
+    pub branches: Vec<(/* match_kind: */ TypedMatchKind, /* body: */ Vec<TypedAstNode>)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchKind {
+    Wildcard { binding: Option<String> },
+    None { binding: Option<String> },
+    Type { type_name: String, binding: Option<String>, args: Option<Vec<BindingPattern>> },
+    EnumVariant { variant_idx: usize, binding: Option<String>, args: Option<Vec<BindingPattern>> },
 }
 
 #[derive(Clone, Debug, PartialEq)]

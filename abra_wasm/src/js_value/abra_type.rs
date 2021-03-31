@@ -79,7 +79,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("innerType", &JsType(inner_type))?;
                 obj.end()
             }
-            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic }) => {
+            Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic, is_enum_constructor }) => {
                 let mut obj = serializer.serialize_map(Some(3))?;
                 obj.serialize_entry("kind", "Fn")?;
                 let args: Vec<(String, JsType)> = arg_types.iter()
@@ -89,6 +89,7 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("typeArgs", &type_args)?;
                 obj.serialize_entry("returnType", &JsType(ret_type))?;
                 obj.serialize_entry("isVariadic", is_variadic)?;
+                obj.serialize_entry("isEnumConstructor", is_enum_constructor)?;
                 obj.end()
             }
             Type::Type(name, _, _) => {
@@ -133,7 +134,7 @@ impl<'a> Serialize for JsType<'a> {
                     .collect();
                 obj.serialize_entry("typeArgs", &type_args)?;
                 let variants: Vec<String> = variants.iter()
-                    .map(|variant| variant.name.clone())
+                    .map(|(name, _)| name.clone())
                     .collect();
                 obj.serialize_entry("variants", &variants)?;
                 let static_fields: Vec<(String, JsType)> = static_fields.iter()
@@ -144,14 +145,6 @@ impl<'a> Serialize for JsType<'a> {
                     .map(|(name, typ)| (name.clone(), JsType(typ)))
                     .collect();
                 obj.serialize_entry("methods", &methods)?;
-                obj.end()
-            }
-            Type::EnumVariant(enum_type, variant, _) => {
-                let mut obj = serializer.serialize_map(Some(3))?;
-                obj.serialize_entry("kind", "EnumVariant")?;
-                obj.serialize_entry("enumType", &JsType(enum_type))?;
-                obj.serialize_entry("variantName", &variant.name)?;
-                obj.serialize_entry("index", &variant.variant_idx)?;
                 obj.end()
             }
             Type::Placeholder => {

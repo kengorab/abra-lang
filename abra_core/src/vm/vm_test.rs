@@ -1661,8 +1661,8 @@ mod tests {
                 Color.Red => "0xff0000"
                 Color.Green => "0x00ff00"
                 Color.Blue => "0x0000ff"
-                Color.RGB c => {
-                  val hexes = [c.red, c.green, c.blue].map(c => c.asBase(16).padLeft(2, "0"))
+                Color.RGB(red, green, blue) => {
+                  val hexes = [red, green, blue].map(c => c.asBase(16).padLeft(2, "0"))
                   "0x" + hexes.join()
                 }
               }
@@ -1687,8 +1687,8 @@ mod tests {
             new_string_obj("0xffffff"),
             new_string_obj("0x808080"),
         ]);
-
         assert_eq!(expected, result);
+
         let input = r#"
           enum Color {
             Red
@@ -1706,6 +1706,30 @@ mod tests {
         "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("0xff0000");
+        assert_eq!(expected, result);
+
+        // Test enum constructors with default-valued arguments
+        let input = r#"
+          enum Color {
+            Red,
+            Blue,
+            Darken(base: Color = Color.Red, amount: Float = 10.0)
+            Darken2(base: Color, amount: Float = 10.0)
+          }
+
+          [
+            Color.Darken(), Color.Darken(Color.Blue), Color.Darken(Color.Blue, 6.24),
+            Color.Darken2(Color.Blue), Color.Darken2(Color.Blue, 6.24),
+          ].map(c => c.toString())
+        "#;
+        let result = interpret(input).unwrap();
+        let expected = Value::new_array_obj(vec![
+            new_string_obj("Color.Darken(Color.Red, 10)"),
+            new_string_obj("Color.Darken(Color.Blue, 10)"),
+            new_string_obj("Color.Darken(Color.Blue, 6.24)"),
+            new_string_obj("Color.Darken2(Color.Blue, 10)"),
+            new_string_obj("Color.Darken2(Color.Blue, 6.24)"),
+        ]);
         assert_eq!(expected, result);
     }
 
@@ -1729,14 +1753,11 @@ mod tests {
         let input = r#"
           enum Foo { Bar(baz: Int, qux: Int) }
 
-          val f: Foo = Foo.Bar(baz: 6, qux: 24)
-          match f {
-            Foo.Bar(baz, qux) bar => {
-              bar.baz = qux
-              bar.qux = baz
-            }
+          val f = Foo.Bar(baz: 6, qux: 24)
+          val f2 = match f {
+            Foo.Bar(baz, qux) => Foo.Bar(qux, baz)
           }
-          "" + f
+          f2.toString()
         "#;
         let result = interpret(input).unwrap();
         let expected = new_string_obj("Foo.Bar(24, 6)");
