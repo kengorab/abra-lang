@@ -200,16 +200,20 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             .collect()
     }
 
-    fn type_from_type_ident(&self, type_ident: &TypeIdentifier) -> Result<Type, TypecheckerError> {
+    fn type_from_type_ident(&self, type_ident: &TypeIdentifier, use_placeholder_generics: bool) -> Result<Type, TypecheckerError> {
         let type_from_ident = Type::from_type_ident(type_ident, &self.get_types_in_scope());
         match type_from_ident {
             Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
             Ok(typ) => {
                 let mut ret_typ = None;
+                let mut placeholder_type_args: Vec<Type> = vec![];
                 if let Type::Reference(name, ref_type_args) = &typ {
                     let expected_type_args = match self.resolve_type(name).unwrap() {
                         Type::Struct(StructType { type_args, .. }) |
-                        Type::Enum(EnumType { type_args, .. }) => type_args.len(),
+                        Type::Enum(EnumType { type_args, .. }) => {
+                            placeholder_type_args = type_args.iter().map(|(_, t)| t.clone()).collect();
+                            type_args.len()
+                        }
                         Type::Array(_) | Type::Set(_) => {
                             ret_typ = Some(Type::hydrate_reference_type(name, ref_type_args, &|typ_name| self.resolve_type(typ_name)).unwrap());
                             1
@@ -222,12 +226,17 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     };
 
                     if ref_type_args.len() != expected_type_args {
-                        return Err(TypecheckerError::InvalidTypeArgumentArity {
-                            token: type_ident.get_ident(),
-                            actual_type: self.resolve_type(name).unwrap().clone(),
-                            actual: ref_type_args.len(),
-                            expected: expected_type_args,
-                        });
+                        if !use_placeholder_generics {
+                            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                                token: type_ident.get_ident(),
+                                actual_type: self.resolve_type(name).unwrap().clone(),
+                                actual: ref_type_args.len(),
+                                expected: expected_type_args,
+                            });
+                        } else {
+                            debug_assert!(ref_type_args.is_empty());
+                            ret_typ = Some(Type::Reference(name.clone(), placeholder_type_args));
+                        }
                     }
                 }
                 Ok(ret_typ.unwrap_or(typ))
@@ -499,7 +508,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         match typ {
             Type::Union(opts) => opts.into_iter().flat_map(|t| self.flatten_match_case_types(t)).collect(),
             Type::Option(t) => vec![self.flatten_match_case_types(*t), vec![Type::Unknown]].concat(),
-            typ @ Type::Reference(_, _) => vec![self.resolve_ref_type(&typ)],
+            Type::Reference(name, type_args) => vec![
+                Type::hydrate_reference_type(&name, &type_args, &|typ_name| self.resolve_type(typ_name)).unwrap()
+            ],
             t => vec![t]
         }
     }
@@ -545,8 +556,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: None, enum_variant: None });
                         }
 
-                        if possibilities.contains(&Type::Unknown) {
-                            let idx = possibilities.iter().position(|t| t == &Type::Unknown).unwrap();
+                        let idx = possibilities.iter().position(|t| t == &Type::Unknown);
+                        if let Some(idx) = idx {
                             possibilities.remove(idx);
 
                             let binding = if let Some(ident) = case_binding {
@@ -561,23 +572,23 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     } else {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
-                        let typ = self.type_from_type_ident(&type_ident)?;
+                        let typ = self.type_from_type_ident(&type_ident, true)?;
                         if let Type::Generic(_) = &typ {
                             return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
                         } else if args.is_some() {
                             return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
                         }
 
-                        if possibilities.contains(&self.resolve_ref_type(&typ)) {
-                            let idx = possibilities.iter().position(|t| t == &self.resolve_ref_type(&typ)).unwrap();
-                            possibilities.remove(idx);
-
+                        let possibility = possibilities.iter().enumerate()
+                            .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
+                        if let Some((idx, typ)) = possibility {
                             let binding = if let Some(ident) = case_binding {
                                 let ident_name = Token::get_ident_name(&ident).clone();
                                 self.add_binding(ident_name.as_str(), &ident, &typ, false);
                                 Some(ident_name)
                             } else { None };
 
+                            possibilities.remove(idx);
                             TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), binding, args: None }
                         } else {
                             return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
@@ -587,7 +598,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 MatchCaseType::Compound(idents) => {
                     let mut idents = idents.into_iter();
                     let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
-                    let typ = self.type_from_type_ident(&type_ident)?;
+                    let typ = self.type_from_type_ident(&type_ident, true)?;
                     let enum_type = match self.resolve_ref_type(&typ) {
                         Type::Enum(enum_type) => enum_type,
                         _ => unreachable!("Unexpected non-enum compound type used as match condition")
@@ -603,21 +614,30 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
-                    match &mut enum_variant_possibilities.get_mut(&enum_type.name) {
+                    let possibility = possibilities.iter().enumerate()
+                        .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
+                    let generics = match &mut enum_variant_possibilities.get_mut(&enum_type.name) {
                         None => return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false }),
                         Some(variants) => {
                             match variants.iter().position(|v| *v == variant_name) {
                                 None => return Err(TypecheckerError::DuplicateMatchCase { token: variant_ident }),
                                 Some(variant_idx) => {
+                                    // Remove the variant, since we've now seen it. If we've seen all variants, remove the enum itself from consideration
                                     variants.remove(variant_idx);
-                                    if variants.is_empty() {
+                                    let (idx, possibility_type) = possibility.unwrap();
+                                    let possibility_type = if variants.is_empty() {
                                         enum_variant_possibilities.remove(&enum_type.name);
-                                        possibilities.remove(possibilities.iter().position(|p| *p == self.resolve_ref_type(&typ)).unwrap());
-                                    }
+                                        possibilities.remove(idx)
+                                    } else {
+                                        possibility_type.clone()
+                                    };
+                                    if let Type::Enum(EnumType { type_args, .. }) = possibility_type {
+                                        type_args.clone().into_iter().collect::<HashMap<_, _>>()
+                                    } else { unreachable!() }
                                 }
                             }
                         }
-                    }
+                    };
 
                     let binding = if let Some(ident) = case_binding {
                         let ident_name = Token::get_ident_name(&ident).clone();
@@ -636,7 +656,11 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 }
 
                                 for ((_, arg_type, _), ref mut pat) in arg_types.iter().zip(destructured_args.iter_mut()) {
-                                    self.visit_binding_pattern(pat, &arg_type, false)?;
+                                    let arg_type = match &arg_type {
+                                        Type::Generic(g) => generics.get(g).unwrap(),
+                                        t => t
+                                    };
+                                    self.visit_binding_pattern(pat, arg_type, false)?;
                                 }
                                 Some(destructured_args)
                             }
@@ -733,7 +757,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
             let (arg_tok, arg_type, default_value) = match type_ident {
                 Some(type_ident) => {
-                    let arg_type = self.type_from_type_ident(&type_ident)?;
+                    let arg_type = self.type_from_type_ident(&type_ident, false)?;
                     match default_value {
                         Some(default_value) => {
                             seen_optional_arg = true;
@@ -929,7 +953,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         self.scopes.push(scope);
 
         let ret_type = ret_type.as_ref()
-            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
         let mut is_static = true;
         let mut is_variadic = false;
         let mut arg_types = Vec::new();
@@ -947,7 +971,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 default_value.get_type()
                             }
                         },
-                        Some(type_ident) => self.type_from_type_ident(type_ident)?,
+                        Some(type_ident) => self.type_from_type_ident(type_ident, false)?,
                     };
                     // Insert arg as binding in throwaway scope, to handle references in other variables' default values
                     let arg_name = Token::get_ident_name(ident);
@@ -1459,7 +1483,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         }
 
         let ann_type = match type_ann {
-            Some(type_ann) => Some(self.type_from_type_ident(&type_ann)?),
+            Some(type_ann) => Some(self.type_from_type_ident(&type_ann, false)?),
             None => None
         };
 
@@ -1582,7 +1606,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             })
             .collect::<Vec<_>>();
         let initial_ret_type = ret_ann_type.as_ref()
-            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+            .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
         if initial_ret_type.has_unbound_generic() {
             // The valid type args for a return type are all of the generics available in scope, minus
             // the fn type args that aren't referenced in the arguments (and are thus unbound).
@@ -1638,7 +1662,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 Type::Unit
             }
             Some(ret_type) => {
-                let typ = self.type_from_type_ident(ret_type)?;
+                let typ = self.type_from_type_ident(ret_type, false)?;
                 match body.last_mut() {
                     None => Type::Unit,
                     Some(mut node) => {
@@ -1671,7 +1695,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
             } else if ret_type != Type::Unit {
                 let ret_ann_type = ret_ann_type.as_ref()
-                    .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t))?;
+                    .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
                 return Err(TypecheckerError::ReturnTypeMismatch { token: return_tok, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: true, expected: ret_ann_type, actual: Type::Unit });
             }
         }
@@ -1751,7 +1775,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let mut field_names = HashMap::<String, Token>::new();
         let fields = fields.into_iter()
             .map(|TypeDeclField { ident, type_ident, default_value, readonly }| {
-                let field_type = self.type_from_type_ident(&type_ident)?;
+                let field_type = self.type_from_type_ident(&type_ident, false)?;
                 let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
                     return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident, orig_is_field: true, orig_is_enum_variant: false });
@@ -2032,7 +2056,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         if let Some(type_args) = type_args {
             let mut available_generics = HashMap::new();
             for (type_ident, type_arg_name) in type_args.iter().zip(typ_generics) {
-                let typ = self.type_from_type_ident(&type_ident)?;
+                let typ = self.type_from_type_ident(&type_ident, false)?;
                 available_generics.insert(type_arg_name, typ);
             }
             node.typ = Type::substitute_generics(&node.typ, &available_generics);
@@ -2898,12 +2922,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     _ => unimplemented!()
                 }
                 Type::Enum(enum_type) => {
+                    let generics = enum_type.type_args.into_iter().collect::<HashMap<String, Type>>();
                     let field_data = enum_type.methods.iter().enumerate().find_map(|(idx, (name, typ))| {
                         if field_name == name {
                             Some(FieldSpec { idx, typ: typ.clone(), is_method: true, readonly: true })
                         } else { None }
                     });
-                    Ok((field_data, HashMap::new()))
+                    Ok((field_data, generics))
                 }
                 Type::Union(opts) => {
                     let all_enums_or_variants = opts.iter().all(|o| match zelf.resolve_ref_type(o) {
@@ -2948,7 +2973,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             });
                         }
                         for (type_arg_name, type_arg_ident) in fn_type_args.iter().zip(ident_type_args) {
-                            let type_arg_type = self.type_from_type_ident(type_arg_ident)?;
+                            let type_arg_type = self.type_from_type_ident(type_arg_ident, false)?;
                             generics.insert(type_arg_name.clone(), type_arg_type);
                         }
                     }
@@ -7931,6 +7956,61 @@ mod tests {
         ")?;
         let expected = identifier!((6, 1), "j", Type::Int, 0);
         assert_eq!(expected, module.typed_nodes[2]);
+
+        // Verify matches with generic types
+        let module = test_typecheck("\
+          type Foo<T> { bar: T }\n\
+          val f = if true { Foo(bar: 12) }\n\
+          val j = match f {\n\
+            Foo f => f.bar\n\
+            None => 0\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((7, 1), "j", Type::Int, 0);
+        assert_eq!(expected, module.typed_nodes[3]);
+
+        // Verify matches with multiple generic types
+        let module = test_typecheck("\
+          type Foo<T> { bar: T }\n\
+          type Baz<T> { qux: T }\n\
+          val f: Foo<Int> | Baz<String> = Baz(qux: \"asdf\")\n\
+          val j = match f {\n\
+            Foo f => f.bar\n\
+            Baz b => b.qux.length\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((8, 1), "j", Type::Int, 0);
+        assert_eq!(expected, module.typed_nodes[4]);
+
+        // Verify matches with generic enums
+        let module = test_typecheck("\
+          enum LL<T> { Cons(item: T, next: LL<T>), Empty }\n\
+          val l = LL.Cons(1, LL.Cons(2, LL.Empty))\n\
+          val j = match l {\n\
+            LL.Empty => 0\n\
+            LL.Cons(item, _) => item\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((7, 1), "j", Type::Int, 0);
+        assert_eq!(expected, module.typed_nodes[3]);
+
+        // Verify matches with mixed generic enums and generic types
+        let module = test_typecheck("\
+          type Foo<T> { bar: T }\n\
+          enum LL<T> { Cons(item: T, next: LL<T>), Empty }\n\
+          val l: Foo<Int> | LL<Int> = LL.Cons(1, LL.Cons(2, LL.Empty))\n\
+          val j = match l {\n\
+            Foo f => f.bar\n\
+            LL.Empty => 0\n\
+            LL.Cons(item, _) => item\n\
+          }\n\
+          j
+        ")?;
+        let expected = identifier!((9, 1), "j", Type::Int, 0);
+        assert_eq!(expected, module.typed_nodes[4]);
 
         Ok(())
     }
