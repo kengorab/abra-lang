@@ -28,6 +28,8 @@ jobs:
       run: cargo build
     - name: Run rust tests
       run: cargo test --verbose
+    - name: Run abra tests
+      run: target/debug/abra test ./abra_core/abra_test
     - name: Build & run wasm tests
       run: |
         cd abra_wasm && WASM_PACK_TARGET=nodejs ./build.sh && cd ..

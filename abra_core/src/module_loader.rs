@@ -5,6 +5,7 @@ use crate::builtins::{load_module};
 use std::collections::HashMap;
 use crate::vm::compiler::{compile, Module, Metadata};
 use crate::typechecker::types::Type;
+use crate::builtins::native::load_native_module_contents;
 
 pub trait ModuleReader {
     fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
@@ -50,13 +51,15 @@ impl<R: ModuleReader> ModuleLoader<R> {
         }
 
         if self.load_builtin(&module_name) {
-            return Ok(())
+            return Ok(());
         }
 
-        let contents = match self.module_reader.read_module(&module_id) {
-            Some(contents) => contents,
-            None => return Err(ModuleLoaderError::CannotLoadModule),
+        let contents = if !module_id.0 {
+            load_native_module_contents(module_id)
+        } else {
+            self.module_reader.read_module(&module_id)
         };
+        let contents = contents.ok_or(ModuleLoaderError::CannotLoadModule)?;
 
         self.typed_module_cache.insert(module_name.clone(), None);
         match typecheck(module_id.clone(), &contents, self) {
@@ -70,7 +73,7 @@ impl<R: ModuleReader> ModuleLoader<R> {
     }
 
     fn load_builtin(&mut self, module_name: &str) -> bool {
-        let mod_spec = match load_module(module_name){
+        let mod_spec = match load_module(module_name) {
             None => return false,
             Some(get_mod_spec) => get_mod_spec()
         };

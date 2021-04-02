@@ -1,0 +1,10 @@
+import * from test
+
+describe("Map", () => {
+  describe("#isEmpty", () => {
+    it("should return true for an empty map", () => {
+      val map: Map<String, String> = {}
+      expect(map.isEmpty()).toEqual(false)
+    })
+  })
+})

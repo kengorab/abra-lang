@@ -4,6 +4,7 @@ pub mod test_utils;
 
 pub mod arguments;
 pub mod common;
+pub mod native;
 mod native_modules;
 pub mod native_module_builder;
 pub mod native_value_trait;

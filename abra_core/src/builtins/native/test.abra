@@ -1,0 +1,85 @@
+type Test {
+  name: String
+  block: () => Unit
+}
+
+val tests: Test[] = []
+
+var currentDescribePath: String[] = []
+export func describe(when: String, tests: () => Unit) {
+  currentDescribePath.push(when)
+  tests()
+  currentDescribePath.pop()
+  return
+}
+
+export func it(should: String, test: () => Unit) {
+  val testName = currentDescribePath.join(" ") + " " + should
+
+  tests.push(Test(name: testName, block: test))
+}
+
+enum TestResult {
+  Success
+  Failure(error: String)
+}
+
+var currentTestResult = TestResult.Success
+
+type Expectation<T> {
+  value: T
+
+  func toEqual(self, other: T) {
+    if currentTestResult != TestResult.Success {
+      return
+    }
+
+    currentTestResult = if self.value != other {
+      TestResult.Failure("Expected ${self.value} to equal ${other}")
+    } else {
+      TestResult.Success
+    }
+    return
+  }
+}
+
+export func expect<T>(value: T): Expectation<T> {
+  Expectation(value: value)
+}
+
+export func runTests(showPassing = false): Int {
+  val passMsgs: String[] = []
+  val failMsgs: String[] = []
+
+  for test in tests {
+    currentTestResult = TestResult.Success
+    test.block()
+
+    match currentTestResult {
+      TestResult.Success => passMsgs.push(test.name)
+      TestResult.Failure(message) => failMsgs.push("${test.name}\n  $message")
+    }
+  }
+
+  println("${passMsgs.length} passed, ${failMsgs.length} failed")
+  if showPassing {
+    println("\nPassing:")
+    for msg in passMsgs {
+      println(msg)
+    }
+
+  }
+
+  if !failMsgs.isEmpty() {
+    if showPassing {
+      println("\nFailing:")
+    } else {
+      println()
+    }
+  }
+  for msg in failMsgs {
+    println(msg)
+  }
+
+  if failMsgs.isEmpty() { 0 } else { 1 }
+}

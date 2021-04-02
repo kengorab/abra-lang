@@ -1,0 +1,19 @@
+import * from test
+
+describe("Array", () => {
+  describe("#push", () => {
+    it("should increment .length", () => {
+      val arr = [1, 2, 3]
+      expect(arr.length).toEqual(3)
+
+      arr.push(4)
+      expect(arr.length).toEqual(4)
+    })
+
+    it("should insert the item as the last item", () => {
+      val arr = [1, 2, 3]
+      arr.push(4)
+      expect(arr[-1]).toEqual(4)
+    })
+  })
+})

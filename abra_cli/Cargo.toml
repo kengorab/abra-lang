@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 abra_core = { path = "../abra_core" }
 clap = { git = "https://github.com/clap-rs/clap" }
+glob = "0.3.0"
+
