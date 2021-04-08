@@ -105,19 +105,19 @@ mod test {
     fn test_range() {
         let result = interpret("range(0, 4)");
         let expected = array![Value::Int(0), Value::Int(1), Value::Int(2), Value::Int(3)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("range(0, -4)");
         let expected = array![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("range(0, 10, 2)");
         let expected = array![Value::Int(0), Value::Int(2), Value::Int(4), Value::Int(6), Value::Int(8)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("range(1, 10, 3)");
         let expected = array![Value::Int(1), Value::Int(4), Value::Int(7)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     // TODO: Convert VMContext to a trait to allow for mocked-out testing?

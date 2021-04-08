@@ -391,7 +391,7 @@ impl VM {
         Ok(())
     }
 
-    fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn) -> Result<Option<Value>, InterpretError> {
+    fn invoke_native_fn(&mut self, arity: usize, native_fn: &NativeFn) -> Result<Value, InterpretError> {
         let num_args = self.stack.len() - arity;
         let args = self.stack.split_off(num_args);
         return Ok(native_fn.invoke(args, self));
@@ -432,14 +432,11 @@ impl VM {
         Ok(())
     }
 
-    pub fn invoke_fn(&mut self, args: Vec<Value>, func: Value) -> Result<Option<Value>, InterpretError> {
+    pub fn invoke_fn(&mut self, args: Vec<Value>, func: Value) -> Result<Value, InterpretError> {
         let arity = args.len();
-        let has_return = match &func {
-            Value::NativeFn(native_fn) => return self.invoke_native_fn(arity, native_fn),
-            Value::Fn(FnValue { has_return, .. }) |
-            Value::Closure(ClosureValue { has_return, .. }) => has_return.clone(),
-            _ => unreachable!()
-        };
+        if let Value::NativeFn(native_fn) = &func {
+            return self.invoke_native_fn(arity, native_fn);
+        }
 
         let arity = args.len();
         for arg in args {
@@ -447,19 +444,10 @@ impl VM {
         }
 
         self.start_call_frame(arity, func)?;
-
-        let res = self.run_from_call_stack_depth(self.call_stack.len())?;
-        if has_return {
-            Ok(res)
-        } else {
-            if let Some(res) = res {
-                self.push(res);
-            }
-            Ok(None)
-        }
+        self.run_from_call_stack_depth(self.call_stack.len())
     }
 
-    pub fn run(&mut self, module: Module) -> Result<Option<Value>, InterpretError> {
+    pub fn run(&mut self, module: Module) -> Result<Value, InterpretError> {
         let module_idx = self.constants.len();
 
         let Module { name, code, constants, .. } = module;
@@ -480,7 +468,7 @@ impl VM {
         self.constants.push(constants);
 
         if code.is_empty() {
-            return Ok(None);
+            return Ok(Value::Nil);
         }
 
         let frame = CallFrame { code, name, ..CallFrame::default() };
@@ -493,7 +481,7 @@ impl VM {
     /// via the `run` method, this should be 1; when executing a function's bytecode from a native
     /// context, the initial call stack depth needs to be provided so we know when to return the
     /// value to that native context. (See comments in the `Opcode::Return` block)
-    fn run_from_call_stack_depth(&mut self, init_call_stack_depth: usize) -> Result<Option<Value>, InterpretError> {
+    fn run_from_call_stack_depth(&mut self, init_call_stack_depth: usize) -> Result<Value, InterpretError> {
         loop {
             let instr = self.read_instr().ok_or(InterpretError::EndOfBytes)?;
 
@@ -903,9 +891,8 @@ impl VM {
                     let target = self.stack.remove(fn_idx);
 
                     if let Value::NativeFn(native_fn) = &target {
-                        if let Some(value) = self.invoke_native_fn(arity, native_fn)? {
-                            self.push(value);
-                        }
+                        let value = self.invoke_native_fn(arity, native_fn)?;
+                        self.push(value);
                     } else {
                         self.start_call_frame(arity, target)?;
                     }
@@ -981,7 +968,12 @@ impl VM {
                     self.close_upvalues_for_frame()?;
                     self.call_stack.pop();
 
-                    if is_complete { break Ok(top); }
+                    if is_complete {
+                        debug_assert!(if init_call_stack_depth == 1 { self.stack.is_empty() } else { true });
+
+                        let top = top.unwrap_or(Value::Nil);
+                        break Ok(top);
+                    }
                 }
             }
         }

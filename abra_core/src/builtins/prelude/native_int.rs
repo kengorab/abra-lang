@@ -74,105 +74,105 @@ mod test {
     fn test_int_to_string() {
         let result = interpret("24.toString()");
         let expected = new_string_obj("24");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_int_abs() {
         let result = interpret("6.abs()");
         let expected = Value::Int(6);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("(-6).abs()");
         let expected = Value::Int(6);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_int_as_base() {
         let result = interpret("6.asBase(0)");
         let expected = new_string_obj("6");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("6.asBase(1)");
         let expected = new_string_obj("6");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("6.asBase(37)");
         let expected = new_string_obj("6");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("6.asBase(10)");
         let expected = new_string_obj("6");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("24.asBase(8)");
         let expected = new_string_obj("30");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("4040.asBase(16)");
         let expected = new_string_obj("fc8");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("20.asBase(17)");
         let expected = new_string_obj("13");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("24032.asBase(36)");
         let expected = new_string_obj("ijk");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_int_is_even() {
         let result = interpret("0.isEven()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("6.isEven()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("(-6).isEven()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("5.isEven()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_int_is_odd() {
         let result = interpret("0.isOdd()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("6.isOdd()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("(-1).isOdd()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("1.isOdd()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_int_is_between() {
         let result = interpret("0.isBetween(0, 5)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("0.isBetween(lower: 0, upper: 5, inclusive: true)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("(-1).isBetween(lower: 0, upper: 5, inclusive: true)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 }

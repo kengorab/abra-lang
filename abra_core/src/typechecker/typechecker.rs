@@ -1633,7 +1633,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         // ...we pop off the scope, add the function there, and then push the scope back on.
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
-        // let is_variadic = arg_types.iter().find(|(_, _, is_variadic)| *is_variadic).is_some();
         let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(initial_ret_type.clone()), is_variadic, is_enum_constructor: false });
         let scope = self.scopes.pop().unwrap();
         self.add_binding(&func_name, &name, &func_type, false);
@@ -1645,20 +1644,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         std::mem::swap(&mut old_returns, &mut self.returns);
         let returns = old_returns;
 
-        let body_type = body.last().map_or(Type::Unit, |node| {
-            if let TypedAstNode::ReturnStatement(_, TypedReturnNode { target, .. }) = &node {
-                target.as_ref().map(|n| n.get_type()).unwrap_or(Type::Unit)
-            } else {
-                node.get_type()
-            }
-        });
-
         let ret_type = match &ret_ann_type {
             None => {
-                if !body_type.get_opt_unwrapped().is_equivalent_to(&Type::Unit, &|typ_name| self.resolve_type(typ_name)) {
-                    let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                    return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: true, bare_return: false, expected: Type::Unit, actual: body_type });
-                }
+                body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0))));
                 Type::Unit
             }
             Some(ret_type) => {
@@ -4065,6 +4053,13 @@ mod tests {
             type_ident: Token::Ident(Position::new(1, 10), "NonExistentType".to_string())
         };
         assert_eq!(expected, err);
+
+        let err = test_typecheck("val abc = println()").unwrap_err();
+        let expected = TypecheckerError::ForbiddenVariableType {
+            binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
+            typ: Type::Unit
+        };
+        assert_eq!(expected, err);
     }
 
     #[test]
@@ -5234,21 +5229,22 @@ mod tests {
         let expected = TypecheckerError::InvalidSelfParamPosition { token: Token::Self_(Position::new(2, 18)) };
         assert_eq!(expected, error);
 
-        let input = "\
-          type Person {\n\
-            func hello(self) = \"hello\"\n\
-          }
-        ";
-        let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
-            token: Token::String(Position::new(2, 20), "hello".to_string()),
-            fn_name: "hello".to_string(),
-            fn_missing_ret_ann: true,
-            bare_return: false,
-            expected: Type::Unit,
-            actual: Type::String,
-        };
-        assert_eq!(expected, error);
+        // TODO: This test passes, since it's _technically_ ok to have a bare expression in a Unit-returning function. There should maybe be a warning about this though, because it's pretty misleading
+        // let input = "\
+        //   type Person {\n\
+        //     func hello(self) = \"hello\"\n\
+        //   }
+        // ";
+        // let error = test_typecheck(input).unwrap_err();
+        // let expected = TypecheckerError::ReturnTypeMismatch {
+        //     token: Token::String(Position::new(2, 20), "hello".to_string()),
+        //     fn_name: "hello".to_string(),
+        //     fn_missing_ret_ann: true,
+        //     bare_return: false,
+        //     expected: Type::Unit,
+        //     actual: Type::String,
+        // };
+        // assert_eq!(expected, error);
     }
 
     #[test]
@@ -6572,35 +6568,38 @@ mod tests {
             TypedFunctionDeclNode {
                 name: ident_token!((1, 6), "abc"),
                 args: vec![],
-                body: vec![TypedAstNode::IfStatement(
-                    Token::If(Position::new(2, 1)),
-                    TypedIfNode {
-                        typ: Type::Unit,
-                        condition: Box::new(bool_literal!((2, 4), true)),
-                        condition_binding: None,
-                        if_block: vec![
-                            TypedAstNode::Invocation(
-                                Token::LParen(Position::new(2, 18), false),
-                                TypedInvocationNode {
-                                    typ: Type::Unit,
-                                    target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Array(Box::new(Type::Any)), true)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: true, is_enum_constructor: false }), 0)),
-                                    args: vec![
-                                        Some(TypedAstNode::Array(
-                                            Token::LBrack(Position::new(2, 19), false),
-                                            TypedArrayNode {
-                                                typ: Type::Array(Box::new(Type::String)),
-                                                items: vec![
-                                                    string_literal!((2, 19), "hello")
-                                                ],
-                                            },
-                                        ))
-                                    ],
-                                },
-                            )
-                        ],
-                        else_block: None,
-                    },
-                )],
+                body: vec![
+                    TypedAstNode::IfStatement(
+                        Token::If(Position::new(2, 1)),
+                        TypedIfNode {
+                            typ: Type::Unit,
+                            condition: Box::new(bool_literal!((2, 4), true)),
+                            condition_binding: None,
+                            if_block: vec![
+                                TypedAstNode::Invocation(
+                                    Token::LParen(Position::new(2, 18), false),
+                                    TypedInvocationNode {
+                                        typ: Type::Unit,
+                                        target: Box::new(identifier!((2, 11), "println", Type::Fn(FnType { arg_types: vec![("items".to_string(), Type::Array(Box::new(Type::Any)), true)], type_args: vec![], ret_type: Box::new(Type::Unit), is_variadic: true, is_enum_constructor: false }), 0)),
+                                        args: vec![
+                                            Some(TypedAstNode::Array(
+                                                Token::LBrack(Position::new(2, 19), false),
+                                                TypedArrayNode {
+                                                    typ: Type::Array(Box::new(Type::String)),
+                                                    items: vec![
+                                                        string_literal!((2, 19), "hello")
+                                                    ],
+                                                },
+                                            ))
+                                        ],
+                                    },
+                                )
+                            ],
+                            else_block: None,
+                        },
+                    ),
+                    TypedAstNode::_Nil(Token::None(Position::new(0, 0))),
+                ],
                 ret_type: Type::Unit,
                 scope_depth: 0,
                 is_recursive: false,
@@ -8433,11 +8432,11 @@ mod tests {
           }\
         ").unwrap_err();
         let expected = TypecheckerError::ReturnTypeMismatch {
-            token: Token::Return(Position::new(3, 1), false),
+            token: Token::LBrack(Position::new(2, 18), false),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: true,
             bare_return: false,
-            actual: Type::Map(Box::new(Type::String), Box::new(Type::Unknown)),
+            actual: Type::Array(Box::new(Type::Unknown)),
             expected: Type::Unit,
         };
         assert_eq!(expected, err);

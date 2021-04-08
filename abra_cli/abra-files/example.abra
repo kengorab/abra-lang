@@ -1,9 +1,5 @@
-type Foo<T> { bar: T }
-enum LL<T> { Cons(item: T, next: LL<T>), Empty }
-val l: Foo<Int> | LL<Int> = LL.Cons(1, LL.Cons(2, LL.Empty))
-val j = match l {
-  Foo f => f.bar + 1
-  LL.Empty => 0
-  LL.Cons(item, _) => item
-}
-j
+var count = 0
+[1, 2, 3].forEach(i => {
+  count += i
+})
+println(count)

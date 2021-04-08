@@ -932,7 +932,6 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
     let methods = all_methods.map(|method| {
         let name = &method.name;
         let num_args = method.args.len();
-        let has_return = method.return_type != TypeRepr::Unit;
         let native_name_ident = format_ident!("{}", &method.native_method_name);
         let native_method_arity = method.native_method_arity;
 
@@ -951,40 +950,40 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             if type_spec.value_variant.is_some() {
                 quote! { Self::#native_name_ident }
             } else {
-                quote! { |rcv, args, vm| Some(Self::#native_name_ident(rcv.unwrap(), #arguments)) }
+                quote! { |rcv, args, vm| Self::#native_name_ident(rcv.unwrap(), #arguments) }
             }
         } else {
-            let body_return = if has_return {
+            let body_return = if method.return_type != TypeRepr::Unit {
                 if let TypeRepr::SelfType(_) = &method.return_type {
                     match &type_spec.value_variant {
                         Some(variant) => {
                             let variant = format_ident!("{}", variant);
                             quote! {
                                 let inst = inst.#native_name_ident(#arguments);
-                                Some(crate::vm::value::Value::#variant(
+                                crate::vm::value::Value::#variant(
                                     std::sync::Arc::new(std::cell::RefCell::new(inst))
-                                ))
+                                )
                             }
                         }
                         None => {
                             quote! {
                                 let inst = inst.#native_name_ident(#arguments);
                                 let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
-                                Some(crate::vm::value::Value::new_native_instance_obj(
+                                crate::vm::value::Value::new_native_instance_obj(
                                     module_idx,
                                     type_id,
                                     std::boxed::Box::new(inst)
-                                ))
+                                )
                             }
                         }
                     }
                 } else {
-                    quote! { Some(inst.#native_name_ident(#arguments)) }
+                    quote! { inst.#native_name_ident(#arguments) }
                 }
             } else {
                 quote! {
                     inst.#native_name_ident(#arguments);
-                    None
+                    crate::vm::value::Value::Nil
                 }
             };
             let invocation = if method.is_mut {
@@ -1039,7 +1038,6 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 name: #name,
                 receiver: None,
                 native_fn: #body,
-                has_return: #has_return,
             }))
         }
     });
@@ -1047,7 +1045,6 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
     let static_methods = type_spec.static_methods.iter().map(|static_method| {
         let name = &static_method.name;
         let num_args = static_method.args.len();
-        let has_return = static_method.return_type != TypeRepr::Unit;
         let native_name_ident = format_ident!("{}", &static_method.native_method_name);
         let native_method_arity = static_method.native_method_arity;
 
@@ -1062,15 +1059,15 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
             _ => unreachable!()
         };
 
-        let body = if has_return {
+        let body = if static_method.return_type != TypeRepr::Unit {
             match &type_spec.value_variant {
                 Some(variant) => {
                     let variant = format_ident!("{}", variant);
                     quote! {
                         let inst = Self::#native_name_ident(#arguments);
-                        Some(crate::vm::value::Value::#variant(
+                        crate::vm::value::Value::#variant(
                             std::sync::Arc::new(std::cell::RefCell::new(inst))
-                        ))
+                        )
                     }
                 }
                 None => {
@@ -1078,21 +1075,21 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                         quote! {
                             let inst = Self::#native_name_ident(#arguments);
                             let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
-                            Some(crate::vm::value::Value::new_native_instance_obj(
+                            crate::vm::value::Value::new_native_instance_obj(
                                 module_idx,
                                 type_id,
                                 std::boxed::Box::new(inst)
-                            ))
+                            )
                         }
                     } else {
-                        quote! { Some(Self::#native_name_ident(#arguments)) }
+                        quote! { Self::#native_name_ident(#arguments) }
                     }
                 }
             }
         } else {
             quote! {
                 Self::#native_name_ident(#arguments);
-                None
+                crate::vm::value::Value::Nil
             }
         };
 
@@ -1101,7 +1098,6 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 name: #name,
                 receiver: None,
                 native_fn: |rcv, args, vm| { #body },
-                has_return: #has_return,
             }))
         }
     });
@@ -1112,11 +1108,10 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                 name: "toString",
                 receiver: None,
                 native_fn: |rcv, _args, vm| {
-                    Some(Value::new_string_obj(
-                        crate::builtins::common::to_string(&rcv.unwrap(), vm))
+                    Value::new_string_obj(
+                        crate::builtins::common::to_string(&rcv.unwrap(), vm)
                     )
                 },
-                has_return: true,
             })),
         }
     } else {
@@ -1128,10 +1123,9 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     if let Some(crate::vm::value::Value::NativeInstanceObj(rcv_obj)) = rcv {
                         let rcv = &*rcv_obj.borrow();
                         let mut inst = rcv.inst.downcast_ref::<Self>().unwrap();
-                        Some(rcv.inst.method_to_string(vm))
+                        rcv.inst.method_to_string(vm)
                     } else { unreachable!() }
                 },
-                has_return: true,
             })),
         }
     };
@@ -1300,7 +1294,6 @@ fn parse_function(attr_args: HashMap<String, String>, function: &syn::ItemFn) ->
 fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream {
     let name = &static_method.name;
     let num_args = static_method.args.len();
-    let has_return = static_method.return_type != TypeRepr::Unit;
     let native_name_ident = format_ident!("{}", &static_method.native_method_name);
     let native_method_arity = static_method.native_method_arity;
 
@@ -1311,12 +1304,12 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
         _ => unreachable!()
     };
 
-    let body = if has_return {
-        quote! { Some(#native_name_ident(#arguments)) }
+    let body = if static_method.return_type != TypeRepr::Unit {
+        quote! { #native_name_ident(#arguments) }
     } else {
         quote! {
             #native_name_ident(#arguments);
-            None
+            crate::vm::value::Value::Nil
         }
     };
 
@@ -1347,7 +1340,6 @@ fn generate_function_code(static_method: MethodSpec) -> proc_macro2::TokenStream
             name: #name,
             receiver: None,
             native_fn: |rcv, args, vm| { #body },
-            has_return: #has_return,
         })
     };
 
@@ -1377,17 +1369,6 @@ fn parse_attr(attr: &syn::Attribute) -> HashMap<String, String> {
                 if let Some((arg, val)) = parse_attr_meta(nested) {
                     map.insert(arg, val);
                 }
-                // match nested {
-                //     NestedMeta::Meta(syn::Meta::NameValue(nv)) => {
-                //         let (arg, val) = parse_attr_namevalue(nv);
-                //         map.insert(arg, val);
-                //     }
-                //     NestedMeta::Meta(syn::Meta::Path(path)) => {
-                //         let bool_arg = path.segments[0].ident.to_string();
-                //         map.insert(bool_arg, "true".to_string());
-                //     }
-                //     _ => {}
-                // }
             }
         }
         _ => {}

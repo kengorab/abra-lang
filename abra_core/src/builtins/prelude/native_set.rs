@@ -152,15 +152,15 @@ mod test {
     fn test_set_size() {
         let result = interpret("#{}.size");
         let expected = Value::Int(0);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{0, 1, 2, \"3\"}.size");
         let expected = Value::Int(4);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{0, 1, 2, 1, 0}.size");
         let expected = Value::Int(3);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Setting size should produce an error
         let is_err = interpret_get_result("#{1, 2, 3}.size = 8").is_err();
@@ -178,63 +178,63 @@ mod test {
             new_string_obj("#{3, 2, 1}"),
             new_string_obj("#{3, 1, 2}"),
         ];
-        assert!(expecteds.contains(&result.unwrap()));
+        assert!(expecteds.contains(&result));
 
         let result = interpret("#{[1, 2], [3, 4]}.toString()");
         let expecteds = vec![
             new_string_obj("#{[1, 2], [3, 4]}"),
             new_string_obj("#{[3, 4], [1, 2]}"),
         ];
-        assert!(expecteds.contains(&result.unwrap()));
+        assert!(expecteds.contains(&result));
 
         let result = interpret("#{(1, 2), (3, 4)}.toString()");
         let expecteds = vec![
             new_string_obj("#{(1, 2), (3, 4)}"),
             new_string_obj("#{(3, 4), (1, 2)}"),
         ];
-        assert!(expecteds.contains(&result.unwrap()));
+        assert!(expecteds.contains(&result));
     }
 
     #[test]
     fn test_set_is_empty() {
         let result = interpret("#{}.isEmpty()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1, 2, \"3\"}.isEmpty()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_enumerate() {
         let result = interpret("#{}.enumerate()");
         let expected = Value::new_array_obj(vec![]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{\"a\"}.enumerate()");
         let expected = Value::new_array_obj(vec![
             Value::new_tuple_obj(vec![new_string_obj("a"), Value::Int(0)]),
         ]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_contains() {
         let result = interpret("#{}.contains(\"a\")");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{\"a\", \"b\"}.contains(\"a\")");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           type Person { name: String }\n\
           #{Person(name: \"Ken\"), Person(name: \"Ken\")}.contains(Person(name: \"Ken\"))\
         ");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -245,7 +245,7 @@ mod test {
           set
         "#);
         let expected = set![Value::Int(1), Value::Int(3)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val set = #{1}
@@ -254,7 +254,7 @@ mod test {
           set
         "#);
         let expected = set![Value::Int(1), Value::Int(3)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -265,7 +265,7 @@ mod test {
           set
         "#);
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val set: Set<Int> = #{}
@@ -273,53 +273,53 @@ mod test {
           set
         "#);
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_map() {
         let result = interpret("#{\"a\", \"b\"}.map(w => w.length)");
         let expected = array![Value::Int(1), Value::Int(1)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_filter() {
         let result = interpret("#{1, 2, 3, 4, 5}.filter(n => n.isEven())");
         let expected = set![Value::Int(2), Value::Int(4)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_reduce() {
         let result = interpret("#{1, 2, 3, 4, 5}.reduce(0, (acc, n) => acc + n)");
         let expected = Value::Int(15);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_as_array() {
         let result = interpret("#{3, 4, 5}.asArray()");
         let expecteds = vec![
-            Some(array![Value::Int(3), Value::Int(4), Value::Int(5)]),
-            Some(array![Value::Int(3), Value::Int(5), Value::Int(4)]),
-            Some(array![Value::Int(4), Value::Int(3), Value::Int(5)]),
-            Some(array![Value::Int(4), Value::Int(5), Value::Int(3)]),
-            Some(array![Value::Int(5), Value::Int(4), Value::Int(3)]),
-            Some(array![Value::Int(5), Value::Int(3), Value::Int(4)]),
+            array![Value::Int(3), Value::Int(4), Value::Int(5)],
+            array![Value::Int(3), Value::Int(5), Value::Int(4)],
+            array![Value::Int(4), Value::Int(3), Value::Int(5)],
+            array![Value::Int(4), Value::Int(5), Value::Int(3)],
+            array![Value::Int(5), Value::Int(4), Value::Int(3)],
+            array![Value::Int(5), Value::Int(3), Value::Int(4)],
         ];
-        assert!(expecteds.contains(&result)); // Sets' order isn't guaranteed :(
+        assert!(expecteds.contains(&result)); // Sets' order aren't guaranteed, so we need to assert this way :/
     }
 
     #[test]
     fn test_set_union() {
         let result = interpret("#{}.union(#{})");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1}.union(#{1, 2})");
         let expected = set![Value::Int(1), Value::Int(2)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           val s1 = #{1, 3, 5}
@@ -327,36 +327,36 @@ mod test {
           s1.union(s2)
         ");
         let expected = set![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4), Value::Int(5)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_difference() {
         let result = interpret("#{}.difference(#{})");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1}.difference(#{1, 2})");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1, 2}.difference(#{2})");
         let expected = set![Value::Int(1)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_set_intersection() {
         let result = interpret("#{1, 2, 3}.intersection(#{})");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1, 2}.intersection(#{3, 4})");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("#{1}.intersection(#{1, 2})");
         let expected = set![Value::Int(1)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 }

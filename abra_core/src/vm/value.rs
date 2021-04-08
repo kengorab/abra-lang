@@ -54,15 +54,13 @@ impl Hash for ClosureValue {
     }
 }
 
-// If a native function's return type is Unit, it should return None
-type NativeAbraFn = fn(Option<Value>, Vec<Value>, &mut VM) -> Option<Value>;
+type NativeAbraFn = fn(Option<Value>, Vec<Value>, &mut VM) -> Value;
 
 #[derive(Clone)]
 pub struct NativeFn {
     pub name: &'static str,
     pub receiver: Option<Box<Value>>,
     pub native_fn: NativeAbraFn,
-    pub has_return: bool,
 }
 
 impl Debug for NativeFn {
@@ -78,7 +76,7 @@ impl PartialEq for NativeFn {
 }
 
 impl NativeFn {
-    pub fn invoke(&self, args: Vec<Value>, vm_ref: &mut VM) -> Option<Value> {
+    pub fn invoke(&self, args: Vec<Value>, vm_ref: &mut VM) -> Value {
         let func = self.native_fn;
         func(self.receiver.as_ref().map(|v| *v.clone()), args, vm_ref)
     }
@@ -292,12 +290,11 @@ impl Hash for Value {
             Value::EnumInstanceObj(o) => (&*o.borrow()).hash(hasher),
             Value::Fn(f) => f.hash(hasher),
             Value::Closure(c) => c.hash(hasher),
-            Value::NativeFn(NativeFn { name, receiver, has_return, .. }) => {
+            Value::NativeFn(NativeFn { name, receiver, .. }) => {
                 name.hash(hasher);
                 if let Some(receiver) = receiver {
                     receiver.hash(hasher);
                 }
-                has_return.hash(hasher);
             }
             Value::Type(tv) => tv.hash(hasher),
             Value::Enum(ev) => ev.hash(hasher),
