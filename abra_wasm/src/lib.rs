@@ -18,7 +18,7 @@ use abra_core::parser::ast::ModuleId;
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
 use abra_core::builtins::common::to_string;
 
-pub struct RunResultValue(Option<Value>);
+pub struct RunResultValue(Value);
 
 impl Serialize for RunResultValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -26,11 +26,7 @@ impl Serialize for RunResultValue {
     {
         use serde::ser::SerializeMap;
 
-        if self.0.is_none() {
-            return serializer.serialize_none();
-        }
-
-        match &self.0.as_ref().unwrap() {
+        match &self.0 {
             Value::Nil => serializer.serialize_none(),
             Value::Int(val) => serializer.serialize_i64(*val),
             Value::Float(val) => serializer.serialize_f64(*val),
@@ -44,7 +40,7 @@ impl Serialize for RunResultValue {
                 let array = &arr._inner;
                 let mut arr = serializer.serialize_seq(Some((*array).len()))?;
                 array.iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
                 });
                 arr.end()
             }
@@ -52,7 +48,7 @@ impl Serialize for RunResultValue {
                 let tup = &*o.borrow();
                 let mut arr = serializer.serialize_seq(Some((*tup).len()))?;
                 tup.iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
                 });
                 arr.end()
             }
@@ -61,7 +57,7 @@ impl Serialize for RunResultValue {
                 let items = &set._inner;
                 let mut set = serializer.serialize_seq(Some((*items).len()))?;
                 items.iter().for_each(|val| {
-                    set.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                    set.serialize_element(&RunResultValue((*val).clone())).unwrap();
                 });
                 set.end()
             }
@@ -70,7 +66,7 @@ impl Serialize for RunResultValue {
                 let map = &map._inner;
                 let mut obj = serializer.serialize_map(Some((*map).len()))?;
                 map.into_iter().for_each(|(key, val)| {
-                    obj.serialize_entry(&RunResultValue(Some(key.clone())), &RunResultValue(Some(val.clone()))).unwrap();
+                    obj.serialize_entry(&RunResultValue(key.clone()), &RunResultValue(val.clone())).unwrap();
                 });
                 obj.end()
             }
@@ -80,7 +76,7 @@ impl Serialize for RunResultValue {
                 let fields = &inst.fields;
                 let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                 fields.into_iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue(Some((*val).clone()))).unwrap();
+                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
                 });
                 arr.end()
             }
@@ -90,7 +86,7 @@ impl Serialize for RunResultValue {
                 let fields = &inst.get_field_values();
                 let mut arr = serializer.serialize_seq(Some(fields.len()))?;
                 for field_value in inst.get_field_values() {
-                    arr.serialize_element(&RunResultValue(Some(field_value)))?;
+                    arr.serialize_element(&RunResultValue(field_value))?;
                 }
 
                 arr.end()
@@ -105,7 +101,7 @@ impl Serialize for RunResultValue {
     }
 }
 
-pub struct RunResult(Result<Option<(Value, String)>, Error>, String);
+pub struct RunResult(Result<(Value, String), Error>, String);
 
 impl Serialize for RunResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -116,15 +112,10 @@ impl Serialize for RunResult {
         let mut obj = serializer.serialize_map(Some(2))?;
 
         match &self.0 {
-            Ok(value) => {
+            Ok((value, to_str_value)) => {
                 obj.serialize_entry("success", &true)?;
-                match value {
-                    None => {}
-                    Some((value, to_str_value)) => {
-                        obj.serialize_entry("data", &RunResultValue(Some((*value).clone())))?;
-                        obj.serialize_entry("dataToString", to_str_value)?;
-                    }
-                }
+                obj.serialize_entry("data", &RunResultValue((*value).clone()))?;
+                obj.serialize_entry("dataToString", to_str_value)?;
             }
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
@@ -270,26 +261,22 @@ pub fn typecheck_module(module_name: &str, module_reader: JsModuleReader) -> JsV
         .unwrap_or(JsValue::NULL)
 }
 
-fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: R) -> Result<Option<(Value, String)>, Error>
+fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: R) -> Result<(Value, String), Error>
     where R: ModuleReader
 {
     let module_id = ModuleId::from_name(module_name);
     let modules = compile(module_id, &input, module_reader)?;
     let mut vm = VM::new(ctx);
-    let mut res = None;
+    let mut res = Value::Nil;
 
     for module in modules {
         match vm.run(module) {
-            Ok(Some(v)) => res = Some(v),
-            Ok(None) => res = None,
+            Ok(v) => res = v,
             Err(e) => return Err(Error::InterpretError(e)),
         }
     }
-    let res = res.map(|r| {
-        let as_str = to_string(&r, &mut vm);
-        (r, as_str)
-    });
-    Ok(res)
+    let as_str = to_string(&res, &mut vm);
+    Ok((res, as_str))
 }
 
 #[wasm_bindgen(js_name = run)]

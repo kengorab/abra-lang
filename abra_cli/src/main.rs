@@ -184,14 +184,11 @@ fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm:
     let mut result = Value::Nil;
     for module in modules {
         match vm.run(module) {
-            Ok(Some(v)) if v != Value::Nil => {
-                result = v;
-            }
+            Ok(v) => result = v,
             Err(e) => {
                 eprintln!("{:?}", e);
                 break;
             }
-            _ => {}
         };
     }
     Ok(result)

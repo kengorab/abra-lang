@@ -32,11 +32,11 @@ macro_rules! string_array {
     ($($i:expr),*) => { Value::new_array_obj(vec![$($i),*].into_iter().map(new_string_obj).collect()) };
 }
 
-pub fn interpret(input: &str) -> Option<Value> {
+pub fn interpret(input: &str) -> Value {
     interpret_get_result(input).unwrap()
 }
 
-pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Error> {
+pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Value, Error> {
     let mock_reader = MockModuleReader::default();
     let module_id = ModuleId::from_name("_test");
     let modules = match compile(module_id, &input.as_ref().to_string(), mock_reader) {
@@ -45,7 +45,7 @@ pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Option<Value>, Er
     };
 
     let mut vm = VM::new(VMContext::default());
-    let mut res = None;
+    let mut res = Value::Nil;
     for module in modules {
         res = vm.run(module).map_err(|e| Error::InterpretError(e))?;
     }

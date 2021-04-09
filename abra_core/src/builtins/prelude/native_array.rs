@@ -168,6 +168,16 @@ impl NativeArray {
         accumulator
     }
 
+    #[abra_method(signature = "forEach(fn: (T) => Unit)")]
+    fn for_each(&self, mut args: Arguments, vm: &mut VM) {
+        let callback = args.next_value();
+
+        for value in &self._inner {
+            let args = vec![value.clone()];
+            invoke_fn(vm, &callback, args);
+        }
+    }
+
     #[abra_method(signature = "join(joiner?: String): String")]
     fn join(&self, mut args: Arguments, vm: &mut VM) -> Value {
         let joiner = args.next_string_or_default("");
@@ -447,7 +457,7 @@ mod test {
     fn test_array_field_length() {
         let result = interpret("[1, 2, 3, 4, 5].length");
         let expected = Value::Int(5);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Setting length should produce an error
         let is_err = interpret_get_result("[1, 2, 3].length = 8").is_err();
@@ -458,73 +468,73 @@ mod test {
     fn test_array_static_fill() {
         let result = interpret("Array.fill(0, 123)");
         let expected = int_array!();
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("Array.fill(5, 12)");
         let expected = int_array!(12, 12, 12, 12, 12);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("Array.fill(6, \"24\")");
         let expected = string_array!("24", "24", "24", "24", "24", "24");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_static_fill_by() {
         let result = interpret("Array.fillBy(0, i => i + 1)");
         let expected = int_array!();
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("Array.fillBy(5, i => i + 1)");
         let expected = int_array!(1, 2, 3, 4, 5);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           func fib(n: Int): Int = if n <= 1 1 else fib(n - 1) + fib(n - 2)
           Array.fillBy(6, fib)
         "#);
         let expected = int_array!(1, 1, 2, 3, 5, 8);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_to_string() {
         let result = interpret("[1, 2, 3].toString()");
         let expected = new_string_obj("[1, 2, 3]");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[[1, 2], [3, 4], [5, 6]].toString()");
         let expected = new_string_obj("[[1, 2], [3, 4], [5, 6]]");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[{ a: 1 }, { b: 3 }].toString()");
         let expected = new_string_obj("[{ a: 1 }, { b: 3 }]");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_is_empty() {
         let result = interpret("[].isEmpty()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3].isEmpty()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_enumerate() {
         let result = interpret("[].enumerate()");
         let expected = Value::new_array_obj(vec![]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"b\"].enumerate()");
         let expected = Value::new_array_obj(vec![
             Value::new_tuple_obj(vec![new_string_obj("a"), Value::Int(0)]),
             Value::new_tuple_obj(vec![new_string_obj("b"), Value::Int(1)]),
         ]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -536,7 +546,7 @@ mod test {
           arr
         "#);
         let expected = int_array!(1, 2, 3, 4, 5);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3]
@@ -544,7 +554,7 @@ mod test {
           arr
         "#);
         let expected = int_array!(1, 2, 3, 4, 5, 6);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -555,14 +565,14 @@ mod test {
           arr.concat([last])
         "#);
         let expected = int_array!(1, 2, 3);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr: Int[] = []
           arr.pop()
         "#);
         let expected = Value::Nil;
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -573,14 +583,14 @@ mod test {
           [first].concat(arr)
         "#);
         let expected = int_array!(1, 2, 3);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr: Int[] = []
           arr.popFront()
         "#);
         let expected = Value::Nil;
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -593,7 +603,7 @@ mod test {
             int_array!(),
             int_array!(1, 2, 3, 4, 5, 6, 7)
         );
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3, 4, 5, 6, 7]
@@ -603,7 +613,7 @@ mod test {
             int_array!(1),
             int_array!(2, 3, 4, 5, 6, 7)
         );
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3, 4, 5, 6, 7]
@@ -613,7 +623,7 @@ mod test {
             int_array!(1, 2, 3, 4, 5, 6),
             int_array!(7)
         );
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3, 4, 5, 6, 7]
@@ -623,7 +633,7 @@ mod test {
             int_array!(),
             int_array!(1, 2, 3, 4, 5, 6, 7)
         );
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3, 4, 5, 6, 7]
@@ -633,7 +643,7 @@ mod test {
             int_array!(1, 2, 3, 4, 5, 6, 7),
             int_array!()
         );
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -644,7 +654,7 @@ mod test {
           arr1.concat(arr2)
         "#);
         let expected = int_array![1, 2, 3, 4, 5, 6];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Verify that the original arrays aren't modified
         let result = interpret(r#"
@@ -657,7 +667,7 @@ mod test {
             int_array![1, 2, 3],
             int_array![4, 5, 6]
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Verify that the arrays' items are copied by reference
         let result = interpret(r#"
@@ -684,7 +694,7 @@ mod test {
             int_array![0, 1],
             int_array![1, 0, 0, 1]
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -694,7 +704,7 @@ mod test {
           arr.map(i => i * 3)
         "#);
         let expected = int_array![3, 6, 9, 12];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Verify closures work
         let result = interpret(r#"
@@ -707,7 +717,7 @@ mod test {
           arr2.concat([total])
         "#);
         let expected = int_array![3, 6, 9, 12, 10];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Verify deep call stack initiated from native fn call
         let result = interpret(r#"
@@ -717,7 +727,7 @@ mod test {
           [1, 2].map(i => sameNum(i))
         "#);
         let expected = int_array![1, 2];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -727,7 +737,7 @@ mod test {
           arr.filter(w => w.length < 4)
         "#);
         let expected = string_array!["a", "bc", "def"];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -737,130 +747,141 @@ mod test {
           arr.reduce(0, (acc, i) => acc + i)
         "#);
         let expected = Value::Int(15);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3, 4, 5]
           arr.reduce("", (acc, i) => acc + i)
         "#);
         let expected = new_string_obj("12345");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_array_for_each() {
+        let result = interpret(r#"
+          var count = 0
+          [1, 2, 3, 4].forEach(i => count += i)
+          count
+        "#);
+        let expected = Value::Int(10);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_join() {
         let result = interpret("[1, 2, 3, 4, 5].join()");
         let expected = new_string_obj("12345");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"b\", \"c\"].join(\", \")");
         let expected = new_string_obj("a, b, c");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_contains() {
         let result = interpret("[].contains(5)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3, 4, 5].contains(5)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3, 4].contains(6)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_find() {
         let result = interpret("[1, 2, 3].find(x => x >= 2)");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[[1, 2], [3, 4]].find(p => p[0])");
         let expected = array![Value::Int(1), Value::Int(2)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2)");
         let expected = array![Value::Int(3), Value::Int(4)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3].find(x => x >= 4)");
         let expected = Value::Nil;
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_find_index() {
         let result = interpret("[1, 2, 3].findIndex(x => x >= 2)");
         let expected = tuple![Value::Int(2), Value::Int(1)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[[1, 2], [3, 4]].findIndex(p => p[0])");
         let expected = tuple![
             array![Value::Int(1), Value::Int(2)],
             Value::Int(0)
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3].findIndex(x => x >= 4)");
         let expected = Value::Nil;
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_any() {
         let result = interpret("[1, 2, 3, 4, 5].any(x => x > 4)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3, 4, 5].any(x => x < 0)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[[1, 2], [3, 4]].any(p => if p[0] |f| f >= 2)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_all() {
         let result = interpret("[\"a\", \"bc\", \"def\"].all(w => w.length > 0)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"bc\", \"def\"].all(w => w.length < 3)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"1\", \"2\", \"24\"].all(w => w.parseInt())");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\"].all(w => w.parseInt())");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_none() {
         let result = interpret("[\"a\", \"bc\", \"def\"].none(w => w.length > 0)");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"bc\", \"def\"].none(w => w.length < 0)");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"1\", \"2\", \"24\"].none(w => w.parseInt())");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"b\"].none(w => w.parseInt())");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -881,7 +902,7 @@ mod test {
           new_string_obj("Meghan"),
           new_string_obj("Kelsey")
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           [1, 8, 3, 6, 1, 11, 5839, 6].sortBy(fn: i => i, reverse: true)
@@ -896,7 +917,7 @@ mod test {
             Value::Int(1),
             Value::Int(1)
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -907,7 +928,7 @@ mod test {
             new_string_obj("bc"),
             new_string_obj("def")
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           type Person { name: String }\
@@ -919,7 +940,7 @@ mod test {
             new_string_obj("Ken"),
             new_string_obj("Meg")
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -930,7 +951,7 @@ mod test {
             new_string_obj("bc"),
             new_string_obj("def")
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[\"a\", \"bc\", \"def\", \"ghi\"].dedupeBy(w => w.length)");
         let expected = array![
@@ -938,7 +959,7 @@ mod test {
             new_string_obj("bc"),
             new_string_obj("def")
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -948,7 +969,7 @@ mod test {
             Value::Bool(true) => array![Value::Int(2), Value::Int(4)],
             Value::Bool(false) => array![Value::Int(1), Value::Int(3), Value::Int(5)]
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(
             "[[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0])"
@@ -967,7 +988,7 @@ mod test {
                 array![Value::Int(3), Value::Int(2)]
             ]
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -981,7 +1002,7 @@ mod test {
             Value::Int(3) => Value::Int(2),
             Value::Int(4) => Value::Int(1)
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -993,7 +1014,7 @@ mod test {
         let expected = map! {
             Value::Int(3) => Value::Int(2)
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -1002,25 +1023,25 @@ mod test {
           [1, 2, 3, 4, 3, 2, 1, 2, 1].asSet()\n\
         ");
         let expected = set![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_get_or_default() {
         let result = interpret("[1, 2, 3].getOrDefault(1, 12)");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3].getOrDefault(10, 12)");
         let expected = Value::Int(12);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_array_get_or_else() {
         let result = interpret("[1, 2, 3].getOrElse(1, () => 12)");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           var counter = 0
@@ -1031,11 +1052,11 @@ mod test {
           counter
         "#);
         let expected = Value::Int(0);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("[1, 2, 3].getOrElse(10, () => 12)");
         let expected = Value::Int(12);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           var counter = 0
@@ -1046,7 +1067,7 @@ mod test {
           counter
         "#);
         let expected = Value::Int(1);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -1057,7 +1078,7 @@ mod test {
           arr
         "#);
         let expected = array![Value::Int(1), Value::Int(102), Value::Int(3)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val arr = [1, 2, 3]
@@ -1065,6 +1086,6 @@ mod test {
           arr
         "#);
         let expected = array![Value::Int(1), Value::Int(2), Value::Int(3)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 }

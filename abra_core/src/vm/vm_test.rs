@@ -14,28 +14,28 @@ mod tests {
         Value::new_string_obj(string.to_string())
     }
 
-    fn interpret(input: &str) -> Option<Value> {
+    fn interpret(input: &str) -> Value {
         let mock_reader = MockModuleReader::default();
         let module_id = ModuleId::from_name("_test");
         let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
 
         let ctx = VMContext::default();
         let mut vm = VM::new(ctx);
-        let mut res = None;
+        let mut res = Value::Nil;
         for module in modules {
             res = vm.run(module).unwrap();
         }
         res
     }
 
-    fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Option<Value> {
+    fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Value {
         let mock_reader = MockModuleReader::new(modules);
         let module_id = ModuleId::from_name("_test");
         let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
 
         let ctx = VMContext::default();
         let mut vm = VM::new(ctx);
-        let mut res = None;
+        let mut res = Value::Nil;
         for module in modules {
             res = vm.run(module).unwrap();
         }
@@ -44,82 +44,82 @@ mod tests {
 
     #[test]
     fn interpret_nothing() {
-        assert!(interpret("").is_none());
+        assert_eq!(Value::Nil, interpret(""));
     }
 
     #[test]
     fn interpret_constants() {
-        let result = interpret("1").unwrap();
+        let result = interpret("1");
         let expected = Value::Int(1);
         assert_eq!(expected, result);
 
-        let result = interpret("1.23").unwrap();
+        let result = interpret("1.23");
         let expected = Value::Float(1.23);
         assert_eq!(expected, result);
 
-        let result = interpret("true").unwrap();
+        let result = interpret("true");
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let result = interpret("false").unwrap();
+        let result = interpret("false");
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
     }
 
     #[test]
     fn interpret_unary() {
-        let result = interpret("-1").unwrap();
+        let result = interpret("-1");
         let expected = Value::Int(-1);
         assert_eq!(expected, result);
 
-        let result = interpret("-1.23").unwrap();
+        let result = interpret("-1.23");
         let expected = Value::Float(-1.23);
         assert_eq!(expected, result);
     }
 
     #[test]
     fn interpret_binary() {
-        let result = interpret("1 + 2 * 3.4 / 5").unwrap();
+        let result = interpret("1 + 2 * 3.4 / 5");
         let expected = Value::Float(2.36);
         assert_eq!(expected, result);
 
-        let result = interpret("7 % 5").unwrap();
+        let result = interpret("7 % 5");
         let expected = Value::Int(2);
         assert_eq!(expected, result);
 
-        let result = interpret("5.25 % 2.5").unwrap();
+        let result = interpret("5.25 % 2.5");
         let expected = Value::Float(0.25);
         assert_eq!(expected, result);
 
-        let result = interpret("\"hello\" +  \" \"+24  + \" world\"").unwrap();
+        let result = interpret("\"hello\" +  \" \"+24  + \" world\"");
         let expected = new_string_obj("hello 24 world");
         assert_eq!(expected, result);
 
-        let result = interpret("2 ** 3 ** 4").unwrap();
+        let result = interpret("2 ** 3 ** 4");
         let expected = Value::Float(4096.0);
         assert_eq!(expected, result);
 
-        let result = interpret("2 ** 3.1").unwrap();
+        let result = interpret("2 ** 3.1");
         let expected = Value::Float(8.574187700290345);
         assert_eq!(expected, result);
     }
 
     #[test]
     fn interpret_binary_boolean() {
-        let result = interpret("true || false").unwrap();
+        let result = interpret("true || false");
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let result = interpret("true && false").unwrap();
+        let result = interpret("true && false");
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
 
-        let result = interpret("true && false || true && true").unwrap();
+        let result = interpret("true && false || true && true");
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
         for (l, r, res) in vec![(true, true, false), (true, false, true), (false, true, true), (false, false, false)] {
-            let result = interpret(format!("{} ^ {}", l, r).as_str()).unwrap();
+            let result = interpret(format!("{} ^ {}", l, r).as_str());
             let expected = Value::Bool(res);
             assert_eq!(expected, result);
         }
@@ -141,7 +141,7 @@ mod tests {
             res + \" \" + called",
             preface
         );
-        let result = interpret(&input).unwrap();
+        let result = interpret(&input);
         let expected = new_string_obj("true false");
         assert_eq!(expected, result);
 
@@ -151,7 +151,7 @@ mod tests {
             res + \" \" + called",
             preface
         );
-        let result = interpret(&input).unwrap();
+        let result = interpret(&input);
         let expected = new_string_obj("false false");
         assert_eq!(expected, result);
     }
@@ -206,7 +206,7 @@ mod tests {
         ];
 
         for (input, expected) in cases {
-            let result = interpret(input).unwrap();
+            let result = interpret(input);
             assert_eq!(Value::Bool(expected), result, "Interpreting {} should be {}", input, expected);
         }
     }
@@ -224,14 +224,14 @@ mod tests {
         ];
 
         for (input, expected) in cases {
-            let result = interpret(input).unwrap();
+            let result = interpret(input);
             assert_eq!(expected, result, "Interpreting {} should be {}", input, expected);
         }
     }
 
     #[test]
     fn interpret_array() {
-        let result = interpret("[1, 2, 3]").unwrap();
+        let result = interpret("[1, 2, 3]");
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -239,7 +239,7 @@ mod tests {
         ]);
         assert_eq!(expected, result);
 
-        let result = interpret("[0, -1, true, 3.4, \"5\"]").unwrap();
+        let result = interpret("[0, -1, true, 3.4, \"5\"]");
         let expected = Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(-1),
@@ -249,7 +249,7 @@ mod tests {
         ]);
         assert_eq!(expected, result);
 
-        let result = interpret("[[0, -1], [true, false], [\"a\"]]").unwrap();
+        let result = interpret("[[0, -1], [true, false], [\"a\"]]");
         let expected = Value::new_array_obj(vec![
             Value::new_array_obj(vec![Value::Int(0), Value::Int(-1)]),
             Value::new_array_obj(vec![Value::Bool(true), Value::Bool(false)]),
@@ -260,23 +260,23 @@ mod tests {
 
     #[test]
     fn interpret_array_equality() {
-        let result = interpret("[1, 2] == [1, 2]").unwrap();
+        let result = interpret("[1, 2] == [1, 2]");
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let result = interpret("[1, 3] == [1, 2]").unwrap();
+        let result = interpret("[1, 3] == [1, 2]");
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
 
-        let result = interpret("[[0, 1]] == [[1, 2]]").unwrap();
+        let result = interpret("[[0, 1]] == [[1, 2]]");
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
 
-        let result = interpret("[[0, 1], [2, 3]] == [[0, 1], [2, 3]]").unwrap();
+        let result = interpret("[[0, 1], [2, 3]] == [[0, 1], [2, 3]]");
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
-        let result = interpret("[1, 2] == \"hello\"").unwrap();
+        let result = interpret("[1, 2] == \"hello\"");
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
     }
@@ -287,7 +287,7 @@ mod tests {
           val a = "def"
           "abc $a ghi"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("abc def ghi");
         assert_eq!(expected, result);
 
@@ -295,14 +295,14 @@ mod tests {
           func a(): String = "def"
           "$a() ghi"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("<func a>() ghi");
         assert_eq!(expected, result);
 
         let input = r#"
           "abc $true ghi"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("abc true ghi");
         assert_eq!(expected, result);
 
@@ -310,7 +310,7 @@ mod tests {
           func a(): String = "def"
           "abc ${a()}"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("abc def");
         assert_eq!(expected, result);
 
@@ -319,14 +319,14 @@ mod tests {
                    .map(x => x + 2)
                    .join(",")} ghi"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("abc 3,4,5,6 ghi");
         assert_eq!(expected, result);
 
         let input = r#"
           "${"hello" + " " + "${"world" + "!"}"}"
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("hello world!");
         assert_eq!(expected, result);
     }
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn interpret_map() {
-        let result = interpret("{ a: 1, b: \"hello\", c: true }").unwrap();
+        let result = interpret("{ a: 1, b: \"hello\", c: true }");
         let expected_pairs = vec![
             (new_string_obj("a"), Value::Int(1)),
             (new_string_obj("b"), new_string_obj("hello")),
@@ -354,7 +354,7 @@ mod tests {
         ];
         assert_maps_eq(expected_pairs, result);
 
-        let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }").unwrap();
+        let result = interpret("{ a: { b: \"hello\" }, c: [1, 2] }");
         let expected_pairs = vec![
             (new_string_obj("a"), Value::new_map_obj(vec![
                 new_string_obj("b"), new_string_obj("hello")
@@ -372,7 +372,7 @@ mod tests {
           var c = a + b > b - a
           c
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
 
@@ -383,7 +383,7 @@ mod tests {
           val a = [a1, a2 + a2, 3 * a3]
           a
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(4),
@@ -395,7 +395,7 @@ mod tests {
           val (a, b) = (1, 2)
           a + b
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
 
@@ -407,7 +407,7 @@ mod tests {
           }
           manhattanDistance((0, 0), (2, 2))
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
@@ -420,7 +420,7 @@ mod tests {
           val c = b = a = 3\n\
           a + b + c
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(9);
         assert_eq!(expected, result);
     }
@@ -435,7 +435,7 @@ mod tests {
           m["a"] = 456
           (a[0] ?: 0) + (m["a"] ?: 0)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(579);
         assert_eq!(expected, result);
 
@@ -444,7 +444,7 @@ mod tests {
           a[4] = 123
           a
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(0),
             Value::Nil,
@@ -463,7 +463,7 @@ mod tests {
           p.name = "Ken"
           p.name
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
 
@@ -476,7 +476,7 @@ mod tests {
           n.value = "Ken"
           p.name.value
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
 
@@ -489,7 +489,7 @@ mod tests {
           n.value = "Ken"
           p.name.value
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
     }
@@ -501,17 +501,17 @@ mod tests {
           val item = arr[1]\n
           item
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(2);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-1]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
 
         let input = "[][0] == [1, 2][-3]"; // They're both None
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
     }
@@ -519,27 +519,27 @@ mod tests {
     #[test]
     fn interpret_indexing_ranges_arrays() {
         let input = "[1, 2, 3][1:2]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(2)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-2:-1]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(2)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][:1]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(1)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][1:]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(2), Value::Int(3)]);
         assert_eq!(expected, result);
 
         let input = "[1, 2, 3][-3:]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -555,17 +555,17 @@ mod tests {
           val char = str[6]\n
           char
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("w");
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[-3]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("r");
         assert_eq!(expected, result);
 
         let input = "\"hello world\"[100]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Nil;
         assert_eq!(expected, result);
     }
@@ -573,27 +573,27 @@ mod tests {
     #[test]
     fn interpret_indexing_ranges_strings() {
         let input = "\"some string\"[1:2]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("o");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-2:-1]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("n");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[:4]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("some");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[5:]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("string");
         assert_eq!(expected, result);
 
         let input = "\"some string\"[-6:]";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("string");
         assert_eq!(expected, result);
     }
@@ -605,7 +605,7 @@ mod tests {
           val item = arr[1] ?: 16\n
           item
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(2);
         assert_eq!(expected, result);
 
@@ -614,7 +614,7 @@ mod tests {
           val item = arr[4] ?: 16\n
           item
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(16);
         assert_eq!(expected, result);
     }
@@ -631,7 +631,7 @@ mod tests {
           }
         ";
         let result = interpret(input);
-        assert!(result.is_none());
+        assert_eq!(Value::Nil, result);
 
         let input = "\
           var res = 0\
@@ -643,7 +643,7 @@ mod tests {
           }\
           res
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(123);
         assert_eq!(expected, result);
 
@@ -656,7 +656,7 @@ mod tests {
           }\
           res
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(456);
         assert_eq!(expected, result);
 
@@ -673,7 +673,7 @@ mod tests {
           }\
           res
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(789);
         assert_eq!(expected, result);
 
@@ -691,7 +691,7 @@ mod tests {
           }\
           res
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(246);
         assert_eq!(expected, result);
 
@@ -705,7 +705,7 @@ mod tests {
           val b = a + 3\
           b - 3
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(123);
         assert_eq!(expected, result);
     }
@@ -720,12 +720,12 @@ mod tests {
           }
           abc
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(123);
         assert_eq!(expected, result);
 
         let input = "4 + if (true) { 20 } else { 0 }";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -739,7 +739,7 @@ mod tests {
           }
           abc()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
@@ -752,7 +752,7 @@ mod tests {
           val def = abc
           def
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
@@ -779,14 +779,21 @@ mod tests {
           }\n\
           add(add(a, b), c)\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(6);
         assert_eq!(expected, result);
 
-        // There should be nothing leftover on the stack after a non-returning function executes
+        // There should be nothing leftover on the stack after a Unit-returning function executes
         let input = "println(\"hello\")";
         let result = interpret(input);
-        assert_eq!(None, result);
+        assert_eq!(Value::Nil, result);
+
+        let input = r#"
+          func foo(fn: () => Unit) = fn()
+          foo(() => "hello")
+        "#;
+        let result = interpret(input);
+        assert_eq!(Value::Nil, result);
     }
 
     #[test] // Note: this is like a pseudo-closure test, since the variables are globals...
@@ -800,7 +807,7 @@ mod tests {
           b = 17\n\
           getSum()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(18);
         assert_eq!(expected, result);
     }
@@ -815,7 +822,7 @@ mod tests {
           }\n\
           getSum()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
     }
@@ -833,7 +840,7 @@ mod tests {
           val results = [tick(), tick(), tick(), tick(), tick()]\n\
           results\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -861,7 +868,7 @@ mod tests {
           val results = [tick(), tick(), tick(), tick(), tick()]\n\
           results\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -882,7 +889,7 @@ mod tests {
           }
           abc()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -908,7 +915,7 @@ mod tests {
           abc()
         "#;
 
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
@@ -927,7 +934,7 @@ mod tests {
           val languageName = \"Abra\"\n\
           greet(languageName) + \" \" + greet(languageName)\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Hello, Abra! Hello, Abra!");
         assert_eq!(expected, result);
     }
@@ -950,7 +957,7 @@ mod tests {
           }
           save("Cheerleader") + ", " + save("World")
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Save the Cheerleader, Save the World!");
         assert_eq!(expected, result);
     }
@@ -970,7 +977,7 @@ mod tests {
           \n\
           [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(1),
@@ -1003,7 +1010,7 @@ mod tests {
           \n\
           [fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8)]\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(0),
             Value::Int(1),
@@ -1024,7 +1031,7 @@ mod tests {
           func abc(a: Int = 2, b = 3, c = 5): Int { a * b * c }
           [abc(), abc(7), abc(7, 11), abc(7, 11, 13)]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(30),
             Value::Int(105),
@@ -1046,7 +1053,7 @@ mod tests {
           abc(1)
           called
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Bool(false);
         assert_eq!(expected, result);
 
@@ -1060,7 +1067,7 @@ mod tests {
           abc()
           called
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
     }
@@ -1078,7 +1085,7 @@ mod tests {
           val fn = outer()
           fn()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
@@ -1100,7 +1107,7 @@ mod tests {
              start: 17
           )
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(17),
             Value::Int(2),
@@ -1118,7 +1125,7 @@ mod tests {
           func def(): Int = 3
           abc()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
 
@@ -1131,7 +1138,7 @@ mod tests {
           }
           abc()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
 
@@ -1146,7 +1153,7 @@ mod tests {
           }
           x
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(123);
         assert_eq!(expected, result);
 
@@ -1171,7 +1178,7 @@ mod tests {
           val fn = abc()
           [fn(), fn(), fn(), fn(), fn(), fn(), fn()]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(1),
@@ -1195,7 +1202,7 @@ mod tests {
             i * 3
           }).concat([total])
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(3), Value::Int(6), Value::Int(3)]);
         assert_eq!(expected, result);
     }
@@ -1206,7 +1213,7 @@ mod tests {
           func abc(a: Int, *b: Int[]): String = [a].concat(b).join(",")
           [abc(1), abc(1, 2, 3, 4)]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             new_string_obj("1"),
             new_string_obj("1,2,3,4"),
@@ -1217,7 +1224,7 @@ mod tests {
           func abc(a: Int, *b = [6, 24]): String = [a].concat(b).join(",")
           [abc(1), abc(1, 2, 3, 4)]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             new_string_obj("1,6,24"),
             new_string_obj("1,2,3,4"),
@@ -1234,7 +1241,7 @@ mod tests {
           }\n\
           a\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
@@ -1260,7 +1267,7 @@ mod tests {
           }\n\
           output\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,");
         assert_eq!(expected, result);
     }
@@ -1278,7 +1285,7 @@ mod tests {
           }
           sum
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(22);
         assert_eq!(expected, result);
 
@@ -1293,7 +1300,7 @@ mod tests {
           }
           sum
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(22);
         assert_eq!(expected, result);
     }
@@ -1310,7 +1317,7 @@ mod tests {
           }\n\
           str\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("123");
         assert_eq!(expected, result);
     }
@@ -1331,7 +1338,7 @@ mod tests {
           }\n\
           a\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         // If this returned 3, we'd know that `break` destroyed the outer loop too, but it doesn't
         let expected = Value::Int(5);
         assert_eq!(expected, result);
@@ -1356,7 +1363,7 @@ mod tests {
           }\n\
           output\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,");
         assert_eq!(expected, result);
     }
@@ -1376,7 +1383,7 @@ mod tests {
           }\n\
           output\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("1456, 2456, 3456");
         assert_eq!(expected, result);
     }
@@ -1400,7 +1407,7 @@ mod tests {
           runLoop()\n\
           output\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = "Outer 0 [Inner 0 Inner 1 ], Outer 1 [Inner 0 Inner 1 ], ";
         let expected = new_string_obj(expected);
         assert_eq!(expected, result);
@@ -1413,7 +1420,7 @@ mod tests {
           val ken = Person(name: \"Ken\")\n\
           ken.name\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
 
@@ -1423,7 +1430,7 @@ mod tests {
           val aBaby = Person(name: \"Baby\")\n\
           aBaby.age\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(0);
         assert_eq!(expected, result);
     }
@@ -1439,7 +1446,7 @@ mod tests {
             ("[1, 2, 3, 4].length", Value::Int(4)),
         ];
         for (input, expected) in tests.into_iter() {
-            let result = interpret(input).unwrap();
+            let result = interpret(input);
             assert_eq!(expected, result);
         }
     }
@@ -1452,7 +1459,7 @@ mod tests {
           val ken = Person()\n\
           ken.name?.value?.length\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Nil;
         assert_eq!(expected, result);
 
@@ -1463,7 +1470,7 @@ mod tests {
           val ken = Person(name: Name(value: \"Ken\"))\n\
           1 + (ken.name?.value?.length ?: 0)\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
 
@@ -1472,7 +1479,7 @@ mod tests {
           type Person { name: Name? = None }\n\
           \"1\" + Person().name?.value?.length\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("1None");
         assert_eq!(expected, result);
 
@@ -1484,7 +1491,7 @@ mod tests {
             people[1]?.name?.length,\n\
           ]\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Nil
@@ -1499,7 +1506,7 @@ mod tests {
           val ken = Person()
           ken.name?.toLower()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Nil;
         assert_eq!(expected, result);
 
@@ -1508,7 +1515,7 @@ mod tests {
           val ken = Person(name: "Ken")
           ken.name?.toLower()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("ken");
         assert_eq!(expected, result);
 
@@ -1520,7 +1527,7 @@ mod tests {
           abc()
           arr
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::new_array_obj(vec![Value::Int(1), Value::Int(2)]),
             Value::new_array_obj(vec![Value::Int(3), Value::Int(4)]),
@@ -1535,7 +1542,7 @@ mod tests {
           abc()
           arr
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::new_array_obj(vec![Value::Int(1), Value::Int(2)]),
             Value::new_array_obj(vec![Value::Int(3), Value::Int(4), Value::Int(5)]),
@@ -1554,7 +1561,7 @@ mod tests {
           val brian = Person(name: \"Brian\")\n\
           ken.introduce() + \", and \" + brian.introduce()\n\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("I am Ken, and I am Brian");
         assert_eq!(expected, result);
     }
@@ -1570,7 +1577,7 @@ mod tests {
           val introduceFn = ken.introduce\n\
           introduceFn()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("I am Ken");
         assert_eq!(expected, result);
     }
@@ -1585,7 +1592,7 @@ mod tests {
           val ken = Person(name: "Ken")
           Person.introduce(ken.name)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("I am Ken");
         assert_eq!(expected, result);
     }
@@ -1598,7 +1605,7 @@ mod tests {
           val p = Person(name: "Ken")
           p.toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Person(name: Ken)");
         assert_eq!(expected, result);
 
@@ -1611,7 +1618,7 @@ mod tests {
           val p = Person(name: "Ken")
           p.toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Ken");
         assert_eq!(expected, result);
 
@@ -1624,7 +1631,7 @@ mod tests {
           val p = Person(name: "Ken")
           [p].toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("[Ken]");
         assert_eq!(expected, result);
 
@@ -1638,7 +1645,7 @@ mod tests {
           p.name = "Meg"
           toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Person(name: Meg)");
         assert_eq!(expected, result);
     }
@@ -1678,7 +1685,7 @@ mod tests {
             Color.RGB(red: 128, green: 128, blue: 128)
           ].map(c => c.hex())
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             new_string_obj("0xff0000"),
             new_string_obj("0x00ff00"),
@@ -1704,7 +1711,7 @@ mod tests {
           }
           Color.Red.hexCode()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("0xff0000");
         assert_eq!(expected, result);
 
@@ -1722,7 +1729,7 @@ mod tests {
             Color.Darken2(Color.Blue), Color.Darken2(Color.Blue, 6.24),
           ].map(c => c.toString())
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             new_string_obj("Color.Darken(Color.Red, 10)"),
             new_string_obj("Color.Darken(Color.Blue, 10)"),
@@ -1743,7 +1750,7 @@ mod tests {
           val l = LL.Cons(1, LL.Cons(2, LL.Empty))
           l.toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("LL.Cons(1, LL.Cons(2, LL.Empty))");
         assert_eq!(expected, result);
     }
@@ -1759,7 +1766,7 @@ mod tests {
           }
           f2.toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("Foo.Bar(24, 6)");
         assert_eq!(expected, result);
     }
@@ -1791,7 +1798,7 @@ mod tests {
           val node = Node(value: \"a\", next: Node(value: \"b\", next: Node(value: \"c\")))\n\
           node.toString()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("a, b, c");
         assert_eq!(expected, result);
     }
@@ -1846,7 +1853,7 @@ mod tests {
             .push("d")
             .toString()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = new_string_obj("a, b, c, d");
         assert_eq!(expected, result);
     }
@@ -1857,7 +1864,7 @@ mod tests {
           type List<T> {
             items: T[] = []
 
-            func push(self, item: T): Unit { self.items.push(item) }
+            func push(self, item: T) { self.items.push(item) }
 
             func map<U>(self, fn: (T) => U): U[] {
               val newArr: U[] = []
@@ -1891,7 +1898,7 @@ mod tests {
           })
           sum(nums)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(2497500);
         assert_eq!(expected, result);
     }
@@ -1902,7 +1909,7 @@ mod tests {
           func call(fn: (Int) => Int, value: Int): Int = fn(value)
           call(x => x + 1, 23)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -1910,7 +1917,7 @@ mod tests {
           func call(fn: (Int) => Int, value: Int): Int = fn(value)
           call((x, y = 1) => x + y + 1, 22)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -1920,7 +1927,7 @@ mod tests {
           }
           getAdder(20)(1)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
@@ -1938,7 +1945,7 @@ mod tests {
           }\n\
           f()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -1951,7 +1958,7 @@ mod tests {
           }\n\
           f()\
         ";
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
     }
@@ -1967,7 +1974,7 @@ mod tests {
           }
           r
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(1);
         assert_eq!(expected, result);
 
@@ -1979,7 +1986,7 @@ mod tests {
           }
           r
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(1);
         assert_eq!(expected, result);
 
@@ -1994,7 +2001,7 @@ mod tests {
           }
           r
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
 
@@ -2008,7 +2015,7 @@ mod tests {
           }
           len(12340 + 5)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(5);
         assert_eq!(expected, result);
     }
@@ -2032,7 +2039,7 @@ mod tests {
           }
           abc()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(10);
         assert_eq!(expected, result);
     }
@@ -2062,7 +2069,7 @@ mod tests {
           }
           total
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(396);
         assert_eq!(expected, result);
     }
@@ -2081,7 +2088,7 @@ mod tests {
           val arr = [1, 2, 3, 4]
           contains(arr, 4)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
     }
@@ -2092,7 +2099,7 @@ mod tests {
           val (a, b, c) = (1, 2, 3)
           a + b + c
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(6);
         assert_eq!(expected, result);
 
@@ -2100,7 +2107,7 @@ mod tests {
           val ((a, b), c) = ((1, 2), (3, 4))
           a + b + c[0] + c[1]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(10);
         assert_eq!(expected, result);
 
@@ -2108,7 +2115,7 @@ mod tests {
           val [(x1, y1), (x2, y2), (x3, y3)] = [(1, 2), (3, 4)]
           [x1, y1, x2, y2, x3, y3]
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2123,7 +2130,7 @@ mod tests {
           val [(x1, y1), *mid, (x2, y2)] = [(1, 2), (3, 4), (5, 6), (7, 8)]
           (x1, y1, mid, x2, y2)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_tuple_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2140,7 +2147,7 @@ mod tests {
           val [h1, h2, *mid, t1, t2, t3, t4, t5] = [1, 2, 3, 4, 5, 6]
           (h1, h2, mid, t1, t2, t3, t4, t5)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_tuple_obj(vec![
             Value::Int(1),
             Value::Int(2),
@@ -2157,7 +2164,7 @@ mod tests {
           val [head, *tail] = [1, 2, 3]
           tail
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_array_obj(vec![Value::Int(2), Value::Int(3)]);
         assert_eq!(expected, result);
 
@@ -2165,7 +2172,7 @@ mod tests {
           val [[a], [d], [g, *h]] = ["abc", "def", "ghi"]
           (a, d, g, h)
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::new_tuple_obj(vec![
             new_string_obj("a"),
             new_string_obj("d"),
@@ -2181,7 +2188,7 @@ mod tests {
           }
           wrapper()
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(10);
         assert_eq!(expected, result);
     }
@@ -2196,7 +2203,7 @@ mod tests {
           }
           total
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(24);
         assert_eq!(expected, result);
 
@@ -2208,7 +2215,7 @@ mod tests {
           }
           total
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(6);
         assert_eq!(expected, result);
     }
@@ -2225,7 +2232,7 @@ mod tests {
           }
           s
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(6);
         assert_eq!(expected, result);
     }
@@ -2239,7 +2246,7 @@ mod tests {
           } else { 0 }
           r
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(3);
         assert_eq!(expected, result);
 
@@ -2250,7 +2257,7 @@ mod tests {
           } else { 0 }
           r
         "#;
-        let result = interpret(input).unwrap();
+        let result = interpret(input);
         let expected = Value::Int(4);
         assert_eq!(expected, result);
     }
@@ -2266,7 +2273,7 @@ mod tests {
             (".person", "export type Person { name: String }"),
         ];
         let chunk = interpret_with_modules(mod1, modules);
-        assert_eq!(Some(new_string_obj("Ken")), chunk);
+        assert_eq!(new_string_obj("Ken"), chunk);
 
         // Importing enums
         let mod1 = r#"
@@ -2277,7 +2284,7 @@ mod tests {
             (".direction", "export enum Direction { Up, Down }"),
         ];
         let chunk = interpret_with_modules(mod1, modules);
-        assert_eq!(Some(new_string_obj("Direction.Up")), chunk);
+        assert_eq!(new_string_obj("Direction.Up"), chunk);
 
         // Importing bindings
         let mod1 = r#"
@@ -2288,7 +2295,7 @@ mod tests {
             (".constants", "export val x = 123"),
         ];
         let chunk = interpret_with_modules(mod1, modules);
-        assert_eq!(Some(Value::Int(127)), chunk);
+        assert_eq!(Value::Int(127), chunk);
     }
 
     #[test]
@@ -2310,7 +2317,7 @@ mod tests {
             new_string_obj("Ken"),
             new_string_obj("Meg"),
         ]);
-        assert_eq!(Some(expected), chunk);
+        assert_eq!(expected, chunk);
 
         // Bindings are scoped to modules
         let mod1 = r#"
@@ -2335,7 +2342,7 @@ mod tests {
             ]),
             Value::new_array_obj(vec![])
         ]);
-        assert_eq!(Some(expected), chunk);
+        assert_eq!(expected, chunk);
     }
 
     #[test]
@@ -2347,7 +2354,7 @@ mod tests {
           a + b
         "#);
         let expected = Value::Int(1);
-        assert_eq!(Some(expected), chunk);
+        assert_eq!(expected, chunk);
 
         let chunk = interpret(r#"
           val bools = [true, true, false, true]
@@ -2358,6 +2365,6 @@ mod tests {
           idx
         "#);
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), chunk);
+        assert_eq!(expected, chunk);
     }
 }

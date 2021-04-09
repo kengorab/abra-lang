@@ -157,11 +157,11 @@ mod test {
     fn test_map_field_size() {
         let result = interpret("{}.size");
         let expected = Value::Int(0);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.size");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         // Setting size should produce an error
         let is_err = interpret_get_result("{ a: 4 }.size = 8").is_err();
@@ -172,14 +172,14 @@ mod test {
     fn test_map_static_from_pairs() {
         let result = interpret("Map.fromPairs([])");
         let expected = Value::new_map_obj(vec![]);
-        assert_eq!(result, Some(expected));
+        assert_eq!(expected, result);
 
         let result = interpret("Map.fromPairs([(\"a\", 123), (\"b\", 456)])");
         let expected = map! {
             new_string_obj("a") => Value::Int(123),
             new_string_obj("b") => Value::Int(456)
         };
-        assert_eq!(result, Some(expected));
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -189,49 +189,49 @@ mod test {
             new_string_obj("{ a: [1, 2], b: [3, 4] }"),
             new_string_obj("{ b: [3, 4], a: [1, 2] }"),
         ];
-        assert!(expecteds.contains(&result.unwrap()));
+        assert!(expecteds.contains(&result));
 
         let result = interpret("{ a: true, b: false }.toString()");
         let expecteds = vec![
             new_string_obj("{ a: true, b: false }"),
             new_string_obj("{ b: false, a: true }"),
         ];
-        assert!(expecteds.contains(&result.unwrap()));
+        assert!(expecteds.contains(&result));
     }
 
     #[test]
     fn test_map_is_empty() {
         let result = interpret("{}.isEmpty()");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.isEmpty()");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_enumerate() {
         let result = interpret("{}.enumerate()");
         let expected = Value::new_array_obj(vec![]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, }.enumerate()");
         let expected = Value::new_array_obj(vec![
             Value::new_tuple_obj(vec![new_string_obj("a"), Value::Int(123)]),
         ]);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_keys() {
         let result = interpret("{}.keys()");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.keys()");
         let expected = set![new_string_obj("a"), new_string_obj("b")];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           val m: Map<Int[], Int> = {}\
@@ -243,47 +243,47 @@ mod test {
             array![Value::Int(1), Value::Int(2)],
             array![Value::Int(1), Value::Int(2), Value::Int(3)]
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.keys()");
         let expected = set![new_string_obj("a"), new_string_obj("b")];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_values() {
         let result = interpret("{}.values()");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.values()");
         let expected = set![Value::Int(123), Value::Bool(true)];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_entries() {
         let result = interpret("{}.entries()");
         let expected = set![];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.entries()");
         let expected = set![
             tuple!(new_string_obj("a"), Value::Int(123)),
             tuple!(new_string_obj("b"), Value::Bool(true))
         ];
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_contains_key() {
         let result = interpret("{}.containsKey(\"asdf\")");
         let expected = Value::Bool(false);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{ a: 24 }.containsKey(\"a\")");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("\
           val m: Map<Int[], String> = {}\
@@ -291,7 +291,7 @@ mod test {
           m.containsKey([1, 2, 3])\
         ");
         let expected = Value::Bool(true);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -303,7 +303,7 @@ mod test {
             new_string_obj("a") => Value::Int(2),
             new_string_obj("b") => Value::Int(3)
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(
             "{ a: 1, b: 2 }.mapValues((k, v) => k + v)"
@@ -312,25 +312,25 @@ mod test {
             new_string_obj("a") => new_string_obj("a1"),
             new_string_obj("b") => new_string_obj("b2")
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_get_or_default() {
         let result = interpret("{a:1, b:2}.getOrDefault(\"b\", 12)");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{a:1, b:2}.getOrDefault(\"c\", 12)");
         let expected = Value::Int(12);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
     fn test_map_get_or_else() {
         let result = interpret("{a:1, b:2}.getOrElse(\"b\", () => 12)");
         let expected = Value::Int(2);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           var counter = 0
@@ -341,11 +341,11 @@ mod test {
           counter
         "#);
         let expected = Value::Int(0);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret("{a:1, b:2}.getOrElse(\"c\", () => 12)");
         let expected = Value::Int(12);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           var counter = 0
@@ -356,7 +356,7 @@ mod test {
           counter
         "#);
         let expected = Value::Int(1);
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -370,7 +370,7 @@ mod test {
           new_string_obj("a") => Value::Int(1),
           new_string_obj("b") => Value::Int(102)
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
 
         let result = interpret(r#"
           val map = {a:1, b:2}
@@ -381,6 +381,6 @@ mod test {
           new_string_obj("a") => Value::Int(1),
           new_string_obj("b") => Value::Int(2)
         };
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 }

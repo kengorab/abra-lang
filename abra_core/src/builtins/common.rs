@@ -5,7 +5,7 @@ use itertools::Itertools;
 pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
     let res = vm.invoke_fn(args, fn_obj.clone());
     match res {
-        Ok(v) => v.unwrap_or(Value::Nil),
+        Ok(v) => v,//.unwrap_or(Value::Nil),
         Err(e) => {
             eprintln!("Runtime error: {:?}", e);
             std::process::exit(1);
@@ -13,7 +13,7 @@ pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
     }
 }
 
-pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Option<Value> {
+pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: &mut VM) -> Value {
     let rcv = receiver.unwrap();
     let str_val = match rcv {
         Value::InstanceObj(rcv) => {
@@ -43,7 +43,7 @@ pub fn default_to_string_method(receiver: Option<Value>, _args: Vec<Value>, vm: 
         _ => unimplemented!("The default toString implementation should only ever be attached to instances of types/enums")
     };
 
-    Some(Value::new_string_obj(str_val))
+    Value::new_string_obj(str_val)
 }
 
 pub fn to_string(value: &Value, vm: &mut VM) -> String {

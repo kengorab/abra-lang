@@ -219,10 +219,14 @@ impl Type {
                         return false;
                     }
                 }
-                if !ret.is_equivalent_to(target_ret, resolve_type) {
-                    return false;
+
+                if **target_ret == Unit {
+                    true
+                } else if !ret.is_equivalent_to(target_ret, resolve_type) {
+                    false
+                } else {
+                    true
                 }
-                true
             }
             // TODO
             (Type(_name1, _t1, _is_enum1), Type(_name2, _t2, _is_enum2)) => {

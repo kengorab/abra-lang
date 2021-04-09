@@ -10,7 +10,6 @@ export func describe(when: String, tests: () => Unit) {
   currentDescribePath.push(when)
   tests()
   currentDescribePath.pop()
-  return
 }
 
 export func it(should: String, test: () => Unit) {
@@ -39,7 +38,6 @@ type Expectation<T> {
     } else {
       TestResult.Success
     }
-    return
   }
 }
 
@@ -67,7 +65,6 @@ export func runTests(showPassing = false): Int {
     for msg in passMsgs {
       println(msg)
     }
-
   }
 
   if !failMsgs.isEmpty() {
@@ -77,6 +74,7 @@ export func runTests(showPassing = false): Int {
       println()
     }
   }
+
   for msg in failMsgs {
     println(msg)
   }

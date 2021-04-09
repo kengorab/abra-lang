@@ -128,7 +128,7 @@ mod test {
           Date(year: 2021, month: 3, day: 9).toString()
         "#);
         let expected = new_string_obj("Date(year: 2021, month: 3, day: 9, hour: 0, minute: 0, second: 0)");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -138,7 +138,7 @@ mod test {
           Date.now().toString()
         "#);
         let expected = new_string_obj("Date(year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0)");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 
     #[test]
@@ -149,6 +149,6 @@ mod test {
           now.addDays(1).addDays(1).toString()
         "#);
         let expected = new_string_obj("Date(year: 0, month: 0, day: 2, hour: 0, minute: 0, second: 0)");
-        assert_eq!(Some(expected), result);
+        assert_eq!(expected, result);
     }
 }
