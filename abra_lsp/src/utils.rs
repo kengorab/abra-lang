@@ -7,19 +7,7 @@ pub fn abra_error_to_diagnostic(e: abra_core::Error, source: &String) -> Diagnos
         abra_core::Error::LexerError(e) => e.get_range(),
         abra_core::Error::TypecheckerError(e) => e.get_token().get_range(),
         abra_core::Error::ParseError(e) => match e {
-            ParseError::UnexpectedEof => {
-                // TODO: Fix janky implementation
-                let range = Range {
-                    start: Position { line: u64::max_value(), character: u64::max_value() },
-                    end: Position { line: u64::max_value(), character: u64::max_value() },
-                };
-                return Diagnostic {
-                    severity: Some(DiagnosticSeverity::Error),
-                    range,
-                    message: e.get_message(&source),
-                    ..Diagnostic::default()
-                };
-            },
+            ParseError::UnexpectedEof(range) => range.clone(),
             ParseError::UnexpectedToken(tok) |
             ParseError::ExpectedToken(_, tok) => tok.get_range()
         }

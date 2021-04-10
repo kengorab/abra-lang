@@ -8,7 +8,6 @@ use abra_core::lexer::lexer_error::LexerError;
 use abra_core::typechecker::typechecker_error::TypecheckerError;
 use abra_core::vm::vm::InterpretError;
 use serde::{Serialize, Serializer};
-use abra_core::lexer::tokens::{Range, Position};
 use abra_core::parser::ast::BindingPattern;
 
 pub struct JsBindingPattern<'a>(pub &'a BindingPattern);
@@ -63,20 +62,11 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&token.get_range()))?;
                     obj.end()
                 }
-                ParseError::UnexpectedEof => {
+                ParseError::UnexpectedEof(range) => {
                     let mut obj = serializer.serialize_map(Some(2))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "unexpectedEof")?;
-
-                    let line_num = self.1.len();
-                    let last_line = &self.1.split("\n").last().unwrap();
-                    let col = last_line.len() + 1;
-                    let range = Range {
-                        start: Position::new(line_num, col),
-                        end: Position::new(line_num, col + 1),
-                    };
-                    obj.serialize_entry("range", &JsRange(&range))?;
-
+                    obj.serialize_entry("range", &JsRange(range))?;
                     obj.end()
                 }
                 ParseError::ExpectedToken(token_type, token) => {
