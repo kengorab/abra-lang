@@ -1,6 +1,6 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
-use crate::lexer::tokens::{Token, TokenType};
+use crate::lexer::tokens::{Token, TokenType, Position, Range};
 use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
 use crate::parser::parse_error::ParseError;
 use crate::parser::precedence::Precedence;
@@ -47,6 +47,7 @@ enum Context {
 
 pub struct Parser {
     tokens: PeekMoreIterator<IntoIter<Token>>,
+    last_token: Token,
     context: Vec<Context>,
 }
 
@@ -56,7 +57,7 @@ type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
         let tokens = tokens.into_iter().peekmore();
-        Parser { tokens, context: vec![] }
+        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![] }
     }
 
     fn is_context(&self, ctx: Context) -> bool {
@@ -75,7 +76,9 @@ impl Parser {
     }
 
     fn expect_next(&mut self) -> Result<Token, ParseError> {
-        self.tokens.next().ok_or(ParseError::UnexpectedEof)
+        let next = self.tokens.next().ok_or_else(|| self.unexpected_eof())?;
+        self.last_token = next.clone();
+        Ok(next)
     }
 
     fn expect_next_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
@@ -94,7 +97,11 @@ impl Parser {
     }
 
     fn expect_peek(&mut self) -> Result<&Token, ParseError> {
-        self.peek().ok_or(ParseError::UnexpectedEof)
+        let last_token = self.last_token.clone();
+        self.peek().ok_or_else(|| {
+            let range = Range::with_length(&last_token.get_range().end, 1);
+            ParseError::UnexpectedEof(range)
+        })
     }
 
     fn expect_peek_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
@@ -107,6 +114,11 @@ impl Parser {
                 Ok(tok)
             }
         })
+    }
+
+    fn unexpected_eof(&self) -> ParseError {
+        let range = Range::with_length(&self.last_token.get_range().end, 1);
+        ParseError::UnexpectedEof(range)
     }
 
     // Begin Pratt plumbing
@@ -419,7 +431,7 @@ impl Parser {
                     let self_tok = self.expect_next()?;
                     args.push((self_tok, None, false, None));
 
-                    match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                    match self.expect_peek()? {
                         Token::Comma(_) => self.expect_next(),
                         Token::RParen(_) => continue,
                         tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
@@ -433,12 +445,12 @@ impl Parser {
                     } else { false };
                     let arg_ident = self.expect_next_token(TokenType::Ident)?;
 
-                    let type_ident = if let Token::Colon(_) = self.peek().ok_or(ParseError::UnexpectedEof)? {
+                    let type_ident = if let Token::Colon(_) = self.expect_peek()? {
                         self.expect_next()?; // Consume ':'
                         Some(self.parse_type_identifier(true)?)
                     } else { None };
 
-                    let default_value = match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                    let default_value = match self.expect_peek()? {
                         Token::Assign(_) => {
                             self.expect_next()?; // Consume '='
                             Some(self.parse_expr()?)
@@ -453,7 +465,7 @@ impl Parser {
 
                     args.push((arg_ident, type_ident, is_varargs, default_value));
 
-                    match self.peek().ok_or(ParseError::UnexpectedEof)? {
+                    match self.expect_peek()? {
                         Token::Comma(_) => self.expect_next(),
                         Token::RParen(_) => continue,
                         tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
@@ -511,7 +523,7 @@ impl Parser {
         self.expect_next_token(TokenType::LParen)?;
         let args = self.parse_func_args(false)?;
 
-        let ret_type = match self.peek().ok_or(ParseError::UnexpectedEof)? {
+        let ret_type = match self.expect_peek()? {
             Token::Colon(_) => {
                 self.expect_next()?;
                 Some(self.parse_type_identifier(true)?)
@@ -590,7 +602,7 @@ impl Parser {
         let mut variants = Vec::new();
         let mut methods = Vec::new();
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             match token {
                 Token::RBrace(_) => break,
                 Token::Comma(_) => {
@@ -652,7 +664,7 @@ impl Parser {
                             break Ok(body);
                         }
                         Some(_) => body.push(self.parse_stmt(None)?),
-                        None => break Err(ParseError::UnexpectedEof)
+                        None => break Err(self.unexpected_eof())
                     }
                 }
             }
@@ -886,7 +898,7 @@ impl Parser {
                         self.expect_next()?;
                     }
                 }
-                None => return Err(ParseError::UnexpectedEof)
+                None => return Err(self.unexpected_eof())
             }
         }
 
@@ -1215,7 +1227,7 @@ impl Parser {
         let mut item_expected = true;
         let mut args = Vec::<(Option<Token>, AstNode)>::new();
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::RParen(_) = token {
                 self.expect_next()?; // Consume ')' before ending loop
                 break;
@@ -1287,21 +1299,21 @@ impl Parser {
         let mut item_expected = true;
         let mut items = vec![];
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::RBrack(_) = token {
                 self.expect_next()?; // Consume ']' before ending loop
                 break;
             } else if !item_expected {
                 return match self.peek() {
                     Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
-                    None => Err(ParseError::UnexpectedEof)
+                    None => Err(self.unexpected_eof())
                 };
             }
 
             let expr = self.parse_expr()?;
             items.push(expr);
 
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::Comma(_) = token {
                 self.expect_next()?; // Consume comma
             } else {
@@ -1316,14 +1328,14 @@ impl Parser {
         let mut item_expected = true;
         let mut items = Vec::<(Token, AstNode)>::new();
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::RBrace(_) = token {
                 self.expect_next()?; // Consume '}' before ending loop
                 break;
             } else if !item_expected {
                 return match self.peek() {
                     Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
-                    None => Err(ParseError::UnexpectedEof)
+                    None => Err(self.unexpected_eof())
                 };
             }
 
@@ -1332,7 +1344,7 @@ impl Parser {
             let field_value = self.parse_expr()?;
             items.push((field_name, field_value));
 
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::Comma(_) = token {
                 self.expect_next()?; // Consume comma
             } else {
@@ -1347,21 +1359,21 @@ impl Parser {
         let mut item_expected = true;
         let mut items = vec![];
         loop {
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::RBrace(_) = token {
                 self.expect_next()?; // Consume '}' before ending loop
                 break;
             } else if !item_expected {
                 return match self.peek() {
                     Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
-                    None => Err(ParseError::UnexpectedEof)
+                    None => Err(self.unexpected_eof())
                 };
             }
 
             let expr = self.parse_expr()?;
             items.push(expr);
 
-            let token = self.peek().ok_or(ParseError::UnexpectedEof)?;
+            let token = self.expect_peek()?;
             if let Token::Comma(_) = token {
                 self.expect_next()?; // Consume comma
             } else {
@@ -1382,7 +1394,7 @@ impl Parser {
             self.tokens.advance_cursor();
             loop {
                 if self.peek().is_none() {
-                    return Err(ParseError::UnexpectedEof);
+                    return Err(self.unexpected_eof());
                 }
 
                 if let Some(Token::GT(_)) = self.peek() {
@@ -1550,13 +1562,13 @@ mod tests {
     #[test]
     fn parse_unary_errors() -> TestResult {
         let err = parse("-").unwrap_err();
-        assert_eq!(ParseError::UnexpectedEof, err);
+        assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
 
         let err = parse("-   +").unwrap_err();
         assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err);
 
         let err = parse("!").unwrap_err();
-        assert_eq!(ParseError::UnexpectedEof, err);
+        assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
 
         let err = parse("!   +").unwrap_err();
         Ok(assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err))
@@ -1960,12 +1972,12 @@ mod tests {
     fn parse_binary_errors_eof() {
         let cases = vec![
             "-5 +", "-5 -", "-5 *", "-5 /",
-            "5 >", "5 >=", "5 <", "5 <=", "5 ==", "5 !=",
+            "5  >", "5 >=", "5  <", "5 <=", "5 ==", "5 !=",
         ];
 
         for input in cases {
             let error = parse(input).unwrap_err();
-            assert_eq!(ParseError::UnexpectedEof, error, "Parsing {} should have UnexpectedEof error", input);
+            assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1)), error, "Parsing {} should have UnexpectedEof error", input);
         }
     }
 
@@ -2045,15 +2057,15 @@ mod tests {
     #[test]
     fn parse_array_error() {
         let error = parse("[").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1));
         assert_eq!(expected, error);
 
         let error = parse("[1").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 2), 1));
         assert_eq!(expected, error);
 
         let error = parse("[1,").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 3), 1));
         assert_eq!(expected, error);
 
         let error = parse("[,").unwrap_err();
@@ -2634,7 +2646,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = parse("val _abc =").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
         assert_eq!(expected, err);
 
         let err = parse("val abc = val def = 3").unwrap_err();
@@ -2659,7 +2671,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = parse("val a: Int[").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
         assert_eq!(expected, err);
     }
 
@@ -3034,11 +3046,11 @@ mod tests {
     #[test]
     fn parse_tuple_errors() {
         let error = parse("(a, b: Int)").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
         assert_eq!(expected, error);
 
         let error = parse("(a, b = 1)").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
         assert_eq!(expected, error);
 
         let error = parse("(1, b: Int)").unwrap_err();
@@ -3261,7 +3273,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = parse("type Person {").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 13), 1));
         assert_eq!(expected, error);
 
         let error = parse("type Person { 1234 }").unwrap_err();
@@ -3277,7 +3289,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = parse("type Person { name: Int").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 23), 1));
         assert_eq!(expected, error);
 
         let error = parse("type Person { name: 1234").unwrap_err();
@@ -4079,7 +4091,7 @@ mod tests {
     #[test]
     fn parse_invocation_errors() {
         let error = parse("abc(").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1));
         assert_eq!(expected, error);
 
         let error = parse("abc!()").unwrap_err();
@@ -4437,7 +4449,7 @@ mod tests {
     #[test]
     fn parse_match_statement_errors() {
         let error = parse("match {}").unwrap_err();
-        let expected = ParseError::UnexpectedEof;
+        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 8), 1));
         assert_eq!(expected, error);
 
         let error = parse("match a }").unwrap_err();

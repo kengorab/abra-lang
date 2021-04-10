@@ -1,10 +1,10 @@
 use std::str::FromStr;
-use crate::lexer::tokens::{Token, TokenType};
+use crate::lexer::tokens::{Token, TokenType, Position, Range};
 use crate::common::display_error::{DisplayError, IND_AMT};
 
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
-    UnexpectedEof,
+    UnexpectedEof(Range),
     UnexpectedToken(Token),
     ExpectedToken(TokenType, Token),
 }
@@ -18,16 +18,15 @@ impl DisplayError for ParseError {
 
                 format!("Unexpected token '{}' ({}:{})\n{}", token.to_string(), pos.line, pos.col, message)
             }
-            ParseError::UnexpectedEof => {
-                let last_line = lines.last().expect("There should be a last line");
-                let line_num = lines.len();
-                let col_num = last_line.len() + 1;
+            ParseError::UnexpectedEof(range) => {
+                let Position { line, col } = range.end;
+                let last_line = lines.get(line - 1).expect("There should be a last line");
 
-                let cursor = format!("{}^", " ".repeat(2 * IND_AMT + col_num));
+                let cursor = format!("{}^", " ".repeat(2 * IND_AMT + col));
                 let indent = Self::indent();
                 let message = format!("{}|{}{}\n{}", indent, indent, last_line, cursor);
 
-                format!("Unexpected end of file ({}:{})\n{}", line_num, col_num, message)
+                format!("Unexpected end of file ({}:{})\n{}", line, col, message)
             }
             ParseError::ExpectedToken(expected, actual) => {
                 let pos = actual.get_position();
@@ -45,7 +44,7 @@ impl DisplayError for ParseError {
 #[cfg(test)]
 mod tests {
     use super::ParseError;
-    use crate::lexer::tokens::{Token, TokenType, Position};
+    use crate::lexer::tokens::{Token, TokenType, Position, Range};
     use crate::common::display_error::DisplayError;
 
     #[test]
@@ -79,7 +78,7 @@ Expected token 'identifier', saw '=' (1:8)
     #[test]
     fn test_unexpected_eof_error() {
         let src = "-".to_string();
-        let err = ParseError::UnexpectedEof;
+        let err = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1));
 
         let expected = format!("\
 Unexpected end of file (1:2)
