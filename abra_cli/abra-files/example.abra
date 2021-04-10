@@ -1,5 +1,8 @@
-var count = 0
-[1, 2, 3].forEach(i => {
-  count += i
-})
-println(count)
+//val fn: () => Unit = () => {
+//  val a = 4
+//}
+//
+//fn()
+
+val arr = [1, 2, 3]
+arr[-4] = 4
