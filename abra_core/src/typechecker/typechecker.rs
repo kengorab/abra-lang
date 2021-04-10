@@ -3022,8 +3022,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node };
             TypedAstNode::Lambda(token, node)
         } else {
-            let typed_body = self.visit_fn_body(body)?;
+            let mut typed_body = self.visit_fn_body(body)?;
             let body_type = typed_body.last().map_or(Type::Unit, |node| node.get_type());
+            // TODO: This will generate unnecessary extra bytecode if the last node is an _expression_ which returns Unit; we should only do this if the last item is a _statement_ which returns Unit
+            if body_type == Type::Unit {
+                typed_body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0))));
+            }
 
             let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(body_type), is_variadic: false, is_enum_constructor: false });
             let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };

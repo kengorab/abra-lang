@@ -459,7 +459,7 @@ impl VM {
                     Value::Enum(EnumValue { name, module_name, .. }) => {
                         let fully_qualified_type_name = format!("{}/{}", module_name, name);
                         Some((fully_qualified_type_name, (module_idx, idx)))
-                    },
+                    }
                     _ => None
                 }
             );
@@ -607,7 +607,7 @@ impl VM {
                                 values[idx].clone()
                             } else { unreachable!() }
                         }
-                        Value::Enum(EnumValue { variants, ..}) => {
+                        Value::Enum(EnumValue { variants, .. }) => {
                             let (_, variant_value) = variants[idx].clone();
                             variant_value
                         }
@@ -776,27 +776,36 @@ impl VM {
                 }
                 Opcode::ArrStore | Opcode::TupleStore => {
                     let value = self.pop_expect()?;
-                    let idx = pop_expect_int!(self)? as usize;
+                    let idx = pop_expect_int!(self)?;
 
                     let target = self.pop_expect()?;
                     match &target {
                         Value::ArrayObj(o) => {
                             let values = &mut (*o.borrow_mut())._inner;
-                            if values.len() < idx {
-                                let mut padding = std::iter::repeat(Value::Nil)
-                                    .take(idx - values.len())
-                                    .collect::<Vec<Value>>();
-                                values.append(&mut padding);
-                                values.push(value);
-                            } else if values.len() == idx {
-                                values.push(value);
+                            if idx < 0 {
+                                if -(values.len() as i64) <= idx {
+                                    let idx: usize = (idx + (values.len() as i64)) as usize;
+                                    values[idx] = value;
+                                }
                             } else {
-                                values[idx] = value;
+                                let idx = idx as usize;
+                                if values.len() < idx {
+                                    let mut padding = std::iter::repeat(Value::Nil)
+                                        .take(idx - values.len())
+                                        .collect::<Vec<Value>>();
+                                    values.append(&mut padding);
+                                    values.push(value);
+                                } else if values.len() == idx {
+                                    values.push(value);
+                                } else {
+                                    values[idx] = value;
+                                }
                             }
                         }
                         Value::TupleObj(o) => {
+                            let idx = idx as usize;
                             let values = &mut *o.borrow_mut();
-                            if values.len() < idx {
+                            if values.len() < (idx as usize) {
                                 let mut padding = std::iter::repeat(Value::Nil)
                                     .take(idx - values.len())
                                     .collect::<Vec<Value>>();

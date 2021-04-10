@@ -2000,10 +2000,12 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
     }
 
     fn visit_return(&mut self, token: Token, node: TypedReturnNode) -> Result<(), ()> {
-        let has_return_expr = if let Some(target) = node.target {
+        let line = token.get_position().line;
+        if let Some(target) = node.target {
             self.visit(*target)?;
-            true
-        } else { false };
+        } else {
+            self.write_opcode(Opcode::Nil, line);
+        }
 
         let mut scopes_iter = self.scopes.iter().rev();
         let mut split_idx = self.locals.len() as i64;
@@ -2015,22 +2017,19 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             }
         }
 
-        let line = token.get_position().line;
         let mut locals_to_pop = self.locals.split_off(split_idx as usize);
         let mut opt_first_local = None;
-        if has_return_expr {
-            // Find the first local declared in the nearest function scope, and store the value on
-            // top of stack into that slot. If there are no locals in the function's scope, we need
-            // to leave this value on top of the stack so it will persist once the function's call frame
-            // ends. So we temporarily remove it from the `locals_to_pop`, since we don't want to emit a pop
-            // instruction for it.
-            let current_fn_scope = self.scopes.iter().rev().find(|s| s.kind == ScopeKind::Func).expect("If we're returning, then we must be in a fn scope");
-            if let Some(idx) = current_fn_scope.first_local_idx {
-                self.write_store_local_instr("<ret>", idx, line);
-            }
-            if locals_to_pop.len() != 0 {
-                opt_first_local = Some(locals_to_pop.remove(0));
-            }
+        // Find the first local declared in the nearest function scope, and store the value on
+        // top of stack into that slot. If there are no locals in the function's scope, we need
+        // to leave this value on top of the stack so it will persist once the function's call frame
+        // ends. So we temporarily remove it from the `locals_to_pop`, since we don't want to emit a pop
+        // instruction for it.
+        let current_fn_scope = self.scopes.iter().rev().find(|s| s.kind == ScopeKind::Func).expect("If we're returning, then we must be in a fn scope");
+        if let Some(idx) = current_fn_scope.first_local_idx {
+            self.write_store_local_instr("<ret>", idx, line);
+        }
+        if locals_to_pop.len() != 0 {
+            opt_first_local = Some(locals_to_pop.remove(0));
         }
 
         // Emit the pop instructions for the locals in scope, but don't permanently remove them from self.locals;
@@ -4568,6 +4567,8 @@ mod tests {
                         Opcode::Constant(1, 0),
                         Opcode::ArrMk(1),
                         Opcode::Invoke(1),
+                        Opcode::Pop(1),
+                        Opcode::Nil,
                         Opcode::Return,
                     ],
                     upvalues: vec![],
