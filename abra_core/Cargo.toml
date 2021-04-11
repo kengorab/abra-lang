@@ -1,6 +1,6 @@
 [package]
 name = "abra_core"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["Ken Gorab <ken.gorab@gmail.com>"]
 edition = "2018"
 
