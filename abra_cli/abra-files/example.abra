@@ -1,8 +1,4 @@
-//val fn: () => Unit = () => {
-//  val a = 4
-//}
-//
-//fn()
+import prompt from io
 
-val arr = [1, 2, 3]
-arr[-4] = 4
+val name = prompt("Name? ")
+println("Name: $name")

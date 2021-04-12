@@ -17,6 +17,15 @@ fn println(args: Arguments, vm: &mut VM) {
     (vm.ctx.print)(&format!("{}\n", string));
 }
 
+#[abra_function(signature = "print(*items: Any[])")]
+fn print(args: Arguments, vm: &mut VM) {
+    let vals = args.varargs();
+    let string = vals.into_iter()
+        .map(|val| to_string(&val, vm))
+        .join(" ");
+    (vm.ctx.print)(&format!("{}", string));
+}
+
 #[abra_function(signature = "range(from: Int, to: Int, increment?: Int): Int[]")]
 fn range(mut args: Arguments) -> Value {
     let mut from = args.next_int();
@@ -34,15 +43,6 @@ fn range(mut args: Arguments) -> Value {
     Value::new_array_obj(values)
 }
 
-#[abra_function(signature = "readFile(path: String): String?")]
-fn read_file(mut args: Arguments) -> Value {
-    let file_name = args.next_string();
-    match std::fs::read_to_string(file_name) {
-        Ok(contents) => Value::new_string_obj(contents),
-        Err(_) => Value::Nil
-    }
-}
-
 #[cfg(test)]
 pub static PRELUDE_PRINTLN_INDEX: u8 = 0;
 #[cfg(test)]
@@ -51,8 +51,8 @@ pub static PRELUDE_STRING_INDEX: u8 = 7;
 pub fn load_module() -> ModuleSpec {
     ModuleSpecBuilder::new("prelude")
         .add_function(println__gen_spec)
+        .add_function(print__gen_spec)
         .add_function(range__gen_spec)
-        .add_function(read_file__gen_spec)
         .add_binding("None", Type::Option(Box::new(Type::Placeholder)), Value::Nil)
         .add_type(
             TypeSpec::builder("Int", Type::Int)
@@ -94,7 +94,7 @@ mod test {
 
     #[test]
     fn test_importing_module_explicitly_fails() {
-        let imports = &["println", "range", "readFile", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set"];
+        let imports = &["println", "print", "range", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set"];
         for import in imports {
             let result = interpret_get_result(format!("import {} from prelude", import));
             assert!(result.is_err());

@@ -2758,6 +2758,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerError> {
         let module_id = node.get_module_id();
+        let is_local_module = module_id.get_name().starts_with('.');
         let ImportNode { imports, star_token, .. } = &node;
         let module = self.module_loader.get_module(&module_id);
 
@@ -2786,7 +2787,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             match exported_value {
                 ExportedValue::Binding(typ) => {
                     self.add_imported_binding(&import_name, import_ident_token, &typ);
-                    typed_imports.push((import_name, false));
+
+                    let is_const_import = if let Type::Fn(_) = &typ { !is_local_module } else { false };
+                    typed_imports.push((import_name, is_const_import));
                 }
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {
