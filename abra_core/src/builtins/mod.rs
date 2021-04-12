@@ -12,5 +12,6 @@ pub mod native_value_trait;
 // abra stdlib modules
 pub mod prelude;
 mod date;
+mod io;
 
 pub use native_modules::load_module;

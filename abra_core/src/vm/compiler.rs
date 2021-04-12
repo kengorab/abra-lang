@@ -4152,7 +4152,7 @@ mod tests {
             code: vec![
                 Opcode::IConst0,
                 Opcode::MarkLocal(0),
-                Opcode::Constant(0, 1),
+                Opcode::Constant(0, 2),
                 Opcode::IConst0,
                 Opcode::IConst1,
                 Opcode::Nil,

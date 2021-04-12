@@ -2786,7 +2786,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             match exported_value {
                 ExportedValue::Binding(typ) => {
                     self.add_imported_binding(&import_name, import_ident_token, &typ);
-                    typed_imports.push((import_name, false));
+
+                    // TODO: Fix this mess (#306)
+                    let is_const_import = if let Type::Fn(_) = &typ {
+                        let module_name = module_id.get_name();
+                        module_name == "prelude" || module_name == "io"
+                    } else { false };
+                    typed_imports.push((import_name, is_const_import));
                 }
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {

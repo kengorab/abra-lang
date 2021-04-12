@@ -60,18 +60,31 @@ struct CallFrame {
 }
 
 pub struct VMContext {
-    pub print: Box<dyn Fn(&str)>
+    pub print: Box<dyn Fn(&str)>,
+    pub prompt: Box<dyn Fn(&str) -> String>,
 }
 
 impl VMContext {
     pub fn default() -> Self {
         VMContext {
-            print: Box::new(VMContext::print)
+            print: Box::new(VMContext::print),
+            prompt: Box::new(VMContext::prompt),
         }
     }
 
     pub fn print(input: &str) {
         print!("{}", input)
+    }
+
+    pub fn prompt(prompt: &str) -> String {
+        use std::io::{stdin, stdout, Write};
+        let mut s = String::new();
+        VMContext::print(prompt);
+        let _ = stdout().flush();
+        stdin().read_line(&mut s).expect("Did not enter a correct string");
+        if let Some('\n') = s.chars().next_back() { s.pop(); }
+        if let Some('\r') = s.chars().next_back() { s.pop(); }
+        s
     }
 }
 
