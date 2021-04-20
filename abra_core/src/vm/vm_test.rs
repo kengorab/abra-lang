@@ -1323,6 +1323,35 @@ mod tests {
     }
 
     #[test]
+    fn interpret_loops_with_break() {
+        let input = r#"
+          val arr = [1, 2, 3]
+          var idx = 0
+          while arr[idx] |item| {
+            if item == 2 { break }
+            idx += 1
+          }
+          idx
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          val arr = [1, 2, 3]
+          var idx = 0
+          for item, i in arr {
+            if item == 2 { break }
+            idx += 1
+          }
+          idx
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(1);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_nested_loops_with_break() {
         let input = "\
           var a = 0\n\

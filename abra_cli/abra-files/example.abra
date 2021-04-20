@@ -1,4 +1,51 @@
-import prompt from io
+/*
+enum Result<V, E> {
+  Ok(value: V)
+  Err(error: E)
 
-val name = prompt("Name? ")
-println("Name: $name")
+  func unwrap(self): V? {
+    match self {
+      Result.Err => None
+      Result.Ok(v) => v,
+    }
+  }
+}
+
+func Ok<V>(value: V): Result<V, Placeholder> = Result.Ok(value: value)
+func Err<E>(error: E): Result<Placeholder, E> = Result.Err(error: error)
+
+func abc(v: Result<String, String>): Result<String, String> {
+  v
+}
+
+if abc(Ok("zxcv")).unwrap() |v| {
+  println("v: $v")
+}
+
+if abc(Err("asdf")).unwrap() |v| {
+  println("v: $v")
+}
+
+/*
+
+try someFunc()
+
+becomes
+
+val $expr = someFunc()
+if $expr.unwrap() |value| {
+  value
+} else {
+  return $expr
+}
+
+*/
+
+//func abc() {
+//  for _, _ in [1, 2] {
+//    if true {
+//      break
+//    }
+//  }
+//}
+//abc()

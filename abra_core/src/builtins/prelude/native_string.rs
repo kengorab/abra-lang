@@ -167,6 +167,15 @@ impl NativeString {
             .join("");
         Self::create(res)
     }
+
+    #[abra_method(signature = "replaceAll(pattern: String, replacement: String): String")]
+    fn replace_all(&self, mut args: Arguments) -> Self {
+        let pattern = args.next_string();
+        let replacement = args.next_string();
+
+        let res = self._inner.replace(&pattern, &replacement);
+        Self::create(res)
+    }
 }
 
 #[cfg(test)]

@@ -544,6 +544,8 @@ impl Type {
         match type_ident {
             TypeIdentifier::Normal { ident, type_args } => {
                 let type_name = Token::get_ident_name(ident);
+                if type_name == "Placeholder" { return Ok(Type::Placeholder); }
+
                 let mut typ = types.get(&type_name).map(|t| t.clone()).ok_or(ident.clone())?;
                 if let Type::Reference(_, ref mut ref_type_args) = typ {
                     *ref_type_args = type_args.as_ref().unwrap_or(&vec![]).iter()

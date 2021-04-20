@@ -483,9 +483,6 @@ impl<'a, R: ModuleReader> Compiler<'a, R> {
         loop_start_jump_handle: JumpHandle, // The handle representing the start of the loop conditional
         loop_end_jump_handle: JumpHandle, // The handle representing the end of the loop
     ) -> Result<usize, ()> {
-        let mut old_interrupt_handles = vec![];
-        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
-
         self.hoist_fn_defs(&body)?;
 
         let body_len = body.len();
@@ -526,14 +523,6 @@ impl<'a, R: ModuleReader> Compiler<'a, R> {
 
         // Write the instrs needed to initially skip over body, if cond was false
         self.close_jump(loop_end_jump_handle);
-
-        // Fill in any break-jump slots that have been accrued during compilation of this loop
-        // Note: for nested loops, break-jumps will break out of inner loop only
-        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
-        let mut interrupt_handles = old_interrupt_handles;
-        for handle in interrupt_handles.drain(..) {
-            self.close_jump(handle);
-        }
         Ok(last_line)
     }
 
@@ -1916,12 +1905,23 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         self.write_opcode(Opcode::IAdd, line);
         store_intrinsic(self, "$idx", line);
 
+        let mut old_interrupt_handles = vec![];
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
+
         let last_line = self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         self.pop_scope();
         self.write_opcode(Opcode::Pop(2), last_line); // Pop $iter and $idx
         self.locals.pop(); // <
         self.locals.pop(); // < Remove $iter and $idx from compiler's locals vector
+
+        // Fill in any break-jump slots that have been accrued during compilation of this loop
+        // Note: for nested loops, break-jumps will break out of inner loop only
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
+        let mut interrupt_handles = old_interrupt_handles;
+        for handle in interrupt_handles.drain(..) {
+            self.close_jump(handle);
+        }
 
         self.pop_scope();
         Ok(())
@@ -1962,11 +1962,21 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let loop_end_jump_handle = self.begin_jump(Opcode::JumpIfF(0), line);
 
+        let mut old_interrupt_handles = vec![];
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
         self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
 
         if let Some(_) = condition_binding {
             // If there was a condition binding, we need to pop it off the stack
             self.write_opcode(Opcode::Pop(1), line);
+        }
+
+        // Fill in any break-jump slots that have been accrued during compilation of this loop
+        // Note: for nested loops, break-jumps will break out of inner loop only
+        std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
+        let mut interrupt_handles = old_interrupt_handles;
+        for handle in interrupt_handles.drain(..) {
+            self.close_jump(handle);
         }
 
         self.pop_scope();

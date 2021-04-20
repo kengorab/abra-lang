@@ -690,6 +690,7 @@ impl DisplayError for TypecheckerError {
                     (BindingPattern::Tuple(_, _), typ) => {
                         format!("Cannot destructure a value of type {} as a tuple", type_repr(typ))
                     }
+                    // TODO: Proper error message here, this is totally a reachable case!
                     _ => unreachable!()
                 };
 
