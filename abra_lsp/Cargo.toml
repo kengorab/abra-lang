@@ -8,4 +8,4 @@ edition = "2018"
 abra_core = { path = "../abra_core" }
 tower-lsp = "0.13.3"
 futures-util = "0.3.8"
-tokio = { version = "0.2", features = ["rt-core", "io-std", "io-util", "macros", "net", "test-util"] }
+tokio = { version = "0.2", features = ["rt-core", "io-std", "io-util", "macros", "net", "test-util", "sync"] }

@@ -1,48 +1,52 @@
 use crate::utils::abra_error_to_diagnostic;
 use abra_core::typecheck;
+use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::{Client, LanguageServer};
 use tower_lsp::lsp_types::notification::PublishDiagnostics;
 use tower_lsp::lsp_types::{Url, PublishDiagnosticsParams, InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, InitializedParams, MessageType, DidOpenTextDocumentParams, TextDocumentItem, DidChangeTextDocumentParams, VersionedTextDocumentIdentifier};
 use abra_core::parser::ast::ModuleId;
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
+use std::ops::Deref;
+use std::path::PathBuf;
 
 #[derive(Debug)]
-struct LspModuleReader;
+pub struct LspModuleReader {
+    project_root: Option<PathBuf>,
+}
 
 impl ModuleReader for LspModuleReader {
-    fn read_module(&mut self, _module_id: &ModuleId) -> Option<String> {
-        // TODO: Real implementation
-        unimplemented!()
+    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+        match &self.project_root {
+            None => None,
+            Some(project_root) => {
+                let file_path = project_root.join(&module_id.get_path("abra"));
+                match std::fs::read_to_string(file_path) {
+                    Ok(contents) => Some(contents),
+                    Err(_) => None
+                }
+            }
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
+    project_root: Mutex<Option<String>>,
 }
 
 impl Backend {
     pub fn new(client: Client) -> Self {
-        Self { client }
+        Self { client, project_root: Mutex::new(None) }
     }
 
     async fn module_id_from_url(&self, uri: &Url) -> ModuleId {
-        let project_root = match self.client.workspace_folders().await {
-            Ok(Some(folders)) => {
-                folders.into_iter()
-                    .find_map(|f| {
-                        if uri.path().starts_with(f.uri.path()) {
-                            Some(f.uri.path().to_string())
-                        } else { None }
-                    })
-            }
-            _ => None,
-        };
+        let project_root = self.project_root.lock().await;
         let module_uri = uri.path();
-        let module_path = match project_root {
+        let module_path = match project_root.deref() {
             None => module_uri.to_string(),
-            Some(project_root) => module_uri.replace(&project_root, ""),
+            Some(project_root) => module_uri.replace(project_root, ""),
         };
         ModuleId::from_path(&module_path)
     }
@@ -50,8 +54,11 @@ impl Backend {
     async fn get_diagnostics(&self, uri: Url, version: Option<i64>, text: String) -> PublishDiagnosticsParams {
         let module_id = self.module_id_from_url(&uri).await;
 
-        let module_reader = LspModuleReader;
+        let project_root = self.project_root.lock().await;
+        let project_root =  project_root.as_ref().map(|root| PathBuf::from(root));
+        let module_reader = LspModuleReader { project_root };
         let mut loader = ModuleLoader::new(module_reader);
+
         let diagnostics = match typecheck(module_id, &text, &mut loader) {
             Ok(_) => vec![],
             Err(e) => {
@@ -83,6 +90,24 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let TextDocumentItem { uri, version, text, .. } = params.text_document;
+
+        // Force mutex ref to drop, unlocking it
+        {
+            let mut project_root = self.project_root.lock().await;
+            if project_root.is_none() {
+                *project_root = match self.client.workspace_folders().await {
+                    Ok(Some(folders)) => {
+                        folders.into_iter()
+                            .find_map(|f| {
+                                if uri.path().starts_with(f.uri.path()) {
+                                    Some(f.uri.path().to_string())
+                                } else { None }
+                            })
+                    }
+                    _ => None,
+                };
+            }
+        }
 
         let diagnostics = self.get_diagnostics(uri, Some(version), text).await;
         self.client.send_custom_notification::<PublishDiagnostics>(diagnostics).await;
