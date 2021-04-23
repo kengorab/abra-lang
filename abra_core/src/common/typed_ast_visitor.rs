@@ -29,6 +29,7 @@ pub trait TypedAstVisitor<V, E> {
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok) => self.visit_break(tok),
+            Continue(tok) => self.visit_continue(tok),
             ReturnStatement(tok, node) => self.visit_return(tok, node),
             MatchStatement(tok, node) => self.visit_match_statement(true, tok, node),
             MatchExpression(tok, node) => self.visit_match_expression(tok, node),
@@ -61,6 +62,7 @@ pub trait TypedAstVisitor<V, E> {
     fn visit_for_loop(&mut self, token: Token, node: TypedForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: TypedWhileLoopNode) -> Result<V, E>;
     fn visit_break(&mut self, token: Token) -> Result<V, E>;
+    fn visit_continue(&mut self, token: Token) -> Result<V, E>;
     fn visit_return(&mut self, token: Token, node: TypedReturnNode) -> Result<V, E>;
     fn visit_match_statement(&mut self, is_stmt: bool, token: Token, node: TypedMatchNode) -> Result<V, E>;
     fn visit_match_expression(&mut self, token: Token, node: TypedMatchNode) -> Result<V, E>;

@@ -40,12 +40,3 @@ if $expr.unwrap() |value| {
 }
 
 */
-
-//func abc() {
-//  for _, _ in [1, 2] {
-//    if true {
-//      break
-//    }
-//  }
-//}
-//abc()

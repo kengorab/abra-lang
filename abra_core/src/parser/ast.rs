@@ -24,6 +24,7 @@ pub enum AstNode {
     ForLoop(Token, ForLoopNode),
     WhileLoop(Token, WhileLoopNode),
     Break(Token),
+    Continue(Token),
     Accessor(Token, AccessorNode),
     Lambda(Token, LambdaNode),
     MatchStatement(Token, MatchNode),
@@ -58,6 +59,7 @@ impl AstNode {
             AstNode::ForLoop(token, _) |
             AstNode::WhileLoop(token, _) |
             AstNode::Break(token) |
+            AstNode::Continue(token) |
             AstNode::ReturnStatement(token, _) |
             AstNode::ImportStatement(token, _) |
             AstNode::Accessor(token, _) |

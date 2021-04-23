@@ -34,7 +34,7 @@ pub struct Upvalue {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum ScopeKind { Root, If, Func, Loop, Block }
+enum ScopeKind { Root, If, Func, ForLoop, WhileLoop, Block }
 
 #[derive(Clone, Debug, PartialEq)]
 struct Scope {
@@ -54,6 +54,7 @@ pub struct Compiler<'a, R: ModuleReader> {
     locals: Vec<Local>,
     upvalues: Vec<Upvalue>,
     interrupt_handles: Vec<JumpHandle>,
+    loop_start_handle: Option<JumpHandle>,
     return_handles: Vec<JumpHandle>,
     metadata: Metadata,
     anon_idx: usize,
@@ -77,6 +78,7 @@ pub struct Module {
     pub code: Vec<Opcode>,
 }
 
+#[derive(Clone)]
 struct JumpHandle {
     // If it's a jump-forward, this holds the index of the Jump(IfF)? instruction in the code vec,
     // which needs to be replaced when the handle is `closed`; if it's a jump-backwards, this holds
@@ -101,6 +103,7 @@ pub fn compile<R>(module: TypedModule, module_idx: usize, module_loader: &mut Mo
         locals: Vec::new(),
         upvalues: Vec::new(),
         interrupt_handles: Vec::new(),
+        loop_start_handle: None,
         return_handles: Vec::new(),
         metadata,
         anon_idx: 0,
@@ -477,12 +480,7 @@ impl<'a, R: ModuleReader> Compiler<'a, R> {
 
     // Called from visit_for_loop and visit_while_loop, but it has to be up here since it's
     // not part of the TypedAstVisitor trait.
-    fn visit_loop_body(
-        &mut self,
-        body: Vec<TypedAstNode>,
-        loop_start_jump_handle: JumpHandle, // The handle representing the start of the loop conditional
-        loop_end_jump_handle: JumpHandle, // The handle representing the end of the loop
-    ) -> Result<usize, ()> {
+    fn visit_loop_body(&mut self, body: Vec<TypedAstNode>, loop_end_jump_handle: JumpHandle) -> Result<usize, ()> {
         self.hoist_fn_defs(&body)?;
 
         let body_len = body.len();
@@ -519,7 +517,8 @@ impl<'a, R: ModuleReader> Compiler<'a, R> {
         }
 
         // Write the instrs needed to jump back in order to evaluate the cond again
-        self.close_jump_back(loop_start_jump_handle, last_line);
+        let loop_start_handle = self.loop_start_handle.as_ref().expect("There must be a loop_start_handle if we're within a loop body").clone();
+        self.close_jump_back(loop_start_handle, last_line);
 
         // Write the instrs needed to initially skip over body, if cond was false
         self.close_jump(loop_end_jump_handle);
@@ -1839,7 +1838,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         let iterator_type = iterator.get_type();
 
         // Push intrinsic variable $idx, to track position in $iter
-        self.push_scope(ScopeKind::Loop); // Create wrapper scope to hold invisible variables
+        self.push_scope(ScopeKind::ForLoop); // Create wrapper scope to hold invisible variables
         self.write_opcode(Opcode::IConst0, line); // Local 0 is iterator index ($idx)
         self.push_local("$idx", line, true);
 
@@ -1868,8 +1867,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             compiler.write_store_local_instr(name, slot, line);
         }
 
-        // Place marker to point the JumpB to later, to jump to start of loop
-        let loop_start_jump_handle = self.begin_jump_back();
+        // Place marker to point the JumpB to later, to jump to start of loop. Preserve any prior loop_start_handle
+        let mut old_loop_start_handle = Some(self.begin_jump_back());
+        std::mem::swap(&mut self.loop_start_handle, &mut old_loop_start_handle);
 
         // Essentially: if $idx >= $iter.length { break }
         load_intrinsic(self, "$idx", line);
@@ -1908,7 +1908,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         let mut old_interrupt_handles = vec![];
         std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
 
-        let last_line = self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
+        let last_line = self.visit_loop_body(body, loop_end_jump_handle)?;
+        // Restore any prior loop_start_handle
+        std::mem::swap(&mut self.loop_start_handle, &mut old_loop_start_handle);
 
         self.pop_scope();
         self.write_opcode(Opcode::Pop(2), last_line); // Pop $iter and $idx
@@ -1932,10 +1934,11 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let TypedWhileLoopNode { condition, condition_binding, body } = node;
 
-        // Place marker to point the JumpB to later, to jump to start of loop
-        let loop_start_jump_handle = self.begin_jump_back();
+        // Place marker to point the JumpB to later, to jump to start of loop. Preserve any prior loop_start_handle
+        let mut old_loop_start_handle = Some(self.begin_jump_back());
+        std::mem::swap(&mut self.loop_start_handle, &mut old_loop_start_handle);
 
-        self.push_scope(ScopeKind::Loop);
+        self.push_scope(ScopeKind::WhileLoop);
         let is_opt = match condition.get_type() {
             Type::Option(inner) => *inner != Type::Bool,
             _ => false
@@ -1964,7 +1967,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let mut old_interrupt_handles = vec![];
         std::mem::swap(&mut self.interrupt_handles, &mut old_interrupt_handles);
-        self.visit_loop_body(body, loop_start_jump_handle, loop_end_jump_handle)?;
+        self.visit_loop_body(body, loop_end_jump_handle)?;
+        // Restore any prior loop_start_handle
+        std::mem::swap(&mut self.loop_start_handle, &mut old_loop_start_handle);
 
         if let Some(_) = condition_binding {
             // If there was a condition binding, we need to pop it off the stack
@@ -1996,7 +2001,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         loop {
             let Scope { num_locals, kind, .. } = scopes_iter.next().unwrap();
             split_idx -= *num_locals as i64;
-            if kind == &ScopeKind::Loop {
+            if kind == &ScopeKind::ForLoop || kind == &ScopeKind::WhileLoop {
                 break;
             }
         }
@@ -2006,6 +2011,32 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let interrupt_jump_handle = self.begin_jump(Opcode::Jump(0), line);
         self.interrupt_handles.push(interrupt_jump_handle);
+        Ok(())
+    }
+
+    fn visit_continue(&mut self, token: Token) -> Result<(), ()> {
+        let line = token.get_position().line;
+
+        // Emit bytecode to pop locals from stack. The scope in which the continue statement lives
+        // takes care of making sure the compiler's `locals` vec is in the correct state; here we
+        // just need to emit the runtime popping. It's worth noting that locals in scopes deeper than
+        // the loop also need to be popped, depending on the kind of loop we're in
+        let mut scopes_iter = self.scopes.iter().rev();
+        let mut split_idx = self.locals.len() as i64;
+        loop {
+            let Scope { num_locals, kind, .. } = scopes_iter.next().unwrap();
+
+            // If the continue occurred within a for-loop, we do _not_ want to pop off the $iter and $idx bindings
+            if kind == &ScopeKind::ForLoop { break; }
+            split_idx -= *num_locals as i64;
+            if kind == &ScopeKind::WhileLoop { break; }
+        }
+        let mut locals_to_pop = self.locals.split_off(split_idx as usize);
+        self.write_pops(&locals_to_pop, line);
+        self.locals.append(&mut locals_to_pop);
+
+        let loop_start_handle = self.loop_start_handle.as_ref().expect("There must be a loop_start_handle if we're within a loop body").clone();
+        self.close_jump_back(loop_start_handle, line);
         Ok(())
     }
 
@@ -4014,6 +4045,33 @@ mod tests {
         assert_eq!(expected, chunk);
 
         let chunk = test_compile("\
+          while true |t| {\n\
+            val i = 1\n\
+            break\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Nil,
+                Opcode::MarkLocal(0),
+                Opcode::T,
+                Opcode::Dup,
+                Opcode::LStore(0),
+                Opcode::JumpIfF(5),
+                Opcode::IConst1,
+                Opcode::MarkLocal(1),
+                Opcode::Pop(2),      // <
+                Opcode::Jump(2),     // < These 3 instrs are generated by the break
+                Opcode::JumpB(11),   // These 2 get falsely attributed to the break, because of #32
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = test_compile("\
           while true {\n\
             val i = 1\n\
             if i == 1 {\n\
@@ -4039,6 +4097,38 @@ mod tests {
                 Opcode::Jump(2),  // < These 3 instrs are generated by the break
                 Opcode::Pop(1),         // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
                 Opcode::JumpB(14),
+                Opcode::Return
+            ],
+            constants: vec![],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_while_loop_with_continue() {
+        let chunk = test_compile("\
+          while true |t| {\n\
+            val i = 1\n\
+            continue\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Nil,
+                Opcode::MarkLocal(0),
+                Opcode::T,
+                Opcode::Dup,
+                Opcode::LStore(0),
+                Opcode::JumpIfF(7),
+                Opcode::IConst1,
+                Opcode::MarkLocal(1),
+                Opcode::Pop(2),      // <
+                Opcode::JumpB(10),   // < These 2 are emitted by the continue, pop i & t, and jump back to start of loop
+                Opcode::Pop(1),      // <<
+                Opcode::Pop(2),      // << These two are actually unreachable, but everything is still popped properly
+                Opcode::JumpB(13),   // This is the end of the loop body
+                Opcode::Pop(1),
                 Opcode::Return
             ],
             constants: vec![],
@@ -4118,6 +4208,102 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::Pop(2),
                 Opcode::JumpB(32),
+
+                // Cleanup/end
+                Opcode::Pop(2),
+                Opcode::Return
+            ],
+            constants: vec![
+                new_string_obj("Row: "),
+                Value::Str("_test/msg".to_string()),
+                Value::Str("_test/arr".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_for_loop_with_continue() {
+        let chunk = test_compile("\
+          val msg = \"Row: \"\n\
+          val arr = [1, 2]\n\
+          for a, i in arr {\n\
+            if true println(msg + a + i)\n\
+            else { continue }\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                // val msg = "Row: "
+                Opcode::Constant(1, 0),
+                Opcode::GStore(1, 1),
+
+                // val arr = [1, 2]
+                Opcode::IConst1,
+                Opcode::IConst2,
+                Opcode::ArrMk(2),
+                Opcode::GStore(1, 2),
+
+                // val $idx = 0
+                // val $iter = arr.enumerate()
+                // if $idx < $iter.length {
+                Opcode::IConst0,
+                Opcode::MarkLocal(0),
+                Opcode::GLoad(1, 2),
+                Opcode::GetMethod(2), // .enumerate
+                Opcode::Invoke(0),
+                Opcode::MarkLocal(1),
+                Opcode::LLoad(0),
+                Opcode::LLoad(1),
+                Opcode::GetField(0), // .length
+                Opcode::LT,
+                Opcode::JumpIfF(33),
+
+                // a = $iter[$idx][0]
+                Opcode::LLoad(1),
+                Opcode::LLoad(0),
+                Opcode::ArrLoad,
+                Opcode::IConst0,
+                Opcode::TupleLoad,
+                Opcode::MarkLocal(2),
+
+                // i = $iter[$idx][1]
+                Opcode::LLoad(1),
+                Opcode::LLoad(0),
+                Opcode::ArrLoad,
+                Opcode::IConst1,
+                Opcode::TupleLoad,
+                Opcode::MarkLocal(3),
+
+                // $idx += 1
+                Opcode::LLoad(0),
+                Opcode::IConst1,
+                Opcode::IAdd,
+                Opcode::LStore(0),
+
+                // if true println(msg + a + i)
+                Opcode::T,
+                Opcode::JumpIfF(10),
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::GLoad(1, 1),
+                Opcode::LLoad(2),
+                Opcode::StrConcat,
+                Opcode::LLoad(3),
+                Opcode::StrConcat,
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Jump(3),
+
+                // else { continue } (jump back to loop start)
+                Opcode::Pop(2),
+                Opcode::JumpB(35),
+                Opcode::Pop(1),
+
+                // <recur> (from if-branch)
+                Opcode::Pop(2),
+                Opcode::JumpB(38),
 
                 // Cleanup/end
                 Opcode::Pop(2),

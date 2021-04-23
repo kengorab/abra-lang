@@ -37,8 +37,7 @@ pub enum TypecheckerError {
     IncorrectArity { token: Token, expected: usize, actual: usize },
     UnexpectedParamName { token: Token },
     DuplicateParamName { token: Token },
-    InvalidBreak(Token),
-    InvalidReturn(Token),
+    InvalidTerminator(Token),
     InvalidRequiredArgPosition(Token),
     InvalidVarargPosition(Token),
     InvalidVarargUsage(Token),
@@ -100,8 +99,7 @@ impl TypecheckerError {
             TypecheckerError::IncorrectArity { token, .. } => token,
             TypecheckerError::UnexpectedParamName { token } => token,
             TypecheckerError::DuplicateParamName { token } => token,
-            TypecheckerError::InvalidBreak(token) => token,
-            TypecheckerError::InvalidReturn(token) => token,
+            TypecheckerError::InvalidTerminator(token) => token,
             TypecheckerError::InvalidRequiredArgPosition(token) => token,
             TypecheckerError::InvalidVarargPosition(token) => token,
             TypecheckerError::InvalidVarargUsage(token) => token,
@@ -452,18 +450,17 @@ impl DisplayError for TypecheckerError {
                     pos.line, pos.col, cursor_line,
                 )
             }
-            TypecheckerError::InvalidBreak(_token) => {
+            TypecheckerError::InvalidTerminator(token) => {
+                let (keyword, msg) = match token {
+                    Token::Break(_) => ("break", "A break keyword cannot appear outside of a loop"),
+                    Token::Continue(_) => ("continue", "A continue keyword cannot appear outside of a loop"),
+                    Token::Return(_, _) => ("return", "A return keyword cannot appear outside of a function"),
+                    _ => unreachable!()
+                };
+
                 format!(
-                    "Unexpected break keyword: ({}:{})\n{}\n\
-                    A break keyword cannot appear outside of a loop",
-                    pos.line, pos.col, cursor_line
-                )
-            }
-            TypecheckerError::InvalidReturn(_) => {
-                format!(
-                    "Unexpected return keyword: ({}:{})\n{}\n\
-                    A return keyword cannot appear outside of a function",
-                    pos.line, pos.col, cursor_line
+                    "Unexpected {} keyword: ({}:{})\n{}\n{}",
+                    keyword, pos.line, pos.col, cursor_line, msg
                 )
             }
             TypecheckerError::InvalidRequiredArgPosition(_token) => {
@@ -1136,15 +1133,37 @@ Expected 1 required argument, but 3 were passed"
     }
 
     #[test]
-    fn test_invalid_break() {
+    fn test_invalid_terminator() {
         let src = "func abc() { break }".to_string();
-        let err = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 14)));
+        let err = TypecheckerError::InvalidTerminator(Token::Break(Position::new(1, 14)));
 
         let expected = format!("\
 Unexpected break keyword: (1:14)
   |  func abc() {{ break }}
                   ^^^^^
 A break keyword cannot appear outside of a loop"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "func abc() { continue }".to_string();
+        let err = TypecheckerError::InvalidTerminator(Token::Continue(Position::new(1, 14)));
+
+        let expected = format!("\
+Unexpected continue keyword: (1:14)
+  |  func abc() {{ continue }}
+                  ^^^^^^^^
+A continue keyword cannot appear outside of a loop"
+        );
+        assert_eq!(expected, err.get_message(&src));
+
+        let src = "while true { return }".to_string();
+        let err = TypecheckerError::InvalidTerminator(Token::Return(Position::new(1, 14), false));
+
+        let expected = format!("\
+Unexpected return keyword: (1:14)
+  |  while true {{ return }}
+                  ^^^^^^
+A return keyword cannot appear outside of a function"
         );
         assert_eq!(expected, err.get_message(&src));
     }

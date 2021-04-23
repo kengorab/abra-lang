@@ -28,6 +28,7 @@ pub trait AstVisitor<V, E> {
             Invocation(tok, node) => self.visit_invocation(tok, node),
             WhileLoop(tok, node) => self.visit_while_loop(tok, node),
             Break(tok) => self.visit_break(tok),
+            Continue(tok) => self.visit_continue(tok),
             ReturnStatement(tok, node) => self.visit_return(tok, node),
             ImportStatement(tok, node) => self.visit_import(tok, node),
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
@@ -59,6 +60,7 @@ pub trait AstVisitor<V, E> {
     fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<V, E>;
     fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<V, E>;
     fn visit_break(&mut self, token: Token) -> Result<V, E>;
+    fn visit_continue(&mut self, token: Token) -> Result<V, E>;
     fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<V, E>;
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<V, E>;
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<V, E>;

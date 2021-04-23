@@ -233,6 +233,7 @@ impl Parser {
             Token::Match(_) => self.parse_match_statement(),
             Token::While(_) => self.parse_while_statement(),
             Token::For(_) => self.parse_for_statement(),
+            Token::Continue(_) => self.parse_continue_statement(),
             Token::Break(_) => self.parse_break_statement(),
             Token::Return(_, _) => self.parse_return_statement(),
             Token::Import(_) => self.parse_import_statement(false),
@@ -716,6 +717,11 @@ impl Parser {
     fn parse_break_statement(&mut self) -> Result<AstNode, ParseError> {
         let token = self.expect_next()?;
         Ok(AstNode::Break(token))
+    }
+
+    fn parse_continue_statement(&mut self) -> Result<AstNode, ParseError> {
+        let token = self.expect_next()?;
+        Ok(AstNode::Continue(token))
     }
 
     fn parse_return_statement(&mut self) -> Result<AstNode, ParseError> {
@@ -4290,6 +4296,62 @@ mod tests {
         let error = parse("for a, in [0, 1] { a }").unwrap_err();
         let expected = ParseError::ExpectedToken(TokenType::Ident, Token::In(Position::new(1, 8)));
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn parse_loop_with_break() -> TestResult {
+        let ast = parse("while a { break }")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(identifier!((1, 7), "a")),
+                condition_binding: None,
+                body: vec![AstNode::Break(Token::Break(Position::new(1, 11)))],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("for x in a { break }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                binding: BindingPattern::Variable(ident_token!((1, 5), "x")),
+                index_ident: None,
+                iterator: Box::new(identifier!((1, 10), "a")),
+                body: vec![AstNode::Break(Token::Break(Position::new(1, 14)))],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_loop_with_continue() -> TestResult {
+        let ast = parse("while a { continue }")?;
+        let expected = AstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            WhileLoopNode {
+                condition: Box::new(identifier!((1, 7), "a")),
+                condition_binding: None,
+                body: vec![AstNode::Continue(Token::Continue(Position::new(1, 11)))],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("for x in a { continue }")?;
+        let expected = AstNode::ForLoop(
+            Token::For(Position::new(1, 1)),
+            ForLoopNode {
+                binding: BindingPattern::Variable(ident_token!((1, 5), "x")),
+                index_ident: None,
+                iterator: Box::new(identifier!((1, 10), "a")),
+                body: vec![AstNode::Continue(Token::Continue(Position::new(1, 14)))],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 
     #[test]

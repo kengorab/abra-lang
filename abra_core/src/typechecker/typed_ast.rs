@@ -28,6 +28,7 @@ pub enum TypedAstNode {
     ForLoop(Token, TypedForLoopNode),
     WhileLoop(Token, TypedWhileLoopNode),
     Break(Token),
+    Continue(Token),
     ReturnStatement(Token, TypedReturnNode),
     Accessor(Token, TypedAccessorNode),
     MatchStatement(Token, TypedMatchNode),
@@ -62,6 +63,7 @@ impl TypedAstNode {
             TypedAstNode::ForLoop(token, _) |
             TypedAstNode::WhileLoop(token, _) |
             TypedAstNode::Break(token) |
+            TypedAstNode::Continue(token) |
             TypedAstNode::ReturnStatement(token, _) |
             TypedAstNode::Accessor(token, _) |
             TypedAstNode::MatchStatement(token, _) |
@@ -93,6 +95,7 @@ impl TypedAstNode {
             TypedAstNode::EnumDecl(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
+            TypedAstNode::Continue(_) |
             TypedAstNode::ImportStatement(_, _) |
             TypedAstNode::ForLoop(_, _) => Type::Unit,
             TypedAstNode::ReturnStatement(_, node) => node.typ.clone(),

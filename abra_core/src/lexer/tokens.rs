@@ -42,6 +42,7 @@ pub enum Token {
     #[strum(to_string = "else", serialize = "Else")] Else(Position),
     #[strum(to_string = "while", serialize = "While")] While(Position),
     #[strum(to_string = "break", serialize = "Break")] Break(Position),
+    #[strum(to_string = "continue", serialize = "Continue")] Continue(Position),
     #[strum(to_string = "for", serialize = "For")] For(Position),
     #[strum(to_string = "in", serialize = "In")] In(Position),
     #[strum(to_string = "match", serialize = "Match")] Match(Position),
@@ -119,6 +120,7 @@ impl Token {
             Token::Else(pos) |
             Token::While(pos) |
             Token::Break(pos) |
+            Token::Continue(pos) |
             Token::For(pos) |
             Token::In(pos) |
             Token::Match(pos) |
@@ -199,6 +201,7 @@ impl Token {
             Token::Else(pos) => Range::with_length(pos, 3),
             Token::While(pos) => Range::with_length(pos, 4),
             Token::Break(pos) => Range::with_length(pos, 4),
+            Token::Continue(pos) => Range::with_length(pos, 7),
             Token::For(pos) => Range::with_length(pos, 2),
             Token::In(pos) => Range::with_length(pos, 1),
             Token::Match(pos) => Range::with_length(pos, 4),

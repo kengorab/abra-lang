@@ -838,6 +838,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 })
             }
             TypedAstNode::ReturnStatement(_, _) => true,
+            TypedAstNode::WhileLoop(_, TypedWhileLoopNode { body, .. }) => {
+                body.iter().find(|n| Self::all_branches_return(n)).is_some()
+            }
             _ => false
         }
     }
@@ -2726,7 +2729,24 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         if has_loop_parent {
             Ok(TypedAstNode::Break(token))
         } else {
-            Err(TypecheckerError::InvalidBreak(token))
+            Err(TypecheckerError::InvalidTerminator(token))
+        }
+    }
+
+    fn visit_continue(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+        let mut iter = self.scopes.iter().rev();
+        let has_loop_parent = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Loop) => break true,
+                Some(ScopeKind::Block) => continue,
+                _ => break false
+            }
+        };
+
+        if has_loop_parent {
+            Ok(TypedAstNode::Continue(token))
+        } else {
+            Err(TypecheckerError::InvalidTerminator(token))
         }
     }
 
@@ -2752,7 +2772,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             self.returns.push(node.clone());
             Ok(node)
         } else {
-            Err(TypecheckerError::InvalidReturn(token))
+            Err(TypecheckerError::InvalidTerminator(token))
         }
     }
 
@@ -3073,7 +3093,7 @@ mod tests {
         let mut mock_loader = ModuleLoader::new(mock_reader);
         let module_id = ModuleId::from_name("_test");
         let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
-            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
+            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { dbg!(e); unreachable!() })?;
         Ok(module)
     }
 
@@ -6991,6 +7011,19 @@ mod tests {
         );
         assert_eq!(expected, module.typed_nodes[0]);
 
+        let module = test_typecheck("while true { continue }")?;
+        let expected = TypedAstNode::WhileLoop(
+            Token::While(Position::new(1, 1)),
+            TypedWhileLoopNode {
+                condition: Box::new(bool_literal!((1, 7), true)),
+                condition_binding: None,
+                body: vec![
+                    TypedAstNode::Continue(Token::Continue(Position::new(1, 14)))
+                ],
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[0]);
+
         let module = test_typecheck("while true {\nval a = 1\na + 1 }")?;
         let expected = TypedAstNode::WhileLoop(
             Token::While(Position::new(1, 1)),
@@ -7111,11 +7144,22 @@ mod tests {
     #[test]
     fn typecheck_break_statement_error() {
         let error = test_typecheck("if true { break }").unwrap_err();
-        let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 11)));
+        let expected = TypecheckerError::InvalidTerminator(Token::Break(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc() { break }").unwrap_err();
-        let expected = TypecheckerError::InvalidBreak(Token::Break(Position::new(1, 14)));
+        let expected = TypecheckerError::InvalidTerminator(Token::Break(Position::new(1, 14)));
+        assert_eq!(expected, error)
+    }
+
+    #[test]
+    fn typecheck_continue_statement_error() {
+        let error = test_typecheck("if true { continue }").unwrap_err();
+        let expected = TypecheckerError::InvalidTerminator(Token::Continue(Position::new(1, 11)));
+        assert_eq!(expected, error);
+
+        let error = test_typecheck("func abc() { continue }").unwrap_err();
+        let expected = TypecheckerError::InvalidTerminator(Token::Continue(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 
@@ -7237,6 +7281,31 @@ mod tests {
                             right: Box::new(identifier!((3, 5), "y", Type::Int, 2)),
                         },
                     )
+                ],
+            },
+        );
+        assert_eq!(expected, module.typed_nodes[1]);
+
+        let module = test_typecheck("\
+          val coords = [(1, 2), (3, 4)]\n\
+          for (x, y), i in coords {\n\
+            continue\n\
+          }\
+        ")?;
+        let expected = TypedAstNode::ForLoop(
+            Token::For(Position::new(2, 1)),
+            TypedForLoopNode {
+                binding: BindingPattern::Tuple(
+                    Token::LParen(Position::new(2, 5), false),
+                    vec![
+                        BindingPattern::Variable(ident_token!((2, 6), "x")),
+                        BindingPattern::Variable(ident_token!((2, 9), "y"))
+                    ],
+                ),
+                index_ident: Some(ident_token!((2, 13), "i")),
+                iterator: Box::new(identifier!((2, 18), "coords", Type::Array(Box::new(Type::Tuple(vec![Type::Int, Type::Int]))), 0)),
+                body: vec![
+                    TypedAstNode::Continue(Token::Continue(Position::new(3, 1)))
                 ],
             },
         );
