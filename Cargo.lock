@@ -11,7 +11,7 @@ dependencies = [
 
 [[package]]
 name = "abra-lsp"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "abra_core",
  "futures-util",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "abra_core"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "abra_native",
  "downcast-rs",
