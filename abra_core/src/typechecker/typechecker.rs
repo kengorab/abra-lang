@@ -429,11 +429,11 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
     }
 
     fn visit_block(&mut self, is_stmt: bool, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
-        let mut seen_return = false;
+        let mut has_terminated = false;
         let len = body.len();
         body.into_iter().enumerate()
             .map(|(idx, mut node)| {
-                if seen_return {
+                if has_terminated {
                     return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
                 }
 
@@ -451,7 +451,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 }
                 let typed_node = self.visit(node)?;
-                seen_return = Self::all_branches_return(&typed_node);
+                has_terminated = Self::all_branches_terminate(&typed_node).is_some();
 
                 Ok(typed_node)
             })
@@ -817,42 +817,58 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         Ok(typed_args)
     }
 
-    fn all_branches_return(node: &TypedAstNode) -> bool {
+    // The usage of Option<bool> here is weird:
+    //   - if None, then no termination (break/continue/return) occurred
+    //   - if Some(false), then a non-return occurred; Some(true) means a return occurred
+    fn all_branches_terminate(node: &TypedAstNode) -> Option<bool> {
         match node {
             TypedAstNode::IfStatement(_, TypedIfNode { if_block, else_block, .. }) |
             TypedAstNode::IfExpression(_, TypedIfNode { if_block, else_block, .. }) => {
-                let if_block_has_return = if_block.last().map(|n| Self::all_branches_return(n)).unwrap_or(false);
-                if !if_block_has_return {
-                    false
+                let if_block_terminator = if_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
+                if if_block_terminator.is_none() {
+                    None
                 } else if let Some(else_block) = else_block {
-                    let else_block_has_return = else_block.last().map(|n| Self::all_branches_return(n)).unwrap_or(false);
-                    if_block_has_return && else_block_has_return
+                    let else_block_terminator = else_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
+                    match (&if_block_terminator, &else_block_terminator) {
+                        (Some(true), Some(true)) => Some(true),
+                        (Some(_), Some(_)) => Some(false),
+                        (None, _) | (_, None) => None,
+                    }
                 } else {
-                    false
+                    None
                 }
             }
             TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
             TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
-                branches.iter().all(|(_, body)| {
-                    body.last().map(|n| Self::all_branches_return(n)).unwrap_or(false)
+                branches.iter().fold(Some(true), |acc, (_, body)| {
+                    let terminator = body.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
+                    match (acc, terminator) {
+                        (Some(true), Some(true)) => Some(true),
+                        (Some(_), Some(_)) => Some(false),
+                        (None, _) | (_, None) => None,
+                    }
                 })
             }
-            TypedAstNode::ReturnStatement(_, _) => true,
+            TypedAstNode::ForLoop(_, TypedForLoopNode { body, .. }) |
             TypedAstNode::WhileLoop(_, TypedWhileLoopNode { body, .. }) => {
-                body.iter().find(|n| Self::all_branches_return(n)).is_some()
+                // A loop can only be guaranteed to terminate if all branches terminate in a return
+                body.iter().find(|n| Self::all_branches_terminate(n) == Some(true))
+                    .map(|_| true)
             }
-            _ => false
+            TypedAstNode::ReturnStatement(_, _) => Some(true),
+            TypedAstNode::Break(_) | TypedAstNode::Continue(_) => Some(false),
+            _ => None
         }
     }
 
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
         self.hoist_declarations_in_scope(&body)?;
 
-        let mut seen_return = false;
+        let mut has_terminated = false;
         let body_len = body.len();
         body.into_iter().enumerate()
             .map(|(idx, node)| {
-                if seen_return {
+                if has_terminated {
                     return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
                 }
 
@@ -916,7 +932,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 } else {
                     let typed_node = self.visit(node)?;
-                    seen_return = Self::all_branches_return(&typed_node);
+                    has_terminated = Self::all_branches_terminate(&typed_node).is_some();
 
                     Ok(typed_node)
                 }
@@ -1657,7 +1673,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 match body.last_mut() {
                     None => Type::Unit,
                     Some(mut node) => {
-                        if Self::all_branches_return(node) {
+                        if Self::all_branches_terminate(node).is_some() {
                             typ
                         } else {
                             let node_type = node.get_type();
@@ -2267,11 +2283,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
     fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
         let mut node = self.visit_if_node(false, node)?;
 
-        let mut if_block_is_return = false;
+        let mut if_block_terminates = false;
         let if_block_type = match &node.if_block.last() {
             None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
             Some(expr) => {
-                if_block_is_return = Self::all_branches_return(expr);
+                if_block_terminates = Self::all_branches_terminate(expr).is_some();
                 Ok(expr.get_type())
             }
         }?;
@@ -2282,14 +2298,14 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 Some(expr) => {
                     let else_block_type = expr.get_type();
 
-                    if if_block_is_return {
-                        if Self::all_branches_return(expr) {
+                    if if_block_terminates {
+                        if Self::all_branches_terminate(expr).is_some() {
                             node.typ = Type::Unit;
                             return Ok(TypedAstNode::IfExpression(token.clone(), node));
                         } else {
                             Ok(else_block_type)
                         }
-                    } else if Self::all_branches_return(expr) {
+                    } else if Self::all_branches_terminate(expr).is_some() {
                         node.typ = if_block_type;
                         return Ok(TypedAstNode::IfExpression(token.clone(), node));
                     } else {
@@ -2329,7 +2345,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         let mut typ = None;
         for (_, ref mut block) in &mut node.branches {
-            if block.last().as_ref().map_or(false, |n| Self::all_branches_return(n)) {
+            if block.last().as_ref().map_or(false, |n| Self::all_branches_terminate(n).is_some()) {
                 continue;
             }
 
@@ -3093,7 +3109,7 @@ mod tests {
         let mut mock_loader = ModuleLoader::new(mock_reader);
         let module_id = ModuleId::from_name("_test");
         let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
-            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { dbg!(e); unreachable!() })?;
+            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
         Ok(module)
     }
 
@@ -4087,7 +4103,7 @@ mod tests {
         let err = test_typecheck("val abc = println()").unwrap_err();
         let expected = TypecheckerError::ForbiddenVariableType {
             binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
-            typ: Type::Unit
+            typ: Type::Unit,
         };
         assert_eq!(expected, err);
     }
@@ -7329,6 +7345,73 @@ mod tests {
             target_type: Type::Tuple(vec![Type::Int, Type::Int]),
         };
         assert_eq!(expected, error);
+    }
+
+    #[test]
+    fn typecheck_terminated_expressions() {
+        // Testing returns
+        let res = test_typecheck(r#"
+          func a(): String {
+            val s = if true { return "asdf" } else "zxcv"
+            s
+          }
+        "#);
+        assert!(res.is_ok());
+        let res = test_typecheck(r#"
+          func a(): String {
+            val s = match [1, 2][0] {
+              Int i => "$i"
+              None => { return "asdf" }
+            }
+            s
+          }
+        "#);
+        assert!(res.is_ok());
+        let res = test_typecheck(r#"
+          func a(): String {
+            while true { return "asdf" }
+          }
+          func b(): String {
+            for i in range(0, 1) { return "asdf" }
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Testing break
+        let res = test_typecheck(r#"
+          func a(): String {
+            while true {
+              if true { break }
+              else { return "asdf" }
+            }
+            "zxcv"
+          }
+        "#);
+        assert!(res.is_ok());
+
+        // Testing continue
+        let res = test_typecheck(r#"
+          func a(): String {
+            while true {
+              if true { continue }
+              else { return "asdf" }
+            }
+            "zxcv"
+          }
+        "#);
+        assert!(res.is_ok());
+        let res = test_typecheck(r#"
+          func a(): String {
+            for i in range(0, 1) {
+              match [1][0] {
+                Int i => { continue }
+                None => { return "asdf" }
+              }
+            }
+            "zxcv"
+          }
+        "#);
+        assert!(res.is_ok());
     }
 
     #[test]

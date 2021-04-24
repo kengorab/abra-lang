@@ -1328,8 +1328,8 @@ mod tests {
           val arr = [1, 2, 3]
           var idx = 0
           while arr[idx] |item| {
-            if item == 2 { break }
-            idx += 1
+            val inc = if item == 2 { break } else 1
+            idx += inc
           }
           idx
         "#;
@@ -1341,8 +1341,8 @@ mod tests {
           val arr = [1, 2, 3]
           var count = 0
           for item, i in arr {
-            if item == 2 { break }
-            count += 1
+            val inc = if item == 2 { break } else 1
+            count += inc
           }
           count
         "#;
@@ -1359,8 +1359,8 @@ mod tests {
           var count = 0
           while arr[idx] |item| {
             idx += 1
-            if item == 2 { continue }
-            count += 1
+            val inc = if item == 2 { continue } else 1
+            count += inc
           }
           count
         "#;
@@ -1372,8 +1372,8 @@ mod tests {
           val arr = [1, 2, 3]
           var count = 0
           for item, i in arr {
-            if item == 2 { continue }
-            count += 1
+            val inc = if item == 2 { continue } else 1
+            count += inc
           }
           count
         "#;
