@@ -5,7 +5,7 @@ use abra_core::module_loader::ModuleReader;
 
 #[derive(Debug)]
 pub struct FsModuleReader {
-    project_root: PathBuf,
+    pub(crate) project_root: PathBuf,
 }
 
 impl FsModuleReader {
@@ -16,7 +16,7 @@ impl FsModuleReader {
 
 impl ModuleReader for FsModuleReader {
     fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
-        let file_path = self.project_root.join(&module_id.get_path("abra"));
+        let file_path = module_id.get_path(Some(&self.project_root));
         match std::fs::read_to_string(file_path) {
             Ok(contents) => Some(contents),
             Err(_) => None

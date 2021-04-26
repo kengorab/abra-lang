@@ -25,10 +25,10 @@ pub trait DisplayError {
         format!("{}|{}{}\n{}", indent, indent, line, underline)
     }
 
-    fn get_message(&self, source: &String) -> String {
+    fn get_message(&self, file_name: &String, source: &String) -> String {
         let lines: Vec<&str> = source.split("\n").collect();
-        self.message_for_error(&lines)
+        self.message_for_error(file_name, &lines)
     }
 
-    fn message_for_error(&self, lines: &Vec<&str>) -> String;
+    fn message_for_error(&self, file_name: &String, lines: &Vec<&str>) -> String;
 }

@@ -1,6 +1,7 @@
 use crate::lexer::tokens::Token;
 use itertools::Itertools;
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
@@ -327,19 +328,29 @@ impl Display for ModuleId {
     }
 }
 
+const EXTENSION: &str = "abra";
+
 impl ModuleId {
     pub fn get_name(&self) -> String {
         let name = self.1.join(".");
         format!("{}{}", if self.0 { "." } else { "" }, name)
     }
 
-    pub fn get_path(&self, extension: &str) -> String {
-        let path = self.1.join("/");
-        format!("{}.{}", path, extension)
+    pub fn get_path<P: AsRef<Path>>(&self, root: Option<P>) -> String {
+        let path = format!("{}.{}", self.1.join("/"), EXTENSION);
+        let path = path.replace("./", "");
+        match root {
+            None => path,
+            Some(root) => root.as_ref().join(path).to_str().unwrap().to_string()
+        }
     }
 
     pub fn from_path(path: &String) -> Self {
-        ModuleId(true, path.replace(".abra", "").split("/").map(|s| s.to_string()).collect())
+        let segments = path.replace(&format!(".{}", EXTENSION), "")
+            .split("/")
+            .map(|s| s.to_string())
+            .collect();
+        ModuleId(true, segments)
     }
 
     pub fn from_name<S: AsRef<str>>(name: S) -> Self {

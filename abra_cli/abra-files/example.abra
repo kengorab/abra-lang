@@ -1,6 +1,3 @@
-val arr = [1, 2, 3]
-var count = 0
-for item, i in arr {
-  count += if item == 2 { continue } else 1
-}
-count
+import a from .example2
+
+println("$a \uwer")

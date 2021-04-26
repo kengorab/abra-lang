@@ -11,6 +11,7 @@ use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
 use std::path::PathBuf;
+use abra_core::module_loader::ModuleReader;
 
 #[derive(Clap)]
 #[clap(name = "abra", version = crate_version ! ())]
@@ -82,7 +83,7 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_reader = FsModuleReader::new(current_path);
+    let module_reader = FsModuleReader::new(current_path.clone());
     let module_id = ModuleId::from_path(&opts.file_path);
     match compile_and_disassemble(module_id, &contents, module_reader) {
         Ok(output) => {
@@ -91,11 +92,18 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
                 Some(out_file) => write_file(&out_file, output)?,
             }
         }
-        Err(error) => match error {
-            Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
-            Error::InterpretError(e) => eprintln!("{:?}", e),
+        Err(error) => {
+            let mut module_reader = FsModuleReader::new(current_path);
+            let module_id = error.module_id();
+            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
+            let file_name = module_id.get_path(Some(&module_reader.project_root));
+
+            match error {
+                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::InterpretError(e) => eprintln!("{:?}", e),
+            }
         }
     };
 
@@ -167,14 +175,19 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 }
 
 fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm: &mut VM) -> Result<Value, ()> {
-    let module_reader = FsModuleReader::new(root_dir);
+    let module_reader = FsModuleReader::new(root_dir.clone());
     let modules = match compile(module_id, &contents, module_reader) {
         Ok(modules) => modules,
         Err(error) => {
+            let mut module_reader = FsModuleReader::new(root_dir);
+            let module_id = error.module_id();
+            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
+            let file_name = module_id.get_path(Some(&module_reader.project_root));
+
             match error {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&contents)),
+                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
                 Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
             }
             std::process::exit(1);

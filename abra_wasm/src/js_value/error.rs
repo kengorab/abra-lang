@@ -3,9 +3,9 @@ use crate::js_value::position::JsPosition;
 use crate::js_value::abra_type::JsType;
 use crate::js_value::binary_op::JsBinaryOp;
 use abra_core::Error;
-use abra_core::parser::parse_error::ParseError;
-use abra_core::lexer::lexer_error::LexerError;
-use abra_core::typechecker::typechecker_error::TypecheckerError;
+use abra_core::parser::parse_error::ParseErrorKind;
+use abra_core::lexer::lexer_error::LexerErrorKind;
+use abra_core::typechecker::typechecker_error::TypecheckerErrorKind;
 use abra_core::vm::vm::InterpretError;
 use serde::{Serialize, Serializer};
 use abra_core::parser::ast::BindingPattern;
@@ -53,8 +53,8 @@ impl<'a> Serialize for JsWrappedError<'a> {
         use serde::ser::SerializeMap;
 
         match &self.0 {
-            Error::ParseError(parse_error) => match parse_error {
-                ParseError::UnexpectedToken(token) => {
+            Error::ParseError(parse_error) => match &parse_error.kind {
+                ParseErrorKind::UnexpectedToken(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "unexpectedToken")?;
@@ -62,14 +62,14 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&token.get_range()))?;
                     obj.end()
                 }
-                ParseError::UnexpectedEof(range) => {
+                ParseErrorKind::UnexpectedEof(range) => {
                     let mut obj = serializer.serialize_map(Some(2))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "unexpectedEof")?;
                     obj.serialize_entry("range", &JsRange(range))?;
                     obj.end()
                 }
-                ParseError::ExpectedToken(token_type, token) => {
+                ParseErrorKind::ExpectedToken(token_type, token) => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "parseError")?;
                     obj.serialize_entry("subKind", "expectedToken")?;
@@ -79,8 +79,8 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.end()
                 }
             }
-            Error::LexerError(lexer_error) => match lexer_error {
-                LexerError::UnexpectedEof(pos) => {
+            Error::LexerError(lexer_error) => match &lexer_error.kind {
+                LexerErrorKind::UnexpectedEof(pos) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "lexerError")?;
                     obj.serialize_entry("subKind", "unexpectedEof")?;
@@ -88,7 +88,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&lexer_error.get_range()))?;
                     obj.end()
                 }
-                LexerError::UnexpectedChar(pos, ch) => {
+                LexerErrorKind::UnexpectedChar(pos, ch) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "lexerError")?;
                     obj.serialize_entry("subKind", "unexpectedChar")?;
@@ -97,7 +97,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&lexer_error.get_range()))?;
                     obj.end()
                 }
-                LexerError::UnterminatedString(start_pos, end_pos) => {
+                LexerErrorKind::UnterminatedString(start_pos, end_pos) => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "lexerError")?;
                     obj.serialize_entry("subKind", "unterminatedString")?;
@@ -106,7 +106,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&lexer_error.get_range()))?;
                     obj.end()
                 }
-                LexerError::UnsupportedEscapeSequence(pos, s, is_unicode) => {
+                LexerErrorKind::UnsupportedEscapeSequence(pos, s, is_unicode) => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "lexerError")?;
                     obj.serialize_entry("subKind", "unsupportedEscapeSequence")?;
@@ -117,8 +117,8 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.end()
                 }
             }
-            Error::TypecheckerError(typechecker_error) => match typechecker_error {
-                TypecheckerError::Unimplemented(token, message) => {
+            Error::TypecheckerError(typechecker_error) => match &typechecker_error.kind {
+                TypecheckerErrorKind::Unimplemented(token, message) => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unimplemented")?;
@@ -127,7 +127,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::Mismatch { token, expected, actual } => {
+                TypecheckerErrorKind::Mismatch { token, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "mismatch")?;
@@ -137,7 +137,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidIfConditionType { token, actual } => {
+                TypecheckerErrorKind::InvalidIfConditionType { token, actual } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidIfConditionType")?;
@@ -146,7 +146,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidLoopTarget { target_type, .. } => {
+                TypecheckerErrorKind::InvalidLoopTarget { target_type, .. } => {
                     let mut obj = serializer.serialize_map(Some(2))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidLoopTarget")?;
@@ -154,7 +154,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidOperator { token, op, ltype, rtype } => {
+                TypecheckerErrorKind::InvalidOperator { token, op, ltype, rtype } => {
                     let mut obj = serializer.serialize_map(Some(7))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidOperator")?;
@@ -165,7 +165,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::MissingRequiredAssignment { ident } => {
+                TypecheckerErrorKind::MissingRequiredAssignment { ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "missingRequiredAssignment")?;
@@ -173,7 +173,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateBinding { ident, orig_ident} => {
+                TypecheckerErrorKind::DuplicateBinding { ident, orig_ident } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateBinding")?;
@@ -184,7 +184,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateField { ident, orig_ident, orig_is_field, orig_is_enum_variant } => {
+                TypecheckerErrorKind::DuplicateField { ident, orig_ident, orig_is_field, orig_is_enum_variant } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateField")?;
@@ -194,7 +194,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateType { ident, orig_ident } => {
+                TypecheckerErrorKind::DuplicateType { ident, orig_ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateType")?;
@@ -205,7 +205,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateTypeArgument { ident, orig_ident } => {
+                TypecheckerErrorKind::DuplicateTypeArgument { ident, orig_ident } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateTypeArgument")?;
@@ -214,7 +214,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnboundGeneric(ident, generic_name) => {
+                TypecheckerErrorKind::UnboundGeneric(ident, generic_name) => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unboundGeneric")?;
@@ -223,7 +223,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnknownIdentifier { ident } => {
+                TypecheckerErrorKind::UnknownIdentifier { ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unknownIdentifier")?;
@@ -231,7 +231,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidAssignmentTarget { token, .. } => {
+                TypecheckerErrorKind::InvalidAssignmentTarget { token, .. } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidAssignmentTarget")?;
@@ -239,7 +239,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::AssignmentToImmutable { orig_ident, token } => {
+                TypecheckerErrorKind::AssignmentToImmutable { orig_ident, token } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "assignmentToImmutable")?;
@@ -248,7 +248,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnannotatedUninitialized { ident, is_mutable } => {
+                TypecheckerErrorKind::UnannotatedUninitialized { ident, is_mutable } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unannotatedUninitialized")?;
@@ -257,7 +257,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnknownType { type_ident } => {
+                TypecheckerErrorKind::UnknownType { type_ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unknownType")?;
@@ -265,7 +265,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::MissingIfExprBranch { if_token, is_if_branch } => {
+                TypecheckerErrorKind::MissingIfExprBranch { if_token, is_if_branch } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "missingIfExprBranch")?;
@@ -274,7 +274,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::IfExprBranchMismatch { if_token, if_type, else_type } => {
+                TypecheckerErrorKind::IfExprBranchMismatch { if_token, if_type, else_type } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "ifExprBranchMismatch")?;
@@ -284,7 +284,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidInvocationTarget { token, target_type } => {
+                TypecheckerErrorKind::InvalidInvocationTarget { token, target_type } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidInvocationTarget")?;
@@ -293,7 +293,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::IncorrectArity { token, expected, actual } => {
+                TypecheckerErrorKind::IncorrectArity { token, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "incorrectArity")?;
@@ -303,7 +303,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnexpectedParamName { token } => {
+                TypecheckerErrorKind::UnexpectedParamName { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unexpectedParamName")?;
@@ -311,7 +311,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateParamName { token } => {
+                TypecheckerErrorKind::DuplicateParamName { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateParamName")?;
@@ -319,7 +319,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidTerminator(token) => {
+                TypecheckerErrorKind::InvalidTerminator(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidBreak")?;
@@ -335,7 +335,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                 //     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                 //     obj.end()
                 // }
-                TypecheckerError::InvalidRequiredArgPosition(token) => {
+                TypecheckerErrorKind::InvalidRequiredArgPosition(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidRequiredArgPosition")?;
@@ -343,7 +343,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidIndexingTarget { token, target_type, .. } => {
+                TypecheckerErrorKind::InvalidIndexingTarget { token, target_type, .. } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidIndexingTarget")?;
@@ -352,7 +352,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidIndexingSelector { token, target_type, selector_type } => {
+                TypecheckerErrorKind::InvalidIndexingSelector { token, target_type, selector_type } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidIndexingSelector")?;
@@ -362,7 +362,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidTupleIndexingSelector { token, types, non_constant, index } => {
+                TypecheckerErrorKind::InvalidTupleIndexingSelector { token, types, non_constant, index } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidTupleIndexingSelector")?;
@@ -374,7 +374,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnknownMember { token, target_type } => {
+                TypecheckerErrorKind::UnknownMember { token, target_type } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unknownMember")?;
@@ -383,7 +383,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::MissingRequiredParams { token, missing_params } => {
+                TypecheckerErrorKind::MissingRequiredParams { token, missing_params } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "missingRequiredParams")?;
@@ -392,7 +392,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidMixedParamType { token } => {
+                TypecheckerErrorKind::InvalidMixedParamType { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidMixedParamType")?;
@@ -400,7 +400,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidTypeFuncInvocation { token } => {
+                TypecheckerErrorKind::InvalidTypeFuncInvocation { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidTypeFuncInvocation")?;
@@ -408,7 +408,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidSelfParamPosition { token } => {
+                TypecheckerErrorKind::InvalidSelfParamPosition { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidSelfParamPosition")?;
@@ -416,7 +416,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidSelfParam { token } => {
+                TypecheckerErrorKind::InvalidSelfParam { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidSelfParam")?;
@@ -424,7 +424,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidTypeDeclDepth { token } => {
+                TypecheckerErrorKind::InvalidTypeDeclDepth { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidTypeDeclDepth")?;
@@ -432,7 +432,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::ForbiddenVariableType { binding, .. } => {
+                TypecheckerErrorKind::ForbiddenVariableType { binding, .. } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "forbiddenVariableType")?;
@@ -440,7 +440,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidInstantiation { token, typ } => {
+                TypecheckerErrorKind::InvalidInstantiation { token, typ } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidInstantiation")?;
@@ -449,7 +449,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidTypeArgumentArity { token, actual_type, expected, actual } => {
+                TypecheckerErrorKind::InvalidTypeArgumentArity { token, actual_type, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(7))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "missingTypeArguments")?;
@@ -460,7 +460,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnreachableMatchCase { token, typ, is_unreachable_none } => {
+                TypecheckerErrorKind::UnreachableMatchCase { token, typ, is_unreachable_none } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unreachableMatchCase")?;
@@ -472,7 +472,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateMatchCase { token } => {
+                TypecheckerErrorKind::DuplicateMatchCase { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateMatchCase")?;
@@ -480,7 +480,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::NonExhaustiveMatch { token } => {
+                TypecheckerErrorKind::NonExhaustiveMatch { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "nonExhaustiveMatch")?;
@@ -488,7 +488,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::EmptyMatchBlock { token } => {
+                TypecheckerErrorKind::EmptyMatchBlock { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "emptyMatchBlock")?;
@@ -496,7 +496,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::MatchBranchMismatch { token, expected, actual } => {
+                TypecheckerErrorKind::MatchBranchMismatch { token, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "matchBranchMismatch")?;
@@ -506,7 +506,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidUninitializedEnumVariant { token } => {
+                TypecheckerErrorKind::InvalidUninitializedEnumVariant { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidUninitializedEnumVariant")?;
@@ -514,7 +514,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidMatchCaseDestructuring { token, typ , enum_variant } => {
+                TypecheckerErrorKind::InvalidMatchCaseDestructuring { token, typ, enum_variant } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
@@ -528,7 +528,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ, enum_variant, expected, actual } => {
+                TypecheckerErrorKind::InvalidMatchCaseDestructuringArity { token, typ, enum_variant, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(7))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
@@ -542,7 +542,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidAssignmentDestructuring { binding, typ } => {
+                TypecheckerErrorKind::InvalidAssignmentDestructuring { binding, typ } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidDestructuring")?;
@@ -551,7 +551,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::UnreachableCode { token } => {
+                TypecheckerErrorKind::UnreachableCode { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unreachableCode")?;
@@ -559,7 +559,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::ReturnTypeMismatch { token, fn_name, fn_missing_ret_ann, bare_return, expected, actual } => {
+                TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name, fn_missing_ret_ann, bare_return, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(9))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "returnTypeMismatch")?;
@@ -572,7 +572,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::DuplicateSplatDestructuring { token } => {
+                TypecheckerErrorKind::DuplicateSplatDestructuring { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "duplicateSplatDestructuring")?;
@@ -580,7 +580,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidProtocolMethod { token, fn_name, expected, actual } => {
+                TypecheckerErrorKind::InvalidProtocolMethod { token, fn_name, expected, actual } => {
                     let mut obj = serializer.serialize_map(Some(7))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidProtocolMethod")?;
@@ -591,7 +591,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidVarargPosition(token) => {
+                TypecheckerErrorKind::InvalidVarargPosition(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidVarargPosition")?;
@@ -599,7 +599,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidVarargUsage(token) => {
+                TypecheckerErrorKind::InvalidVarargUsage(token) => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidVarargUsage")?;
@@ -607,7 +607,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::VarargMismatch { token, typ } => {
+                TypecheckerErrorKind::VarargMismatch { token, typ } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "varargMismatch")?;
@@ -616,7 +616,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidAccess { token, is_field, is_get } => {
+                TypecheckerErrorKind::InvalidAccess { token, is_field, is_get } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidAccess")?;
@@ -626,7 +626,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidExportDepth { token } => {
+                TypecheckerErrorKind::InvalidExportDepth { token } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidExportDepth")?;
@@ -634,7 +634,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidImportValue { ident } => {
+                TypecheckerErrorKind::InvalidImportValue { ident } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidImportValue")?;
@@ -642,7 +642,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerError::InvalidModuleImport { token, module_name, circular } => {
+                TypecheckerErrorKind::InvalidModuleImport { token, module_name, circular } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidModuleImport")?;

@@ -8,7 +8,7 @@ use crate::vm::compiler::{Module, Metadata};
 use crate::typechecker::typechecker::TypedModule;
 use crate::common::display_error::DisplayError;
 use crate::parser::parser::ParseResult;
-use crate::typechecker::typechecker_error::TypecheckerError;
+use crate::typechecker::typechecker_error::{TypecheckerErrorKind, TypecheckerError};
 use crate::module_loader::{ModuleLoader, ModuleReader, ModuleLoaderError};
 use crate::parser::ast::ModuleId;
 
@@ -28,21 +28,32 @@ pub enum Error {
     InterpretError(vm::vm::InterpretError),
 }
 
-impl DisplayError for Error {
-    fn message_for_error(&self, lines: &Vec<&str>) -> String {
+impl Error {
+    pub fn module_id(&self) -> &ModuleId {
         match self {
-            Error::LexerError(e) => e.message_for_error(lines),
-            Error::ParseError(e) => e.message_for_error(lines),
-            Error::TypecheckerError(e) => e.message_for_error(lines),
+            Error::LexerError(e) => &e.module_id,
+            Error::ParseError(e) => &e.module_id,
+            Error::TypecheckerError(e) => &e.module_id,
+            Error::InterpretError(_) => unreachable!()
+        }
+    }
+}
+
+impl DisplayError for Error {
+    fn message_for_error(&self, file_name: &String, lines: &Vec<&str>) -> String {
+        match self {
+            Error::LexerError(e) => e.message_for_error(file_name, lines),
+            Error::ParseError(e) => e.message_for_error(file_name, lines),
+            Error::TypecheckerError(e) => e.message_for_error(file_name, lines),
             Error::InterpretError(_) => "Runtime error!".to_string()
         }
     }
 }
 
-fn tokenize_and_parse(input: &String) -> Result<ParseResult, Error> {
-    match lexer::lexer::tokenize(input) {
+fn tokenize_and_parse(module_id: &ModuleId, input: &String) -> Result<ParseResult, Error> {
+    match lexer::lexer::tokenize(module_id, input) {
         Err(e) => Err(Error::LexerError(e)),
-        Ok(tokens) => match parser::parser::parse(tokens) {
+        Ok(tokens) => match parser::parser::parse(module_id.clone(), tokens) {
             Err(e) => Err(Error::ParseError(e)),
             Ok(nodes) => Ok(nodes)
         }
@@ -52,20 +63,26 @@ fn tokenize_and_parse(input: &String) -> Result<ParseResult, Error> {
 pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoader<R>) -> Result<TypedModule, Error>
     where R: ModuleReader
 {
-    let ParseResult { imports, nodes } = tokenize_and_parse(input)?;
+    let ParseResult { imports, nodes } = tokenize_and_parse(&module_id, input)?;
     for (import_token, import_module_id) in imports {
         loader.load_module(&import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
-            ModuleLoaderError::CannotLoadModule => Error::TypecheckerError(TypecheckerError::InvalidModuleImport {
-                token: import_token,
-                module_name: import_module_id.get_name(),
-                circular: false,
-            }),
-            ModuleLoaderError::CircularDependency => Error::TypecheckerError(TypecheckerError::InvalidModuleImport {
-                token: import_token,
-                module_name: import_module_id.get_name(),
-                circular: true,
-            })
+            ModuleLoaderError::CannotLoadModule => {
+                let kind = TypecheckerErrorKind::InvalidModuleImport {
+                    token: import_token,
+                    module_name: import_module_id.get_name(),
+                    circular: false,
+                };
+                Error::TypecheckerError(TypecheckerError { module_id: import_module_id, kind })
+            }
+            ModuleLoaderError::CircularDependency => {
+                let kind = TypecheckerErrorKind::InvalidModuleImport {
+                    token: import_token,
+                    module_name: import_module_id.get_name(),
+                    circular: true,
+                };
+                Error::TypecheckerError(TypecheckerError { module_id: import_module_id, kind })
+            }
         })?
     }
 

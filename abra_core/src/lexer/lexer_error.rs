@@ -1,8 +1,15 @@
 use crate::lexer::tokens::{Position, Range};
 use crate::common::display_error::{DisplayError, IND_AMT};
+use crate::parser::ast::ModuleId;
 
 #[derive(Debug, PartialEq)]
-pub enum LexerError {
+pub struct LexerError {
+    pub module_id: ModuleId,
+    pub kind: LexerErrorKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LexerErrorKind {
     UnexpectedChar(Position, String),
     // Store position of string start and its invalid termination
     UnterminatedString(Position, Position),
@@ -12,11 +19,11 @@ pub enum LexerError {
 
 impl LexerError {
     pub fn get_range(&self) -> Range {
-        match self {
-            LexerError::UnexpectedChar(pos, _) => Range::with_length(pos, 0),
-            LexerError::UnterminatedString(start, end) => Range { start: start.clone(), end: end.clone() },
-            LexerError::UnexpectedEof(pos) => Range::with_length(pos, 0),
-            LexerError::UnsupportedEscapeSequence(pos, s, _) => Range::with_length(pos, s.len() - 1)
+        match &self.kind {
+            LexerErrorKind::UnexpectedChar(pos, _) => Range::with_length(pos, 0),
+            LexerErrorKind::UnterminatedString(start, end) => Range { start: start.clone(), end: end.clone() },
+            LexerErrorKind::UnexpectedEof(pos) => Range::with_length(pos, 0),
+            LexerErrorKind::UnsupportedEscapeSequence(pos, s, _) => Range::with_length(pos, s.len() - 1)
         }
     }
 }
@@ -26,14 +33,17 @@ fn get_cursor(left_padding: usize) -> String {
 }
 
 impl DisplayError for LexerError {
-    fn message_for_error(&self, lines: &Vec<&str>) -> String {
-        match self {
-            LexerError::UnexpectedChar(pos, string) => {
+    fn message_for_error(&self, file_name: &String, lines: &Vec<&str>) -> String {
+        match &self.kind {
+            LexerErrorKind::UnexpectedChar(pos, string) => {
                 let cursor_line = Self::get_underlined_line_no_token(lines, pos, &self.get_range());
 
-                format!("Unexpected character '{}': ({}:{})\n{}", string, pos.line, pos.col, cursor_line)
+                format!(
+                    "Error at {}:{}:{}\nUnexpected character '{}':\n{}",
+                    file_name, pos.line, pos.col, string, cursor_line
+                )
             }
-            LexerError::UnterminatedString(start_pos, end_pos) => {
+            LexerErrorKind::UnterminatedString(start_pos, end_pos) => {
                 let start_line = lines.get(start_pos.line - 1).expect("There should be a line");
                 let end_line = lines.get(end_pos.line - 1).expect("There should be a line");
 
@@ -47,14 +57,20 @@ impl DisplayError for LexerError {
                     format!("{}String is terminated at ({}:{})\n{}|{}{}\n{}", indent, end_pos.line, end_pos.col, indent, indent, end_line, cursor)
                 };
 
-                format!("Unterminated string: ({}:{})\n{}\n{}", end_pos.line, end_pos.col, start_message, end_message)
+                format!(
+                    "Error at {}:{}:{}\nUnterminated string:\n{}\n{}",
+                    file_name, end_pos.line, end_pos.col, start_message, end_message
+                )
             }
-            LexerError::UnexpectedEof(pos) => {
+            LexerErrorKind::UnexpectedEof(pos) => {
                 let cursor_line = Self::get_underlined_line_no_token(lines, pos, &self.get_range());
 
-                format!("Unexpected end of file: ({}:{})\n{}", pos.line, pos.col, cursor_line)
+                format!(
+                    "Error at {}:{}:{}\nUnexpected end of file:\n{}",
+                    file_name, pos.line, pos.col, cursor_line
+                )
             }
-            LexerError::UnsupportedEscapeSequence(pos, _, is_unicode) => {
+            LexerErrorKind::UnsupportedEscapeSequence(pos, _, is_unicode) => {
                 let cursor_line = Self::get_underlined_line_no_token(lines, pos, &self.get_range());
 
                 let msg = if *is_unicode {
@@ -62,8 +78,8 @@ impl DisplayError for LexerError {
                 } else { "" };
 
                 format!(
-                    "Unsupported escape sequence: ({}:{})\n{}{}",
-                    pos.line, pos.col, cursor_line, msg
+                    "Error at {}:{}:{}\nUnsupported escape sequence:\n{}{}",
+                    file_name, pos.line, pos.col, cursor_line, msg
                 )
             }
         }
@@ -72,59 +88,68 @@ impl DisplayError for LexerError {
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::lexer_error::LexerError;
+    use crate::lexer::lexer_error::{LexerErrorKind, LexerError};
     use crate::lexer::tokens::Position;
     use crate::common::display_error::DisplayError;
+    use crate::parser::ast::ModuleId;
 
     #[test]
     fn test_unexpected_char_error() {
+        let module_id = ModuleId::from_name("test");
         let src = "1..23".to_string();
-        let err = LexerError::UnexpectedChar(Position::new(1, 3), ".".to_string());
+        let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedChar(Position::new(1, 3), ".".to_string()) };
 
         let expected = format!("\
-Unexpected character '.': (1:3)
+Error at /tests/test.abra:1:3
+Unexpected character '.':
   |  1..23
        ^");
-        assert_eq!(expected, err.get_message(&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
     fn test_unterminated_string_error() {
+        let module_id = ModuleId::from_name("test");
         let src = "\"this is a string\n".to_string();
-        let err = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 18));
+        let err = LexerError { module_id, kind: LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 18)) };
 
         let expected = format!("\
-Unterminated string: (1:18)
+Error at /tests/test.abra:1:18
+Unterminated string:
   String begins at (1:1)
   |  \"this is a string
      ^
   String is terminated at (1:18)
   |  \"this is a string
                       ^");
-        assert_eq!(expected, err.get_message(&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
     fn test_unexpected_eof_error() {
+        let module_id = ModuleId::from_name("test");
         let src = "1.".to_string();
-        let err = LexerError::UnexpectedEof(Position::new(1, 3));
+        let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedEof(Position::new(1, 3)) };
 
         let expected = format!("\
-Unexpected end of file: (1:3)
+Error at /tests/test.abra:1:3
+Unexpected end of file:
   |  1.
        ^");
-        assert_eq!(expected, err.get_message(&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
     fn test_unsupported_escape_sequence() {
+        let module_id = ModuleId::from_name("test");
         let src = "\"a\\qb\"".to_string();
-        let err = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\q".to_string(), false);
+        let err = LexerError { module_id, kind: LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\q".to_string(), false) };
 
         let expected = format!("\
-Unsupported escape sequence: (1:2)
+Error at /tests/test.abra:1:2
+Unsupported escape sequence:
   |  \"a\\qb\"
       ^^");
-        assert_eq!(expected, err.get_message(&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 }

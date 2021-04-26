@@ -2,7 +2,7 @@ use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
 use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
-use crate::parser::parse_error::ParseError;
+use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
@@ -10,7 +10,7 @@ pub struct ParseResult {
     pub(crate) nodes: Vec<AstNode>,
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
+pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
     let mut parser = Parser::new(tokens);
 
     let mut nodes = Vec::new();
@@ -20,7 +20,10 @@ pub fn parse(tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
         match parser.peek() {
             Some(tok) => {
                 let node = if let Token::Import(_) = tok {
-                    let node = parser.parse_import_statement(!imports_done)?;
+                    let node = match parser.parse_import_statement(!imports_done) {
+                        Ok(node) => node,
+                        Err(kind) => return Err(ParseError { module_id, kind })
+                    };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
                         let module_id = import_node.get_module_id();
                         imports.push((import_tok.clone(), module_id))
@@ -28,7 +31,10 @@ pub fn parse(tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
                     node
                 } else {
                     imports_done = true;
-                    parser.parse_stmt(None)?
+                    match parser.parse_stmt(None) {
+                        Ok(node) => node,
+                        Err(kind) => return Err(ParseError { module_id, kind })
+                    }
                 };
 
                 nodes.push(node);
@@ -51,8 +57,8 @@ pub struct Parser {
     context: Vec<Context>,
 }
 
-type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseError>;
-type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseError>;
+type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseErrorKind>;
+type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseErrorKind>;
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
@@ -75,17 +81,17 @@ impl Parser {
         self.context.pop();
     }
 
-    fn expect_next(&mut self) -> Result<Token, ParseError> {
+    fn expect_next(&mut self) -> Result<Token, ParseErrorKind> {
         let next = self.tokens.next().ok_or_else(|| self.unexpected_eof())?;
         self.last_token = next.clone();
         Ok(next)
     }
 
-    fn expect_next_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
+    fn expect_next_token(&mut self, expected_token: TokenType) -> Result<Token, ParseErrorKind> {
         self.expect_next().and_then(|tok| {
             let token_type: TokenType = tok.clone().into();
             if token_type != expected_token {
-                Err(ParseError::ExpectedToken(expected_token, tok))
+                Err(ParseErrorKind::ExpectedToken(expected_token, tok))
             } else {
                 Ok(tok)
             }
@@ -96,38 +102,38 @@ impl Parser {
         self.tokens.peek()
     }
 
-    fn expect_peek(&mut self) -> Result<&Token, ParseError> {
+    fn expect_peek(&mut self) -> Result<&Token, ParseErrorKind> {
         let last_token = self.last_token.clone();
         self.peek().ok_or_else(|| {
             let range = Range::with_length(&last_token.get_range().end, 1);
-            ParseError::UnexpectedEof(range)
+            ParseErrorKind::UnexpectedEof(range)
         })
     }
 
-    fn expect_peek_token(&mut self, expected_token: TokenType) -> Result<Token, ParseError> {
+    fn expect_peek_token(&mut self, expected_token: TokenType) -> Result<Token, ParseErrorKind> {
         self.expect_peek().and_then(|tok| {
             let tok = tok.clone();
             let token_type: TokenType = tok.clone().into();
             if token_type != expected_token {
-                Err(ParseError::ExpectedToken(expected_token, tok))
+                Err(ParseErrorKind::ExpectedToken(expected_token, tok))
             } else {
                 Ok(tok)
             }
         })
     }
 
-    fn unexpected_eof(&self) -> ParseError {
+    fn unexpected_eof(&self) -> ParseErrorKind {
         let range = Range::with_length(&self.last_token.get_range().end, 1);
-        ParseError::UnexpectedEof(range)
+        ParseErrorKind::UnexpectedEof(range)
     }
 
     // Begin Pratt plumbing
 
-    fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseError> {
+    fn parse_precedence(&mut self, prec: Precedence) -> Result<AstNode, ParseErrorKind> {
         let prefix_token = self.expect_peek()?.clone();
 
         match self.get_prefix_rule(&prefix_token) {
-            None => Err(ParseError::UnexpectedToken(prefix_token)),
+            None => Err(ParseErrorKind::UnexpectedToken(prefix_token)),
             Some(prefix_fn) => {
                 // Cursor sits on token AFTER the match token; in-/prefix fns always start on token AFTER the one they match
                 let prefix_token = self.expect_next()?;
@@ -223,7 +229,7 @@ impl Parser {
 
     // End Pratt plumbing
 
-    fn parse_stmt(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
+    fn parse_stmt(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
         match self.expect_peek()? {
             Token::Func(_) => self.parse_func_decl(export_token),
             Token::Val(_) => self.parse_binding_decl(export_token),
@@ -242,7 +248,7 @@ impl Parser {
         }
     }
 
-    fn parse_type_identifier(&mut self, consume: bool) -> Result<TypeIdentifier, ParseError> {
+    fn parse_type_identifier(&mut self, consume: bool) -> Result<TypeIdentifier, ParseErrorKind> {
         // Rather than delegate to functions, just use some handy macros to either consume the token
         // or just pass over it.
         macro_rules! expect_next {
@@ -327,7 +333,7 @@ impl Parser {
                     expect_next!(); // Consume '['
                     match self.expect_peek()? {
                         Token::RBrack(_) => Ok(expect_next!()), // Consume ']'
-                        t => Err(ParseError::ExpectedToken(TokenType::RBrack, t.clone())),
+                        t => Err(ParseErrorKind::ExpectedToken(TokenType::RBrack, t.clone()))
                     }?;
                     left = TypeIdentifier::Array { inner: Box::new(left) }
                 }
@@ -353,7 +359,7 @@ impl Parser {
         Ok(left)
     }
 
-    fn parse_binding_pattern(&mut self) -> Result<BindingPattern, ParseError> {
+    fn parse_binding_pattern(&mut self) -> Result<BindingPattern, ParseErrorKind> {
         let binding = match self.expect_next()? {
             tok @ Token::Ident(_, _) => BindingPattern::Variable(tok),
             tok @ Token::LParen(_, _) => {
@@ -362,7 +368,7 @@ impl Parser {
                 loop {
                     if done {
                         let err_tok = self.expect_next()?;
-                        return Err(ParseError::ExpectedToken(TokenType::RParen, err_tok));
+                        return Err(ParseErrorKind::ExpectedToken(TokenType::RParen, err_tok));
                     }
 
                     let pat = self.parse_binding_pattern()?;
@@ -385,7 +391,7 @@ impl Parser {
                 loop {
                     if done {
                         let err_tok = self.expect_next()?;
-                        return Err(ParseError::ExpectedToken(TokenType::RBrack, err_tok));
+                        return Err(ParseErrorKind::ExpectedToken(TokenType::RBrack, err_tok));
                     }
 
                     if let Token::Star(_) = self.expect_peek()? {
@@ -409,7 +415,7 @@ impl Parser {
                 }
                 BindingPattern::Array(tok, patterns, false)
             }
-            tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+            tok => return Err(ParseErrorKind::UnexpectedToken(tok))
         };
 
         Ok(binding)
@@ -418,7 +424,7 @@ impl Parser {
     fn parse_func_args(
         &mut self,
         allow_bare_arg: bool,
-    ) -> Result<Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>, ParseError> {
+    ) -> Result<Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>, ParseErrorKind> {
         let mut args = Vec::new();
         loop {
             let token = self.expect_peek()?;
@@ -435,7 +441,7 @@ impl Parser {
                     match self.expect_peek()? {
                         Token::Comma(_) => self.expect_next(),
                         Token::RParen(_) => continue,
-                        tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
+                        tok => return Err(ParseErrorKind::UnexpectedToken(tok.clone()))
                     }?;
                 }
                 tok @ Token::Star(_) |
@@ -456,9 +462,9 @@ impl Parser {
                             self.expect_next()?; // Consume '='
                             Some(self.parse_expr()?)
                         }
-                        next_tok @ _ => {
+                        next_tok => {
                             if type_ident.is_none() && !allow_bare_arg {
-                                return Err(ParseError::ExpectedToken(TokenType::Colon, next_tok.clone()));
+                                return Err(ParseErrorKind::ExpectedToken(TokenType::Colon, next_tok.clone()));
                             }
                             None
                         }
@@ -469,27 +475,27 @@ impl Parser {
                     match self.expect_peek()? {
                         Token::Comma(_) => self.expect_next(),
                         Token::RParen(_) => continue,
-                        tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
+                        tok => return Err(ParseErrorKind::UnexpectedToken(tok.clone())),
                     }?;
                 }
-                tok @ _ => return Err(ParseError::UnexpectedToken(tok.clone())),
+                tok => return Err(ParseErrorKind::UnexpectedToken(tok.clone())),
             }
         };
 
         Ok(args)
     }
 
-    fn parse_exported_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_exported_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let export_token = self.expect_next()?; // Consume 'export'
         match self.expect_peek()? {
             Token::Func(_) | Token::Val(_) | Token::Var(_) | Token::Type(_) | Token::Enum(_) => {
                 self.parse_stmt(Some(export_token))
             }
-            tok => Err(ParseError::UnexpectedToken(tok.clone()))
+            tok => Err(ParseErrorKind::UnexpectedToken(tok.clone())),
         }
     }
 
-    fn parse_type_args(&mut self) -> Result<Vec<Token>, ParseError> {
+    fn parse_type_args(&mut self) -> Result<Vec<Token>, ParseErrorKind> {
         let mut type_args = Vec::new();
         if let Token::LT(_) = self.expect_peek()? {
             self.expect_next()?; // Consume '<'
@@ -508,14 +514,14 @@ impl Parser {
                         }
                     }
                     Token::GT(_) => break,
-                    tok @ _ => return Err(ParseError::UnexpectedToken(tok))
+                    tok => return Err(ParseErrorKind::UnexpectedToken(tok))
                 }
             }
         }
         Ok(type_args)
     }
 
-    fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
+    fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         let name = self.expect_next_token(TokenType::Ident)?;
 
@@ -538,13 +544,13 @@ impl Parser {
                 Ok(vec![self.parse_expr()?])
             }
             Token::LBrace(_) => self.parse_expr_or_block(),
-            t @ _ => Err(ParseError::UnexpectedToken(t.clone()))
+            t => Err(ParseErrorKind::UnexpectedToken(t.clone()))
         }?;
 
         Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
     }
 
-    fn parse_binding_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
+    fn parse_binding_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         let is_mutable = match &token {
             Token::Val(_) => false,
@@ -584,14 +590,14 @@ impl Parser {
         Ok(AstNode::BindingDecl(token, BindingDeclNode { export_token, binding, is_mutable, type_ann, expr }))
     }
 
-    fn parse_type_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseError> {
+    fn parse_type_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
         let keyword_tok = self.expect_next()?;
         let is_enum = if let Token::Enum(_) = &keyword_tok { true } else { false };
 
         let name = self.expect_next().and_then(|tok| {
             match tok {
                 Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseError::UnexpectedToken(tok))
+                _ => Err(ParseErrorKind::UnexpectedToken(tok))
             }
         })?;
 
@@ -639,7 +645,7 @@ impl Parser {
                     let method = self.parse_func_decl(None)?;
                     methods.push(method);
                 }
-                _ => return Err(ParseError::UnexpectedToken(token.clone()))
+                _ => return Err(ParseErrorKind::UnexpectedToken(token.clone())),
             }
         }
 
@@ -653,7 +659,7 @@ impl Parser {
     }
 
     #[inline]
-    fn parse_expr_or_block(&mut self) -> Result<Vec<AstNode>, ParseError> {
+    fn parse_expr_or_block(&mut self) -> Result<Vec<AstNode>, ParseErrorKind> {
         match self.peek() {
             Some(Token::LBrace(_)) => {
                 self.expect_next()?; // Consume '{'
@@ -673,7 +679,7 @@ impl Parser {
         }
     }
 
-    fn parse_for_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_for_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
 
         let binding = self.parse_binding_pattern()?;
@@ -683,7 +689,7 @@ impl Parser {
             let index_ident = self.expect_next().and_then(|tok| {
                 match tok {
                     Token::Ident(_, _) => Ok(tok),
-                    _ => Err(ParseError::ExpectedToken(TokenType::Ident, tok))
+                    _ => Err(ParseErrorKind::ExpectedToken(TokenType::Ident, tok))
                 }
             })?;
             Some(index_ident)
@@ -698,7 +704,7 @@ impl Parser {
         Ok(AstNode::ForLoop(token, ForLoopNode { binding, index_ident, iterator, body }))
     }
 
-    fn parse_while_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_while_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
 
         let condition = Box::new(self.parse_expr()?);
@@ -714,17 +720,17 @@ impl Parser {
         Ok(AstNode::WhileLoop(token, WhileLoopNode { condition, condition_binding, body }))
     }
 
-    fn parse_break_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_break_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         Ok(AstNode::Break(token))
     }
 
-    fn parse_continue_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_continue_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         Ok(AstNode::Continue(token))
     }
 
-    fn parse_return_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_return_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         let has_newline = if let Token::Return(_, has_newline) = token { has_newline } else { unreachable!() };
         if has_newline {
@@ -739,7 +745,7 @@ impl Parser {
             _ => false
         };
         if token_begins_statement {
-            return Err(ParseError::UnexpectedToken(next_tok));
+            return Err(ParseErrorKind::UnexpectedToken(next_tok));
         }
 
         let has_expr = self.get_prefix_rule(&next_tok).is_some();
@@ -750,10 +756,10 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseError> {
+    fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?; // Consume 'import' token
         if !is_proper {
-            return Err(ParseError::UnexpectedToken(token));
+            return Err(ParseErrorKind::UnexpectedToken(token));
         }
 
         let mut star_token = None;
@@ -795,7 +801,7 @@ impl Parser {
         Ok(AstNode::ImportStatement(token, ImportNode { imports, star_token, leading_dot_token: dot_token, path }))
     }
 
-    fn parse_if_node(&mut self) -> Result<IfNode, ParseError> {
+    fn parse_if_node(&mut self) -> Result<IfNode, ParseErrorKind> {
         let condition = Box::new(self.parse_expr()?);
 
         let condition_binding = if let Some(Token::Pipe(_)) = self.peek() {
@@ -821,13 +827,13 @@ impl Parser {
         Ok(IfNode { condition, condition_binding, if_block, else_block })
     }
 
-    fn parse_if_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_if_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         let if_node = self.parse_if_node()?;
         Ok(AstNode::IfStatement(token, if_node))
     }
 
-    fn parse_if_expr(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_if_expr(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let mut if_node = self.parse_if_node()?;
 
         // If we're in the context of parsing an expression (ie, not at the top-level), we need to
@@ -877,7 +883,7 @@ impl Parser {
         Ok(AstNode::IfExpression(token, if_node))
     }
 
-    fn parse_match_node(&mut self) -> Result<MatchNode, ParseError> {
+    fn parse_match_node(&mut self) -> Result<MatchNode, ParseErrorKind> {
         let target = Box::new(self.parse_expr()?);
 
         self.expect_next_token(TokenType::LBrace)?;
@@ -888,7 +894,7 @@ impl Parser {
                 Some(tok @ Token::RBrace(_)) => {
                     if branches.is_empty() {
                         // A match node must have at least 1 case
-                        return Err(ParseError::UnexpectedToken(tok.clone()));
+                        return Err(ParseErrorKind::UnexpectedToken(tok.clone()));
                     }
 
                     self.expect_next()?; // Consume '}'
@@ -911,11 +917,11 @@ impl Parser {
         Ok(MatchNode { target, branches })
     }
 
-    fn parse_match_case(&mut self) -> Result<MatchCase, ParseError> {
+    fn parse_match_case(&mut self) -> Result<MatchCase, ParseErrorKind> {
         let expect_next_ident_or_none = |p: &mut Parser| {
             match p.expect_next()? {
                 t @ Token::Ident(_, _) | t @ Token::None(_) => Ok(t),
-                t @ _ => Err(ParseError::ExpectedToken(TokenType::Ident, t))
+                t => Err(ParseErrorKind::ExpectedToken(TokenType::Ident, t))
             }
         };
 
@@ -944,14 +950,14 @@ impl Parser {
                     Token::RParen(_) => {
                         let tok = self.expect_next()?; // Consume ')'
                         if args.is_empty() {
-                            return Err(ParseError::ExpectedToken(TokenType::Ident, tok));
+                            return Err(ParseErrorKind::ExpectedToken(TokenType::Ident, tok));
                         }
                         break;
                     }
                     _ => {
                         if !item_expected {
                             let tok = self.expect_next()?;
-                            return Err(ParseError::ExpectedToken(TokenType::RParen, tok));
+                            return Err(ParseErrorKind::ExpectedToken(TokenType::RParen, tok));
                         }
 
                         let pat = self.parse_binding_pattern()?;
@@ -979,25 +985,25 @@ impl Parser {
         Ok(MatchCase { token: case_token, match_type, case_binding, args })
     }
 
-    fn parse_match_statement(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_match_statement(&mut self) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?;
         let match_node = self.parse_match_node()?;
         Ok(AstNode::MatchStatement(token, match_node))
     }
 
-    fn parse_match_expr(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_match_expr(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let match_node = self.parse_match_node()?;
         Ok(AstNode::MatchExpression(token, match_node))
     }
 
-    fn parse_expr(&mut self) -> Result<AstNode, ParseError> {
+    fn parse_expr(&mut self) -> Result<AstNode, ParseErrorKind> {
         self.enter_context(Context::ParsingExpr);
         let result = self.parse_precedence(Precedence::None);
         self.exit_context();
         result
     }
 
-    fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_literal(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         match token.clone() {
             Token::Int(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::IntLiteral(val))),
             Token::Float(_, val) => Ok(AstNode::Literal(token, AstLiteralNode::FloatLiteral(val))),
@@ -1008,7 +1014,7 @@ impl Parser {
         }
     }
 
-    fn parse_string_interpolation(chunks: Vec<Token>) -> Result<AstNode, ParseError> {
+    fn parse_string_interpolation(chunks: Vec<Token>) -> Result<AstNode, ParseErrorKind> {
         let mut chunks = chunks.into_iter();
 
         let first_chunk = chunks.next().expect("There should always be at least 1 chunk");
@@ -1016,7 +1022,10 @@ impl Parser {
             AstNode::Literal(first_chunk.clone(), AstLiteralNode::StringLiteral(val))
         } else { unreachable!() };
 
-        let ParseResult { nodes: args, .. } = parse(chunks.collect())?;
+        // TODO: Fix this, it's a little gross
+        let dummy_module_id = ModuleId::from_name("dummy_name");
+        let ParseResult { nodes: args, .. } = parse(dummy_module_id, chunks.collect())
+            .map_err(|err| err.kind)?;
 
         Ok(AstNode::Invocation(
             Token::LParen(first_chunk.get_position(), false),
@@ -1039,7 +1048,7 @@ impl Parser {
         ))
     }
 
-    fn parse_unary(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_unary(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let expr = self.parse_precedence(Precedence::Unary)?;
         let op = match token {
             Token::Minus(_) => UnaryOp::Minus,
@@ -1049,7 +1058,7 @@ impl Parser {
         Ok(AstNode::Unary(token, UnaryNode { op, expr: Box::new(expr) }))
     }
 
-    fn parse_grouped(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_grouped(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         // If the next token is ')', followed by '=>', we're parsing a no-args lambda
         if let Token::RParen(_) = self.expect_peek()? {
             self.tokens.advance_cursor();
@@ -1142,11 +1151,11 @@ impl Parser {
             Token::RParen(_) => {
                 Ok(AstNode::Grouped(token, GroupedNode { expr: Box::new(expr) }))
             }
-            t @ _ => Err(ParseError::UnexpectedToken(t))
+            t => Err(ParseErrorKind::UnexpectedToken(t))
         }
     }
 
-    fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let prec = Parser::get_precedence_for_token(&token);
         let right = self.parse_precedence(prec)?;
         let op = match token {
@@ -1179,16 +1188,16 @@ impl Parser {
         Ok(AstNode::Binary(token, BinaryNode { left: Box::new(left), op, right: Box::new(right) }))
     }
 
-    fn parse_index(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_index(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let mode = match self.expect_peek()? {
-            Token::RBrack(_) => Err(ParseError::UnexpectedToken(self.expect_next()?)),
+            Token::RBrack(_) => Err(ParseErrorKind::UnexpectedToken(self.expect_next()?)),
             Token::Colon(_) => {
                 self.expect_next()?; // Consume ':'
                 let range_end = self.parse_expr()?;
 
                 match self.expect_next()? {
                     Token::RBrack(_) => Ok(IndexingMode::Range(None, Some(Box::new(range_end)))),
-                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                    t => Err(ParseErrorKind::UnexpectedToken(t))
                 }
             }
             _ => {
@@ -1205,12 +1214,12 @@ impl Parser {
                                 let range_end = self.parse_expr()?;
                                 match self.expect_next()? {
                                     Token::RBrack(_) => Ok(IndexingMode::Range(Some(Box::new(idx)), Some(Box::new(range_end)))),
-                                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                                    t => Err(ParseErrorKind::UnexpectedToken(t))
                                 }
                             }
                         }
                     }
-                    t @ _ => Err(ParseError::UnexpectedToken(t))
+                    t => Err(ParseErrorKind::UnexpectedToken(t))
                 }
             }
         }?;
@@ -1220,7 +1229,7 @@ impl Parser {
         }))
     }
 
-    fn parse_assignment(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_assignment(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         // By passing Prec::None (one lower than Prec::Assign), we achieve right-associativity
         // (i.e. a = b = c ==> (a = (b = c))
         let expr = self.parse_precedence(Precedence::None)?;
@@ -1228,7 +1237,7 @@ impl Parser {
         Ok(AstNode::Assignment(token, node))
     }
 
-    fn parse_invocation(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_invocation(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let lparen = token;
         let mut item_expected = true;
         let mut args = Vec::<(Option<Token>, AstNode)>::new();
@@ -1239,7 +1248,7 @@ impl Parser {
                 break;
             } else {
                 if !item_expected {
-                    return Err(ParseError::UnexpectedToken(token.clone()));
+                    return Err(ParseErrorKind::UnexpectedToken(token.clone()));
                 }
 
                 match self.parse_expr()? {
@@ -1257,7 +1266,7 @@ impl Parser {
                             args.push((None, ident));
                         }
                     }
-                    expr @ _ => args.push((None, expr))
+                    expr => args.push((None, expr))
                 }
 
                 if let Token::Comma(_) = self.expect_peek()? {
@@ -1271,7 +1280,7 @@ impl Parser {
         Ok(AstNode::Invocation(lparen, InvocationNode { target: Box::new(left), args }))
     }
 
-    fn parse_accessor(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_accessor(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         let dot = token;
         let is_opt_safe = match &dot {
             Token::QuestionDot(_) => true,
@@ -1282,7 +1291,7 @@ impl Parser {
         Ok(AstNode::Accessor(dot, AccessorNode { target: Box::new(left), field: Box::new(field), is_opt_safe }))
     }
 
-    fn parse_lambda(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseError> {
+    fn parse_lambda(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
         // Since this function will be called as the infix operator resolver for the => token,
         // we need to assert that the `left` node is either an Identifier, or a Grouped that wraps
         // an Identifier.
@@ -1291,17 +1300,17 @@ impl Parser {
             AstNode::Grouped(_, GroupedNode { expr }) => {
                 match *expr {
                     AstNode::Identifier(ident, _) => vec![(ident, None, false, None)],
-                    _ => return Err(ParseError::UnexpectedToken(token))
+                    _ => return Err(ParseErrorKind::UnexpectedToken(token))
                 }
             }
-            _ => return Err(ParseError::UnexpectedToken(token))
+            _ => return Err(ParseErrorKind::UnexpectedToken(token))
         };
 
         let body = self.parse_expr_or_block()?;
         Ok(AstNode::Lambda(token, LambdaNode { args, body }))
     }
 
-    fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_array(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let mut item_expected = true;
         let mut items = vec![];
         loop {
@@ -1311,7 +1320,7 @@ impl Parser {
                 break;
             } else if !item_expected {
                 return match self.peek() {
-                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    Some(tok) => Err(ParseErrorKind::UnexpectedToken(tok.clone())),
                     None => Err(self.unexpected_eof())
                 };
             }
@@ -1330,7 +1339,7 @@ impl Parser {
         Ok(AstNode::Array(token, ArrayNode { items }))
     }
 
-    fn parse_map_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_map_literal(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let mut item_expected = true;
         let mut items = Vec::<(Token, AstNode)>::new();
         loop {
@@ -1340,7 +1349,7 @@ impl Parser {
                 break;
             } else if !item_expected {
                 return match self.peek() {
-                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    Some(tok) => Err(ParseErrorKind::UnexpectedToken(tok.clone())),
                     None => Err(self.unexpected_eof())
                 };
             }
@@ -1361,7 +1370,7 @@ impl Parser {
         Ok(AstNode::Map(token, MapNode { items }))
     }
 
-    fn parse_set_literal(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_set_literal(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let mut item_expected = true;
         let mut items = vec![];
         loop {
@@ -1371,7 +1380,7 @@ impl Parser {
                 break;
             } else if !item_expected {
                 return match self.peek() {
-                    Some(tok) => Err(ParseError::UnexpectedToken(tok.clone())),
+                    Some(tok) => Err(ParseErrorKind::UnexpectedToken(tok.clone())),
                     None => Err(self.unexpected_eof())
                 };
             }
@@ -1390,10 +1399,10 @@ impl Parser {
         Ok(AstNode::Set(token, SetNode { items }))
     }
 
-    fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseError> {
+    fn parse_ident(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let ident_token = match &token {
             Token::Ident(_, _) | Token::Self_(_) | Token::None(_) => token,
-            _ => return Err(ParseError::UnexpectedToken(token)) // This should be unreachable, but just in case...
+            _ => return Err(ParseErrorKind::UnexpectedToken(token)) // This should be unreachable, but just in case...
         };
         let mut types = Vec::new();
         if let Some(Token::LT(_)) = self.peek() {
@@ -1444,11 +1453,14 @@ mod tests {
 
     use super::*;
 
-    type TestResult = Result<(), ParseError>;
+    type TestResult = Result<(), ParseErrorKind>;
 
-    fn parse(input: &str) -> Result<Vec<AstNode>, ParseError> {
-        let tokens = tokenize(&input.to_string()).unwrap();
-        super::parse(tokens).map(|ParseResult { nodes, .. }| nodes)
+    fn parse(input: &str) -> Result<Vec<AstNode>, ParseErrorKind> {
+        let module_id = ModuleId::from_name("test");
+        let tokens = tokenize(&module_id, &input.to_string()).unwrap();
+        super::parse(module_id, tokens)
+            .map(|ParseResult { nodes, .. }| nodes)
+            .map_err(|err| err.kind)
     }
 
     #[test]
@@ -1568,16 +1580,16 @@ mod tests {
     #[test]
     fn parse_unary_errors() -> TestResult {
         let err = parse("-").unwrap_err();
-        assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
+        assert_eq!(ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
 
         let err = parse("-   +").unwrap_err();
-        assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err);
+        assert_eq!(ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5))), err);
 
         let err = parse("!").unwrap_err();
-        assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
+        assert_eq!(ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)), err);
 
         let err = parse("!   +").unwrap_err();
-        Ok(assert_eq!(ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5))), err))
+        Ok(assert_eq!(ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5))), err))
     }
 
     #[test]
@@ -1983,18 +1995,18 @@ mod tests {
 
         for input in cases {
             let error = parse(input).unwrap_err();
-            assert_eq!(ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1)), error, "Parsing {} should have UnexpectedEof error", input);
+            assert_eq!(ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1)), error, "Parsing {} should have UnexpectedEof error", input);
         }
     }
 
     #[test]
     fn parse_binary_errors_unexpected_token() {
         let cases = vec![
-            ("5 > + 4", ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 >> 4", ParseError::UnexpectedToken(Token::GT(Position::new(1, 4)))),
-            ("5 < + 4", ParseError::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
-            ("5 << 4", ParseError::UnexpectedToken(Token::LT(Position::new(1, 4)))),
-            ("5 <> 6", ParseError::UnexpectedToken(Token::GT(Position::new(1, 4)))),
+            ("5 > + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
+            ("5 >> 4", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
+            ("5 < + 4", ParseErrorKind::UnexpectedToken(Token::Plus(Position::new(1, 5)))),
+            ("5 << 4", ParseErrorKind::UnexpectedToken(Token::LT(Position::new(1, 4)))),
+            ("5 <> 6", ParseErrorKind::UnexpectedToken(Token::GT(Position::new(1, 4)))),
         ];
 
         for (input, err) in cases {
@@ -2063,23 +2075,23 @@ mod tests {
     #[test]
     fn parse_array_error() {
         let error = parse("[").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1));
         assert_eq!(expected, error);
 
         let error = parse("[1").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 2), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 2), 1));
         assert_eq!(expected, error);
 
         let error = parse("[1,").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 3), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 3), 1));
         assert_eq!(expected, error);
 
         let error = parse("[,").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Comma(Position::new(1, 2)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Comma(Position::new(1, 2)));
         assert_eq!(expected, error);
 
         let error = parse("[1, 2 true").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Bool(Position::new(1, 7), true));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Bool(Position::new(1, 7), true));
         assert_eq!(expected, error);
     }
 
@@ -2135,7 +2147,7 @@ mod tests {
     #[test]
     fn parse_map_error() {
         let error = parse("{ 123: true }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 3), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 3), 123));
         assert_eq!(expected, error);
     }
 
@@ -2363,19 +2375,19 @@ mod tests {
     #[test]
     fn parse_binding_decls_errors() {
         let err = parse("val (a b) = (1, 2)").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::RParen, ident_token!((1, 8), "b"));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::RParen, ident_token!((1, 8), "b"));
         assert_eq!(expected, err);
 
         let err = parse("val (1, b) = (1, 2)").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 6), 1));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 6), 1));
         assert_eq!(expected, err);
 
         let err = parse("val (a, b = (1, 2)").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::RParen, Token::Assign(Position::new(1, 11)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::RParen, Token::Assign(Position::new(1, 11)));
         assert_eq!(expected, err);
 
         let err = parse("val (a, b)\na + b").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Assign, ident_token!((2, 1), "a"));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Assign, ident_token!((2, 1), "a"));
         assert_eq!(expected, err);
     }
 
@@ -2383,7 +2395,8 @@ mod tests {
     fn parse_type_identifier() {
         #[inline]
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
-            let tokens = tokenize(&input.to_string()).unwrap();
+            let module_id = ModuleId::from_name("test");
+            let tokens = tokenize(&module_id, &input.to_string()).unwrap();
             let mut parser = Parser::new(tokens);
             parser.parse_type_identifier(true).unwrap()
         }
@@ -2648,36 +2661,36 @@ mod tests {
     #[test]
     fn parse_binding_decls_error() {
         let err = parse("val 123 = \"hello \" + \"world\"").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
         assert_eq!(expected, err);
 
         let err = parse("val _abc =").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
         assert_eq!(expected, err);
 
         let err = parse("val abc = val def = 3").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 11)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Val(Position::new(1, 11)));
         assert_eq!(expected, err);
     }
 
     #[test]
     fn parse_binding_decls_with_type_annotations_error() {
         let err = parse("val a: 123 = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(
+        let expected = ParseErrorKind::ExpectedToken(
             TokenType::Ident,
             Token::Int(Position::new(1, 8), 123),
         );
         assert_eq!(expected, err);
 
         let err = parse("val a: Int[ = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(
+        let expected = ParseErrorKind::ExpectedToken(
             TokenType::RBrack,
             Token::Assign(Position::new(1, 13)),
         );
         assert_eq!(expected, err);
 
         let err = parse("val a: Int[").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
         assert_eq!(expected, err);
     }
 
@@ -2811,27 +2824,27 @@ mod tests {
     #[test]
     fn parse_func_decl_error() {
         let error = parse("func (a: Int) = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6), false));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::LParen(Position::new(1, 6), false));
         assert_eq!(expected, error);
 
         let error = parse("func abc) = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::LParen, Token::RParen(Position::new(1, 9)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::LParen, Token::RParen(Position::new(1, 9)));
         assert_eq!(expected, error);
 
         let error = parse("func abc( = 123").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Assign(Position::new(1, 11)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Assign(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = parse("func abc(a) = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RParen(Position::new(1, 11)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Colon, Token::RParen(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = parse("func abc(a: ) = 123").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::RParen(Position::new(1, 13)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::RParen(Position::new(1, 13)));
         assert_eq!(expected, error);
 
         let error = parse("func abc(a: Int b: Int) = 123").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 17), "b".to_string()));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Ident(Position::new(1, 17), "b".to_string()));
         assert_eq!(expected, error);
     }
 
@@ -3052,15 +3065,15 @@ mod tests {
     #[test]
     fn parse_tuple_errors() {
         let error = parse("(a, b: Int)").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 11), 1));
         assert_eq!(expected, error);
 
         let error = parse("(a, b = 1)").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 10), 1));
         assert_eq!(expected, error);
 
         let error = parse("(1, b: Int)").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::RParen, Token::Colon(Position::new(1, 6)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::RParen, Token::Colon(Position::new(1, 6)));
         assert_eq!(expected, error);
     }
 
@@ -3219,19 +3232,19 @@ mod tests {
     #[test]
     fn parse_type_decl_type_args_error() {
         let error = parse("type List<> { }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::GT(Position::new(1, 11)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::GT(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = parse("type List<1> { }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 1));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 1));
         assert_eq!(expected, error);
 
         let error = parse("type List<[]> { }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::LBrack(Position::new(1, 11), false));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::LBrack(Position::new(1, 11), false));
         assert_eq!(expected, error);
 
         let error = parse("type List<T, ,> { }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Comma(Position::new(1, 14)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Comma(Position::new(1, 14)));
         assert_eq!(expected, error);
     }
 
@@ -3275,31 +3288,31 @@ mod tests {
     #[test]
     fn parse_type_decl_error() {
         let error = parse("type Person }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::LBrace, Token::RBrace(Position::new(1, 13)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::LBrace, Token::RBrace(Position::new(1, 13)));
         assert_eq!(expected, error);
 
         let error = parse("type Person {").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 13), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 13), 1));
         assert_eq!(expected, error);
 
         let error = parse("type Person { 1234 }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 15), 1234));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 15), 1234));
         assert_eq!(expected, error);
 
         let error = parse("type Person { name }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 20)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 20)));
         assert_eq!(expected, error);
 
         let error = parse("type Person { name: }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::RBrace(Position::new(1, 21)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::RBrace(Position::new(1, 21)));
         assert_eq!(expected, error);
 
         let error = parse("type Person { name: Int").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 23), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 23), 1));
         assert_eq!(expected, error);
 
         let error = parse("type Person { name: 1234").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 21), 1234));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 21), 1234));
         assert_eq!(expected, error);
     }
 
@@ -3570,19 +3583,19 @@ mod tests {
     #[test]
     fn parse_indexing_error() {
         let err = parse("abcd[]").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::RBrack(Position::new(1, 6)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::RBrack(Position::new(1, 6)));
         assert_eq!(expected, err);
 
         let err = parse("abcd[: val b = 3").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Val(Position::new(1, 8)));
         assert_eq!(expected, err);
 
         let err = parse("abcd[1a").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Ident(Position::new(1, 7), "a".to_string()));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Ident(Position::new(1, 7), "a".to_string()));
         assert_eq!(expected, err);
 
         let err = parse("abcd[1:1:").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 9)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Colon(Position::new(1, 9)));
         assert_eq!(expected, err);
     }
 
@@ -4097,23 +4110,23 @@ mod tests {
     #[test]
     fn parse_invocation_errors() {
         let error = parse("abc(").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 4), 1));
         assert_eq!(expected, error);
 
         let error = parse("abc!()").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::RParen(Position::new(1, 6)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::RParen(Position::new(1, 6)));
         assert_eq!(expected, error);
 
         let error = parse("abc(1 + )").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::RParen(Position::new(1, 9)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::RParen(Position::new(1, 9)));
         assert_eq!(expected, error);
 
         let error = parse("abc(1, 1 1)").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 10), 1));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 10), 1));
         assert_eq!(expected, error);
 
         let error = parse("abc(a + b: 2)").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Colon(Position::new(1, 10)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Colon(Position::new(1, 10)));
         assert_eq!(expected, error);
     }
 
@@ -4282,19 +4295,19 @@ mod tests {
     #[test]
     fn parse_for_loop_error() {
         let error = parse("for 123 in [0, 1] { a }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 5), 123));
         assert_eq!(expected, error);
 
         let error = parse("for a [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::In, Token::LBrack(Position::new(1, 7), false));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::In, Token::LBrack(Position::new(1, 7), false));
         assert_eq!(expected, error);
 
         let error = parse("for a in { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 14)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Colon, Token::RBrace(Position::new(1, 14)));
         assert_eq!(expected, error);
 
         let error = parse("for a, in [0, 1] { a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::In(Position::new(1, 8)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::In(Position::new(1, 8)));
         assert_eq!(expected, error);
     }
 
@@ -4511,35 +4524,35 @@ mod tests {
     #[test]
     fn parse_match_statement_errors() {
         let error = parse("match {}").unwrap_err();
-        let expected = ParseError::UnexpectedEof(Range::with_length(&Position::new(1, 8), 1));
+        let expected = ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 8), 1));
         assert_eq!(expected, error);
 
         let error = parse("match a }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::LBrace, Token::RBrace(Position::new(1, 9)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::LBrace, Token::RBrace(Position::new(1, 9)));
         assert_eq!(expected, error);
 
         let error = parse("match a {}").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::RBrace(Position::new(1, 10)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::RBrace(Position::new(1, 10)));
         assert_eq!(expected, error);
 
         let error = parse("match a { 123 => 456 }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 123));
         assert_eq!(expected, error);
 
         let error = parse("match a { Int 123 }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Arrow, Token::Int(Position::new(1, 15), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Arrow, Token::Int(Position::new(1, 15), 123));
         assert_eq!(expected, error);
 
         let error = parse("match a { Int i x => 123 }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Arrow, ident_token!((1, 17), "x"));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Arrow, ident_token!((1, 17), "x"));
         assert_eq!(expected, error);
 
         let error = parse("match a { Int() x => 123 }").unwrap_err();
-        let expected = ParseError::ExpectedToken(TokenType::Ident, Token::RParen(Position::new(1, 15)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::RParen(Position::new(1, 15)));
         assert_eq!(expected, error);
 
         let error = parse("match a { Int(123) x => 123 }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 15), 123));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 15), 123));
         assert_eq!(expected, error);
     }
 
@@ -4612,39 +4625,39 @@ mod tests {
     #[test]
     fn parse_match_return_statement_errors() {
         let error = parse("return func abc() {}").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Func(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Func(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return val a = 3").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Val(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Val(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return var a").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Var(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Var(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return type Person { name: String }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Type(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Type(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return enum Direction { Up, Down }").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Enum(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Enum(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return while true {}").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::While(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::While(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return for x in range(0, 1) {}").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::For(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::For(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return break").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Break(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Break(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("return return").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Return(Position::new(1, 8), true));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Return(Position::new(1, 8), true));
         assert_eq!(expected, error);
     }
 
@@ -4777,11 +4790,11 @@ mod tests {
     #[test]
     fn parse_exported_statements_errors() {
         let error = parse("export 123").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Int(Position::new(1, 8), 123));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Int(Position::new(1, 8), 123));
         assert_eq!(expected, error);
 
         let error = parse("export if true {} else {}").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::If(Position::new(1, 8)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::If(Position::new(1, 8)));
         assert_eq!(expected, error);
     }
 
@@ -4791,7 +4804,7 @@ mod tests {
           func abc() {}\n\
           import abc from def.ghi\
         ").unwrap_err();
-        let expected = ParseError::UnexpectedToken(Token::Import(Position::new(2, 1)));
+        let expected = ParseErrorKind::UnexpectedToken(Token::Import(Position::new(2, 1)));
         assert_eq!(expected, err);
     }
 }

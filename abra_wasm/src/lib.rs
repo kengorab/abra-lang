@@ -120,7 +120,7 @@ impl Serialize for RunResult {
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(&error, &self.1))?;
-                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&error.module_id().get_path::<&str>(None), &self.1))?;
             }
         };
 
@@ -146,7 +146,7 @@ impl Serialize for TypecheckedResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
-                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&"_file".to_string(), &self.1))?;
                 obj.end()
             }
         }
@@ -172,7 +172,7 @@ impl Serialize for DisassembleResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
-                obj.serialize_entry("errorMessage", &error.get_message(&self.1))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&"_file".to_string(), &self.1))?;
                 obj.end()
             }
         }
