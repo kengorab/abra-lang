@@ -146,7 +146,9 @@ impl Serialize for TypecheckedResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
-                obj.serialize_entry("errorMessage", &error.get_message(&"_file".to_string(), &self.1))?;
+
+                let file_name = error.module_id().get_path::<&str>(None);
+                obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
                 obj.end()
             }
         }
@@ -172,7 +174,9 @@ impl Serialize for DisassembleResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
                 obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
-                obj.serialize_entry("errorMessage", &error.get_message(&"_file".to_string(), &self.1))?;
+
+                let file_name = error.module_id().get_path::<&str>(None);
+                obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
                 obj.end()
             }
         }
