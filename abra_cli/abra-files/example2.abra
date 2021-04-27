@@ -1,3 +1,1 @@
-export type Person { name: String }
-
-export val ken = Person(name: "Ken")
+export val a = "abc "//\qwer"

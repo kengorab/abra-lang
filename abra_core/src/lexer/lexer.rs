@@ -1,18 +1,22 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::str::Chars;
 use crate::lexer::tokens::{Token, Position};
-use crate::lexer::lexer_error::LexerError;
+use crate::lexer::lexer_error::{LexerErrorKind, LexerError};
+use crate::parser::ast::ModuleId;
 use itertools::Itertools;
 
-pub fn tokenize(input: &String) -> Result<Vec<Token>, LexerError> {
+pub fn tokenize(module_id: &ModuleId, input: &String) -> Result<Vec<Token>, LexerError> {
     let mut lexer = Lexer::new(input);
 
     let mut tokens: Vec<Token> = vec![];
 
     loop {
-        match lexer.next_token()? {
-            Some(tok) => tokens.push(tok),
-            None => break
+        match lexer.next_token() {
+            Err(kind) => return Err(LexerError { module_id: module_id.clone(), kind }),
+            Ok(tok) => match tok {
+                Some(tok) => tokens.push(tok),
+                None => break
+            }
         }
     };
 
@@ -29,11 +33,7 @@ impl<'a> Lexer<'a> {
     fn new(input: &'a String) -> Self {
         let input = input.chars().peekmore();
 
-        Lexer {
-            input,
-            line: 1,
-            col: 0,
-        }
+        Lexer { input, line: 1, col: 0 }
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -41,9 +41,9 @@ impl<'a> Lexer<'a> {
         self.input.next()
     }
 
-    fn expect_next(&mut self) -> Result<char, LexerError> {
+    fn expect_next(&mut self) -> Result<char, LexerErrorKind> {
         self.col += 1;
-        self.input.next().ok_or(LexerError::UnexpectedEof(Position::new(self.line, self.col)))
+        self.input.next().ok_or(LexerErrorKind::UnexpectedEof(Position::new(self.line, self.col)))
     }
 
     fn peek(&mut self) -> Option<&char> {
@@ -80,23 +80,23 @@ impl<'a> Lexer<'a> {
         saw_newline
     }
 
-    fn parse_unicode_escape(&mut self, start_pos: &Position) -> Result<char, LexerError> {
+    fn parse_unicode_escape(&mut self, start_pos: &Position) -> Result<char, LexerErrorKind> {
         let mut chars = Vec::new();
         for _ in 0..4 {
             let esc_seq = format!("\\u{}", chars.iter().join(""));
 
             let ch = self.expect_next().map_err(|_| {
-                LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
+                LexerErrorKind::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
             })?;
             if !ch.is_digit(16) {
-                return Err(LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq, true));
+                return Err(LexerErrorKind::UnsupportedEscapeSequence(start_pos.clone(), esc_seq, true));
             }
             chars.push(ch);
         }
 
         let esc_seq = format!("\\u{}", chars.iter().join(""));
         let i = u32::from_str_radix(&chars.iter().join(""), 16).map_err(|_| {
-            LexerError::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
+            LexerErrorKind::UnsupportedEscapeSequence(start_pos.clone(), esc_seq.clone(), true)
         })?;
 
         // Borrowed from the rust implementation of char::from_u32 (until it becomes stable): https://github.com/rust-lang/rust/blob/master/library/core/src/char/convert.rs#L203
@@ -109,7 +109,7 @@ impl<'a> Lexer<'a> {
         Ok(ch)
     }
 
-    fn next_token(&mut self) -> Result<Option<Token>, LexerError> {
+    fn next_token(&mut self) -> Result<Option<Token>, LexerErrorKind> {
         let skipped_newline = self.skip_whitespace();
 
         let ch = match self.advance() {
@@ -135,7 +135,7 @@ impl<'a> Lexer<'a> {
 
                             if ch.is_digit(10) && is_float {
                                 let pos = Position::new(self.line, self.col + 1);
-                                return Err(LexerError::UnexpectedChar(pos, ".".to_string()));
+                                return Err(LexerErrorKind::UnexpectedChar(pos, ".".to_string()));
                             } else if ch.is_digit(10) {
                                 is_float = true;
                                 chars.push(self.expect_next()?);
@@ -168,7 +168,7 @@ impl<'a> Lexer<'a> {
             loop {
                 if let Some(&ch) = self.peek() {
                     if ch == '\n' {
-                        return Err(LexerError::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
+                        return Err(LexerErrorKind::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
                     } else if ch == '"' {
                         // Consume closing quote
                         self.expect_next()?;
@@ -185,9 +185,9 @@ impl<'a> Lexer<'a> {
                             '"' => '"',
                             '$' => '$',
                             'u' => self.parse_unicode_escape(&pos)?,
-                            ch @ _ => {
+                            ch => {
                                 let esc_seq = format!("\\{}", ch);
-                                return Err(LexerError::UnsupportedEscapeSequence(pos, esc_seq, false));
+                                return Err(LexerErrorKind::UnsupportedEscapeSequence(pos, esc_seq, false));
                             }
                         };
 
@@ -217,14 +217,14 @@ impl<'a> Lexer<'a> {
 
                             loop {
                                 let next_tok = self.next_token()?;
-                                let next_tok = next_tok.ok_or(LexerError::UnexpectedEof(Position::new(self.line, self.col)))?;
+                                let next_tok = next_tok.ok_or(LexerErrorKind::UnexpectedEof(Position::new(self.line, self.col)))?;
                                 match &next_tok {
                                     Token::LBrace(_) => num_braces += 1,
                                     Token::RBrace(_) => num_braces -= 1,
                                     _ => {}
                                 };
                                 if num_braces == 0 {
-                                    break
+                                    break;
                                 } else {
                                     chunks.push(next_tok);
                                 }
@@ -239,7 +239,7 @@ impl<'a> Lexer<'a> {
 
                     chars.push(self.expect_next()?);
                 } else {
-                    return Err(LexerError::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
+                    return Err(LexerErrorKind::UnterminatedString(start_pos, Position::new(self.line, self.col + 1)));
                 }
             }
 
@@ -294,7 +294,7 @@ impl<'a> Lexer<'a> {
                 "export" => Token::Export(pos),
                 "from" => Token::From(pos),
                 "None" => Token::None(pos),
-                s @ _ => Token::Ident(pos, s.to_string())
+                s => Token::Ident(pos, s.to_string())
             };
             return Ok(Some(token));
         }
@@ -374,7 +374,7 @@ impl<'a> Lexer<'a> {
                 let ch = self.expect_next()?;
                 if ch != '&' {
                     let pos = Position::new(self.line, self.col);
-                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                    Err(LexerErrorKind::UnexpectedChar(pos, ch.to_string()))
                 } else {
                     if let Some('=') = self.peek() {
                         self.expect_next()?; // Consume '=' token
@@ -462,7 +462,7 @@ impl<'a> Lexer<'a> {
                     Ok(Some(Token::LBraceHash(pos)))
                 } else {
                     let pos = Position::new(self.line, self.col);
-                    Err(LexerError::UnexpectedChar(pos, ch.to_string()))
+                    Err(LexerErrorKind::UnexpectedChar(pos, ch.to_string()))
                 }
             }
             ',' => Ok(Some(Token::Comma(pos))),
@@ -477,10 +477,15 @@ impl<'a> Lexer<'a> {
 mod tests {
     use super::*;
 
+    fn tokenize<S: AsRef<str>>(input: S) -> Result<Vec<Token>, LexerErrorKind> {
+        let module_id = ModuleId::from_name("test");
+        super::tokenize(&module_id, &input.as_ref().to_string()).map_err(|err| err.kind)
+    }
+
     #[test]
     fn test_tokenize_ints() {
         let input = "123\n 456";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
             Token::Int(Position::new(2, 2), 456),
@@ -488,7 +493,7 @@ mod tests {
         assert_eq!(expected, tokens);
 
         let input = "123.\n456.";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
             Token::Dot(Position::new(1, 4)),
@@ -498,7 +503,7 @@ mod tests {
         assert_eq!(expected, tokens);
 
         let input = "1.a";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 1),
             Token::Dot(Position::new(1, 2)),
@@ -510,7 +515,7 @@ mod tests {
     #[test]
     fn test_tokenize_floats() {
         let input = "1.23\n0.456";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Float(Position::new(1, 1), 1.23),
             Token::Float(Position::new(2, 1), 0.456),
@@ -518,7 +523,7 @@ mod tests {
         assert_eq!(expected, tokens);
 
         let input = "1..23";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 1),
             Token::Dot(Position::new(1, 2)),
@@ -528,7 +533,7 @@ mod tests {
         assert_eq!(expected, tokens);
 
         let input = "1.3.a";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Float(Position::new(1, 1), 1.3),
             Token::Dot(Position::new(1, 4)),
@@ -540,7 +545,7 @@ mod tests {
     #[test]
     fn test_tokenize_single_char_operators() {
         let input = "+ - * / % < > ! = . ^";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Plus(Position::new(1, 1)),
             Token::Minus(Position::new(1, 3)),
@@ -560,7 +565,7 @@ mod tests {
     #[test]
     fn test_tokenize_multi_char_operators() {
         let input = "&& || <= >= != == ?: ?. => **";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::And(Position::new(1, 1)),
             Token::Or(Position::new(1, 4)),
@@ -579,7 +584,7 @@ mod tests {
     #[test]
     fn test_tokenize_multi_char_eq_operators() {
         let input = "+= -= *= /= %= &&= ||= ?:=";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::PlusEq(Position::new(1, 1)),
             Token::MinusEq(Position::new(1, 4)),
@@ -596,7 +601,7 @@ mod tests {
     #[test]
     fn test_tokenize_separators() {
         let input = "( ) [ ] { } | , : ? #{";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::LParen(Position::new(1, 1), false),
             Token::RParen(Position::new(1, 3)),
@@ -616,35 +621,35 @@ mod tests {
     #[test]
     fn test_tokenize_multi_char_operators_error() {
         let input = "&";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        let error = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedEof(Position::new(1, 2));
         assert_eq!(expected, error);
 
         let input = "&+";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "+".to_string());
+        let error = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedChar(Position::new(1, 2), "+".to_string());
         assert_eq!(expected, error);
 
         let input = "& &";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 2), " ".to_string());
+        let error = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedChar(Position::new(1, 2), " ".to_string());
         assert_eq!(expected, error);
 
         let input = "#+";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedChar(Position::new(1, 2), "+".to_string());
+        let error = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedChar(Position::new(1, 2), "+".to_string());
         assert_eq!(expected, error);
 
         let input = "#";
-        let error = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedEof(Position::new(1, 2));
+        let error = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedEof(Position::new(1, 2));
         assert_eq!(expected, error);
     }
 
     #[test]
     fn test_tokenize_strings_empty() {
         let input = "\"\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::String(Position::new(1, 1), "".to_string())
         ];
@@ -654,7 +659,7 @@ mod tests {
     #[test]
     fn test_tokenize_strings() {
         let input = "\"hello wörld: 1 + 2   ! 👩🏻‍⚕️\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::String(Position::new(1, 1), "hello wörld: 1 + 2   ! 👩🏻‍⚕️".to_string())
         ];
@@ -664,14 +669,14 @@ mod tests {
     #[test]
     fn test_tokenize_strings_escape_sequence() {
         let input = "\"a\\nb\\tc\\\\nd\\'e\\\"f\\$$\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::String(Position::new(1, 1), "a\nb\tc\\nd'e\"f$$".to_string())
         ];
         assert_eq!(expected, tokens);
 
         let input = "\"\\u007a\\u306e\\u77e7\\ud801\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::String(Position::new(1, 1), "zの矧�".to_string())
         ];
@@ -681,59 +686,59 @@ mod tests {
     #[test]
     fn test_tokenize_strings_error() {
         let input = "\"";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
         assert_eq!(expected, tokens);
 
         let input = "\"\n\"";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 2));
         assert_eq!(expected, tokens);
 
         let input = "\"\\z\"";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\z".to_string(), false);
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\z".to_string(), false);
         assert_eq!(expected, tokens);
 
         let input = "\"\\u38\"";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\u38".to_string(), true);
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\u38".to_string(), true);
         assert_eq!(expected, tokens);
 
         let input = "\"\\u3xy8\"";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnsupportedEscapeSequence(Position::new(1, 2), "\\u3".to_string(), true);
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\u3".to_string(), true);
         assert_eq!(expected, tokens);
     }
 
     #[test]
     fn test_tokenize_string_interpolation() {
         let input = "\"abc $a def\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = Token::StringInterp(
             Position::new(1, 1),
             vec![
                 Token::String(Position::new(1, 1), "abc ".to_string()),
                 Token::Ident(Position::new(1, 7), "a".to_string()),
                 Token::String(Position::new(1, 8), " def".to_string()),
-            ]
+            ],
         );
         assert_eq!(expected, tokens[0]);
 
         let input = "\"abc $def ghi\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = Token::StringInterp(
             Position::new(1, 1),
             vec![
                 Token::String(Position::new(1, 1), "abc ".to_string()),
                 Token::Ident(Position::new(1, 7), "def".to_string()),
                 Token::String(Position::new(1, 10), " ghi".to_string()),
-            ]
+            ],
         );
         assert_eq!(expected, tokens[0]);
 
         let input = "\"abc ${1 + 2} ghi\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = Token::StringInterp(
             Position::new(1, 1),
             vec![
@@ -742,12 +747,12 @@ mod tests {
                 Token::Plus(Position::new(1, 10)),
                 Token::Int(Position::new(1, 12), 2),
                 Token::String(Position::new(1, 14), " ghi".to_string()),
-            ]
+            ],
         );
         assert_eq!(expected, tokens[0]);
 
         let input = "\"abc ${1 +\n 2} ghi\"";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = Token::StringInterp(
             Position::new(1, 1),
             vec![
@@ -756,7 +761,7 @@ mod tests {
                 Token::Plus(Position::new(1, 10)),
                 Token::Int(Position::new(2, 2), 2),
                 Token::String(Position::new(2, 4), " ghi".to_string()),
-            ]
+            ],
         );
         assert_eq!(expected, tokens[0]);
     }
@@ -764,18 +769,18 @@ mod tests {
     #[test]
     fn test_tokenize_string_interpolation_error() {
         let input = "\"${1 +";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnexpectedEof(Position::new(1, 7));
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnexpectedEof(Position::new(1, 7));
         assert_eq!(expected, tokens);
 
         let input = "\"$a ";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
         assert_eq!(expected, tokens);
 
         let input = "\"$a \n";
-        let tokens = tokenize(&input.to_string()).unwrap_err();
-        let expected = LexerError::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
+        let tokens = tokenize(input).unwrap_err();
+        let expected = LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 5));
         assert_eq!(expected, tokens);
     }
 
@@ -783,7 +788,7 @@ mod tests {
     fn test_tokenize_keywords() {
         let input = "true false val var if else func while break for in \
         type enum self match readonly import export from continue";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
             Token::Bool(Position::new(1, 6), false),
@@ -811,27 +816,27 @@ mod tests {
 
     #[test]
     fn test_tokenize_keyword_return() {
-        let tokens = tokenize(&"return".to_string()).unwrap();
+        let tokens = tokenize("return").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), true),
         ];
         assert_eq!(expected, tokens);
 
-        let tokens = tokenize(&"return     123".to_string()).unwrap();
+        let tokens = tokenize("return     123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), false),
             Token::Int(Position::new(1, 12), 123)
         ];
         assert_eq!(expected, tokens);
 
-        let tokens = tokenize(&"return\n123".to_string()).unwrap();
+        let tokens = tokenize("return\n123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), true),
             Token::Int(Position::new(2, 1), 123)
         ];
         assert_eq!(expected, tokens);
 
-        let tokens = tokenize(&"return  \t  \n123".to_string()).unwrap();
+        let tokens = tokenize("return  \t  \n123").unwrap();
         let expected = vec![
             Token::Return(Position::new(1, 1), true),
             Token::Int(Position::new(2, 1), 123)
@@ -842,7 +847,7 @@ mod tests {
     #[test]
     fn test_tokenize_identifier() {
         let input = "abc abc1 abC_2";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Ident(Position::new(1, 1), "abc".to_string()),
             Token::Ident(Position::new(1, 5), "abc1".to_string()),
@@ -854,7 +859,7 @@ mod tests {
     #[test]
     fn test_tokenize_single_line_comment() {
         let input = "123\n// this should disappear\n456";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
             Token::Int(Position::new(3, 1), 456),
@@ -865,7 +870,7 @@ mod tests {
     #[test]
     fn test_tokenize_multi_line_comment() {
         let input = "123\n/* this\nshould\n* disappear\n*/ 456";
-        let tokens = tokenize(&input.to_string()).unwrap();
+        let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Int(Position::new(1, 1), 123),
             Token::Int(Position::new(5, 4), 456),

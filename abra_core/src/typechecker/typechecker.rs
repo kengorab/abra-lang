@@ -5,7 +5,7 @@ use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind};
-use crate::typechecker::typechecker_error::{TypecheckerError, InvalidAssignmentTargetReason};
+use crate::typechecker::typechecker_error::{TypecheckerErrorKind, InvalidAssignmentTargetReason, TypecheckerError};
 use crate::{ModuleLoader, ModuleReader, tokenize_and_parse};
 use itertools::Itertools;
 use std::collections::{HashSet, HashMap};
@@ -67,27 +67,37 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
     };
 
     // Inject wildcard prelude import
-    let prelude_import_nodes = tokenize_and_parse(&"import * from prelude".to_string()).unwrap().nodes;
+    let prelude_import_nodes = tokenize_and_parse(&typechecker.module_id, &"import * from prelude".to_string()).unwrap().nodes;
     for node in prelude_import_nodes {
-        typechecker.visit(node)?;
+        if let Err(kind) = typechecker.visit(node) {
+            return Err(TypecheckerError { module_id: typechecker.module_id, kind });
+        }
     }
 
     let mut results = Vec::new();
     let mut ast_iter = ast.into_iter().peekable();
     while let Some(AstNode::ImportStatement(_, _)) = ast_iter.peek() {
         let node = ast_iter.next().unwrap();
-        results.push(typechecker.visit(node)?);
+        results.push(match typechecker.visit(node) {
+            Ok(node) => node,
+            Err(kind) => return Err(TypecheckerError { module_id: typechecker.module_id, kind })
+        });
     }
 
     let ast = ast_iter.collect();
-    typechecker.hoist_declarations_in_scope(&ast)?;
+    if let Err(kind) = typechecker.hoist_declarations_in_scope(&ast) {
+        return Err(TypecheckerError { module_id: typechecker.module_id, kind });
+    }
 
-    let typed_nodes = results.into_iter()
-        .chain(ast.into_iter()
-            .map(|node| typechecker.visit(node))
-            .collect::<Result<Vec<_>, TypecheckerError>>()?
-        )
-        .collect();
+    let nodes = ast.into_iter()
+        .map(|node| typechecker.visit(node))
+        .collect::<Result<Vec<_>, TypecheckerErrorKind>>();
+    let nodes = match nodes {
+        Ok(nodes) => nodes,
+        Err(kind) => return Err(TypecheckerError { module_id: typechecker.module_id, kind })
+    };
+
+    let typed_nodes = results.into_iter().chain(nodes).collect();
 
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
     let module_name = typechecker.module_id.get_name();
@@ -200,10 +210,10 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             .collect()
     }
 
-    fn type_from_type_ident(&self, type_ident: &TypeIdentifier, use_placeholder_generics: bool) -> Result<Type, TypecheckerError> {
+    fn type_from_type_ident(&self, type_ident: &TypeIdentifier, use_placeholder_generics: bool) -> Result<Type, TypecheckerErrorKind> {
         let type_from_ident = Type::from_type_ident(type_ident, &self.get_types_in_scope());
         match type_from_ident {
-            Err(tok) => Err(TypecheckerError::UnknownType { type_ident: tok }),
+            Err(tok) => Err(TypecheckerErrorKind::UnknownType { type_ident: tok }),
             Ok(typ) => {
                 let mut ret_typ = None;
                 let mut placeholder_type_args: Vec<Type> = vec![];
@@ -227,7 +237,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
                     if ref_type_args.len() != expected_type_args {
                         if !use_placeholder_generics {
-                            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                            return Err(TypecheckerErrorKind::InvalidTypeArgumentArity {
                                 token: type_ident.get_ident(),
                                 actual_type: self.resolve_type(name).unwrap().clone(),
                                 actual: ref_type_args.len(),
@@ -269,7 +279,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 Type::hydrate_reference_type(name, type_args, &|typ_name| self.resolve_type(typ_name))
                     .expect(&format!("There should be a type referencable by name '{}'", name))
             }
-            t @ _ => t.clone()
+            t => t.clone()
         }
     }
 
@@ -278,7 +288,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             .or_else(|| self.module_loader.resolve_type(type_name))
     }
 
-    fn are_types_equivalent(&mut self, node: &mut TypedAstNode, target_type: &Type) -> Result<bool, TypecheckerError> {
+    fn are_types_equivalent(&mut self, node: &mut TypedAstNode, target_type: &Type) -> Result<bool, TypecheckerErrorKind> {
         // If the node's type has an unknown, we need to descend into it.
         //
         // Consider  `val arr: Int[] = []`; the rhs would be Type::Array(Box::new(Type::Unknown)),
@@ -307,12 +317,12 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             }
                             (None, Some((lambda_arg_token, lambda_arg_type, default_value))) => {
                                 if default_value.is_none() {
-                                    return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
+                                    return Err(TypecheckerErrorKind::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
                                 }
                                 retyped_args.push((lambda_arg_token.clone(), lambda_arg_type.clone(), default_value.clone()));
                             }
                             (Some(_), None) => {
-                                return Err(TypecheckerError::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
+                                return Err(TypecheckerErrorKind::IncorrectArity { token: token.clone(), expected: expected_args.len(), actual: lambda_node.args.len() });
                             }
                             (None, None) => break
                         }
@@ -365,7 +375,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             }
 
                             if !ret.is_equivalent_to(expected_ret, &|typ_name| self.resolve_type(typ_name)) {
-                                return Err(TypecheckerError::Mismatch {
+                                return Err(TypecheckerErrorKind::Mismatch {
                                     token: token.clone(),
                                     expected: *(*expected_ret).clone(),
                                     actual: *ret,
@@ -428,13 +438,13 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         }
     }
 
-    fn visit_block(&mut self, is_stmt: bool, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+    fn visit_block(&mut self, is_stmt: bool, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerErrorKind> {
         let mut has_terminated = false;
         let len = body.len();
         body.into_iter().enumerate()
             .map(|(idx, mut node)| {
                 if has_terminated {
-                    return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
+                    return Err(TypecheckerErrorKind::UnreachableCode { token: node.get_token().clone() });
                 }
 
                 // If the last node of an if-expression is an if-statement, treat it as an if-expr.
@@ -460,7 +470,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
     // Called from visit_if_expression and visit_if_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
-    fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerError> {
+    fn visit_if_node(&mut self, is_stmt: bool, node: IfNode) -> Result<TypedIfNode, TypecheckerErrorKind> {
         let IfNode { condition, mut condition_binding, if_block, else_block } = node;
 
         let condition = self.visit(*condition)?;
@@ -470,7 +480,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         };
         if !is_valid_cond_type {
             let token = condition.get_token().clone();
-            return Err(TypecheckerError::InvalidIfConditionType { token, actual: condition.get_type() });
+            return Err(TypecheckerErrorKind::InvalidIfConditionType { token, actual: condition.get_type() });
         }
         let condition = Box::new(condition);
 
@@ -517,7 +527,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
     // Called from visit_match_expression and visit_match_statement, but it has to be up here since it's
     // not part of the AstVisitor trait.
-    fn visit_match_node(&mut self, is_stmt: bool, match_token: &Token, node: MatchNode) -> Result<TypedMatchNode, TypecheckerError> {
+    fn visit_match_node(&mut self, is_stmt: bool, match_token: &Token, node: MatchNode) -> Result<TypedMatchNode, TypecheckerErrorKind> {
         let MatchNode { target, branches } = node;
 
         let target = self.visit(*target)?;
@@ -542,18 +552,18 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     MatchCaseType::Wildcard(token) => token,
                     MatchCaseType::Compound(idents) => idents.get(1).expect("There should be at least 2 idents").clone(),
                 };
-                return Err(TypecheckerError::EmptyMatchBlock { token });
+                return Err(TypecheckerErrorKind::EmptyMatchBlock { token });
             }
 
             let branch_cond = match match_type {
                 MatchCaseType::Ident(ident) => {
                     if seen_wildcard {
-                        return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
                     }
 
                     if let Token::None(_) = &ident {
                         if args.is_some() {
-                            return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: None, enum_variant: None });
+                            return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: ident, typ: None, enum_variant: None });
                         }
 
                         let idx = possibilities.iter().position(|t| t == &Type::Unknown);
@@ -568,15 +578,15 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
                             TypedMatchKind::None { binding }
                         } else {
-                            return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
+                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
                         }
                     } else {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
                         let typ = self.type_from_type_ident(&type_ident, true)?;
                         if let Type::Generic(_) = &typ {
-                            return Err(TypecheckerError::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
+                            return Err(TypecheckerErrorKind::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
                         } else if args.is_some() {
-                            return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
+                            return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
                         }
 
                         let possibility = possibilities.iter().enumerate()
@@ -591,7 +601,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             possibilities.remove(idx);
                             TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), binding, args: None }
                         } else {
-                            return Err(TypecheckerError::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
+                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
                         }
                     }
                 }
@@ -608,19 +618,19 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let variant_name = Token::get_ident_name(&variant_ident);
                     let variant_idx = enum_type.variants.iter().position(|(name, _)| name == &variant_name);
                     if variant_idx.is_none() {
-                        return Err(TypecheckerError::UnknownMember { token: variant_ident, target_type: typ });
+                        return Err(TypecheckerErrorKind::UnknownMember { token: variant_ident, target_type: typ });
                     } else if let Some(token) = idents.next() {
-                        return Err(TypecheckerError::UnknownMember { token, target_type: typ });
+                        return Err(TypecheckerErrorKind::UnknownMember { token, target_type: typ });
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
                     let possibility = possibilities.iter().enumerate()
                         .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
                     let generics = match &mut enum_variant_possibilities.get_mut(&enum_type.name) {
-                        None => return Err(TypecheckerError::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false }),
+                        None => return Err(TypecheckerErrorKind::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false }),
                         Some(variants) => {
                             match variants.iter().position(|v| *v == variant_name) {
-                                None => return Err(TypecheckerError::DuplicateMatchCase { token: variant_ident }),
+                                None => return Err(TypecheckerErrorKind::DuplicateMatchCase { token: variant_ident }),
                                 Some(variant_idx) => {
                                     // Remove the variant, since we've now seen it. If we've seen all variants, remove the enum itself from consideration
                                     variants.remove(variant_idx);
@@ -652,7 +662,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 debug_assert!(is_enum_constructor);
                                 if arg_types.len() != destructured_args.len() {
                                     let arg_types_len = arg_types.len();
-                                    return Err(TypecheckerError::InvalidMatchCaseDestructuringArity { token, typ, enum_variant: Some(variant_name), expected: arg_types_len, actual: destructured_args.len() });
+                                    return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuringArity { token, typ, enum_variant: Some(variant_name), expected: arg_types_len, actual: destructured_args.len() });
                                 }
 
                                 for ((_, arg_type, _), ref mut pat) in arg_types.iter().zip(destructured_args.iter_mut()) {
@@ -666,7 +676,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             }
                             _ => {
                                 let variant_name = enum_type.variants[variant_idx].0.clone();
-                                return Err(TypecheckerError::InvalidMatchCaseDestructuring { token: variant_ident, typ: Some(typ), enum_variant: Some(variant_name) });
+                                return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: variant_ident, typ: Some(typ), enum_variant: Some(variant_name) });
                             }
                         }
                     } else { None };
@@ -675,11 +685,11 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
-                        return Err(TypecheckerError::DuplicateMatchCase { token });
+                        return Err(TypecheckerErrorKind::DuplicateMatchCase { token });
                     }
                     seen_wildcard = true;
                     let match_type = if possibilities.is_empty() {
-                        return Err(TypecheckerError::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
                     } else if possibilities.len() == 1 {
                         possibilities.drain(..).next().unwrap()
                     } else {
@@ -702,7 +712,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             typed_branches.push((branch_cond, typed_block));
         }
         if !possibilities.is_empty() {
-            return Err(TypecheckerError::NonExhaustiveMatch { token: match_token.clone() });
+            return Err(TypecheckerErrorKind::NonExhaustiveMatch { token: match_token.clone() });
         }
 
         // Temporarily use Type::Unit as a placeholder, if it's an expression it'll be updated later
@@ -715,7 +725,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         allow_self_param: bool,
         allow_unknown_arg_types: bool,
         allow_varargs: bool,
-    ) -> Result<Vec<(Token, Type, bool, Option<TypedAstNode>)>, TypecheckerError> {
+    ) -> Result<Vec<(Token, Type, bool, Option<TypedAstNode>)>, TypecheckerErrorKind> {
         let num_args = args.len();
         let mut typed_args = Vec::with_capacity(num_args);
         let mut arg_idents = HashMap::<String, Token>::new();
@@ -725,14 +735,14 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
             if let Token::Self_(_) = &token {
                 if !allow_self_param {
-                    return Err(TypecheckerError::InvalidSelfParam { token: token.clone() });
+                    return Err(TypecheckerErrorKind::InvalidSelfParam { token: token.clone() });
                 }
                 if idx != 0 {
-                    return Err(TypecheckerError::InvalidSelfParamPosition { token: token.clone() });
+                    return Err(TypecheckerErrorKind::InvalidSelfParamPosition { token: token.clone() });
                 }
 
                 let arg_type = match &self.cur_typedef {
-                    None => return Err(TypecheckerError::InvalidSelfParam { token: token.clone() }),
+                    None => return Err(TypecheckerErrorKind::InvalidSelfParam { token: token.clone() }),
                     Some(cur_type) => cur_type.clone(),
                 };
 
@@ -743,14 +753,14 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             }
 
             if let Some(arg_tok) = arg_idents.get(&arg_name) {
-                return Err(TypecheckerError::DuplicateBinding { orig_ident: Some(arg_tok.clone()), ident: token.clone() });
+                return Err(TypecheckerErrorKind::DuplicateBinding { orig_ident: Some(arg_tok.clone()), ident: token.clone() });
             }
             if is_vararg {
                 if !allow_varargs {
-                    return Err(TypecheckerError::InvalidVarargUsage(token));
+                    return Err(TypecheckerErrorKind::InvalidVarargUsage(token));
                 }
                 if idx != num_args - 1 {
-                    return Err(TypecheckerError::InvalidVarargPosition(token));
+                    return Err(TypecheckerErrorKind::InvalidVarargPosition(token));
                 }
             }
             arg_idents.insert(arg_name, token.clone());
@@ -767,12 +777,12 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 self.add_binding(&arg_name, &token, &arg_type, false);
                                 (token, arg_type, Some(default_value))
                             } else {
-                                return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
+                                return Err(TypecheckerErrorKind::Mismatch { token: default_value.get_token().clone(), expected: arg_type, actual: default_value.get_type() });
                             }
                         }
                         None => {
                             if seen_optional_arg {
-                                return Err(TypecheckerError::InvalidRequiredArgPosition(token));
+                                return Err(TypecheckerErrorKind::InvalidRequiredArgPosition(token));
                             }
                             let arg_name = Token::get_ident_name(&token);
                             self.add_binding(&arg_name, &token, &arg_type, false);
@@ -802,7 +812,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             let default_value = if is_vararg {
                 match arg_type {
                     Type::Array(_) => {}
-                    typ => return Err(TypecheckerError::VarargMismatch { token: arg_tok, typ })
+                    typ => return Err(TypecheckerErrorKind::VarargMismatch { token: arg_tok, typ })
                 }
                 // If no default was provided, default the varargs to []
                 default_value.or(Some(TypedAstNode::Array(
@@ -861,7 +871,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         }
     }
 
-    fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerError> {
+    fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerErrorKind> {
         self.hoist_declarations_in_scope(&body)?;
 
         let mut has_terminated = false;
@@ -869,7 +879,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         body.into_iter().enumerate()
             .map(|(idx, node)| {
                 if has_terminated {
-                    return Err(TypecheckerError::UnreachableCode { token: node.get_token().clone() });
+                    return Err(TypecheckerErrorKind::UnreachableCode { token: node.get_token().clone() });
                 }
 
                 if idx == body_len - 1 {
@@ -928,7 +938,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 _ => Ok(typed_node)
                             }
                         }
-                        n @ _ => self.visit(n)
+                        n => self.visit(n)
                     }
                 } else {
                     let typed_node = self.visit(node)?;
@@ -940,7 +950,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             .collect()
     }
 
-    fn get_func_signature(&mut self, type_args: &Vec<Token>, node: &AstNode) -> Result<(bool, Token, Type), TypecheckerError> {
+    fn get_func_signature(&mut self, type_args: &Vec<Token>, node: &AstNode) -> Result<(bool, Token, Type), TypecheckerErrorKind> {
         let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &node {
             AstNode::FunctionDecl(_, node) => node,
             _ => unreachable!()
@@ -953,7 +963,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                     .exports.contains_key(&func_name);
                 let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
-                return Err(TypecheckerError::DuplicateBinding { ident: name.clone(), orig_ident });
+                return Err(TypecheckerErrorKind::DuplicateBinding { ident: name.clone(), orig_ident });
             }
         }
 
@@ -964,7 +974,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         for fn_type_arg in fn_type_args {
             let fn_type_arg_name = Token::get_ident_name(fn_type_arg);
             if let Some(orig_ident) = type_args.get(&fn_type_arg_name) {
-                return Err(TypecheckerError::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
+                return Err(TypecheckerErrorKind::DuplicateTypeArgument { ident: fn_type_arg.clone(), orig_ident: (*orig_ident).clone() });
             }
             fn_type_arg_names.push(fn_type_arg_name.clone());
             scope.types.insert(fn_type_arg_name.clone(), (Type::Generic(fn_type_arg_name), None, false));
@@ -979,7 +989,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         for (ident, type_ident, is_vararg, default_value) in args {
             match ident {
                 Token::Self_(_) => is_static = false,
-                ident @ _ => {
+                ident => {
                     is_variadic = is_variadic || *is_vararg;
 
                     let arg_type = match type_ident {
@@ -1012,7 +1022,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         Ok(ret)
     }
 
-    fn hoist_declarations_in_scope(&mut self, body: &Vec<AstNode>) -> Result<(), TypecheckerError> {
+    fn hoist_declarations_in_scope(&mut self, body: &Vec<AstNode>) -> Result<(), TypecheckerErrorKind> {
         for n in body {
             match n {
                 AstNode::FunctionDecl(_, _) => {
@@ -1028,7 +1038,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&new_type_name) {
                         if orig_ident != name {
                             let orig_ident = orig_ident.clone();
-                            return Err(TypecheckerError::DuplicateType { ident: name.clone(), orig_ident: Some(orig_ident) });
+                            return Err(TypecheckerErrorKind::DuplicateType { ident: name.clone(), orig_ident: Some(orig_ident) });
                         }
                     }
 
@@ -1066,7 +1076,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         &mut self,
         type_args: &Vec<Token>,
         methods: &Vec<AstNode>,
-    ) -> Result<(/* static_fields: */ Vec<(String, Type, bool)>, /* typed_methods: */ Vec<(String, Type)>), TypecheckerError> {
+    ) -> Result<(/* static_fields: */ Vec<(String, Type, bool)>, /* typed_methods: */ Vec<(String, Type)>), TypecheckerErrorKind> {
         let methods = methods.into_iter()
             .map(|node| self.get_func_signature(type_args, node))
             .collect::<Result<Vec<_>, _>>()?;
@@ -1082,7 +1092,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     if fn_name == "toString".to_string() {
                         if **ret_type != Type::String {
                             let expected = Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false });
-                            return Err(TypecheckerError::InvalidProtocolMethod { token: name, fn_name, expected, actual: typ });
+                            return Err(TypecheckerErrorKind::InvalidProtocolMethod { token: name, fn_name, expected, actual: typ });
                         }
                     }
                 } else { unreachable!() }
@@ -1106,7 +1116,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         is_enum: bool,
         methods: Vec<AstNode>,
         field_names: HashMap<String, Token>,
-    ) -> Result<(/* static_fields: */ Vec<(Token, Type, Option<TypedAstNode>)>, /* typed_methods: */ Vec<(String, TypedAstNode)>), TypecheckerError> {
+    ) -> Result<(/* static_fields: */ Vec<(Token, Type, Option<TypedAstNode>)>, /* typed_methods: */ Vec<(String, TypedAstNode)>), TypecheckerErrorKind> {
         let mut method_names = HashMap::<String, Token>::new();
         let mut static_fields = Vec::new();
         let mut typed_methods = Vec::new();
@@ -1118,9 +1128,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             let name = Token::get_ident_name(&name_tok).clone();
 
             if let Some(orig_ident) = method_names.get(&name) {
-                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: false, orig_is_enum_variant: false });
+                return Err(TypecheckerErrorKind::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: false, orig_is_enum_variant: false });
             } else if let Some(orig_ident) = field_names.get(&name) {
-                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: !is_enum, orig_is_enum_variant: is_enum });
+                return Err(TypecheckerErrorKind::DuplicateField { orig_ident: orig_ident.clone(), ident: name_tok.clone(), orig_is_field: !is_enum, orig_is_enum_variant: is_enum });
             }
 
             method_names.insert(name.clone(), name_tok.clone());
@@ -1159,7 +1169,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         Ok((static_fields, typed_methods))
     }
 
-    fn visit_binding_pattern(&mut self, binding: &mut BindingPattern, typ: &Type, is_mutable: bool) -> Result<Vec<(String, Type)>, TypecheckerError> {
+    fn visit_binding_pattern(&mut self, binding: &mut BindingPattern, typ: &Type, is_mutable: bool) -> Result<Vec<(String, Type)>, TypecheckerErrorKind> {
         match binding {
             BindingPattern::Variable(ident) => {
                 let name = Token::get_ident_name(ident);
@@ -1168,7 +1178,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                         .exports.contains_key(&name);
                     let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
-                    return Err(TypecheckerError::DuplicateBinding { ident: ident.clone(), orig_ident });
+                    return Err(TypecheckerErrorKind::DuplicateBinding { ident: ident.clone(), orig_ident });
                 }
                 self.add_binding(&name, &ident, &typ, is_mutable);
                 Ok(vec![(name, typ.clone())])
@@ -1184,8 +1194,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                         Ok(bindings)
                     }
-                    typ @ _ => {
-                        return Err(TypecheckerError::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
+                    typ => {
+                        return Err(TypecheckerErrorKind::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
                     }
                 }
             }
@@ -1193,7 +1203,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let splats = idents.iter().filter(|(_, is_splat)| *is_splat).collect::<Vec<_>>();
                 if splats.len() > 1 {
                     if let Some((BindingPattern::Variable(ident), _)) = splats.last() {
-                        return Err(TypecheckerError::DuplicateSplatDestructuring { token: ident.clone() });
+                        return Err(TypecheckerErrorKind::DuplicateSplatDestructuring { token: ident.clone() });
                     } else { unreachable!() }
                 }
 
@@ -1218,8 +1228,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                             bindings.extend(res);
                         }
                     }
-                    typ @ _ => {
-                        return Err(TypecheckerError::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
+                    typ => {
+                        return Err(TypecheckerErrorKind::InvalidAssignmentDestructuring { binding: binding.clone(), typ: typ.clone() });
                     }
                 };
                 Ok(bindings)
@@ -1228,8 +1238,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
     }
 }
 
-impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typechecker<'a, R> {
-    fn visit_literal(&mut self, token: Token, node: AstLiteralNode) -> Result<TypedAstNode, TypecheckerError> {
+impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typechecker<'a, R> {
+    fn visit_literal(&mut self, token: Token, node: AstLiteralNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         match node {
             AstLiteralNode::IntLiteral(val) =>
                 Ok(TypedAstNode::Literal(token, TypedLiteralNode::IntLiteral(val))),
@@ -1242,7 +1252,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         }
     }
 
-    fn visit_unary(&mut self, token: Token, node: UnaryNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_unary(&mut self, token: Token, node: UnaryNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let expr = *node.expr;
         let typed_expr = self.visit(expr)?;
         let expr_type = typed_expr.get_type();
@@ -1258,12 +1268,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 } else {
                     Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))])
                 };
-                Err(TypecheckerError::Mismatch { token, expected, actual: expr_type })
+                Err(TypecheckerErrorKind::Mismatch { token, expected, actual: expr_type })
             }
         }
     }
 
-    fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_binary(&mut self, token: Token, node: BinaryNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         #[inline]
         fn type_for_op<R: ModuleReader>(
             zelf: &mut Typechecker<R>,
@@ -1271,7 +1281,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             op: &BinaryOp,
             typed_left: &TypedAstNode,
             typed_right: &mut TypedAstNode,
-        ) -> Result<Type, TypecheckerError> {
+        ) -> Result<Type, TypecheckerErrorKind> {
             let ltype = typed_left.get_type();
             let rtype = typed_right.get_type();
 
@@ -1281,29 +1291,29 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         (Type::String, t) | (t, Type::String) if t != &Type::Unit => Ok(Type::String),
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Sub | BinaryOp::SubEq | BinaryOp::Mul | BinaryOp::MulEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Pow =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Div | BinaryOp::DivEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) | (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Mod | BinaryOp::ModEq =>
                     match (&ltype, &rtype) {
                         (Type::Int, Type::Int) => Ok(Type::Int),
                         (Type::Float, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) => Ok(Type::Float),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::And | BinaryOp::Or | BinaryOp::Xor =>
                     match (&ltype, &rtype) {
@@ -1311,31 +1321,31 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         (Type::Bool, Type::Option(_)) |
                         (Type::Option(_), Type::Option(_)) |
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::AndEq | BinaryOp::OrEq =>
                     match (&ltype, &rtype) {
                         (Type::Bool, Type::Bool) => Ok(Type::Bool),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte =>
                     match (&ltype, &rtype) {
                         (Type::String, Type::String) => Ok(Type::Bool),
                         (Type::Int, Type::Int) | (Type::Int, Type::Float) | (Type::Float, Type::Float) | (Type::Float, Type::Int) => Ok(Type::Bool),
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 BinaryOp::Neq | BinaryOp::Eq => Ok(Type::Bool),
                 BinaryOp::Coalesce | BinaryOp::CoalesceEq => {
                     match (&ltype, &rtype) {
-                        (Type::Option(ltype), rtype @ _) => {
+                        (Type::Option(ltype), rtype) => {
                             if !zelf.are_types_equivalent(typed_right, ltype)? {
                                 let token = typed_right.get_token().clone();
-                                Err(TypecheckerError::Mismatch { token, expected: (**ltype).clone(), actual: rtype.clone() })
+                                Err(TypecheckerErrorKind::Mismatch { token, expected: (**ltype).clone(), actual: rtype.clone() })
                             } else {
                                 Ok(rtype.clone())
                             }
                         }
-                        (_, _) => Err(TypecheckerError::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
+                        (_, _) => Err(TypecheckerErrorKind::InvalidOperator { token: token.clone(), op: op.clone(), ltype, rtype })
                     }
                 }
             }
@@ -1351,7 +1361,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             BinaryOp::AndEq => (true, BinaryOp::And, Token::And(pos.clone())),
             BinaryOp::OrEq => (true, BinaryOp::Or, Token::Or(pos.clone())),
             BinaryOp::CoalesceEq => (true, BinaryOp::Coalesce, Token::Elvis(pos.clone())),
-            op @ _ => (false, op, token)
+            op => (false, op, token)
         };
         if is_assignment {
             let assignment_node = AstNode::Assignment(
@@ -1405,7 +1415,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(typed_ast_node)
     }
 
-    fn visit_grouped(&mut self, token: Token, node: GroupedNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_grouped(&mut self, token: Token, node: GroupedNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let GroupedNode { expr } = node;
         let typed_expr = self.visit(*expr)?;
         let typ = typed_expr.get_type();
@@ -1413,8 +1423,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::Grouped(token, TypedGroupedNode { typ, expr }))
     }
 
-    fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<TypedAstNode, TypecheckerError> {
-        let items: Result<Vec<TypedAstNode>, TypecheckerError> = node.items.into_iter()
+    fn visit_array(&mut self, token: Token, node: ArrayNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
+        let items: Result<Vec<TypedAstNode>, TypecheckerErrorKind> = node.items.into_iter()
             .map(|n| self.visit(n))
             .collect();
         let items = items?;
@@ -1435,7 +1445,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::Array(token.clone(), TypedArrayNode { typ: Type::Array(Box::new(typ)), items }))
     }
 
-    fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let MapNode { items } = node;
 
         let mut fields = Vec::<(Token, TypedAstNode)>::new();
@@ -1444,7 +1454,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         for (field_name_tok, field_value) in items {
             let field_name = Token::get_ident_name(&field_name_tok);
             if let Some(orig_ident) = field_names.get(&field_name) {
-                return Err(TypecheckerError::DuplicateBinding { orig_ident: Some(orig_ident.clone()), ident: field_name_tok });
+                return Err(TypecheckerErrorKind::DuplicateBinding { orig_ident: Some(orig_ident.clone()), ident: field_name_tok });
             } else {
                 field_names.insert(field_name.clone(), field_name_tok.clone());
             }
@@ -1471,8 +1481,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: fields }))
     }
 
-    fn visit_set_literal(&mut self, token: Token, node: SetNode) -> Result<TypedAstNode, TypecheckerError> {
-        let items: Result<Vec<TypedAstNode>, TypecheckerError> = node.items.into_iter()
+    fn visit_set_literal(&mut self, token: Token, node: SetNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
+        let items: Result<Vec<TypedAstNode>, TypecheckerErrorKind> = node.items.into_iter()
             .map(|n| self.visit(n))
             .collect();
         let items = items?;
@@ -1493,11 +1503,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::Set(token.clone(), TypedSetNode { typ: Type::Set(Box::new(typ)), items }))
     }
 
-    fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_binding_decl(&mut self, token: Token, node: BindingDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let BindingDeclNode { export_token, is_mutable, mut binding, type_ann, expr } = node;
         if !is_mutable && expr.is_none() {
             if let BindingPattern::Variable(ident) = binding {
-                return Err(TypecheckerError::MissingRequiredAssignment { ident });
+                return Err(TypecheckerErrorKind::MissingRequiredAssignment { ident });
             } else { unreachable!("Destructured binding declarations without an `=` will not parse") }
         }
 
@@ -1521,7 +1531,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         .map(|g| g.clone())
                         .next();
                     if let Some(unbound_generic) = generic {
-                        return Err(TypecheckerError::UnboundGeneric(binding.get_token().clone(), unbound_generic));
+                        return Err(TypecheckerErrorKind::UnboundGeneric(binding.get_token().clone(), unbound_generic));
                     }
                 }
                 typ
@@ -1531,7 +1541,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 if self.are_types_equivalent(typed_expr, ann_type)? {
                     ann_type.clone()
                 } else {
-                    return Err(TypecheckerError::Mismatch {
+                    return Err(TypecheckerErrorKind::Mismatch {
                         token: typed_expr.get_token().clone(),
                         expected: ann_type.clone(),
                         actual: typed_expr.get_type(),
@@ -1539,19 +1549,19 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
             }
             (None, None) => {
-                return Err(TypecheckerError::UnannotatedUninitialized { ident: binding.get_token().clone(), is_mutable });
+                return Err(TypecheckerErrorKind::UnannotatedUninitialized { ident: binding.get_token().clone(), is_mutable });
             }
         };
         if typ.is_unknown(&|type_name| self.resolve_type(type_name)) {
-            return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unknown });
+            return Err(TypecheckerErrorKind::ForbiddenVariableType { binding, typ: Type::Unknown });
         } else if typ.is_unit(&|type_name| self.resolve_type(type_name)) {
-            return Err(TypecheckerError::ForbiddenVariableType { binding, typ: Type::Unit });
+            return Err(TypecheckerErrorKind::ForbiddenVariableType { binding, typ: Type::Unit });
         }
 
         let binding_idents = self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
         if let Some(token) = export_token {
             if self.scopes.len() != 1 {
-                return Err(TypecheckerError::InvalidExportDepth { token });
+                return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             for (name, typ) in binding_idents {
                 self.exports.insert(name, ExportedValue::Binding(typ));
@@ -1568,7 +1578,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::BindingDecl(token, node))
     }
 
-    fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let FunctionDeclNode { export_token, name, type_args, args, ret_type: ret_ann_type, body, .. } = node;
 
         let func_name = Token::get_ident_name(&name);
@@ -1576,10 +1586,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
                 .exports.contains_key(&func_name);
             let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
-            return Err(TypecheckerError::DuplicateBinding { ident: name, orig_ident });
+            return Err(TypecheckerErrorKind::DuplicateBinding { ident: name, orig_ident });
         } else if let Some(token) = export_token {
             if self.scopes.len() != 1 {
-                return Err(TypecheckerError::InvalidExportDepth { token });
+                return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             true
         } else { false };
@@ -1590,7 +1600,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let name = Token::get_ident_name(type_arg);
             match seen.get(&name) {
                 Some(orig_ident) => {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
+                    return Err(TypecheckerErrorKind::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
                 }
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
@@ -1618,9 +1628,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                 match ident {
                     Token::Self_(_) => None,
-                    ident @ _ => {
-                        Some((Token::get_ident_name(ident).clone(), typ.clone(), default_value.is_some()))
-                    }
+                    ident => Some((Token::get_ident_name(ident).clone(), typ.clone(), default_value.is_some()))
                 }
             })
             .collect::<Vec<_>>();
@@ -1645,7 +1653,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     let ret_type = ret_ann_type.expect("Should be Some if initial_ret_type is anything but Unknown");
                     let ident_token = ret_type.get_ident();
                     let ret_type_name = Token::get_ident_name(&ident_token);
-                    return Err(TypecheckerError::UnboundGeneric(ident_token, ret_type_name));
+                    return Err(TypecheckerErrorKind::UnboundGeneric(ident_token, ret_type_name));
                 }
             }
         }
@@ -1680,7 +1688,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                             if !self.are_types_equivalent(&mut node, &typ)? {
                                 let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                                return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: false, expected: typ, actual: node_type });
+                                return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: false, expected: typ, actual: node_type });
                             } else {
                                 typ
                             }
@@ -1698,12 +1706,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let token = ret_node.get_token().clone();
                 let mut ret_node = ret_node;
                 if !self.are_types_equivalent(&mut *ret_node, &ret_type)? {
-                    return Err(TypecheckerError::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: ret_ann_type.is_none(), bare_return: false, expected: ret_type, actual: ret_node_typ });
+                    return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: ret_ann_type.is_none(), bare_return: false, expected: ret_type, actual: ret_node_typ });
                 }
             } else if ret_type != Type::Unit {
                 let ret_ann_type = ret_ann_type.as_ref()
                     .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
-                return Err(TypecheckerError::ReturnTypeMismatch { token: return_tok, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: true, expected: ret_ann_type, actual: Type::Unit });
+                return Err(TypecheckerErrorKind::ReturnTypeMismatch { token: return_tok, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: true, expected: ret_ann_type, actual: Type::Unit });
             }
         }
 
@@ -1728,16 +1736,16 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
     }
 
-    fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         if self.scopes.len() != 1 {
-            return Err(TypecheckerError::InvalidTypeDeclDepth { token });
+            return Err(TypecheckerErrorKind::InvalidTypeDeclDepth { token });
         }
 
         let TypeDeclNode { export_token, name, type_args, fields, methods, .. } = node;
         let new_type_name = Token::get_ident_name(&name).clone();
         let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
-                return Err(TypecheckerError::InvalidExportDepth { token });
+                return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             true
         } else { false };
@@ -1769,7 +1777,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let name = Token::get_ident_name(type_arg);
             match seen.get(&name) {
                 Some(orig_ident) => {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
+                    return Err(TypecheckerErrorKind::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
                 }
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
@@ -1785,7 +1793,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let field_type = self.type_from_type_ident(&type_ident, false)?;
                 let field_name_str = Token::get_ident_name(&ident);
                 if let Some(orig_ident) = field_names.get(&field_name_str) {
-                    return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident, orig_is_field: true, orig_is_enum_variant: false });
+                    return Err(TypecheckerErrorKind::DuplicateField { orig_ident: orig_ident.clone(), ident, orig_is_field: true, orig_is_enum_variant: false });
                 } else {
                     field_names.insert(field_name_str.clone(), ident.clone());
                 }
@@ -1824,7 +1832,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let mut default_value = self.visit(default_value)?;
                 let default_value_type = default_value.get_type();
                 if !self.are_types_equivalent(&mut default_value, &field_type)? {
-                    return Err(TypecheckerError::Mismatch { token: default_value.get_token().clone(), actual: default_value_type, expected: field_type });
+                    return Err(TypecheckerErrorKind::Mismatch { token: default_value.get_token().clone(), actual: default_value_type, expected: field_type });
                 } else {
                     Some(default_value)
                 }
@@ -1868,16 +1876,16 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(self.get_type(&new_type_name).unwrap().1.unwrap())
     }
 
-    fn visit_enum_decl(&mut self, token: Token, node: EnumDeclNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_enum_decl(&mut self, token: Token, node: EnumDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         if self.scopes.len() != 1 {
-            return Err(TypecheckerError::InvalidTypeDeclDepth { token });
+            return Err(TypecheckerErrorKind::InvalidTypeDeclDepth { token });
         }
 
         let EnumDeclNode { export_token, name, variants, methods, type_args } = node;
         let new_enum_name = Token::get_ident_name(&name);
         let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
-                return Err(TypecheckerError::InvalidExportDepth { token });
+                return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             true
         } else { false };
@@ -1904,7 +1912,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             let name = Token::get_ident_name(type_arg);
             match seen.get(&name) {
                 Some(orig_ident) => {
-                    return Err(TypecheckerError::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
+                    return Err(TypecheckerErrorKind::DuplicateTypeArgument { ident: type_arg.clone(), orig_ident: orig_ident.clone() });
                 }
                 None => {
                     seen.insert(name.clone(), type_arg.clone());
@@ -1919,7 +1927,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         for (name, args) in variants.iter() {
             let variant_name = Token::get_ident_name(name).clone();
             if let Some(orig_ident) = variant_names.get(&variant_name) {
-                return Err(TypecheckerError::DuplicateField { orig_ident: orig_ident.clone(), ident: name.clone(), orig_is_field: false, orig_is_enum_variant: true });
+                return Err(TypecheckerErrorKind::DuplicateField { orig_ident: orig_ident.clone(), ident: name.clone(), orig_is_field: false, orig_is_enum_variant: true });
             } else {
                 variant_names.insert(variant_name.clone(), name.clone());
             }
@@ -2017,11 +2025,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(self.get_type(&new_enum_name).unwrap().1.unwrap())
     }
 
-    fn visit_ident(&mut self, token: Token, type_args: Option<Vec<TypeIdentifier>>) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_ident(&mut self, token: Token, type_args: Option<Vec<TypeIdentifier>>) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let name = Token::get_ident_name(&token);
 
         let node = match self.get_binding(&name) {
-            None => return Err(TypecheckerError::UnknownIdentifier { ident: token }),
+            None => return Err(TypecheckerErrorKind::UnknownIdentifier { ident: token }),
             Some((ScopeBinding(_, typ, is_mutable), scope_depth)) => {
                 let binding_typ = typ.clone();
                 let is_mutable = is_mutable.clone();
@@ -2051,7 +2059,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         let typ_generics = get_type_generics(self, &node.typ);
         let num_provided = type_args.as_ref().map_or(0, Vec::len);
         if typ_generics.len() != 0 && num_provided != 0 && typ_generics.len() != num_provided {
-            return Err(TypecheckerError::InvalidTypeArgumentArity {
+            return Err(TypecheckerErrorKind::InvalidTypeArgumentArity {
                 token,
                 actual_type: node.typ,
                 expected: typ_generics.len(),
@@ -2072,7 +2080,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::Identifier(token, node))
     }
 
-    fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_assignment(&mut self, token: Token, node: AssignmentNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let AssignmentNode { target, expr } = node;
         match *target {
             AstNode::Identifier(ident_tok, _) => {
@@ -2087,12 +2095,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         Some((ScopeBinding(orig_ident, _, _), _)) => orig_ident.clone(),
                         None => unreachable!()
                     };
-                    return Err(TypecheckerError::AssignmentToImmutable { token, orig_ident });
+                    return Err(TypecheckerErrorKind::AssignmentToImmutable { token, orig_ident });
                 }
 
                 let mut typed_expr = self.visit(*expr)?;
                 if !self.are_types_equivalent(&mut typed_expr, typ)? {
-                    Err(TypecheckerError::Mismatch {
+                    Err(TypecheckerErrorKind::Mismatch {
                         token: typed_expr.get_token().clone(),
                         expected: typ.clone(),
                         actual: typed_expr.get_type(),
@@ -2109,7 +2117,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             }
             AstNode::Indexing(tok, node) => {
                 if let IndexingMode::Range(_, _) = &node.index {
-                    return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IndexingMode });
+                    return Err(TypecheckerErrorKind::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IndexingMode });
                 }
 
                 let mut typed_expr = self.visit(*expr)?;
@@ -2132,10 +2140,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             }
                             Type::Map(_, value_type) => (*value_type, AssignmentTargetKind::MapIndex),
                             Type::String => {
-                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(Type::String), reason: InvalidAssignmentTargetReason::StringTarget });
+                                return Err(TypecheckerErrorKind::InvalidAssignmentTarget { token, typ: Some(Type::String), reason: InvalidAssignmentTargetReason::StringTarget });
                             }
                             typ @ Type::Option(_) => {
-                                return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: Some(typ), reason: InvalidAssignmentTargetReason::OptionalTarget });
+                                return Err(TypecheckerErrorKind::InvalidAssignmentTarget { token, typ: Some(typ), reason: InvalidAssignmentTargetReason::OptionalTarget });
                             }
                             _ => unreachable!()
                         }
@@ -2145,7 +2153,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                 if !self.are_types_equivalent(&mut typed_expr, &index_target_type)? {
                     let token = typed_expr.get_token().clone();
-                    Err(TypecheckerError::Mismatch { token, expected: index_target_type, actual: expr_type })
+                    Err(TypecheckerErrorKind::Mismatch { token, expected: index_target_type, actual: expr_type })
                 } else {
                     let node = TypedAssignmentNode {
                         kind,
@@ -2160,9 +2168,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let typed_target = self.visit_accessor(tok.clone(), node)?;
                 if let TypedAstNode::Accessor(_, TypedAccessorNode { is_method, is_readonly, field_ident, .. }) = &typed_target {
                     if *is_method {
-                        return Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
+                        return Err(TypecheckerErrorKind::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::MethodTarget });
                     } else if *is_readonly {
-                        return Err(TypecheckerError::InvalidAccess { token: field_ident.clone(), is_field: !*is_method, is_get: false });
+                        return Err(TypecheckerErrorKind::InvalidAccess { token: field_ident.clone(), is_field: !*is_method, is_get: false });
                     }
                 } else { unreachable!() }
                 let mut typed_expr = self.visit(*expr)?;
@@ -2171,7 +2179,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let target_type = typed_target.get_type();
                 if !self.are_types_equivalent(&mut typed_expr, &target_type)? {
                     let token = typed_expr.get_token().clone();
-                    Err(TypecheckerError::Mismatch { token, expected: target_type, actual: expr_type })
+                    Err(TypecheckerErrorKind::Mismatch { token, expected: target_type, actual: expr_type })
                 } else {
                     let node = TypedAssignmentNode {
                         kind: AssignmentTargetKind::Field,
@@ -2182,11 +2190,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     Ok(TypedAstNode::Assignment(token, node))
                 }
             }
-            _ => Err(TypecheckerError::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget })
+            _ => Err(TypecheckerErrorKind::InvalidAssignmentTarget { token, typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget })
         }
     }
 
-    fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_indexing(&mut self, token: Token, node: IndexingNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let IndexingNode { target, index } = node;
 
         let target = self.visit(*target)?;
@@ -2197,10 +2205,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let idx = self.visit(*idx)?;
                 let index = match &idx {
                     TypedAstNode::Literal(_, TypedLiteralNode::IntLiteral(idx)) => idx,
-                    _ => return Err(TypecheckerError::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: true, index: -1 })
+                    _ => return Err(TypecheckerErrorKind::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: true, index: -1 })
                 };
                 if *index < 0 || *index > ((types.len() - 1) as i64) {
-                    Err(TypecheckerError::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: false, index: *index })
+                    Err(TypecheckerErrorKind::InvalidTupleIndexingSelector { token: idx.get_token().clone(), types: types.clone(), non_constant: false, index: *index })
                 } else {
                     Ok(TypedAstNode::Indexing(token, TypedIndexingNode {
                         typ: types[*index as usize].clone(),
@@ -2209,7 +2217,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     }))
                 }
             } else {
-                Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type, index_mode: index })
+                Err(TypecheckerErrorKind::InvalidIndexingTarget { token: token.clone(), target_type, index_mode: index })
             };
         }
 
@@ -2220,7 +2228,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             (Type::String, _) => Ok(Type::String),
             (Type::Map(_, value_type), IndexingMode::Index(_)) => Ok(Type::Option(value_type)),
             (Type::Tuple(_), IndexingMode::Index(_)) => unreachable!("It should have been handled above"),
-            (typ, index_mode) => Err(TypecheckerError::InvalidIndexingTarget { token: token.clone(), target_type: typ, index_mode: index_mode.clone() })
+            (typ, index_mode) => Err(TypecheckerErrorKind::InvalidIndexingTarget { token: token.clone(), target_type: typ, index_mode: index_mode.clone() })
         }?;
 
         let index = match index {
@@ -2228,9 +2236,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let idx = self.visit(*idx)?;
                 match (&target_type, idx.get_type()) {
                     (Type::Array(_), Type::Int) | (Type::String, Type::Int) => Ok(IndexingMode::Index(Box::new(idx))),
-                    (Type::Map(key_type, _), ref selector_type @ _) => {
+                    (Type::Map(key_type, _), ref selector_type) => {
                         if !selector_type.is_equivalent_to(&key_type, &|typ_name| self.resolve_type(typ_name)) {
-                            Err(TypecheckerError::InvalidIndexingSelector {
+                            Err(TypecheckerErrorKind::InvalidIndexingSelector {
                                 token: idx.get_token().clone(),
                                 target_type: target_type.clone(),
                                 selector_type: selector_type.clone(),
@@ -2239,7 +2247,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             Ok(IndexingMode::Index(Box::new(idx)))
                         }
                     }
-                    (target_type, selector_type) => Err(TypecheckerError::InvalidIndexingSelector {
+                    (target_type, selector_type) => Err(TypecheckerErrorKind::InvalidIndexingSelector {
                         token: idx.get_token().clone(),
                         target_type: target_type.clone(),
                         selector_type,
@@ -2248,7 +2256,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             }
             IndexingMode::Range(start, end) => {
                 #[inline]
-                fn visit_endpoint<R: ModuleReader>(tc: &mut Typechecker<R>, node: Option<Box<AstNode>>) -> Result<Option<Box<TypedAstNode>>, TypecheckerError> {
+                fn visit_endpoint<R: ModuleReader>(tc: &mut Typechecker<R>, node: Option<Box<AstNode>>) -> Result<Option<Box<TypedAstNode>>, TypecheckerErrorKind> {
                     match node {
                         None => Ok(None),
                         Some(node) => {
@@ -2256,7 +2264,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                             let token = typed_node.get_token().clone();
                             match typed_node.get_type() {
                                 Type::Int => Ok(Some(Box::new(typed_node))),
-                                typ @ _ => Err(TypecheckerError::Mismatch { token, expected: Type::Int, actual: typ })
+                                typ => Err(TypecheckerErrorKind::Mismatch { token, expected: Type::Int, actual: typ })
                             }
                         }
                     }
@@ -2275,17 +2283,17 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         }))
     }
 
-    fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_if_statement(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let node = self.visit_if_node(true, node)?;
         Ok(TypedAstNode::IfStatement(token, node))
     }
 
-    fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_if_expression(&mut self, token: Token, node: IfNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut node = self.visit_if_node(false, node)?;
 
         let mut if_block_terminates = false;
         let if_block_type = match &node.if_block.last() {
-            None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
+            None => Err(TypecheckerErrorKind::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
             Some(expr) => {
                 if_block_terminates = Self::all_branches_terminate(expr).is_some();
                 Ok(expr.get_type())
@@ -2294,7 +2302,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
         let typ = match &node.else_block {
             Some(else_block) => match else_block.last() {
-                None => Err(TypecheckerError::MissingIfExprBranch { if_token: token.clone(), is_if_branch: false }),
+                None => Err(TypecheckerErrorKind::MissingIfExprBranch { if_token: token.clone(), is_if_branch: false }),
                 Some(expr) => {
                     let else_block_type = expr.get_type();
 
@@ -2311,7 +2319,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     } else {
                         let mut if_block_last = node.if_block.last_mut().expect("MissingIfExprBranch should be emitted otherwise");
                         if !self.are_types_equivalent(&mut if_block_last, &else_block_type)? {
-                            Err(TypecheckerError::IfExprBranchMismatch {
+                            Err(TypecheckerErrorKind::IfExprBranchMismatch {
                                 if_token: token.clone(),
                                 if_type: if_block_type,
                                 else_type: else_block_type,
@@ -2335,12 +2343,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::IfExpression(token.clone(), node))
     }
 
-    fn visit_match_statement(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_match_statement(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let node = self.visit_match_node(true, &token, node)?;
         Ok(TypedAstNode::MatchStatement(token, node))
     }
 
-    fn visit_match_expression(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_match_expression(&mut self, token: Token, node: MatchNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut node = self.visit_match_node(false, &token, node)?;
 
         let mut typ = None;
@@ -2353,7 +2361,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 let mut block_last = block.last_mut().expect("A case should have a non-empty body");
                 let block_typ = block_last.get_type();
                 if !self.are_types_equivalent(&mut block_last, &typ)? {
-                    return Err(TypecheckerError::MatchBranchMismatch {
+                    return Err(TypecheckerErrorKind::MatchBranchMismatch {
                         token: block_last.get_token().clone(),
                         expected: typ.clone(),
                         actual: block_typ,
@@ -2369,7 +2377,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::MatchExpression(token, node))
     }
 
-    fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_invocation(&mut self, token: Token, node: InvocationNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let InvocationNode { target, args } = node;
         let target = self.visit(*target)?;
         let target_type = target.get_type();
@@ -2381,7 +2389,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             args: Vec<(/* arg_name: */ Option<Token>, /* arg_node: */ AstNode)>,
             expected_arg_types: &Vec<(/* arg_name: */ String, /* arg_type: */ Type, /* is_optional: */ bool)>,
             generics: &mut HashMap<String, Type>,
-        ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerError> {
+        ) -> Result<Vec<(String, Option<TypedAstNode>)>, TypecheckerErrorKind> {
             // Check for duplicate named parameters
             let mut seen = HashSet::new();
             for (arg_name_tok, _) in args.iter() {
@@ -2390,7 +2398,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                     Some(arg_name_tok) => {
                         let arg_name = Token::get_ident_name(arg_name_tok);
                         if seen.contains(&arg_name) {
-                            return Err(TypecheckerError::DuplicateParamName { token: arg_name_tok.clone() });
+                            return Err(TypecheckerErrorKind::DuplicateParamName { token: arg_name_tok.clone() });
                         }
                         seen.insert(arg_name);
                     }
@@ -2413,7 +2421,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 if !expected_args.contains_key(arg_name) {
                     // Note: this overlaps slightly with the IncorrectArity error; if named args are provided,
                     // this error will be raised for greater clarity, as opposed to IncorrectArity.
-                    return Err(TypecheckerError::UnexpectedParamName { token: arg_name_token.clone() });
+                    return Err(TypecheckerErrorKind::UnexpectedParamName { token: arg_name_token.clone() });
                 }
             }
 
@@ -2441,14 +2449,14 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             }
 
             if !missing_params.is_empty() {
-                Err(TypecheckerError::MissingRequiredParams { token: invocation_target, missing_params })
+                Err(TypecheckerErrorKind::MissingRequiredParams { token: invocation_target, missing_params })
             } else {
                 Ok(typed_args)
             }
         }
 
         #[inline]
-        fn typecheck_arg<R: ModuleReader>(zelf: &mut Typechecker<R>, arg: AstNode, expected_arg_type: &Type, generics: &mut HashMap<String, Type>) -> Result<TypedAstNode, TypecheckerError> {
+        fn typecheck_arg<R: ModuleReader>(zelf: &mut Typechecker<R>, arg: AstNode, expected_arg_type: &Type, generics: &mut HashMap<String, Type>) -> Result<TypedAstNode, TypecheckerErrorKind> {
             let mut typed_arg = zelf.visit(arg)?;
             let arg_type = typed_arg.get_type();
 
@@ -2472,7 +2480,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             };
 
             if !zelf.are_types_equivalent(&mut typed_arg, &expected_arg_type)? {
-                return Err(TypecheckerError::Mismatch { token: typed_arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
+                return Err(TypecheckerErrorKind::Mismatch { token: typed_arg.get_token().clone(), expected: expected_arg_type.clone(), actual: arg_type });
             }
             if generics_need_refit { // If it was not possible to determine generic values beforehand (eg. due to lambda return types), try the fit again after are_types_equivalent
                 let arg_type = typed_arg.get_type();
@@ -2503,7 +2511,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             Type::Fn(FnType { arg_types, type_args, ret_type, is_variadic, .. }) => {
                 let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
                 if num_named != 0 && num_named != args.len() {
-                    return Err(TypecheckerError::InvalidMixedParamType { token: target.get_token().clone() });
+                    return Err(TypecheckerErrorKind::InvalidMixedParamType { token: target.get_token().clone() });
                 }
 
                 let mut generics = HashMap::<String, Type>::with_capacity(type_args.len());
@@ -2513,7 +2521,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         .take_while(|(_, _, is_optional)| !*is_optional)
                         .count();
                     if args.len() < num_req_args || (!is_variadic && args.len() > arg_types.len()) {
-                        return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
+                        return Err(TypecheckerErrorKind::IncorrectArity { token: target.get_token().clone(), expected: num_req_args, actual: args.len() });
                     }
 
                     let mut typed_args = Vec::new();
@@ -2568,7 +2576,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
 
                     let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
                     if args.len() != num_named {
-                        return Err(TypecheckerError::InvalidTypeFuncInvocation { token: target_token });
+                        return Err(TypecheckerErrorKind::InvalidTypeFuncInvocation { token: target_token });
                     }
 
                     let mut generics = HashMap::new();
@@ -2633,19 +2641,19 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
                 t @ Type::Int | t @ Type::Float | t @ Type::String | t @ Type::Bool => {
                     if args.len() != 1 {
-                        return Err(TypecheckerError::IncorrectArity { token: target.get_token().clone(), expected: 1, actual: args.len() });
+                        return Err(TypecheckerErrorKind::IncorrectArity { token: target.get_token().clone(), expected: 1, actual: args.len() });
                     }
                     let mut args = args;
                     let (arg_name, node) = args.remove(0);
                     match arg_name {
                         Some(arg_name_tok) => {
-                            return Err(TypecheckerError::UnexpectedParamName { token: arg_name_tok });
+                            return Err(TypecheckerErrorKind::UnexpectedParamName { token: arg_name_tok });
                         }
                         None => {
                             let mut typed_arg = self.visit(node)?;
                             let arg_type = typed_arg.get_type();
                             if !self.are_types_equivalent(&mut typed_arg, &t)? {
-                                return Err(TypecheckerError::Mismatch { token: typed_arg.get_token().clone(), expected: t.clone(), actual: arg_type });
+                                return Err(TypecheckerErrorKind::Mismatch { token: typed_arg.get_token().clone(), expected: t.clone(), actual: arg_type });
                             }
 
                             match typed_arg {
@@ -2655,22 +2663,22 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                         }
                     }
                 }
-                typ @ _ => Err(TypecheckerError::InvalidInstantiation { token: target.get_token().clone(), typ }),
+                typ => Err(TypecheckerErrorKind::InvalidInstantiation { token: target.get_token().clone(), typ }),
             }
-            target_type @ _ => Err(TypecheckerError::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
+            target_type => Err(TypecheckerErrorKind::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
         }
     }
 
-    fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_for_loop(&mut self, token: Token, node: ForLoopNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let ForLoopNode { mut binding, index_ident, iterator, body } = node;
         let iterator = self.visit(*iterator)?;
         let (iteratee_type, index_type) = match iterator.get_type() {
             Type::Array(inner) |
             Type::Set(inner) => (*inner, Type::Int),
             Type::Map(key_type, val_type) => (*key_type, *val_type),
-            iterator_type @ _ => {
+            iterator_type => {
                 let token = iterator.get_token().clone();
-                return Err(TypecheckerError::InvalidLoopTarget { token, target_type: iterator_type });
+                return Err(TypecheckerErrorKind::InvalidLoopTarget { token, target_type: iterator_type });
             }
         };
         let iterator = Box::new(iterator);
@@ -2691,7 +2699,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::ForLoop(token, TypedForLoopNode { binding, index_ident, iterator, body }))
     }
 
-    fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_while_loop(&mut self, token: Token, node: WhileLoopNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let WhileLoopNode { condition, condition_binding, body } = node;
 
         let condition = self.visit(*condition)?;
@@ -2701,7 +2709,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         };
         if !is_valid_cond_type {
             let token = condition.get_token().clone();
-            return Err(TypecheckerError::InvalidIfConditionType { token, actual: condition.get_type() });
+            return Err(TypecheckerErrorKind::InvalidIfConditionType { token, actual: condition.get_type() });
         }
         let condition = Box::new(condition);
 
@@ -2732,7 +2740,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::WhileLoop(token, TypedWhileLoopNode { condition, condition_binding, body }))
     }
 
-    fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_break(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut iter = self.scopes.iter().rev();
         let has_loop_parent = loop {
             match iter.next().map(|s| &s.kind) {
@@ -2745,11 +2753,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         if has_loop_parent {
             Ok(TypedAstNode::Break(token))
         } else {
-            Err(TypecheckerError::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminator(token))
         }
     }
 
-    fn visit_continue(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_continue(&mut self, token: Token) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut iter = self.scopes.iter().rev();
         let has_loop_parent = loop {
             match iter.next().map(|s| &s.kind) {
@@ -2762,11 +2770,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         if has_loop_parent {
             Ok(TypedAstNode::Continue(token))
         } else {
-            Err(TypecheckerError::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminator(token))
         }
     }
 
-    fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut iter = self.scopes.iter_mut().rev();
         let has_fn_parent = loop {
             match iter.next().map(|s| &s.kind) {
@@ -2788,11 +2796,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             self.returns.push(node.clone());
             Ok(node)
         } else {
-            Err(TypecheckerError::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminator(token))
         }
     }
 
-    fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let module_id = node.get_module_id();
         let ImportNode { imports, star_token, .. } = &node;
         let module = self.module_loader.get_module(&module_id);
@@ -2805,7 +2813,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             imports.iter().map(|import_token| {
                 let import_name = Token::get_ident_name(&import_token);
                 match module.exports.get(&import_name) {
-                    None => Err(TypecheckerError::InvalidImportValue { ident: import_token.clone() }),
+                    None => Err(TypecheckerErrorKind::InvalidImportValue { ident: import_token.clone() }),
                     Some(export) => Ok((import_name, import_token, export))
                 }
             }).collect::<Result<Vec<_>, _>>()?
@@ -2816,7 +2824,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&import_name) {
                 let is_prelude = module_id == ModuleId::from_name("prelude");
                 let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
-                return Err(TypecheckerError::DuplicateBinding { ident: import_ident_token.clone(), orig_ident });
+                return Err(TypecheckerErrorKind::DuplicateBinding { ident: import_ident_token.clone(), orig_ident });
             }
 
             match exported_value {
@@ -2855,7 +2863,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id }))
     }
 
-    fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let AccessorNode { target, field, is_opt_safe } = node;
         let target = self.visit(*target)?;
 
@@ -2876,7 +2884,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
             target_type: &Type,
             field_name: &String,
             token: &Token,
-        ) -> Result<(Option<FieldSpec>, HashMap<String, Type>), TypecheckerError> {
+        ) -> Result<(Option<FieldSpec>, HashMap<String, Type>), TypecheckerErrorKind> {
             match zelf.resolve_ref_type(&target_type) {
                 Type::Struct(StructType { fields, methods, type_args, .. }) => {
                     let generics = type_args.into_iter().collect::<HashMap<String, Type>>();
@@ -2995,7 +3003,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 if let Some(ident_type_args) = &ident_type_args {
                     if let Type::Fn(FnType { type_args: fn_type_args, .. }) = &typ {
                         if ident_type_args.len() != fn_type_args.len() {
-                            return Err(TypecheckerError::InvalidTypeArgumentArity {
+                            return Err(TypecheckerErrorKind::InvalidTypeArgumentArity {
                                 token: token.clone(),
                                 actual_type: typ.clone(),
                                 expected: fn_type_args.len(),
@@ -3010,7 +3018,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
                 }
                 (idx, Type::substitute_generics(&typ, &generics), is_method, readonly)
             }
-            None => return Err(TypecheckerError::UnknownMember { token: field_ident, target_type: target_type.clone() })
+            None => return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone() })
         };
         if is_opt {
             typ = Type::Option(Box::new(typ))
@@ -3030,7 +3038,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         token: Token,
         node: LambdaNode,
         args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>,
-    ) -> Result<TypedAstNode, TypecheckerError> {
+    ) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let orig_node = node.clone();
         let LambdaNode { args, body } = node;
 
@@ -3081,7 +3089,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerError> for Typeche
         Ok(typed_node)
     }
 
-    fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<TypedAstNode, TypecheckerError> {
+    fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let items = nodes.into_iter()
             .map(|n| { self.visit(n) })
             .collect::<Result<Vec<_>, _>>()?;
@@ -3098,18 +3106,18 @@ mod tests {
     use crate::parser::ast::UnaryOp;
     use crate::common::test_utils::MockModuleReader;
 
-    type TestResult = Result<(), TypecheckerError>;
+    type TestResult = Result<(), TypecheckerErrorKind>;
 
-    fn test_typecheck(input: &str) -> Result<TypedModule, TypecheckerError> {
+    fn test_typecheck(input: &str) -> Result<TypedModule, TypecheckerErrorKind> {
         test_typecheck_with_modules(input, vec![])
     }
 
-    fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerError> {
+    fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerErrorKind> {
         let mock_reader = MockModuleReader::new(modules);
         let mut mock_loader = ModuleLoader::new(mock_reader);
         let module_id = ModuleId::from_name("_test");
         let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
-            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e } else { unreachable!() })?;
+            .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!() })?;
         Ok(module)
     }
 
@@ -3186,7 +3194,7 @@ mod tests {
     #[test]
     fn typecheck_unary_failure() -> TestResult {
         let err = test_typecheck("-\"bad\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Minus(Position::new(1, 1)),
             expected: Type::Union(vec![Type::Int, Type::Float]),
             actual: Type::String,
@@ -3194,7 +3202,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("-false").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Minus(Position::new(1, 1)),
             expected: Type::Union(vec![Type::Int, Type::Float]),
             actual: Type::Bool,
@@ -3202,7 +3210,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("!4.5").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Bang(Position::new(1, 1)),
             expected: Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))]),
             actual: Type::Float,
@@ -3210,7 +3218,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("!\"abc\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Bang(Position::new(1, 1)),
             expected: Type::Union(vec![Type::Bool, Type::Option(Box::new(Type::Any))]),
             actual: Type::String,
@@ -3453,7 +3461,7 @@ mod tests {
         ];
 
         for (input, token, op, ltype, rtype) in cases {
-            let expected = TypecheckerError::InvalidOperator { token, op, ltype, rtype };
+            let expected = TypecheckerErrorKind::InvalidOperator { token, op, ltype, rtype };
             let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
 
             let err = test_typecheck(input).expect_err(&*msg);
@@ -3589,7 +3597,7 @@ mod tests {
         ];
 
         for (input, token, op, ltype, rtype) in cases {
-            let expected = TypecheckerError::InvalidOperator { token, op, ltype, rtype };
+            let expected = TypecheckerErrorKind::InvalidOperator { token, op, ltype, rtype };
             let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
 
             let err = test_typecheck(input).expect_err(&*msg);
@@ -3683,7 +3691,7 @@ mod tests {
         ];
 
         for (input, token, op, ltype, rtype) in cases {
-            let expected = TypecheckerError::InvalidOperator { token, op, ltype, rtype };
+            let expected = TypecheckerErrorKind::InvalidOperator { token, op, ltype, rtype };
             let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
 
             let err = test_typecheck(input).expect_err(&*msg);
@@ -3716,7 +3724,7 @@ mod tests {
             ("[1][0] ?: 1.0", Token::Float(Position::new(1, 11), 1.0), Type::Int, Type::Float),
         ];
         for (input, token, expected, actual) in cases {
-            let expected = TypecheckerError::Mismatch { token, expected, actual };
+            let expected = TypecheckerErrorKind::Mismatch { token, expected, actual };
             let msg = format!("Typechecking `{}` should result in the error {:?}", input, expected);
 
             let err = test_typecheck(input).expect_err(&*msg);
@@ -3725,7 +3733,7 @@ mod tests {
 
         let input = "\"abc\" ?: 12";
         let err = test_typecheck(input).expect_err("Error expected");
-        let expected = TypecheckerError::InvalidOperator {
+        let expected = TypecheckerErrorKind::InvalidOperator {
             token: Token::Elvis(Position::new(1, 7)),
             op: BinaryOp::Coalesce,
             ltype: Type::String,
@@ -4068,20 +4076,20 @@ mod tests {
     #[test]
     fn typecheck_binding_decl_errors() {
         let err = test_typecheck("val abc").unwrap_err();
-        let expected = TypecheckerError::MissingRequiredAssignment {
+        let expected = TypecheckerErrorKind::MissingRequiredAssignment {
             ident: ident_token!((1, 5), "abc"),
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc = 1\nval abc = 2").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: Token::Ident(Position::new(2, 5), "abc".to_string()),
             orig_ident: Some(Token::Ident(Position::new(1, 5), "abc".to_string())),
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc: Int[] = 1").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Int(Position::new(1, 18), 1),
             expected: Type::Array(Box::new(Type::Int)),
             actual: Type::Int,
@@ -4089,19 +4097,19 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc: NonExistentType = true").unwrap_err();
-        let expected = TypecheckerError::UnknownType {
+        let expected = TypecheckerErrorKind::UnknownType {
             type_ident: Token::Ident(Position::new(1, 10), "NonExistentType".to_string())
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("var abc: NonExistentType").unwrap_err();
-        let expected = TypecheckerError::UnknownType {
+        let expected = TypecheckerErrorKind::UnknownType {
             type_ident: Token::Ident(Position::new(1, 10), "NonExistentType".to_string())
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc = println()").unwrap_err();
-        let expected = TypecheckerError::ForbiddenVariableType {
+        let expected = TypecheckerErrorKind::ForbiddenVariableType {
             binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
             typ: Type::Unit,
         };
@@ -4312,7 +4320,7 @@ mod tests {
     #[test]
     fn typecheck_binding_decl_destructuring_errors() {
         let err = test_typecheck("val (a, b) = [1, 2, 3]").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentDestructuring {
+        let expected = TypecheckerErrorKind::InvalidAssignmentDestructuring {
             binding: BindingPattern::Tuple(
                 Token::LParen(Position::new(1, 5), false),
                 vec![
@@ -4324,7 +4332,7 @@ mod tests {
         };
         assert_eq!(expected, err);
         let err = test_typecheck("val [a, b] = (1, 2, 3)").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentDestructuring {
+        let expected = TypecheckerErrorKind::InvalidAssignmentDestructuring {
             binding: BindingPattern::Array(
                 Token::LBrack(Position::new(1, 5), false),
                 vec![
@@ -4338,7 +4346,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val (a, b, c) = (1, 2)").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentDestructuring {
+        let expected = TypecheckerErrorKind::InvalidAssignmentDestructuring {
             binding: BindingPattern::Tuple(
                 Token::LParen(Position::new(1, 5), false),
                 vec![
@@ -4352,13 +4360,13 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val [a, *b, *c] = [1, 2, 3]").unwrap_err();
-        let expected = TypecheckerError::DuplicateSplatDestructuring {
+        let expected = TypecheckerErrorKind::DuplicateSplatDestructuring {
             token: ident_token!((1, 14), "c")
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("val (a, b, a) = (1, 2, 1)").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((1, 12), "a"),
             orig_ident: Some(ident_token!((1, 6), "a")),
         };
@@ -4368,7 +4376,7 @@ mod tests {
           val a = 4\n\
           val (a, b) = (1, 2)\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((2, 6), "a"),
             orig_ident: Some(ident_token!((1, 5), "a")),
         };
@@ -4378,7 +4386,7 @@ mod tests {
           type List<T> { items: T[] }\n\
           val (l1, l2) = (List(items: []), List(items: []))\
         ").unwrap_err();
-        let expected = TypecheckerError::UnboundGeneric(
+        let expected = TypecheckerErrorKind::UnboundGeneric(
             Token::LParen(Position::new(2, 5), false),
             "T".to_string(),
         );
@@ -4566,14 +4574,14 @@ mod tests {
     #[test]
     fn typecheck_function_decl_args_error() {
         let error = test_typecheck("func abc(a: Int, a: Bool) = 123").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((1, 18), "a"),
             orig_ident: Some(ident_token!((1, 10), "a")),
         };
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc(a: Int, b: Bool = \"hello\") = 123").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(1, 28), "hello".to_string()),
             expected: Type::Bool,
             actual: Type::String,
@@ -4581,11 +4589,11 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc(a: Int, b = 1, c: Int) = 123").unwrap_err();
-        let expected = TypecheckerError::InvalidRequiredArgPosition(ident_token!((1, 25), "c"));
+        let expected = TypecheckerErrorKind::InvalidRequiredArgPosition(ident_token!((1, 25), "c"));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc(self, a: Int, b = 1, c: Int) = 123").unwrap_err();
-        let expected = TypecheckerError::InvalidSelfParam { token: Token::Self_(Position::new(1, 10)) };
+        let expected = TypecheckerErrorKind::InvalidSelfParam { token: Token::Self_(Position::new(1, 10)) };
         assert_eq!(expected, error);
     }
 
@@ -4621,28 +4629,28 @@ mod tests {
     #[test]
     fn typecheck_function_decl_varargs_errors() {
         let err = test_typecheck("func abc(*a: Int): Int = 123").unwrap_err();
-        let expected = TypecheckerError::VarargMismatch {
+        let expected = TypecheckerErrorKind::VarargMismatch {
             token: ident_token!((1, 11), "a"),
             typ: Type::Int,
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("func abc(*a: Int[], b: Int): Int = 123").unwrap_err();
-        let expected = TypecheckerError::InvalidVarargPosition(ident_token!((1, 11), "a"));
+        let expected = TypecheckerErrorKind::InvalidVarargPosition(ident_token!((1, 11), "a"));
         assert_eq!(expected, err);
     }
 
     #[test]
     fn typecheck_function_decl_errors() {
         let err = test_typecheck("func println() = 123").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: Token::Ident(Position::new(1, 6), "println".to_string()),
             orig_ident: None,
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("func myFunc() = 123 + true").unwrap_err();
-        let expected = TypecheckerError::InvalidOperator {
+        let expected = TypecheckerErrorKind::InvalidOperator {
             token: Token::Plus(Position::new(1, 21)),
             ltype: Type::Int,
             op: BinaryOp::Add,
@@ -4651,7 +4659,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let error = test_typecheck("func abc(a: Int): Bool = 123").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 26), 123),
             fn_name: "abc".to_string(),
             fn_missing_ret_ann: false,
@@ -4693,7 +4701,7 @@ mod tests {
     #[test]
     fn typecheck_function_decl_inner_function_err() {
         let error = test_typecheck("func a(): Int {\nfunc b(): Int { 1 }\n b + 1\n}").unwrap_err();
-        let expected = TypecheckerError::InvalidOperator {
+        let expected = TypecheckerErrorKind::InvalidOperator {
             token: Token::Plus(Position::new(3, 4)),
             op: BinaryOp::Add,
             ltype: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false }),
@@ -4740,7 +4748,7 @@ mod tests {
             func abc() = println(\"\")\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownIdentifier {
+        let expected = TypecheckerErrorKind::UnknownIdentifier {
             ident: ident_token!((3, 1), "abc")
         };
         assert_eq!(expected, err);
@@ -4873,7 +4881,7 @@ mod tests {
         let error = test_typecheck("\
           func map<T, U, T>(arr: T[], fn: (T) => U): U[] { [] }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateTypeArgument {
+        let expected = TypecheckerErrorKind::DuplicateTypeArgument {
             ident: ident_token!((1, 16), "T"),
             orig_ident: ident_token!((1, 10), "T"),
         };
@@ -4882,13 +4890,13 @@ mod tests {
         let error = test_typecheck("\
           func map<T, U, V>(arr: T[], fn: (T) => U): V[] { [] }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::UnboundGeneric(ident_token!((1, 44), "V"), "V".to_string());
+        let expected = TypecheckerErrorKind::UnboundGeneric(ident_token!((1, 44), "V"), "V".to_string());
         assert_eq!(expected, error);
 
         let error = test_typecheck("\
           func map<T, U>(arr: T[], fn: (T) => U): (T) => U[] { () => [] }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::IncorrectArity {
+        let expected = TypecheckerErrorKind::IncorrectArity {
             token: Token::Arrow(Position::new(1, 57)),
             expected: 1,
             actual: 0,
@@ -5022,15 +5030,15 @@ mod tests {
     #[test]
     fn typecheck_type_decl_errors() {
         let error = test_typecheck("type Person { name: Huh }").unwrap_err();
-        let expected = TypecheckerError::UnknownType { type_ident: ident_token!((1, 21), "Huh") };
+        let expected = TypecheckerErrorKind::UnknownType { type_ident: ident_token!((1, 21), "Huh") };
         assert_eq!(expected, error);
 
         let error = test_typecheck("type Person { age: Int, age: String }").unwrap_err();
-        let expected = TypecheckerError::DuplicateField { orig_ident: ident_token!((1, 15), "age"), ident: ident_token!((1, 25), "age"), orig_is_field: true, orig_is_enum_variant: false };
+        let expected = TypecheckerErrorKind::DuplicateField { orig_ident: ident_token!((1, 15), "age"), ident: ident_token!((1, 25), "age"), orig_is_field: true, orig_is_enum_variant: false };
         assert_eq!(expected, error);
 
         let error = test_typecheck("type Person { age: String = true }").unwrap_err();
-        let expected = TypecheckerError::Mismatch { token: Token::Bool(Position::new(1, 29), true), expected: Type::String, actual: Type::Bool };
+        let expected = TypecheckerErrorKind::Mismatch { token: Token::Bool(Position::new(1, 29), true), expected: Type::String, actual: Type::Bool };
         assert_eq!(expected, error);
 
         let error = test_typecheck("\
@@ -5038,7 +5046,7 @@ mod tests {
             type Person { age: String }\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
+        let expected = TypecheckerErrorKind::InvalidTypeDeclDepth { token: Token::Type(Position::new(2, 1)) };
         assert_eq!(expected, error);
 
         let error = test_typecheck("\
@@ -5047,7 +5055,7 @@ mod tests {
             func toString(self): Int = 16\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidProtocolMethod {
+        let expected = TypecheckerErrorKind::InvalidProtocolMethod {
             token: ident_token!((3, 6), "toString"),
             fn_name: "toString".to_string(),
             expected: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
@@ -5258,7 +5266,7 @@ mod tests {
           }
         ";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::DuplicateField {
+        let expected = TypecheckerErrorKind::DuplicateField {
             orig_ident: ident_token!((2, 6), "hello"),
             ident: ident_token!((3, 6), "hello"),
             orig_is_field: false,
@@ -5272,7 +5280,7 @@ mod tests {
           }
         ";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::InvalidSelfParamPosition { token: Token::Self_(Position::new(2, 18)) };
+        let expected = TypecheckerErrorKind::InvalidSelfParamPosition { token: Token::Self_(Position::new(2, 18)) };
         assert_eq!(expected, error);
 
         // TODO: This test passes, since it's _technically_ ok to have a bare expression in a Unit-returning function. There should maybe be a warning about this though, because it's pretty misleading
@@ -5353,7 +5361,7 @@ mod tests {
     fn typecheck_type_decl_generics_errors() {
         let input = "type List<T, U, T> { items: T[] }";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::DuplicateTypeArgument {
+        let expected = TypecheckerErrorKind::DuplicateTypeArgument {
             ident: ident_token!((1, 17), "T"),
             orig_ident: ident_token!((1, 11), "T"),
         };
@@ -5364,7 +5372,7 @@ mod tests {
           val l = List(items: [])\
         ";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::UnboundGeneric(ident_token!((2, 5), "l"), "T".to_string());
+        let expected = TypecheckerErrorKind::UnboundGeneric(ident_token!((2, 5), "l"), "T".to_string());
         assert_eq!(expected, error);
 
         let input = "\
@@ -5372,7 +5380,7 @@ mod tests {
           val l: List<String> = List(items: [1, 2, 3])\
         ";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LParen(Position::new(2, 27), false),
             expected: Type::Reference("_test/List".to_string(), vec![Type::String]),
             actual: Type::Reference("_test/List".to_string(), vec![Type::Int]),
@@ -5384,7 +5392,7 @@ mod tests {
           val l = List<String>(items: [1, 2, 3])\
         ";
         let error = test_typecheck(input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LBrack(Position::new(2, 29), false),
             expected: Type::Array(Box::new(Type::String)),
             actual: Type::Array(Box::new(Type::Int)),
@@ -5488,7 +5496,7 @@ mod tests {
           l.items.push(\"abcd\")\
         ", type_def);
         let error = test_typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(12, 14), "abcd".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -5500,7 +5508,7 @@ mod tests {
           l.push(\"abcd\")\
         ", type_def);
         let error = test_typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(12, 8), "abcd".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -5512,7 +5520,7 @@ mod tests {
           l.reduce<Int>(\"\", (acc, i) => acc + i)\
         ", type_def);
         let error = test_typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(12, 15), "".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -5533,7 +5541,7 @@ mod tests {
           val l: List = List(items: [1, 2, 3])\
         ";
         let error = test_typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::InvalidTypeArgumentArity {
+        let expected = TypecheckerErrorKind::InvalidTypeArgumentArity {
             token: ident_token!((2, 8), "List"),
             actual_type: list_struct_type.clone(),
             expected: 1,
@@ -5546,7 +5554,7 @@ mod tests {
           val l: List<Int, Int> = List(items: [1, 2, 3])\
         ";
         let error = test_typecheck(&input).unwrap_err();
-        let expected = TypecheckerError::InvalidTypeArgumentArity {
+        let expected = TypecheckerErrorKind::InvalidTypeArgumentArity {
             token: ident_token!((2, 8), "List"),
             actual_type: list_struct_type,
             expected: 1,
@@ -5684,7 +5692,7 @@ mod tests {
     #[test]
     fn typecheck_enum_decl_errors() {
         let error = test_typecheck("enum Temp { Hot, Hot }").unwrap_err();
-        let expected = TypecheckerError::DuplicateField {
+        let expected = TypecheckerErrorKind::DuplicateField {
             ident: ident_token!((1, 18), "Hot"),
             orig_ident: ident_token!((1, 13), "Hot"),
             orig_is_field: false,
@@ -5696,7 +5704,7 @@ mod tests {
           enum Temp { Hot, Cold }\n\
           enum Temp { Hot, Cold, Tepid }\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateType {
+        let expected = TypecheckerErrorKind::DuplicateType {
             ident: ident_token!((2, 6), "Temp"),
             orig_ident: Some(ident_token!((1, 6), "Temp")),
         };
@@ -5705,7 +5713,7 @@ mod tests {
         let error = test_typecheck("\
           enum Temp { Hot(temp: Int, temp: Int), Cold }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((1, 28), "temp"),
             orig_ident: Some(ident_token!((1, 17), "temp")),
         };
@@ -5714,7 +5722,7 @@ mod tests {
         let error = test_typecheck("\
           enum Temp { Hot(self), Cold }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidSelfParam {
+        let expected = TypecheckerErrorKind::InvalidSelfParam {
             token: Token::Self_(Position::new(1, 17))
         };
         assert_eq!(expected, error);
@@ -5722,7 +5730,7 @@ mod tests {
         let error = test_typecheck("\
           enum Temp { Hot(*degs: Int[]), Cold }\n\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidVarargUsage(ident_token!((1, 18), "degs"));
+        let expected = TypecheckerErrorKind::InvalidVarargUsage(ident_token!((1, 18), "degs"));
         assert_eq!(expected, error);
     }
 
@@ -5759,7 +5767,7 @@ mod tests {
           enum Scale { Fahrenheit, Celsius }\n\
           func isBoiling(amount: Float, scale: Scale = 123): Float = amount\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Int(Position::new(2, 46), 123),
             actual: Type::Int,
             expected: Type::Reference("_test/Scale".to_string(), vec![]),
@@ -5771,7 +5779,7 @@ mod tests {
           func isBoiling(scale: Scale): Bool = true\n\
           isBoiling(Scale.Fahrenheit(degs: \"212.0\"))\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(3, 34), "212.0".to_string()),
             actual: Type::String,
             expected: Type::Float,
@@ -5800,7 +5808,7 @@ mod tests {
           }\n\
           LL.Cons(1, LL.Cons(\"2\", LL.Empty))\n\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LParen(Position::new(5, 19), false),
             expected: Type::Reference("_test/LL".to_string(), vec![Type::Int]),
             actual: Type::Reference("_test/LL".to_string(), vec![Type::String]),
@@ -5842,7 +5850,7 @@ mod tests {
           }\n\
           Color.Red.hex()\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((6, 11), "hex"),
             target_type: Type::Reference("_test/Color".to_string(), vec![]),
         };
@@ -5856,7 +5864,7 @@ mod tests {
           }\n\
           Color.white()\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((6, 7), "white"),
             target_type: Type::Type(
                 "_test/Color".to_string(),
@@ -5872,7 +5880,7 @@ mod tests {
             func Red(): String = \"0xFF0000\"\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateField {
+        let expected = TypecheckerErrorKind::DuplicateField {
             ident: ident_token!((3, 6), "Red"),
             orig_ident: ident_token!((2, 1), "Red"),
             orig_is_field: false,
@@ -5913,19 +5921,19 @@ mod tests {
     #[test]
     fn typecheck_ident_errors() {
         let err = test_typecheck("abc").unwrap_err();
-        let expected = TypecheckerError::UnknownIdentifier {
+        let expected = TypecheckerErrorKind::UnknownIdentifier {
             ident: Token::Ident(Position::new(1, 1), "abc".to_string())
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("println(_)").unwrap_err();
-        let expected = TypecheckerError::UnknownIdentifier {
+        let expected = TypecheckerErrorKind::UnknownIdentifier {
             ident: Token::Ident(Position::new(1, 9), "_".to_string())
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("var abc\nabc").unwrap_err();
-        let expected = TypecheckerError::UnannotatedUninitialized {
+        let expected = TypecheckerErrorKind::UnannotatedUninitialized {
             ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
             is_mutable: true,
         };
@@ -6062,18 +6070,18 @@ mod tests {
     #[test]
     fn typecheck_assignment_errors_with_target() {
         let err = test_typecheck("true = 345").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget };
+        let expected = TypecheckerErrorKind::InvalidAssignmentTarget { token: Token::Assign(Position::new(1, 6)), typ: None, reason: InvalidAssignmentTargetReason::IllegalTarget };
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc = 345\nabc = 67").unwrap_err();
-        let expected = TypecheckerError::AssignmentToImmutable {
+        let expected = TypecheckerErrorKind::AssignmentToImmutable {
             token: Token::Assign(Position::new(2, 5)),
             orig_ident: Token::Ident(Position::new(1, 5), "abc".to_string()),
         };
         assert_eq!(expected, err);
 
         let err = test_typecheck("var abc = 345\nabc = \"str\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(2, 7), "str".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -6081,7 +6089,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val a = [1, 2]\na[0:1] = \"str\"").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget {
+        let expected = TypecheckerErrorKind::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 8)),
             typ: None,
             reason: InvalidAssignmentTargetReason::IndexingMode,
@@ -6089,7 +6097,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val a = \"abc\"\na[0] = \"qwer\"").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget {
+        let expected = TypecheckerErrorKind::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(2, 6)),
             typ: Some(Type::String),
             reason: InvalidAssignmentTargetReason::StringTarget,
@@ -6101,7 +6109,7 @@ mod tests {
           val a = Person(name: \"abc\")\n\
           a.bogusField = \"qwer\"\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((3, 3), "bogusField"),
             target_type: Type::Reference("_test/Person".to_string(), vec![]),
         };
@@ -6112,7 +6120,7 @@ mod tests {
           val a = Person(name: \"abc\")\n\
           a.name = 123\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Int(Position::new(3, 10), 123),
             expected: Type::String,
             actual: Type::Int,
@@ -6127,7 +6135,7 @@ mod tests {
           val a = Person(name: \"abc\")\n\
           a.foo = () => \"ahoy\"\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidAssignmentTarget {
+        let expected = TypecheckerErrorKind::InvalidAssignmentTarget {
             token: Token::Assign(Position::new(6, 7)),
             typ: None,
             reason: InvalidAssignmentTargetReason::MethodTarget,
@@ -6141,7 +6149,7 @@ mod tests {
           val a = Person(name: \"abc\")\n\
           a.name = \"hello\"\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidAccess {
+        let expected = TypecheckerErrorKind::InvalidAccess {
             token: ident_token!((5, 3), "name"),
             is_field: true,
             is_get: false,
@@ -6152,7 +6160,7 @@ mod tests {
     #[test]
     fn typecheck_assignment_errors_with_type() {
         let err = test_typecheck("val abc = [1, 2]\nabc[2] = \"7\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(2, 10), "7".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -6160,7 +6168,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc = {a: 2, b: 3}\nabc[\"b\"] = \"7\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(2, 12), "7".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -6168,7 +6176,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val abc = {a: 2, b: true}\nabc[\"b\"] = \"7\"").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(2, 12), "7".to_string()),
             expected: Type::Union(vec![Type::Int, Type::Bool]),
             actual: Type::String,
@@ -6277,7 +6285,7 @@ mod tests {
     #[test]
     fn typecheck_indexing_errors() {
         let err = test_typecheck("[1, 2, 3][\"a\"]").unwrap_err();
-        let expected = TypecheckerError::InvalidIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidIndexingSelector {
             token: Token::String(Position::new(1, 11), "a".to_string()),
             target_type: Type::Array(Box::new(Type::Int)),
             selector_type: Type::String,
@@ -6285,7 +6293,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("\"abcd\"[[1, 2]]").unwrap_err();
-        let expected = TypecheckerError::InvalidIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidIndexingSelector {
             token: Token::LBrack(Position::new(1, 8), false),
             target_type: Type::String,
             selector_type: Type::Array(Box::new(Type::Int)),
@@ -6293,7 +6301,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("[1, 2, 3][\"a\":]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(1, 11), "a".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -6301,7 +6309,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("[1, 2, 3][:\"a\"]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::String(Position::new(1, 12), "a".to_string()),
             expected: Type::Int,
             actual: Type::String,
@@ -6309,7 +6317,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("123[0]").unwrap_err();
-        let expected = TypecheckerError::InvalidIndexingTarget {
+        let expected = TypecheckerErrorKind::InvalidIndexingTarget {
             token: Token::LBrack(Position::new(1, 4), false),
             target_type: Type::Int,
             index_mode: IndexingMode::Index(Box::new(
@@ -6322,7 +6330,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("val a: Int = [1, 2, 3][0]").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LBrack(Position::new(1, 23), false),
             expected: Type::Int,
             actual: Type::Option(Box::new(Type::Int)),
@@ -6330,7 +6338,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("{ a: 1, b: 2 }[3]").unwrap_err();
-        let expected = TypecheckerError::InvalidIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidIndexingSelector {
             token: Token::Int(Position::new(1, 16), 3),
             target_type: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
             selector_type: Type::Int,
@@ -6338,7 +6346,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("{ a: true, b: 2 }[123]").unwrap_err();
-        let expected = TypecheckerError::InvalidIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidIndexingSelector {
             token: Token::Int(Position::new(1, 19), 123),
             selector_type: Type::Int,
             target_type: Type::Map(Box::new(Type::String), Box::new(Type::Union(vec![Type::Bool, Type::Int]))),
@@ -6346,7 +6354,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("(1, 2)[2]").unwrap_err();
-        let expected = TypecheckerError::InvalidTupleIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidTupleIndexingSelector {
             token: Token::Int(Position::new(1, 8), 2),
             types: vec![Type::Int, Type::Int],
             non_constant: false,
@@ -6355,7 +6363,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("(1, 2)[0 + 1]").unwrap_err();
-        let expected = TypecheckerError::InvalidTupleIndexingSelector {
+        let expected = TypecheckerErrorKind::InvalidTupleIndexingSelector {
             token: Token::Plus(Position::new(1, 10)),
             types: vec![Type::Int, Type::Int],
             non_constant: true,
@@ -6482,7 +6490,7 @@ mod tests {
     #[test]
     fn typecheck_if_statement_errors() {
         let error = test_typecheck("if 4 { val a = \"hello\" a }").unwrap_err();
-        let expected = TypecheckerError::InvalidIfConditionType {
+        let expected = TypecheckerErrorKind::InvalidIfConditionType {
             token: Token::Int(Position::new(1, 4), 4),
             actual: Type::Int,
         };
@@ -6585,11 +6593,11 @@ mod tests {
     #[test]
     fn typecheck_if_statement_scopes_errors() {
         let error = test_typecheck("if (1 < 2) { a }").unwrap_err();
-        let expected = TypecheckerError::UnknownIdentifier { ident: Token::Ident(Position::new(1, 14), "a".to_string()) };
+        let expected = TypecheckerErrorKind::UnknownIdentifier { ident: Token::Ident(Position::new(1, 14), "a".to_string()) };
         assert_eq!(expected, error);
 
         let error = test_typecheck("val num = 1\nif (1 < 2) { num + true }").unwrap_err();
-        let expected = TypecheckerError::InvalidOperator {
+        let expected = TypecheckerErrorKind::InvalidOperator {
             token: Token::Plus(Position::new(2, 18)),
             ltype: Type::Int,
             op: BinaryOp::Add,
@@ -6598,7 +6606,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = test_typecheck("if (1 < 2) { val num = 1 }\nnum + 2").unwrap_err();
-        let expected = TypecheckerError::UnknownIdentifier { ident: Token::Ident(Position::new(2, 1), "num".to_string()) };
+        let expected = TypecheckerErrorKind::UnknownIdentifier { ident: Token::Ident(Position::new(2, 1), "num".to_string()) };
         assert_eq!(expected, error);
     }
 
@@ -6673,15 +6681,15 @@ mod tests {
     #[test]
     fn typecheck_if_expression_errors() {
         let error = test_typecheck("val a = if (1 < 2) {} else 456").unwrap_err();
-        let expected = TypecheckerError::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: true };
+        let expected = TypecheckerErrorKind::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: true };
         assert_eq!(expected, error);
 
         let error = test_typecheck("val a = if (1 < 2) 123 else {}").unwrap_err();
-        let expected = TypecheckerError::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: false };
+        let expected = TypecheckerErrorKind::MissingIfExprBranch { if_token: Token::If(Position::new(1, 9)), is_if_branch: false };
         assert_eq!(expected, error);
 
         let error = test_typecheck("val a = if (1 < 2) 123 else true").unwrap_err();
-        let expected = TypecheckerError::IfExprBranchMismatch {
+        let expected = TypecheckerErrorKind::IfExprBranchMismatch {
             if_token: Token::If(Position::new(1, 9)),
             if_type: Type::Int,
             else_type: Type::Bool,
@@ -6689,7 +6697,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = test_typecheck("val a = if (1 < 2) { if (true) 123 } else 456").unwrap_err();
-        let expected = TypecheckerError::IfExprBranchMismatch {
+        let expected = TypecheckerErrorKind::IfExprBranchMismatch {
             if_token: Token::If(Position::new(1, 9)),
             if_type: Type::Option(Box::new(Type::Int)),
             else_type: Type::Int,
@@ -6834,7 +6842,7 @@ mod tests {
     #[test]
     fn typecheck_invocation_errors() {
         let error = test_typecheck("func abc() {}\nabc(1, 2)").unwrap_err();
-        let expected = TypecheckerError::IncorrectArity {
+        let expected = TypecheckerErrorKind::IncorrectArity {
             token: ident_token!((2, 1), "abc"),
             expected: 0,
             actual: 2,
@@ -6842,13 +6850,13 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(a: Int) {}\nabc(z: false)").unwrap_err();
-        let expected = TypecheckerError::UnexpectedParamName {
+        let expected = TypecheckerErrorKind::UnexpectedParamName {
             token: ident_token!((2, 5), "z"),
         };
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(a: Int, b: Int) {}\nabc()").unwrap_err();
-        let expected = TypecheckerError::IncorrectArity {
+        let expected = TypecheckerErrorKind::IncorrectArity {
             token: ident_token!((2, 1), "abc"),
             expected: 2,
             actual: 0,
@@ -6856,14 +6864,14 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(a: Int, b: Int) {}\nabc(a: 3)").unwrap_err();
-        let expected = TypecheckerError::MissingRequiredParams {
+        let expected = TypecheckerErrorKind::MissingRequiredParams {
             token: ident_token!((2, 1), "abc"),
             missing_params: vec!["b".to_string()],
         };
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(a: Int) {}\nabc(false)").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Bool(Position::new(2, 5), false),
             expected: Type::Int,
             actual: Type::Bool,
@@ -6871,7 +6879,7 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(a: Int) {}\nabc(a: false)").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Bool(Position::new(2, 8), false),
             expected: Type::Int,
             actual: Type::Bool,
@@ -6879,14 +6887,14 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = test_typecheck("val abc = [1, 2]\nabc()").unwrap_err();
-        let expected = TypecheckerError::InvalidInvocationTarget {
+        let expected = TypecheckerErrorKind::InvalidInvocationTarget {
             token: ident_token!((2, 1), "abc"),
             target_type: Type::Array(Box::new(Type::Int)),
         };
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(*a: Int[]) {}\nabc(\"a\")").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LBrack(Position::new(2, 5), false),
             expected: Type::Array(Box::new(Type::Int)),
             actual: Type::Array(Box::new(Type::String)),
@@ -6894,7 +6902,7 @@ mod tests {
         assert_eq!(error, expected);
 
         let error = test_typecheck("func abc(*a: Int[]) {}\nabc(1, \"a\")").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::LBrack(Position::new(2, 5), false),
             expected: Type::Array(Box::new(Type::Int)),
             actual: Type::Array(Box::new(Type::Union(vec![Type::Int, Type::String]))),
@@ -6908,7 +6916,7 @@ mod tests {
           type Person { name: String }\n\
           Person()\
         ").unwrap_err();
-        let expected = TypecheckerError::MissingRequiredParams {
+        let expected = TypecheckerErrorKind::MissingRequiredParams {
             token: ident_token!((2, 1), "Person"),
             missing_params: vec!["name".to_string()],
         };
@@ -6918,7 +6926,7 @@ mod tests {
           type Person { name: String }\n\
           Person(args: 1)\
         ").unwrap_err();
-        let expected = TypecheckerError::UnexpectedParamName {
+        let expected = TypecheckerErrorKind::UnexpectedParamName {
             token: ident_token!((2, 8), "args"),
         };
         assert_eq!(expected, error);
@@ -6927,7 +6935,7 @@ mod tests {
           type Person { name: String }\n\
           Person(1)\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidTypeFuncInvocation {
+        let expected = TypecheckerErrorKind::InvalidTypeFuncInvocation {
             token: ident_token!((2, 1), "Person"),
         };
         assert_eq!(expected, error);
@@ -6936,7 +6944,7 @@ mod tests {
           type Person { name: String }\n\
           Person(name: 123)\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Int(Position::new(2, 14), 123),
             expected: Type::String,
             actual: Type::Int,
@@ -6947,7 +6955,7 @@ mod tests {
           type Person { name: String }\n\
           Person(age: 123, name: \"Ken\")\
         ").unwrap_err();
-        let expected = TypecheckerError::UnexpectedParamName {
+        let expected = TypecheckerErrorKind::UnexpectedParamName {
             token: ident_token!((2, 8), "age"),
         };
         assert_eq!(expected, error);
@@ -6956,7 +6964,7 @@ mod tests {
           type Person { name: String }\n\
           Person(name: \"Meg\", name: \"Ken\")\
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateParamName {
+        let expected = TypecheckerErrorKind::DuplicateParamName {
             token: ident_token!((2, 21), "name"),
         };
         assert_eq!(expected, error);
@@ -6965,7 +6973,7 @@ mod tests {
           type Person { name: String }\n\
           Person()\
         ").unwrap_err();
-        let expected = TypecheckerError::MissingRequiredParams {
+        let expected = TypecheckerErrorKind::MissingRequiredParams {
             token: ident_token!((2, 1), "Person"),
             missing_params: vec!["name".to_string()],
         };
@@ -6975,7 +6983,7 @@ mod tests {
     #[test]
     fn typecheck_invocation_primitive_instantiation_error() {
         let error = test_typecheck("Int(1.2)").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Float(Position::new(1, 5), 1.2),
             expected: Type::Int,
             actual: Type::Float,
@@ -6983,7 +6991,7 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = test_typecheck("String(1.2)").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Float(Position::new(1, 8), 1.2),
             expected: Type::String,
             actual: Type::Float,
@@ -7143,14 +7151,14 @@ mod tests {
     #[test]
     fn typecheck_while_loop_error() {
         let error = test_typecheck("while 1 + 1 { println(123) }").unwrap_err();
-        let expected = TypecheckerError::InvalidIfConditionType {
+        let expected = TypecheckerErrorKind::InvalidIfConditionType {
             token: Token::Plus(Position::new(1, 9)),
             actual: Type::Int,
         };
         assert_eq!(expected, error);
 
         let error = test_typecheck("while \"asdf\" |str| { println(123) }").unwrap_err();
-        let expected = TypecheckerError::InvalidIfConditionType {
+        let expected = TypecheckerErrorKind::InvalidIfConditionType {
             token: Token::String(Position::new(1, 7), "asdf".to_string()),
             actual: Type::String,
         };
@@ -7160,22 +7168,22 @@ mod tests {
     #[test]
     fn typecheck_break_statement_error() {
         let error = test_typecheck("if true { break }").unwrap_err();
-        let expected = TypecheckerError::InvalidTerminator(Token::Break(Position::new(1, 11)));
+        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Break(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc() { break }").unwrap_err();
-        let expected = TypecheckerError::InvalidTerminator(Token::Break(Position::new(1, 14)));
+        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Break(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 
     #[test]
     fn typecheck_continue_statement_error() {
         let error = test_typecheck("if true { continue }").unwrap_err();
-        let expected = TypecheckerError::InvalidTerminator(Token::Continue(Position::new(1, 11)));
+        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Continue(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc() { continue }").unwrap_err();
-        let expected = TypecheckerError::InvalidTerminator(Token::Continue(Position::new(1, 14)));
+        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Continue(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 
@@ -7333,14 +7341,14 @@ mod tests {
     #[test]
     fn typecheck_for_loop_error() {
         let error = test_typecheck("for a in 123 { a }").unwrap_err();
-        let expected = TypecheckerError::InvalidLoopTarget {
+        let expected = TypecheckerErrorKind::InvalidLoopTarget {
             token: Token::Int(Position::new(1, 10), 123),
             target_type: Type::Int,
         };
         assert_eq!(expected, error);
 
         let error = test_typecheck("for a in (1, 2) { a }").unwrap_err();
-        let expected = TypecheckerError::InvalidLoopTarget {
+        let expected = TypecheckerErrorKind::InvalidLoopTarget {
             token: Token::LParen(Position::new(1, 10), false),
             target_type: Type::Tuple(vec![Type::Int, Type::Int]),
         };
@@ -7644,14 +7652,14 @@ mod tests {
           val p = Person(name: \"Sam\")\n\
           p.firstName\n\
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
             target_type: Type::Reference("_test/Person".to_string(), vec![]),
         };
         assert_eq!(expected, error);
 
         let error = test_typecheck("true.value").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((1, 6), "value"),
             target_type: Type::Bool,
         };
@@ -7817,14 +7825,14 @@ mod tests {
     #[test]
     fn typecheck_lambda_errors() {
         let error = test_typecheck("(a: Int) => a.toUpper()").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((1, 15), "toUpper"),
             target_type: Type::Int,
         };
         assert_eq!(expected, error);
 
         let error = test_typecheck("(*a: Int[]) => a.toUpper()").unwrap_err();
-        let expected = TypecheckerError::InvalidVarargUsage(ident_token!((1, 3), "a"));
+        let expected = TypecheckerErrorKind::InvalidVarargUsage(ident_token!((1, 3), "a"));
         assert_eq!(expected, error);
     }
 
@@ -7935,7 +7943,7 @@ mod tests {
         let error = test_typecheck("\
           var fn: (String) => Int = a => a\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Arrow(Position::new(1, 29)),
             expected: Type::Int,
             actual: Type::String,
@@ -7948,7 +7956,7 @@ mod tests {
             x => x + \"!\",\n\
           ]\
         ").unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Arrow(Position::new(3, 3)),
             expected: Type::Int,
             actual: Type::String,
@@ -8186,7 +8194,7 @@ mod tests {
             None => 0\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
+        let expected = TypecheckerErrorKind::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
         assert_eq!(expected, err);
 
         // Verify branches for (Int? | String?) type
@@ -8197,7 +8205,7 @@ mod tests {
             None => 0\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
+        let expected = TypecheckerErrorKind::NonExhaustiveMatch { token: Token::Match(Position::new(2, 1)) };
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
@@ -8207,7 +8215,7 @@ mod tests {
             Int => 0\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableMatchCase {
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
             token: ident_token!((4, 1), "Int"),
             typ: None,
             is_unreachable_none: false,
@@ -8221,7 +8229,7 @@ mod tests {
             String => 0\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableMatchCase {
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
             token: ident_token!((4, 1), "String"),
             typ: Some(Type::String),
             is_unreachable_none: false,
@@ -8235,7 +8243,7 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateMatchCase { token: ident_token!((4, 1), "_") };
+        let expected = TypecheckerErrorKind::DuplicateMatchCase { token: ident_token!((4, 1), "_") };
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
@@ -8245,7 +8253,7 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownType { type_ident: ident_token!((3, 1), "BogusType") };
+        let expected = TypecheckerErrorKind::UnknownType { type_ident: ident_token!((3, 1), "BogusType") };
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
@@ -8256,7 +8264,7 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((4, 11), "Sideways"),
             target_type: Type::Reference("_test/Direction".to_string(), vec![]),
         };
@@ -8270,7 +8278,7 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::UnknownMember {
+        let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((4, 16), "A"),
             target_type: Type::Reference("_test/Direction".to_string(), vec![]),
         };
@@ -8285,7 +8293,7 @@ mod tests {
             _ x => x\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::DuplicateMatchCase {
+        let expected = TypecheckerErrorKind::DuplicateMatchCase {
             token: ident_token!((5, 23), "Left"),
         };
         assert_eq!(expected, err);
@@ -8297,7 +8305,7 @@ mod tests {
             Foo.Bar(z, x) => z\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
+        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
             typ: Type::Reference("_test/Foo".to_string(), vec![]),
             enum_variant: Some("Bar".to_string()),
@@ -8313,7 +8321,7 @@ mod tests {
             Foo.Bar(z) => z\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidMatchCaseDestructuringArity {
+        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuringArity {
             token: Token::LParen(Position::new(4, 8), false),
             typ: Type::Reference("_test/Foo".to_string(), vec![]),
             enum_variant: Some("Bar".to_string()),
@@ -8329,7 +8337,7 @@ mod tests {
             Foo.Bar(a, b) => 0\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidMatchCaseDestructuring {
+        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuring {
             token: ident_token!((4, 5), "Bar"),
             typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
             enum_variant: Some("Bar".to_string()),
@@ -8343,7 +8351,7 @@ mod tests {
             _ => 1\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidMatchCaseDestructuring {
+        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuring {
             token: Token::None(Position::new(3, 1)),
             typ: None,
             enum_variant: None,
@@ -8357,7 +8365,7 @@ mod tests {
             _ => 1\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidMatchCaseDestructuring {
+        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuring {
             token: ident_token!((3, 1), "Int"),
             typ: Some(Type::Int),
             enum_variant: None,
@@ -8374,7 +8382,7 @@ mod tests {
             None => false\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::MatchBranchMismatch {
+        let expected = TypecheckerErrorKind::MatchBranchMismatch {
             token: Token::Bool(Position::new(4, 9), false),
             expected: Type::Int,
             actual: Type::Bool,
@@ -8388,7 +8396,7 @@ mod tests {
             None => println(\"\")\n\
           }
         ").unwrap_err();
-        let expected = TypecheckerError::ForbiddenVariableType {
+        let expected = TypecheckerErrorKind::ForbiddenVariableType {
             binding: BindingPattern::Variable(ident_token!((2, 5), "j")),
             typ: Type::Unit,
         };
@@ -8502,7 +8510,7 @@ mod tests {
             return 6\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableCode {
+        let expected = TypecheckerErrorKind::UnreachableCode {
             token: Token::Return(Position::new(3, 1), false)
         };
         assert_eq!(expected, err);
@@ -8513,7 +8521,7 @@ mod tests {
             return 3\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableCode {
+        let expected = TypecheckerErrorKind::UnreachableCode {
             token: Token::Return(Position::new(3, 1), false)
         };
         assert_eq!(expected, err);
@@ -8526,7 +8534,7 @@ mod tests {
             }\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableCode {
+        let expected = TypecheckerErrorKind::UnreachableCode {
             token: Token::Val(Position::new(3, 1))
         };
         assert_eq!(expected, err);
@@ -8539,7 +8547,7 @@ mod tests {
             }\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableCode {
+        let expected = TypecheckerErrorKind::UnreachableCode {
             token: Token::Val(Position::new(3, 1))
         };
         assert_eq!(expected, err);
@@ -8552,7 +8560,7 @@ mod tests {
             }\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::UnreachableCode {
+        let expected = TypecheckerErrorKind::UnreachableCode {
             token: Token::Val(Position::new(3, 1))
         };
         assert_eq!(expected, err);
@@ -8561,7 +8569,7 @@ mod tests {
     #[test]
     fn typecheck_return_statements_type_errors() {
         let err = test_typecheck("func f(): String { return 5 }").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 27), 5),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: false,
@@ -8577,7 +8585,7 @@ mod tests {
             return 5\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(3, 8), 5),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: false,
@@ -8593,7 +8601,7 @@ mod tests {
             return {}\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::LBrack(Position::new(2, 18), false),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: true,
@@ -8609,7 +8617,7 @@ mod tests {
             return {}\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::LBrack(Position::new(2, 18), false),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: false,
@@ -8624,7 +8632,7 @@ mod tests {
             return\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::ReturnTypeMismatch {
+        let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Return(Position::new(2, 1), true),
             fn_name: "f".to_string(),
             fn_missing_ret_ann: false,
@@ -8662,7 +8670,7 @@ mod tests {
             export val d = 123\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
+        let expected = TypecheckerErrorKind::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
@@ -8670,7 +8678,7 @@ mod tests {
             export func d() = 123\n\
           }\
         ").unwrap_err();
-        let expected = TypecheckerError::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
+        let expected = TypecheckerErrorKind::InvalidExportDepth { token: Token::Export(Position::new(2, 1)) };
         assert_eq!(expected, err);
     }
 
@@ -8765,7 +8773,7 @@ mod tests {
         let mod2 = "export val b = 6";
         let modules = vec![(".mod2", mod2)];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerError::InvalidImportValue { ident: ident_token!((1, 8), "a") };
+        let expected = TypecheckerErrorKind::InvalidImportValue { ident: ident_token!((1, 8), "a") };
         assert_eq!(expected, err);
 
         // Verify error when imported module doesn't exist
@@ -8774,7 +8782,7 @@ mod tests {
           a + 4
         ";
         let err = test_typecheck_with_modules(mod1, vec![]).unwrap_err();
-        let expected = TypecheckerError::InvalidModuleImport {
+        let expected = TypecheckerErrorKind::InvalidModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2.some_mod".to_string(),
             circular: false,
@@ -8797,7 +8805,7 @@ mod tests {
             ")
         ];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerError::InvalidModuleImport {
+        let expected = TypecheckerErrorKind::InvalidModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2".to_string(),
             circular: true,
@@ -8812,7 +8820,7 @@ mod tests {
         let mod2 = "export func fn(a: String) {}";
         let modules = vec![(".mod2", mod2)];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerError::Mismatch {
+        let expected = TypecheckerErrorKind::Mismatch {
             token: Token::Int(Position::new(2, 7), 4),
             expected: Type::String,
             actual: Type::Int,
@@ -8827,7 +8835,7 @@ mod tests {
         let mod2 = "export func fn() {}";
         let modules = vec![(".mod2", mod2)];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerError::DuplicateBinding {
+        let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((2, 6), "fn"),
             orig_ident: Some(ident_token!((1, 8), "fn")),
         };
@@ -8841,7 +8849,7 @@ mod tests {
         let mod2 = "export type A {}";
         let modules = vec![(".mod2", mod2)];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerError::DuplicateType {
+        let expected = TypecheckerErrorKind::DuplicateType {
             ident: ident_token!((2, 6), "A"),
             orig_ident: Some(ident_token!((1, 8), "A")),
         };

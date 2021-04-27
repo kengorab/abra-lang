@@ -458,7 +458,7 @@ impl Type {
                 }
                 Type::Union(opts)
             }
-            t @ _ => t.clone(),
+            t => t.clone(),
         }
     }
 
@@ -518,7 +518,7 @@ impl Type {
                 let target_opts = target_opts.into_iter().map(|t| t.clone()).collect::<HashSet<Type>>();
                 let opts = match t {
                     Type::Union(opts) => opts.clone(),
-                    t @ _ => vec![t.clone()]
+                    t => vec![t.clone()]
                 }.into_iter().collect::<HashSet<Type>>();
                 let possibilities = opts.difference(&target_opts).map(|t| t.clone()).collect::<Vec<_>>();
                 let typ = if possibilities.is_empty() {
@@ -605,14 +605,15 @@ mod test {
     use crate::typechecker::types::Type::*;
     use crate::parser::parser::{parse, ParseResult};
     use crate::lexer::lexer::tokenize;
-    use crate::parser::ast::{AstNode, BindingDeclNode};
+    use crate::parser::ast::{AstNode, BindingDeclNode, ModuleId};
     use super::*;
 
     fn parse_type_ident_with_types<S: Into<std::string::String>>(input: S, base_types: &HashMap<std::string::String, super::Type>) -> super::Type {
         let type_ident: std::string::String = input.into();
         let val_stmt = format!("val a: {}", type_ident);
-        let tokens = tokenize(&val_stmt).unwrap();
-        let ParseResult { nodes, .. } = parse(tokens).unwrap();
+        let module_id = ModuleId::from_name("test");
+        let tokens = tokenize(&module_id, &val_stmt).unwrap();
+        let ParseResult { nodes, .. } = parse(module_id, tokens).unwrap();
         match nodes.first().unwrap() {
             AstNode::BindingDecl(_, BindingDeclNode { type_ann: Some(type_ann), .. }) => {
                 super::Type::from_type_ident(&type_ann, base_types).unwrap()

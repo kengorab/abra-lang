@@ -20,7 +20,7 @@ describe('errors', () => {
                         end: [1, 6]
                     }
                 },
-                errorMessage: `Expected token 'identifier', saw 'int' (1:6)
+                errorMessage: `Error at repl.abra:1:6\nExpected token 'identifier', saw 'int'
   |  func 1
           ^`
             }

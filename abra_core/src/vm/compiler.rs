@@ -1764,7 +1764,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
                             if *is_opt_safe { next = target } else { break; }
                         }
                     }
-                    node @ _ => break unwound_path.push(node)
+                    node => break unwound_path.push(node)
                 }
             }
 

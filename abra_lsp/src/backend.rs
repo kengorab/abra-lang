@@ -20,7 +20,7 @@ impl ModuleReader for LspModuleReader {
         match &self.project_root {
             None => None,
             Some(project_root) => {
-                let file_path = project_root.join(&module_id.get_path("abra"));
+                let file_path = module_id.get_path(Some(project_root));
                 match std::fs::read_to_string(file_path) {
                     Ok(contents) => Some(contents),
                     Err(_) => None
@@ -55,18 +55,20 @@ impl Backend {
         let module_id = self.module_id_from_url(&uri).await;
 
         let project_root = self.project_root.lock().await;
-        let project_root =  project_root.as_ref().map(|root| PathBuf::from(root));
-        let module_reader = LspModuleReader { project_root };
+        let project_root_path = project_root.as_ref().map(|root| PathBuf::from(root));
+        let module_reader = LspModuleReader { project_root: project_root_path };
         let mut loader = ModuleLoader::new(module_reader);
 
-        let diagnostics = match typecheck(module_id, &text, &mut loader) {
-            Ok(_) => vec![],
+        match typecheck(module_id, &text, &mut loader) {
+            Ok(_) => PublishDiagnosticsParams { uri, version, diagnostics: vec![] },
             Err(e) => {
-                let diagnostic = abra_error_to_diagnostic(e, &text);
-                vec![diagnostic]
+                let file_name = e.module_id().get_path(project_root.as_ref());
+                let diagnostic = abra_error_to_diagnostic(e, &file_name, &text);
+
+                let uri = Url::from_file_path(file_name).unwrap();
+                PublishDiagnosticsParams { uri, version, diagnostics: vec![diagnostic] }
             }
-        };
-        PublishDiagnosticsParams { uri, version, diagnostics }
+        }
     }
 }
 
