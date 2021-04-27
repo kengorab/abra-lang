@@ -542,21 +542,21 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
-            let MatchCase { token, match_type, case_binding, args } = case;
+            let MatchCase { token, match_type, case_binding } = case;
 
             self.scopes.push(Scope::new(ScopeKind::Block));
 
             if block.is_empty() && !is_stmt {
                 let token = match match_type {
-                    MatchCaseType::Ident(ident) => ident,
+                    MatchCaseType::Ident(ident, _) => ident,
                     MatchCaseType::Wildcard(token) => token,
-                    MatchCaseType::Compound(idents) => idents.get(1).expect("There should be at least 2 idents").clone(),
+                    MatchCaseType::Compound(idents, _) => idents.get(1).expect("There should be at least 2 idents").clone(),
                 };
                 return Err(TypecheckerErrorKind::EmptyMatchBlock { token });
             }
 
             let branch_cond = match match_type {
-                MatchCaseType::Ident(ident) => {
+                MatchCaseType::Ident(ident, args) => {
                     if seen_wildcard {
                         return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
                     }
@@ -605,7 +605,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     }
                 }
-                MatchCaseType::Compound(idents) => {
+                MatchCaseType::Compound(idents, args) => {
                     let mut idents = idents.into_iter();
                     let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
                     let typ = self.type_from_type_ident(&type_ident, true)?;

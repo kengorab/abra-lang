@@ -287,13 +287,12 @@ pub struct MatchCase {
     pub token: Token,
     pub match_type: MatchCaseType,
     pub case_binding: Option<Token>,
-    pub args: Option<Vec<BindingPattern>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCaseType {
-    Ident(Token),
-    Compound(Vec<Token>),
+    Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<BindingPattern>>),
+    Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<BindingPattern>>),
     Wildcard(Token),
 }
 
