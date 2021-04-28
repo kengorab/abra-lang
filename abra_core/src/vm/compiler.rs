@@ -1588,6 +1588,12 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
                     self.visit(node)?;
                     (binding, None)
                 }
+                TypedMatchKind::Tuple { nodes, binding } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    let tuple_node = TypedTupleNode { typ: Type::Placeholder, items: nodes };
+                    self.visit_tuple(token.clone(), tuple_node)?;
+                    (binding, None)
+                }
             };
 
             self.write_opcode(Opcode::Eq, token.get_position().line);
@@ -5117,6 +5123,52 @@ mod tests {
                 new_string_obj("hello"),
                 Value::Str("_test/s".to_string()),
                 new_string_obj("asdf"),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = test_compile("\
+          val s = (\"hello\", 12)\n\
+          match s {\n\
+            (\"hello\", 12) x => println(x)\n\
+            _ x => println(x)\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Constant(1, 0),
+                Opcode::Constant(1, 1),
+                Opcode::TupleMk(2),
+                Opcode::GStore(1, 2),
+                Opcode::GLoad(1, 2),
+                Opcode::Dup,
+                Opcode::Constant(1, 0),
+                Opcode::Constant(1, 1),
+                Opcode::TupleMk(2),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(7),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![
+                new_string_obj("hello"),
+                Value::Int(12),
+                Value::Str("_test/s".to_string()),
             ],
         };
         assert_eq!(expected, chunk);

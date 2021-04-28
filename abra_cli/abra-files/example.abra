@@ -1,21 +1,30 @@
-enum Foo {
-  Bar(a: String, b: Int)
-}
+//enum Foo {
+//  Bar(a: String, b: Int)
+//}
+//
+//match a {
+//  "abc" => {}
+//  123 => {}
+//  12.3 => {}
+//  true => {}
+//  ("a", 12) => {}
+//  (a, 12) => {}
+//  ("a", b) => {}
+//  (a, b) => {}
+//  Foo.Bar("a", b) => {}
+//  Foo.Bar(a, 12) => {}
+//  Foo.Bar("a", 12) => {}
+//  Foo.Bar(a, b) => {}
+//  Result.Ok(Foo.Bar("a", 123)) => {}
+//  (Foo.Bar(a, _), Foo.Bar("a", 12)) => {}
+//  ...
+//}
 
-match a {
-  "abc" => {}
-  123 => {}
-  12.3 => {}
-  true => {}
-  ("a", 12) => {}
-  (a, 12) => {}
-  ("a", b) => {}
-  (a, b) => {}
-  Foo.Bar("a", b) => {}
-  Foo.Bar(a, 12) => {}
-  Foo.Bar("a", 12) => {}
-  Foo.Bar(a, b) => {}
-  Result.Ok(Foo.Bar("a", 123)) => {}
-  (Foo.Bar(a, _), Foo.Bar("a", 12)) => {}
-  ...
+val t = ("abc", 123)
+match t {
+  ("asdf", 1234) => println(1)
+  ("abc", 1234,) => println(2)
+  ("abc", 123) => println(3)
+  //(123, "abc") => println(4)
+  _ => println(5)
 }

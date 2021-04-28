@@ -552,6 +552,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     MatchCaseType::Wildcard(token) => token,
                     MatchCaseType::Compound(idents, _) => idents.get(1).expect("There should be at least 2 idents").clone(),
                     MatchCaseType::Constant(expr) => expr.get_token().clone(),
+                    MatchCaseType::Tuple(lparen, _) => lparen,
                 };
                 return Err(TypecheckerErrorKind::EmptyMatchBlock { token });
             }
@@ -718,6 +719,23 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     } else { None };
 
                     TypedMatchKind::Constant { node: typed_node, binding }
+                }
+                MatchCaseType::Tuple(token, nodes) => {
+                    let typed_nodes = nodes.into_iter()
+                        .map(|n| self.visit(n))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let tuple_type = Type::Tuple(typed_nodes.iter().map(|n| n.get_type()).collect());
+                    if !possibilities.contains(&tuple_type) {
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: Some(tuple_type), is_unreachable_none: false });
+                    }
+
+                    let binding = if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &tuple_type, false);
+                        Some(ident_name)
+                    } else { None };
+
+                    TypedMatchKind::Tuple { nodes: typed_nodes, binding }
                 }
             };
 
@@ -8121,6 +8139,15 @@ mod tests {
         ");
         assert!(res.is_ok());
 
+        let res = test_typecheck("\
+          val s = (\"asdf\", 123)\n\
+          val i: Int = match s {\n\
+            (\"asdf\", 123) s => 1\n\
+            _ s => s[0].length\n\
+          }
+        ");
+        assert!(res.is_ok());
+
         Ok(())
     }
 
@@ -8408,6 +8435,20 @@ mod tests {
         let expected = TypecheckerErrorKind::UnreachableMatchCase {
             token: Token::String(Position::new(3, 1), "asdf".to_string()),
             typ: Some(Type::String),
+            is_unreachable_none: false
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          match (0, \"abc\") {\n\
+            (\"asdf\", 123) s => {}
+            Int(z) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: Token::LParen(Position::new(2, 1), true),
+            typ: Some(Type::Tuple(vec![Type::String, Type::Int])),
             is_unreachable_none: false
         };
         assert_eq!(expected, err);

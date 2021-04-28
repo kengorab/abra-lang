@@ -2098,10 +2098,16 @@ mod tests {
             false => 200
             _ => 300
           }
-          a + b + c
+          val d = match ("a", 6, true) {
+            ("a", 12, false) => 1000
+            ("b", 24, true) => 2000
+            ("c", 48, false) => 3000
+            _ => 4000
+          }
+          a + b + c + d
         "#;
         let result = interpret(input);
-        let expected = Value::Int(123);
+        let expected = Value::Int(4123);
         assert_eq!(expected, result);
     }
 

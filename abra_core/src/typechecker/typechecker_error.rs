@@ -621,11 +621,7 @@ impl DisplayError for TypecheckerError {
                     if *is_unreachable_none {
                         "Value cannot possibly be None at this point".to_string()
                     } else if let Some(typ) = typ {
-                        format!(
-                            "Value cannot possibly be of type {} at this point.\n\
-                            Perhaps a prior match case has already handled this type?",
-                            type_repr(typ)
-                        )
+                        format!("Value cannot possibly be of type {} at this point", type_repr(typ))
                     } else {
                         "All possible cases have already been handled".to_string()
                     }

@@ -323,6 +323,7 @@ pub enum TypedMatchKind {
     Type { type_name: String, binding: Option<String>, args: Option<Vec<BindingPattern>> },
     EnumVariant { variant_idx: usize, binding: Option<String>, args: Option<Vec<BindingPattern>> },
     Constant { node: TypedAstNode, binding: Option<String> },
+    Tuple { nodes: Vec<TypedAstNode>, binding: Option<String> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
