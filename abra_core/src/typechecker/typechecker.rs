@@ -551,6 +551,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     MatchCaseType::Ident(ident, _) => ident,
                     MatchCaseType::Wildcard(token) => token,
                     MatchCaseType::Compound(idents, _) => idents.get(1).expect("There should be at least 2 idents").clone(),
+                    MatchCaseType::Constant(expr) => expr.get_token().clone(),
                 };
                 return Err(TypecheckerErrorKind::EmptyMatchBlock { token });
             }
@@ -702,6 +703,21 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     } else { None };
 
                     TypedMatchKind::Wildcard { binding }
+                }
+                MatchCaseType::Constant(node) => {
+                    let typed_node = self.visit(node)?;
+                    let typ = typed_node.get_type();
+                    if !possibilities.contains(&typ) {
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: typed_node.get_token().clone(), typ: Some(typ), is_unreachable_none: false });
+                    }
+
+                    let binding = if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &typ, false);
+                        Some(ident_name)
+                    } else { None };
+
+                    TypedMatchKind::Constant { node: typed_node, binding }
                 }
             };
 
@@ -8096,6 +8112,15 @@ mod tests {
         ");
         assert!(res.is_ok());
 
+        let res = test_typecheck("\
+          val s = \"asdf\"\n\
+          val i: Int = match s {\n\
+            \"asdf\" s => s.length\n\
+            _ s => s.length\n\
+          }
+        ");
+        assert!(res.is_ok());
+
         Ok(())
     }
 
@@ -8369,6 +8394,21 @@ mod tests {
             token: ident_token!((3, 1), "Int"),
             typ: Some(Type::Int),
             enum_variant: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          val x = 0\n\
+          match x {\n\
+            \"asdf\" s => {}
+            Int(z) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: Token::String(Position::new(3, 1), "asdf".to_string()),
+            typ: Some(Type::String),
+            is_unreachable_none: false
         };
         assert_eq!(expected, err);
     }

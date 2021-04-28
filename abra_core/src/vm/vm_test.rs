@@ -2081,6 +2081,31 @@ mod tests {
     }
 
     #[test]
+    fn interpret_match_expressions_constants() {
+        let input = r#"
+          val a = match "foobar" {
+            "asdf" => 1
+            "hello" => 2
+            _ => 3
+          }
+          val b = match (12 + 34) {
+            24 => 10
+            46 => 20
+            _ => 30
+          }
+          val c = match (1 < 2) {
+            true => 100
+            false => 200
+            _ => 300
+          }
+          a + b + c
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(123);
+        assert_eq!(expected, result);
+    }
+
+    #[test]
     fn interpret_recursive_func_in_lambda() {
         // This is an utterly pointless, super contrived example, but the main test case here is
         // whether a non-root-scope function will be correctly recognized as recursive if its only

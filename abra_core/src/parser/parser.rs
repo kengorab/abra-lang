@@ -974,7 +974,16 @@ impl Parser {
                 };
                 (case_token, match_type)
             }
-            t => return Err(ParseErrorKind::ExpectedToken(TokenType::Ident, t.clone()))
+            Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
+                let token = self.expect_next()?;
+                let expr = self.parse_literal(token.clone())?;
+                let match_type = MatchCaseType::Constant(expr);
+                (token, match_type)
+            }
+            t => {
+                let valid_tokens = vec![TokenType::Ident, TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool];
+                return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone()));
+            }
         };
 
         let case_binding = if let Some(Token::Ident(_, _)) = self.peek() {
@@ -4456,6 +4465,12 @@ mod tests {
             A.String a => a\n\
             Abc(a, b) abc => a\n\
             A.Bcd(a) => a\n\
+            123 => {}\n\
+            123 x => {}\n\
+            12.3 => {}\n\
+            \"asdf\" => {}\n\
+            true => {}\n\
+            false => {}\n\
             _ => 0\n\
             _ x => {\n\
               0\n\
@@ -4506,12 +4521,60 @@ mod tests {
                         vec![identifier!((5, 13), "a")]
                     ),
                     (
-                        MatchCase { token: ident_token!((6, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((6, 1), "_")), case_binding: None },
-                        vec![int_literal!((6, 6), 0)]
+                        MatchCase {
+                            token: Token::Int(Position::new(6, 1), 123),
+                            match_type: MatchCaseType::Constant(int_literal!((6, 1), 123)),//Token::Int(Position::new(6, 1), 123)),
+                            case_binding: None,
+                        },
+                        vec![]
                     ),
                     (
-                        MatchCase { token: ident_token!((7, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((7, 1), "_")), case_binding: Some(ident_token!((7, 3), "x")) },
-                        vec![int_literal!((8, 1), 0), identifier!((9, 1), "x")]
+                        MatchCase {
+                            token: Token::Int(Position::new(7, 1), 123),
+                            match_type: MatchCaseType::Constant(int_literal!((7, 1), 123)),
+                            case_binding: Some(ident_token!((7, 5), "x")),
+                        },
+                        vec![]
+                    ),
+                    (
+                        MatchCase {
+                            token: Token::Float(Position::new(8, 1), 12.3),
+                            match_type: MatchCaseType::Constant(float_literal!((8, 1), 12.3)),
+                            case_binding: None,
+                        },
+                        vec![]
+                    ),
+                    (
+                        MatchCase {
+                            token: Token::String(Position::new(9, 1), "asdf".to_string()),
+                            match_type: MatchCaseType::Constant(string_literal!((9, 1), "asdf")),
+                            case_binding: None,
+                        },
+                        vec![]
+                    ),
+                    (
+                        MatchCase {
+                            token: Token::Bool(Position::new(10, 1), true),
+                            match_type: MatchCaseType::Constant(bool_literal!((10, 1), true)),
+                            case_binding: None,
+                        },
+                        vec![]
+                    ),
+                    (
+                        MatchCase {
+                            token: Token::Bool(Position::new(11, 1), false),
+                            match_type: MatchCaseType::Constant(bool_literal!((11, 1), false)),
+                            case_binding: None,
+                        },
+                        vec![]
+                    ),
+                    (
+                        MatchCase { token: ident_token!((12, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((12, 1), "_")), case_binding: None },
+                        vec![int_literal!((12, 6), 0)]
+                    ),
+                    (
+                        MatchCase { token: ident_token!((13, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((13, 1), "_")), case_binding: Some(ident_token!((13, 3), "x")) },
+                        vec![int_literal!((14, 1), 0), identifier!((15, 1), "x")]
                     )
                 ],
             },
@@ -4535,8 +4598,11 @@ mod tests {
         let expected = ParseErrorKind::UnexpectedToken(Token::RBrace(Position::new(1, 10)));
         assert_eq!(expected, error);
 
-        let error = parse("match a { 123 => 456 }").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 11), 123));
+        let error = parse("match a { * => 456 }").unwrap_err();
+        let expected = ParseErrorKind::ExpectedOneOf(
+            vec![TokenType::Ident, TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool],
+            Token::Star(Position::new(1, 11)),
+        );
         assert_eq!(expected, error);
 
         let error = parse("match a { Int 123 }").unwrap_err();

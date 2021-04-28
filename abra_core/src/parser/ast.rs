@@ -294,6 +294,7 @@ pub enum MatchCaseType {
     Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<BindingPattern>>),
     Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<BindingPattern>>),
     Wildcard(Token),
+    Constant(AstNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]

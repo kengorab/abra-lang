@@ -1,3 +1,21 @@
-import a from .example2
+enum Foo {
+  Bar(a: String, b: Int)
+}
 
-println("$a \uwer")
+match a {
+  "abc" => {}
+  123 => {}
+  12.3 => {}
+  true => {}
+  ("a", 12) => {}
+  (a, 12) => {}
+  ("a", b) => {}
+  (a, b) => {}
+  Foo.Bar("a", b) => {}
+  Foo.Bar(a, 12) => {}
+  Foo.Bar("a", 12) => {}
+  Foo.Bar(a, b) => {}
+  Result.Ok(Foo.Bar("a", 123)) => {}
+  (Foo.Bar(a, _), Foo.Bar("a", 12)) => {}
+  ...
+}

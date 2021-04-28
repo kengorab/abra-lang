@@ -1583,6 +1583,11 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
                     self.write_int_constant(variant_idx as u32, token.get_position().line);
                     (binding, args)
                 }
+                TypedMatchKind::Constant { node, binding } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.visit(node)?;
+                    (binding, None)
+                }
             };
 
             self.write_opcode(Opcode::Eq, token.get_position().line);
@@ -5054,6 +5059,64 @@ mod tests {
                 }),
                 Value::Int(24),
                 Value::Str("_test/f".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_match_statement_constants() {
+        let chunk = test_compile("\
+          val s = \"hello\"\n\
+          match s {\n\
+            \"asdf\" x => println(x)\n\
+            \"hello\" x => println(x)\n\
+            _ x => println(x)\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Constant(1, 0),
+                Opcode::GStore(1, 1),
+                Opcode::GLoad(1, 1),
+                Opcode::Dup,
+                Opcode::Constant(1, 2),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(19),
+                Opcode::Dup,
+                Opcode::Constant(1, 0),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(7),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![
+                new_string_obj("hello"),
+                Value::Str("_test/s".to_string()),
+                new_string_obj("asdf"),
             ],
         };
         assert_eq!(expected, chunk);

@@ -78,6 +78,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&token.get_range()))?;
                     obj.end()
                 }
+                ParseErrorKind::ExpectedOneOf(token_types, token) => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "parseError")?;
+                    obj.serialize_entry("subKind", "expectedOneOf")?;
+                    obj.serialize_entry("expected", &token_types.iter().map(|tt| tt.to_string()).collect::<Vec<_>>())?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("range", &JsRange(&token.get_range()))?;
+                    obj.end()
+                }
             }
             Error::LexerError(lexer_error) => match &lexer_error.kind {
                 LexerErrorKind::UnexpectedEof(pos) => {
