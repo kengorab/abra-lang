@@ -2109,6 +2109,28 @@ mod tests {
         let result = interpret(input);
         let expected = Value::Int(4123);
         assert_eq!(expected, result);
+
+        let input = r#"
+          enum Foo { Bar(baz: String, qux: Int) }
+          func abc(foo: Foo): Int {
+            match foo {
+              Foo.Bar("asdf", 12) => 1
+              Foo.Bar("asdf", q) => 2
+              Foo.Bar(b, 12) => 3
+              Foo.Bar(b, q) => b.length + q
+            }
+          }
+
+          [
+            abc(Foo.Bar("asdf", 24)), // => 2
+            abc(Foo.Bar("zxcv", 12)), // => 3
+            abc(Foo.Bar("asdf", 12)), // => 1
+            abc(Foo.Bar("zxcv", 0)),  // => 4
+          ].join(",")
+        "#;
+        let result = interpret(input);
+        let expected = new_string_obj("2,3,1,4");
+        assert_eq!(expected, result);
     }
 
     #[test]

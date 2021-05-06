@@ -469,7 +469,7 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerErrorKind::UnreachableMatchCase { token, typ, is_unreachable_none } => {
+                TypecheckerErrorKind::UnreachableMatchCase { token, typ, is_unreachable_none, prior_covering_case_tok } => {
                     let mut obj = serializer.serialize_map(Some(6))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unreachableMatchCase")?;
@@ -478,6 +478,9 @@ impl<'a> Serialize for JsWrappedError<'a> {
                         obj.serialize_entry("type", &JsType(typ))?;
                     }
                     obj.serialize_entry("isUnreachableNone", is_unreachable_none)?;
+                    if let Some(tok) = prior_covering_case_tok {
+                        obj.serialize_entry("priorCoveringCaseToken", &JsToken(tok))?;
+                    }
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }

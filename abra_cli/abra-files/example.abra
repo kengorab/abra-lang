@@ -20,11 +20,12 @@
 //  ...
 //}
 
-val t = ("abc", 123)
-match t {
-  ("asdf", 1234) => println(1)
-  ("abc", 1234,) => println(2)
-  ("abc", 123) => println(3)
-  //(123, "abc") => println(4)
+enum Foo { Bar(baz: String, qux: Int) }
+val foo = Foo.Bar(baz: "hello", qux: 24)
+match foo {
+  Foo.Bar("yo", q) => println(1)
+  Foo.Bar("hey", q) => println(2)
+  Foo.Bar("hello", 23) => println(3)
+  Foo.Bar("hello", 24) => println(4)
   _ => println(5)
 }

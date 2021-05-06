@@ -313,17 +313,23 @@ pub struct TypedAccessorNode {
 pub struct TypedMatchNode {
     pub typ: Type,
     pub target: Box<TypedAstNode>,
-    pub branches: Vec<(/* match_kind: */ TypedMatchKind, /* body: */ Vec<TypedAstNode>)>,
+    pub branches: Vec<(/* match_kind: */ TypedMatchKind, /* binding: */ Option<String>, /* body: */ Vec<TypedAstNode>)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypedMatchCaseArgument {
+    Pattern(BindingPattern),
+    Literal(TypedAstNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypedMatchKind {
-    Wildcard { binding: Option<String> },
-    None { binding: Option<String> },
-    Type { type_name: String, binding: Option<String>, args: Option<Vec<BindingPattern>> },
-    EnumVariant { variant_idx: usize, binding: Option<String>, args: Option<Vec<BindingPattern>> },
-    Constant { node: TypedAstNode, binding: Option<String> },
-    Tuple { nodes: Vec<TypedAstNode>, binding: Option<String> },
+    Wildcard,
+    None,
+    Type { type_name: String, args: Option<Vec<TypedMatchCaseArgument>> },
+    EnumVariant { variant_idx: usize, args: Option<Vec<TypedMatchCaseArgument>> },
+    Constant { node: TypedAstNode },
+    Tuple { nodes: Vec<TypedAstNode> },
 }
 
 #[derive(Clone, Debug, PartialEq)]
