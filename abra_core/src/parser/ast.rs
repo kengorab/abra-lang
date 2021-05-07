@@ -2,6 +2,7 @@ use crate::lexer::tokens::Token;
 use itertools::Itertools;
 use std::fmt::{Display, Formatter};
 use std::path::Path;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AstNode {
@@ -76,6 +77,19 @@ pub enum AstLiteralNode {
     FloatLiteral(f64),
     StringLiteral(String),
     BoolLiteral(bool),
+}
+
+impl Eq for AstLiteralNode {}
+
+impl Hash for AstLiteralNode {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        match self {
+            AstLiteralNode::IntLiteral(i) => i.hash(h),
+            AstLiteralNode::FloatLiteral(f) => f.to_string().hash(h),
+            AstLiteralNode::StringLiteral(s) => s.hash(h),
+            AstLiteralNode::BoolLiteral(b) => b.hash(h),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -287,14 +301,45 @@ pub struct MatchCase {
     pub token: Token,
     pub match_type: MatchCaseType,
     pub case_binding: Option<Token>,
-    pub args: Option<Vec<BindingPattern>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MatchCaseArgument {
+    Pattern(BindingPattern),
+    Literal(AstNode),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCaseType {
-    Ident(Token),
-    Compound(Vec<Token>),
+    Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<MatchCaseArgument>>),
+    Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<MatchCaseArgument>>),
     Wildcard(Token),
+    Constant(AstNode),
+    Tuple(Token, Vec<AstNode>),
+}
+
+impl MatchCaseType {
+    pub fn get_lit_args(args: &Option<Vec<MatchCaseArgument>>) -> Option<Vec<Option<AstLiteralNode>>> {
+        if let Some(args) = args {
+            let mut saw_lit = false;
+            let mut lits = Vec::new();
+            for arg in args {
+                let lit = match arg {
+                    MatchCaseArgument::Pattern(_) => None,
+                    MatchCaseArgument::Literal(ast) => {
+                        saw_lit = true;
+                        match ast {
+                            AstNode::Literal(_, lit) => Some(lit.clone()),
+                            _ => unreachable!("Literals in match cases must be literal nodes")
+                        }
+                    }
+                };
+                lits.push(lit);
+            }
+
+            if saw_lit { Some(lits) } else { None }
+        } else { None }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

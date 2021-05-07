@@ -2,9 +2,9 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind, TypedMatchCaseArgument};
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, InvalidAssignmentTargetReason, TypecheckerError};
 use crate::{ModuleLoader, ModuleReader, tokenize_and_parse};
 use itertools::Itertools;
@@ -538,27 +538,31 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 _ => None
             })
             .collect::<HashMap<_, Vec<_>>>();
+        let mut seen_enum_variant_literal_cases = HashMap::<String, HashMap<Vec<Option<AstLiteralNode>>, Token>>::new();
         let mut seen_wildcard = false;
 
         let mut typed_branches = Vec::new();
         for (case, block) in branches {
-            let MatchCase { token, match_type, case_binding, args } = case;
+            let MatchCase { token, match_type, case_binding } = case;
 
             self.scopes.push(Scope::new(ScopeKind::Block));
 
             if block.is_empty() && !is_stmt {
                 let token = match match_type {
-                    MatchCaseType::Ident(ident) => ident,
+                    MatchCaseType::Ident(ident, _) => ident,
                     MatchCaseType::Wildcard(token) => token,
-                    MatchCaseType::Compound(idents) => idents.get(1).expect("There should be at least 2 idents").clone(),
+                    MatchCaseType::Compound(idents, _) => idents.get(1).expect("There should be at least 2 idents").clone(),
+                    MatchCaseType::Constant(expr) => expr.get_token().clone(),
+                    MatchCaseType::Tuple(lparen, _) => lparen,
                 };
                 return Err(TypecheckerErrorKind::EmptyMatchBlock { token });
             }
 
+            let mut binding = None;
             let branch_cond = match match_type {
-                MatchCaseType::Ident(ident) => {
+                MatchCaseType::Ident(ident, args) => {
                     if seen_wildcard {
-                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false });
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false, prior_covering_case_tok: None });
                     }
 
                     if let Token::None(_) = &ident {
@@ -570,15 +574,15 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         if let Some(idx) = idx {
                             possibilities.remove(idx);
 
-                            let binding = if let Some(ident) = case_binding {
+                            if let Some(ident) = case_binding {
                                 let ident_name = Token::get_ident_name(&ident).clone();
                                 self.add_binding(ident_name.as_str(), &ident, &Type::Unknown, false);
-                                Some(ident_name)
-                            } else { None };
+                                binding = Some(ident_name)
+                            }
 
-                            TypedMatchKind::None { binding }
+                            TypedMatchKind::None
                         } else {
-                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true });
+                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true, prior_covering_case_tok: None });
                         }
                     } else {
                         let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
@@ -592,20 +596,20 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         let possibility = possibilities.iter().enumerate()
                             .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
                         if let Some((idx, typ)) = possibility {
-                            let binding = if let Some(ident) = case_binding {
+                            if let Some(ident) = case_binding {
                                 let ident_name = Token::get_ident_name(&ident).clone();
                                 self.add_binding(ident_name.as_str(), &ident, &typ, false);
-                                Some(ident_name)
-                            } else { None };
+                                binding = Some(ident_name)
+                            }
 
                             possibilities.remove(idx);
-                            TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), binding, args: None }
+                            TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), args: None }
                         } else {
-                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false });
+                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false, prior_covering_case_tok: None });
                         }
                     }
                 }
-                MatchCaseType::Compound(idents) => {
+                MatchCaseType::Compound(idents, args) => {
                     let mut idents = idents.into_iter();
                     let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
                     let typ = self.type_from_type_ident(&type_ident, true)?;
@@ -627,19 +631,67 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let possibility = possibilities.iter().enumerate()
                         .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
                     let generics = match &mut enum_variant_possibilities.get_mut(&enum_type.name) {
-                        None => return Err(TypecheckerErrorKind::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false }),
+                        None => return Err(TypecheckerErrorKind::UnreachableMatchCase { token: variant_ident, typ: Some(typ), is_unreachable_none: false, prior_covering_case_tok: None }),
                         Some(variants) => {
                             match variants.iter().position(|v| *v == variant_name) {
                                 None => return Err(TypecheckerErrorKind::DuplicateMatchCase { token: variant_ident }),
                                 Some(variant_idx) => {
-                                    // Remove the variant, since we've now seen it. If we've seen all variants, remove the enum itself from consideration
-                                    variants.remove(variant_idx);
                                     let (idx, possibility_type) = possibility.unwrap();
-                                    let possibility_type = if variants.is_empty() {
-                                        enum_variant_possibilities.remove(&enum_type.name);
-                                        possibilities.remove(idx)
-                                    } else {
+
+                                    let lit_args = MatchCaseType::get_lit_args(&args);
+                                    let possibility_type = if let Some(lit_args) = lit_args {
+                                        let variant_full_name = format!("{}.{}", &enum_type.name, &variant_name);
+                                        match seen_enum_variant_literal_cases.get_mut(&variant_full_name) {
+                                            Some(variant_lit_cases) => {
+                                                if let Some(prior_covering_case_tok) = variant_lit_cases.get(&lit_args) {
+                                                    let prior_covering_case_tok = Some(prior_covering_case_tok.clone());
+                                                    return Err(TypecheckerErrorKind::UnreachableMatchCase { token: variant_ident, typ: None, is_unreachable_none: false, prior_covering_case_tok });
+                                                } else {
+                                                    for (case, case_token) in variant_lit_cases.iter() {
+                                                        debug_assert!(case.len() == lit_args.len());
+                                                        let mut prior_covering_case_tok = None;
+                                                        for (seen_arg, case_arg) in case.iter().zip(lit_args.iter()) {
+                                                            match (seen_arg, case_arg) {
+                                                                (None, Some(_)) => {
+                                                                    prior_covering_case_tok = Some(case_token.clone());
+                                                                }
+                                                                (Some(_), None) => {
+                                                                    prior_covering_case_tok = None;
+                                                                    break;
+                                                                }
+                                                                (Some(v1), Some(v2)) => {
+                                                                    if v1 != v2 {
+                                                                        prior_covering_case_tok = None;
+                                                                        break;
+                                                                    }
+                                                                }
+                                                                (None, None) => { continue; }
+                                                            }
+                                                        }
+                                                        if prior_covering_case_tok.is_some() {
+                                                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: variant_ident, typ: None, is_unreachable_none: false, prior_covering_case_tok });
+                                                        }
+                                                    }
+
+                                                    variant_lit_cases.insert(lit_args, variant_ident.clone());
+                                                }
+                                            }
+                                            None => {
+                                                let mut map = HashMap::new();
+                                                map.insert(lit_args, variant_ident.clone());
+                                                seen_enum_variant_literal_cases.insert(variant_full_name, map);
+                                            }
+                                        }
                                         possibility_type.clone()
+                                    } else {
+                                        // Remove the variant, since we've now seen it. If we've seen all variants, remove the enum itself from consideration
+                                        variants.remove(variant_idx);
+                                        if variants.is_empty() {
+                                            enum_variant_possibilities.remove(&enum_type.name);
+                                            possibilities.remove(idx)
+                                        } else {
+                                            possibility_type.clone()
+                                        }
                                     };
                                     if let Type::Enum(EnumType { type_args, .. }) = possibility_type {
                                         type_args.clone().into_iter().collect::<HashMap<_, _>>()
@@ -649,13 +701,13 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     };
 
-                    let binding = if let Some(ident) = case_binding {
+                    if let Some(ident) = case_binding {
                         let ident_name = Token::get_ident_name(&ident).clone();
                         self.add_binding(ident_name.as_str(), &ident, &typ, false);
-                        Some(ident_name)
-                    } else { None };
+                        binding = Some(ident_name)
+                    }
 
-                    let args = if let Some(mut destructured_args) = args {
+                    let args = if let Some(destructured_args) = args {
                         match &enum_type.variants[variant_idx].1 {
                             Type::Fn(fn_type) => {
                                 let FnType { is_enum_constructor, arg_types, .. } = &fn_type;
@@ -665,14 +717,28 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                     return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuringArity { token, typ, enum_variant: Some(variant_name), expected: arg_types_len, actual: destructured_args.len() });
                                 }
 
-                                for ((_, arg_type, _), ref mut pat) in arg_types.iter().zip(destructured_args.iter_mut()) {
+                                let mut args = Vec::new();
+                                for ((_, arg_type, _), pat) in arg_types.iter().zip(destructured_args.into_iter()) {
                                     let arg_type = match &arg_type {
                                         Type::Generic(g) => generics.get(g).unwrap(),
                                         t => t
                                     };
-                                    self.visit_binding_pattern(pat, arg_type, false)?;
+                                    let arg = match pat {
+                                        MatchCaseArgument::Pattern(mut pat) => {
+                                            self.visit_binding_pattern(&mut pat, arg_type, false)?;
+                                            TypedMatchCaseArgument::Pattern(pat)
+                                        }
+                                        MatchCaseArgument::Literal(node) => {
+                                            let mut typed_node = self.visit(node.clone())?;
+                                            if !self.are_types_equivalent(&mut typed_node, arg_type)? {
+                                                return Err(TypecheckerErrorKind::Mismatch { token: typed_node.get_token().clone(), expected: arg_type.clone(), actual: typed_node.get_type() });
+                                            }
+                                            TypedMatchCaseArgument::Literal(typed_node)
+                                        }
+                                    };
+                                    args.push(arg);
                                 }
-                                Some(destructured_args)
+                                Some(args)
                             }
                             _ => {
                                 let variant_name = enum_type.variants[variant_idx].0.clone();
@@ -681,7 +747,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     } else { None };
 
-                    TypedMatchKind::EnumVariant { variant_idx, binding, args }
+                    TypedMatchKind::EnumVariant { variant_idx, args }
                 }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
@@ -689,19 +755,51 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                     seen_wildcard = true;
                     let match_type = if possibilities.is_empty() {
-                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: None, is_unreachable_none: false });
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: None, is_unreachable_none: false, prior_covering_case_tok: None });
                     } else if possibilities.len() == 1 {
                         possibilities.drain(..).next().unwrap()
                     } else {
                         Type::Union(possibilities.drain(..).collect())
                     };
-                    let binding = if let Some(ident) = case_binding {
+                    if let Some(ident) = case_binding {
                         let ident_name = Token::get_ident_name(&ident).clone();
                         self.add_binding(ident_name.as_str(), &ident, &match_type, false);
-                        Some(ident_name)
-                    } else { None };
+                        binding = Some(ident_name)
+                    }
 
-                    TypedMatchKind::Wildcard { binding }
+                    TypedMatchKind::Wildcard
+                }
+                MatchCaseType::Constant(node) => {
+                    let typed_node = self.visit(node)?;
+                    let typ = typed_node.get_type();
+                    if !possibilities.contains(&typ) {
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: typed_node.get_token().clone(), typ: Some(typ), is_unreachable_none: false, prior_covering_case_tok: None });
+                    }
+
+                    if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &typ, false);
+                        binding = Some(ident_name)
+                    }
+
+                    TypedMatchKind::Constant { node: typed_node }
+                }
+                MatchCaseType::Tuple(token, nodes) => {
+                    let typed_nodes = nodes.into_iter()
+                        .map(|n| self.visit(n))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let tuple_type = Type::Tuple(typed_nodes.iter().map(|n| n.get_type()).collect());
+                    if !possibilities.contains(&tuple_type) {
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: Some(tuple_type), is_unreachable_none: false, prior_covering_case_tok: None });
+                    }
+
+                    if let Some(ident) = case_binding {
+                        let ident_name = Token::get_ident_name(&ident).clone();
+                        self.add_binding(ident_name.as_str(), &ident, &tuple_type, false);
+                        binding = Some(ident_name)
+                    }
+
+                    TypedMatchKind::Tuple { nodes: typed_nodes }
                 }
             };
 
@@ -709,7 +807,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             let typed_block = self.visit_block(is_stmt, block)?;
             self.scopes.pop();
 
-            typed_branches.push((branch_cond, typed_block));
+            typed_branches.push((branch_cond, binding, typed_block));
         }
         if !possibilities.is_empty() {
             return Err(TypecheckerErrorKind::NonExhaustiveMatch { token: match_token.clone() });
@@ -850,7 +948,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
             }
             TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
             TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
-                branches.iter().fold(Some(true), |acc, (_, body)| {
+                branches.iter().fold(Some(true), |acc, (_, _, body)| {
                     let terminator = body.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
                     match (acc, terminator) {
                         (Some(true), Some(true)) => Some(true),
@@ -2352,7 +2450,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let mut node = self.visit_match_node(false, &token, node)?;
 
         let mut typ = None;
-        for (_, ref mut block) in &mut node.branches {
+        for (_, _, ref mut block) in &mut node.branches {
             if block.last().as_ref().map_or(false, |n| Self::all_branches_terminate(n).is_some()) {
                 continue;
             }
@@ -7981,17 +8079,11 @@ mod tests {
                 target: Box::new(identifier!((2, 7), "i", Type::Option(Box::new(Type::Int)), 0)),
                 branches: vec![
                     (
-                        TypedMatchKind::Type {
-                            type_name: "Int".to_string(),
-                            binding: Some("i".to_string()),
-                            args: None,
-                        },
+                        TypedMatchKind::Type { type_name: "Int".to_string(), args: None },
+                        Some("i".to_string()),
                         vec![identifier!((3, 10), "i", Type::Int, 1)]
                     ),
-                    (
-                        TypedMatchKind::None { binding: None },
-                        vec![int_literal!((4, 9), 0)]
-                    )
+                    (TypedMatchKind::None, None, vec![int_literal!((4, 9), 0)])
                 ],
             },
         );
@@ -8014,17 +8106,13 @@ mod tests {
                 ),
                 branches: vec![
                     (
-                        TypedMatchKind::Type {
-                            type_name: "Int".to_string(),
-                            binding: Some("i".to_string()),
-                            args: None,
-                        },
+                        TypedMatchKind::Type { type_name: "Int".to_string(), args: None },
+                        Some("i".to_string()),
                         vec![identifier!((3, 10), "i", Type::Int, 1)]
                     ),
                     (
-                        TypedMatchKind::Wildcard {
-                            binding: Some("v".to_string()),
-                        },
+                        TypedMatchKind::Wildcard,
+                        Some("v".to_string()),
                         vec![identifier!((4, 8), "v", Type::Union(vec![Type::String, Type::Unknown]), 1)]
                     ),
                 ],
@@ -8051,35 +8139,23 @@ mod tests {
                 target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
                 branches: vec![
                     (
-                        TypedMatchKind::EnumVariant {
-                            variant_idx: 0,
-                            binding: None,
-                            args: None,
-                        },
+                        TypedMatchKind::EnumVariant { variant_idx: 0, args: None },
+                        None,
                         vec![int_literal!((4, 19), 0)],
                     ),
                     (
-                        TypedMatchKind::EnumVariant {
-                            variant_idx: 1,
-                            binding: None,
-                            args: None,
-                        },
+                        TypedMatchKind::EnumVariant { variant_idx: 1, args: None },
+                        None,
                         vec![int_literal!((5, 20), 1)],
                     ),
                     (
-                        TypedMatchKind::EnumVariant {
-                            variant_idx: 2,
-                            binding: None,
-                            args: None,
-                        },
+                        TypedMatchKind::EnumVariant { variant_idx: 2, args: None },
+                        None,
                         vec![int_literal!((6, 17), 2)],
                     ),
                     (
-                        TypedMatchKind::EnumVariant {
-                            variant_idx: 3,
-                            binding: None,
-                            args: None,
-                        },
+                        TypedMatchKind::EnumVariant { variant_idx: 3, args: None },
+                        None,
                         vec![int_literal!((7, 19), 3)],
                     )
                 ],
@@ -8092,6 +8168,24 @@ mod tests {
           val f: Foo = Foo.Bar(baz: 24)\n\
           val i: Int = match f {\n\
             Foo.Bar(z) => z\n\
+          }
+        ");
+        assert!(res.is_ok());
+
+        let res = test_typecheck("\
+          val s = \"asdf\"\n\
+          val i: Int = match s {\n\
+            \"asdf\" s => s.length\n\
+            _ s => s.length\n\
+          }
+        ");
+        assert!(res.is_ok());
+
+        let res = test_typecheck("\
+          val s = (\"asdf\", 123)\n\
+          val i: Int = match s {\n\
+            (\"asdf\", 123) s => 1\n\
+            _ s => s[0].length\n\
           }
         ");
         assert!(res.is_ok());
@@ -8219,6 +8313,7 @@ mod tests {
             token: ident_token!((4, 1), "Int"),
             typ: None,
             is_unreachable_none: false,
+            prior_covering_case_tok: None,
         };
         assert_eq!(expected, err);
 
@@ -8233,6 +8328,7 @@ mod tests {
             token: ident_token!((4, 1), "String"),
             typ: Some(Type::String),
             is_unreachable_none: false,
+            prior_covering_case_tok: None,
         };
         assert_eq!(expected, err);
 
@@ -8369,6 +8465,85 @@ mod tests {
             token: ident_token!((3, 1), "Int"),
             typ: Some(Type::Int),
             enum_variant: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          val x = 0\n\
+          match x {\n\
+            \"asdf\" s => {}
+            Int(z) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: Token::String(Position::new(3, 1), "asdf".to_string()),
+            typ: Some(Type::String),
+            is_unreachable_none: false,
+            prior_covering_case_tok: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          match (0, \"abc\") {\n\
+            (\"asdf\", 123) s => {}
+            Int(z) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: Token::LParen(Position::new(2, 1), true),
+            typ: Some(Type::Tuple(vec![Type::String, Type::Int])),
+            is_unreachable_none: false,
+            prior_covering_case_tok: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          enum Foo { Bar(baz: Int, quux: Int) }\n\
+          match Foo.Bar(0, 0) {\n\
+            Foo.Bar(a, 1) => {}\n\
+            Foo.Bar(1, 1) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: ident_token!((4, 5), "Bar"),
+            typ: None,
+            is_unreachable_none: false,
+            prior_covering_case_tok: Some(ident_token!((3, 5), "Bar")),
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          enum Foo { Bar(baz: Int, quux: Int) }\n\
+          match Foo.Bar(0, 0) {\n\
+            Foo.Bar(a, b) => {}\n\
+            Foo.Bar(1, 1) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: ident_token!((4, 5), "Bar"),
+            typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
+            is_unreachable_none: false,
+            prior_covering_case_tok: None,
+        };
+        assert_eq!(expected, err);
+
+        let err = test_typecheck("\
+          enum Foo { Bar(baz: Int, quux: Int) }\n\
+          match Foo.Bar(0, 0) {\n\
+            Foo.Bar(1, 1) => {}\n\
+            Foo.Bar(1, 1) => {}\n\
+            _ => {}\n\
+          }
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::UnreachableMatchCase {
+            token: ident_token!((4, 5), "Bar"),
+            typ: None,
+            is_unreachable_none: false,
+            prior_covering_case_tok: Some(ident_token!((3, 5), "Bar")),
         };
         assert_eq!(expected, err);
     }

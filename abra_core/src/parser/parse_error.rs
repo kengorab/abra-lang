@@ -2,12 +2,14 @@ use std::str::FromStr;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
 use crate::common::display_error::{DisplayError, IND_AMT};
 use crate::parser::ast::ModuleId;
+use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorKind {
     UnexpectedEof(Range),
     UnexpectedToken(Token),
     ExpectedToken(TokenType, Token),
+    ExpectedOneOf(Vec<TokenType>, Token),
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,6 +53,20 @@ impl DisplayError for ParseError {
                 format!(
                     "Error at {}:{}:{}\nExpected token '{}', saw '{}'\n{}",
                     file_name, pos.line, pos.col, expected.to_string(), actual.to_string(), message
+                )
+            }
+            ParseErrorKind::ExpectedOneOf(expected, actual) => {
+                let pos = actual.get_position();
+                let message = Self::get_underlined_line(lines, actual);
+
+                // Convert from TokenTypes to Tokens, to make use of the #[strum(to_string)] meta,
+                // since strum doesn't apply the #[strum(to_string)] to the discriminants.
+                let expecteds = expected.iter()
+                    .map(|token_type| format!("'{}'", Token::from_str(&token_type.to_string()).unwrap()))
+                    .join(" | ");
+                format!(
+                    "Error at {}:{}:{}\nExpected one of {}, saw '{}'\n{}",
+                    file_name, pos.line, pos.col, expecteds, actual.to_string(), message
                 )
             }
         }

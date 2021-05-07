@@ -2,7 +2,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::{Token, Position};
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, BindingPattern, ModuleId};
 use crate::vm::opcode::Opcode;
-use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedImportNode, TypedMatchKind};
+use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedImportNode, TypedMatchKind, TypedMatchCaseArgument};
 use crate::typechecker::types::{Type, FnType};
 use crate::vm::value::{Value, FnValue, TypeValue, EnumValue, NativeFn, EnumInstanceObj};
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeString};
@@ -1548,12 +1548,13 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
         self.visit(*target)?;
 
         let mut end_match_jumps = Vec::new();
+        let mut next_case_jump_handles = Vec::new();
 
-        for (match_kind, block) in branches {
+        for (match_kind, binding, block) in branches {
             self.push_scope(ScopeKind::Block);
 
-            let (binding, args) = match match_kind {
-                TypedMatchKind::Wildcard { binding } => {
+            let args= match match_kind {
+                TypedMatchKind::Wildcard  => {
                     if let Some(binding_name) = &binding {
                         self.push_local(binding_name, token.get_position().line, true);
                     } else {
@@ -1565,28 +1566,68 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
                     self.pop_scope();
                     continue;
                 }
-                TypedMatchKind::None { binding } => {
+                TypedMatchKind::None  => {
                     self.write_opcode(Opcode::Dup, token.get_position().line);
                     self.write_opcode(Opcode::Nil, token.get_position().line);
-                    (binding, None)
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+
+                    None
                 }
-                TypedMatchKind::Type { type_name, binding, args } => {
+                TypedMatchKind::Type { type_name,  args } => {
                     let (module_idx, type_const_idx) = self.get_type_constant_index(&type_name);
 
                     self.write_opcode(Opcode::Dup, token.get_position().line);
                     self.write_opcode(Opcode::Typeof, token.get_position().line);
                     self.write_constant(module_idx, type_const_idx, token.get_position().line);
-                    (binding, args)
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+
+                    args
                 }
-                TypedMatchKind::EnumVariant { variant_idx, binding, args } => {
+                TypedMatchKind::EnumVariant { variant_idx,  args } => {
                     self.write_opcode(Opcode::Dup, token.get_position().line);
                     self.write_int_constant(variant_idx as u32, token.get_position().line);
-                    (binding, args)
+
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+
+                    if let Some(args) = &args {
+                        for (idx, arg) in args.iter().enumerate() {
+                            match arg {
+                                TypedMatchCaseArgument::Pattern(_) => { continue; }
+                                TypedMatchCaseArgument::Literal(arg) => {
+                                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                                    self.metadata.field_gets.push(format!("_{}", idx));
+                                    self.write_opcode(Opcode::GetField(idx), token.get_position().line);
+                                    self.visit(arg.clone())?;
+                                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+                                }
+                            }
+                        }
+                    }
+
+                    args
+                }
+                TypedMatchKind::Constant { node,  } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    self.visit(node)?;
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+
+                    None
+                }
+                TypedMatchKind::Tuple { nodes,  } => {
+                    self.write_opcode(Opcode::Dup, token.get_position().line);
+                    let tuple_node = TypedTupleNode { typ: Type::Placeholder, items: nodes };
+                    self.visit_tuple(token.clone(), tuple_node)?;
+                    self.write_opcode(Opcode::Eq, token.get_position().line);
+                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+
+                    None
                 }
             };
-
-            self.write_opcode(Opcode::Eq, token.get_position().line);
-            let next_case_jump_handle = self.begin_jump(Opcode::JumpIfF(0), token.get_position().line);
 
             // Push a local representing the match target still left on the stack (from the previous DUP).
             // If there is a name supplied in source to ascribe to that value we use it, otherwise use the intrinsic $match_target.
@@ -1597,11 +1638,17 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             if let Some(destructured_args) = args {
                 let depth = self.get_fn_depth();
                 for (idx, pat) in destructured_args.into_iter().enumerate() {
-                    let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
-                    self.write_load_local_instr(&binding_name, slot, token.get_position().line);
+                    match pat {
+                        TypedMatchCaseArgument::Pattern(pat) => {
+                            let (_, slot) = self.resolve_local(&binding_name, depth).unwrap();
+                            self.write_load_local_instr(&binding_name, slot, token.get_position().line);
 
-                    self.write_opcode(Opcode::GetField(idx), token.get_position().line);
-                    self.visit_pattern(pat);
+                            self.metadata.field_gets.push(format!("_{}", idx));
+                            self.write_opcode(Opcode::GetField(idx), token.get_position().line);
+                            self.visit_pattern(pat);
+                        },
+                        TypedMatchCaseArgument::Literal(_) => { continue; }
+                    }
                 }
             }
 
@@ -1610,7 +1657,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
             let end_match_jump_handle = self.begin_jump(Opcode::Jump(0), token.get_position().line);
             end_match_jumps.push(end_match_jump_handle);
 
-            self.close_jump(next_case_jump_handle);
+            for handle in next_case_jump_handles.drain(..) {
+                self.close_jump(handle);
+            }
 
             self.pop_scope();
         }
@@ -5054,6 +5103,235 @@ mod tests {
                 }),
                 Value::Int(24),
                 Value::Str("_test/f".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_match_statement_constants() {
+        let chunk = test_compile("\
+          val s = \"hello\"\n\
+          match s {\n\
+            \"asdf\" x => println(x)\n\
+            \"hello\" x => println(x)\n\
+            _ x => println(x)\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Constant(1, 0),
+                Opcode::GStore(1, 1),
+                Opcode::GLoad(1, 1),
+                Opcode::Dup,
+                Opcode::Constant(1, 2),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(19),
+                Opcode::Dup,
+                Opcode::Constant(1, 0),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(7),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![
+                new_string_obj("hello"),
+                Value::Str("_test/s".to_string()),
+                new_string_obj("asdf"),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = test_compile("\
+          val s = (\"hello\", 12)\n\
+          match s {\n\
+            (\"hello\", 12) x => println(x)\n\
+            _ x => println(x)\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                Opcode::Constant(1, 0),
+                Opcode::Constant(1, 1),
+                Opcode::TupleMk(2),
+                Opcode::GStore(1, 2),
+                Opcode::GLoad(1, 2),
+                Opcode::Dup,
+                Opcode::Constant(1, 0),
+                Opcode::Constant(1, 1),
+                Opcode::TupleMk(2),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(7),
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![
+                new_string_obj("hello"),
+                Value::Int(12),
+                Value::Str("_test/s".to_string()),
+            ],
+        };
+        assert_eq!(expected, chunk);
+
+        let chunk = test_compile("\
+          enum Foo { Bar(baz: String, qux: Int) }\n\
+          val foo = Foo.Bar(baz: \"asdf\", qux: 24)\n\
+          match foo {\n\
+            Foo.Bar(\"asdf\", 12) => println(1)
+            Foo.Bar(\"qwer\", 24) => println(2)
+            _ x => println(x)\n\
+          }\
+        ");
+        let expected = Module {
+            name: "_test".to_string(),
+            code: vec![
+                // enum Foo { Bar(baz: String, qux: Int) }
+                Opcode::IConst0,
+                Opcode::GStore(1, 0),
+                Opcode::Constant(1, 1),
+                Opcode::GStore(1, 0),
+
+                // val foo = Foo.Bar(baz: "asdf", qux: 24)
+                Opcode::GLoad(1, 0),
+                Opcode::GetField(0),
+                Opcode::Constant(1, 2),
+                Opcode::Constant(1, 3),
+                Opcode::Invoke(2),
+                Opcode::GStore(1, 4),
+
+                // match foo {
+                Opcode::GLoad(1, 4),
+
+                //   Foo.Bar("asdf", 12) => println(1)
+                Opcode::Dup,
+                Opcode::IConst0,
+                Opcode::Eq,
+                Opcode::JumpIfF(18),
+                Opcode::Dup,
+                Opcode::GetField(0),
+                Opcode::Constant(1, 2),
+                Opcode::Eq,
+                Opcode::JumpIfF(13),
+                Opcode::Dup,
+                Opcode::GetField(1),
+                Opcode::Constant(1, 5),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // $match_target
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::IConst1,
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(29),
+
+                //   Foo.Bar("qwer", 24) => println(2)
+                Opcode::Dup,
+                Opcode::IConst0,
+                Opcode::Eq,
+                Opcode::JumpIfF(18),
+                Opcode::Dup,
+                Opcode::GetField(0),
+                Opcode::Constant(1, 6),
+                Opcode::Eq,
+                Opcode::JumpIfF(13),
+                Opcode::Dup,
+                Opcode::GetField(1),
+                Opcode::Constant(1, 3),
+                Opcode::Eq,
+                Opcode::JumpIfF(8),
+                Opcode::MarkLocal(0), // $match_target
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::IConst2,
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Jump(7),
+
+                // _ x => println(x)
+                Opcode::MarkLocal(0), // x
+                Opcode::Constant(0, PRELUDE_PRINTLN_INDEX as usize),
+                Opcode::LLoad(0),
+                Opcode::ArrMk(1),
+                Opcode::Invoke(1),
+                Opcode::Pop(1),
+                Opcode::Pop(1),
+                Opcode::Return
+            ],
+            constants: vec![
+                Value::Str("_test/Foo".to_string()),
+                Value::Enum(EnumValue {
+                    name: "Foo".to_string(),
+                    module_name: "_test".to_string(),
+                    variants: vec![
+                        (
+                            "Bar".to_string(),
+                            Value::Fn(FnValue {
+                                name: "Foo.Bar".to_string(),
+                                code: vec![
+                                    Opcode::IConst0,
+                                    Opcode::GLoad(1, 0),
+                                    Opcode::LLoad(1),
+                                    Opcode::LLoad(0),
+                                    Opcode::New(2),
+                                    Opcode::LStore(0),
+                                    Opcode::Pop(1),
+                                    Opcode::Return
+                                ],
+                                upvalues: vec![],
+                                receiver: None,
+                                has_return: true,
+                            })
+                        ),
+                    ],
+                    methods: vec![to_string_method()],
+                    static_fields: vec![],
+                }),
+                new_string_obj("asdf"),
+                Value::Int(24),
+                Value::Str("_test/foo".to_string()),
+                Value::Int(12),
+                new_string_obj("qwer"),
             ],
         };
         assert_eq!(expected, chunk);

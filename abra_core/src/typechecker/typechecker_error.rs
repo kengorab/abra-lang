@@ -55,7 +55,7 @@ pub enum TypecheckerErrorKind {
     ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
-    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool },
+    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool, prior_covering_case_tok: Option<Token> },
     DuplicateMatchCase { token: Token },
     NonExhaustiveMatch { token: Token },
     EmptyMatchBlock { token: Token },
@@ -614,14 +614,19 @@ impl DisplayError for TypecheckerError {
                     } else { "".to_string() }
                 )
             }
-            TypecheckerErrorKind::UnreachableMatchCase { typ, is_unreachable_none, .. } => {
+            TypecheckerErrorKind::UnreachableMatchCase { typ, is_unreachable_none, prior_covering_case_tok: is_already_covered, .. } => {
                 format!(
                     "Unreachable match case\n{}\n{}",
                     cursor_line,
                     if *is_unreachable_none {
-                        "Value cannot possibly be None".to_string()
+                        "Value cannot possibly be None at this point".to_string()
+                    } else if let Some(orig_case_token) = is_already_covered {
+                        let pos = orig_case_token.get_position();
+                        let cursor_line = Self::get_underlined_line(lines, orig_case_token);
+
+                        format!("This condition has already been handled by a previous case ({}:{})\n{}", pos.line, pos.col, cursor_line)
                     } else if let Some(typ) = typ {
-                        format!("Value cannot possibly be of type {}", type_repr(typ))
+                        format!("Value cannot possibly be of type {} at this point", type_repr(typ))
                     } else {
                         "All possible cases have already been handled".to_string()
                     }

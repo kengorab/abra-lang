@@ -44,10 +44,14 @@ impl Backend {
     async fn module_id_from_url(&self, uri: &Url) -> ModuleId {
         let project_root = self.project_root.lock().await;
         let module_uri = uri.path();
-        let module_path = match project_root.deref() {
+        let mut module_path = match project_root.deref() {
             None => module_uri.to_string(),
             Some(project_root) => module_uri.replace(project_root, ""),
         };
+        if module_path.starts_with('/') {
+            module_path = module_path.replacen('/', "", 1);
+        }
+
         ModuleId::from_path(&module_path)
     }
 
