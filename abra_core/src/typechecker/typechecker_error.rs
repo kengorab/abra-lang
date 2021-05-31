@@ -25,6 +25,7 @@ pub enum TypecheckerErrorKind {
     DuplicateField { ident: Token, orig_ident: Token, orig_is_field: bool, orig_is_enum_variant: bool },
     DuplicateType { ident: Token, orig_ident: Option<Token> },
     DuplicateTypeArgument { ident: Token, orig_ident: Token },
+    DuplicateMapKey { key: Token, orig_key: Token },
     UnboundGeneric(Token, String),
     UnknownIdentifier { ident: Token },
     InvalidAssignmentTarget { token: Token, typ: Option<Type>, reason: InvalidAssignmentTargetReason },
@@ -92,6 +93,7 @@ impl TypecheckerError {
             TypecheckerErrorKind::DuplicateBinding { ident, .. } => ident,
             TypecheckerErrorKind::DuplicateType { ident, .. } => ident,
             TypecheckerErrorKind::DuplicateTypeArgument { ident, .. } => ident,
+            TypecheckerErrorKind::DuplicateMapKey { key, .. } => key,
             TypecheckerErrorKind::UnboundGeneric(token, _) => token,
             TypecheckerErrorKind::DuplicateField { ident, .. } => ident,
             TypecheckerErrorKind::UnknownIdentifier { ident } => ident,
@@ -340,6 +342,15 @@ impl DisplayError for TypecheckerError {
                 let cursor_line = Self::get_underlined_line(lines, orig_ident);
 
                 let second_msg = format!("Type already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypecheckerErrorKind::DuplicateMapKey { orig_key, .. } => {
+                let first_msg = format!("Duplicate map key\n{}", cursor_line);
+
+                let pos = orig_key.get_position();
+                let cursor_line = Self::get_underlined_line(lines, orig_key);
+                let second_msg = format!("Key already present at ({}:{})\n{}", pos.line, pos.col, cursor_line);
+
                 format!("{}\n{}", first_msg, second_msg)
             }
             TypecheckerErrorKind::UnboundGeneric(_, type_arg_ident) => {
@@ -865,7 +876,7 @@ Invalid operator
        ^
 No operator exists to satisfy Int - String"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -881,7 +892,7 @@ Expected assignment for variable 'abc'
          ^^^
 Variables declared with 'val' must be initialized"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -904,7 +915,7 @@ Duplicate variable 'abc'
   |  val abc = 123
          ^^^"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         // Test with prelude
         let module_id = ModuleId::from_name("test");
@@ -923,7 +934,7 @@ Duplicate variable 'println'
           ^^^^^^^
 'println' already declared as built-in value"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -947,7 +958,7 @@ Type already declared in scope at (1:6)
   |  type Abc {{}}
           ^^^"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         // Test builtin type
         let module_id = ModuleId::from_name("test");
@@ -967,7 +978,7 @@ Duplicate type 'Int'
           ^^^
 'Int' already declared as built-in type"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -988,7 +999,7 @@ Unknown identifier 'abcd'
      ^^^^
 No variable with that name is visible in current scope"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "println(_)".to_string();
@@ -1006,7 +1017,7 @@ Unknown identifier '_'
              ^
 The _ represents an anonymous identifier; please give the variable a name if you want to reference it"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1028,7 +1039,7 @@ Could not determine type of mutable variable 'abcd'
          ^^^^
 Since it's a 'var', you can either provide an initial value or a type annotation"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "val abcd".to_string();
@@ -1047,7 +1058,7 @@ Could not determine type of immutable variable 'abcd'
          ^^^^
 Since it's a 'val', you must provide an initial value"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1071,7 +1082,7 @@ Cannot perform assignment
 Left-hand side of assignment must be a valid identifier"
         );
 
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1097,7 +1108,7 @@ The variable has been declared in scope as immutable at (1:5)
 Use 'var' instead of 'val' to create a mutable variable"
         );
 
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1118,7 +1129,7 @@ Unknown type 'NonExistentType'
                ^^^^^^^^^^^^^^^
 No type with that name is visible in current scope"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1140,7 +1151,7 @@ Missing if-branch in if-else expression
              ^^
 Both branches must have some value when used as an expression"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "val a = if (true) 123 else {}".to_string();
@@ -1159,7 +1170,7 @@ Missing else-branch in if-else expression
              ^^
 Both branches must have some value when used as an expression"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1182,7 +1193,7 @@ Type mismatch between the if-else expression branches
              ^^
 The if-branch had type String, but the else-branch had type Int"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1204,7 +1215,7 @@ Cannot call target as function
      ^^^^^^^
 Type String is not invokeable"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1227,7 +1238,7 @@ Incorrect arity for invocation
      ^^^
 Expected 1 required argument, but 3 were passed"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1243,7 +1254,7 @@ Unexpected break keyword
                   ^^^^^
 A break keyword cannot appear outside of a loop"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "func abc() { continue }".to_string();
@@ -1256,7 +1267,7 @@ Unexpected continue keyword
                   ^^^^^^^^
 A continue keyword cannot appear outside of a loop"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "while true { return }".to_string();
@@ -1269,7 +1280,7 @@ Unexpected return keyword
                   ^^^^^^
 A return keyword cannot appear outside of a function"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1285,7 +1296,7 @@ Invalid position for non-optional parameter
                      ^
 Required parameters must all be listed before any optional parameters"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1313,7 +1324,7 @@ Unsupported indexing operation
         ^
 Type Int is not indexable"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "123[1:2]".to_string();
@@ -1346,7 +1357,7 @@ Unsupported indexing operation
         ^
 Type Int is not indexable as a range"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1369,7 +1380,7 @@ Invalid type for indexing operator argument
           ^
 Cannot index into a target of type String, using a selector of type String"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1391,7 +1402,7 @@ Unknown member 'size'
                ^^^^
 Type Int[] does not have a member with name 'size'"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         let module_id = ModuleId::from_name("test");
         let src = "type P { name: String}\nval p = Person({ nAme: \"hello\" })".to_string();
@@ -1418,7 +1429,7 @@ Unknown member 'nAme'
                       ^^^^
 Type Person does not have a member with name 'nAme'"
         );
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -1438,6 +1449,6 @@ Error at /tests/test.abra:1:9
 Cannot create an instance of type Unit
   |  val u = Unit()
              ^^^^");
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(),&src));
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }
 }

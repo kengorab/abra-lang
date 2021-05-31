@@ -346,11 +346,11 @@ mod tests {
 
     #[test]
     fn interpret_map() {
-        let result = interpret("{ a: 1, b: \"hello\", c: true }");
+        let result = interpret("{ a: 1, \"b\": \"hello\", (true || false): false }");
         let expected_pairs = vec![
             (new_string_obj("a"), Value::Int(1)),
             (new_string_obj("b"), new_string_obj("hello")),
-            (new_string_obj("c"), Value::Bool(true)),
+            (Value::Bool(true), Value::Bool(false)),
         ];
         assert_maps_eq(expected_pairs, result);
 

@@ -152,7 +152,7 @@ pub struct TypedArrayNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedMapNode {
     pub typ: Type,
-    pub items: Vec<(Token, TypedAstNode)>,
+    pub items: Vec<(TypedAstNode, TypedAstNode)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

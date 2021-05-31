@@ -223,6 +223,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
+                TypecheckerErrorKind::DuplicateMapKey { orig_key, key } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "duplicateMapKey")?;
+                    obj.serialize_entry("key", &JsToken(key))?;
+                    obj.serialize_entry("origKey", &JsToken(orig_key))?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
                 TypecheckerErrorKind::UnboundGeneric(ident, generic_name) => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;

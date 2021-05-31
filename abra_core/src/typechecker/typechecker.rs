@@ -1546,37 +1546,55 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
     fn visit_map_literal(&mut self, token: Token, node: MapNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let MapNode { items } = node;
 
-        let mut fields = Vec::<(Token, TypedAstNode)>::new();
-        let mut field_types = Vec::<(String, Type)>::new();
-        let mut field_names = HashMap::<String, Token>::new();
-        for (field_name_tok, field_value) in items {
-            let field_name = Token::get_ident_name(&field_name_tok);
-            if let Some(orig_ident) = field_names.get(&field_name) {
-                return Err(TypecheckerErrorKind::DuplicateBinding { orig_ident: Some(orig_ident.clone()), ident: field_name_tok });
+        let mut typed_fields = Vec::new();
+        let mut field_key_types = Vec::new();
+        let mut field_value_types = Vec::new();
+        let mut seen_fields = Vec::<AstNode>::new();
+        for (field_key, field_value) in items {
+            let key_token = field_key.get_token();
+            let prev_key = seen_fields.iter()
+                .find(|f| match (f, &field_key) {
+                    (AstNode::Literal(_, l), AstNode::Literal(_, r)) => l == r,
+                    _ => false
+                });
+            if let Some(orig_key) = prev_key {
+                return Err(TypecheckerErrorKind::DuplicateMapKey { key: key_token.clone(), orig_key: orig_key.get_token().clone() });
             } else {
-                field_names.insert(field_name.clone(), field_name_tok.clone());
+                seen_fields.push(field_key.clone());
             }
 
+            let field_key = self.visit(field_key)?;
+            field_key_types.push(field_key.get_type());
+
             let field_value = self.visit(field_value)?;
-            let field_type = field_value.get_type();
-            field_types.push((field_name.clone(), field_type));
-            fields.push((field_name_tok.clone(), field_value));
+            field_value_types.push(field_value.get_type());
+
+            typed_fields.push((field_key, field_value));
         }
 
-        let mut value_types = field_types.into_iter()
-            .map(|(_, typ)| typ)
-            .unique()
-            .collect::<Vec<_>>();
-        let val_type = if value_types.is_empty() {
-            Type::Unknown
-        } else if value_types.len() == 1 {
-            value_types.drain(..).next().unwrap()
-        } else {
-            Type::Union(value_types.drain(..).collect())
+        let key_type = {
+            let mut key_types = field_key_types.into_iter().unique().collect::<Vec<_>>();
+            if key_types.is_empty() {
+                Type::Unknown
+            } else if key_types.len() == 1 {
+                key_types.drain(..).next().unwrap()
+            } else {
+                Type::Union(key_types.drain(..).collect())
+            }
         };
-        let key_type = Type::String;
+        let val_type = {
+            let mut value_types = field_value_types.into_iter().unique().collect::<Vec<_>>();
+            if value_types.is_empty() {
+                Type::Unknown
+            } else if value_types.len() == 1 {
+                value_types.drain(..).next().unwrap()
+            } else {
+                Type::Union(value_types.drain(..).collect())
+            }
+        };
+
         let typ = Type::Map(Box::new(key_type), Box::new(val_type));
-        Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: fields }))
+        Ok(TypedAstNode::Map(token, TypedMapNode { typ, items: typed_fields }))
     }
 
     fn visit_set_literal(&mut self, token: Token, node: SetNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
@@ -4044,7 +4062,7 @@ mod tests {
         let expected = TypedAstNode::Map(
             Token::LBrace(Position::new(1, 1)),
             TypedMapNode {
-                typ: Type::Map(Box::new(Type::String), Box::new(Type::Unknown)),
+                typ: Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
                 items: vec![],
             },
         );
@@ -4061,8 +4079,8 @@ mod tests {
             TypedMapNode {
                 typ: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
                 items: vec![
-                    (ident_token!((1, 3), "a"), int_literal!((1, 6), 1)),
-                    (ident_token!((1, 9), "b"), int_literal!((1, 12), 2))
+                    (string_literal!((1, 3), "a"), int_literal!((1, 6), 1)),
+                    (string_literal!((1, 9), "b"), int_literal!((1, 12), 2))
                 ],
             },
         );
@@ -4077,18 +4095,18 @@ mod tests {
                     Box::new(Type::Map(Box::new(Type::String), Box::new(Type::Bool))),
                 ),
                 items: vec![
-                    (ident_token!((1, 3), "a"), TypedAstNode::Map(
+                    (string_literal!((1, 3), "a"), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 6)),
                         TypedMapNode {
                             typ: Type::Map(Box::new(Type::String), Box::new(Type::Bool)),
-                            items: vec![(ident_token!((1, 8), "c"), bool_literal!((1, 11), true))],
+                            items: vec![(string_literal!((1, 8), "c"), bool_literal!((1, 11), true))],
                         },
                     )),
-                    (ident_token!((1, 19), "b"), TypedAstNode::Map(
+                    (string_literal!((1, 19), "b"), TypedAstNode::Map(
                         Token::LBrace(Position::new(1, 22)),
                         TypedMapNode {
                             typ: Type::Map(Box::new(Type::String), Box::new(Type::Bool)),
-                            items: vec![(ident_token!((1, 24), "c"), bool_literal!((1, 27), false))],
+                            items: vec![(string_literal!((1, 24), "c"), bool_literal!((1, 27), false))],
                         },
                     ))
                 ],

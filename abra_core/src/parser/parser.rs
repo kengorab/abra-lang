@@ -1385,7 +1385,7 @@ impl Parser {
 
     fn parse_map_literal(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
         let mut item_expected = true;
-        let mut items = Vec::<(Token, AstNode)>::new();
+        let mut items = Vec::new();
         loop {
             let token = self.expect_peek()?;
             if let Token::RBrace(_) = token {
@@ -1398,10 +1398,27 @@ impl Parser {
                 };
             }
 
-            let field_name = self.expect_next_token(TokenType::Ident)?;
+            let field = match self.expect_next()? {
+                Token::Ident(pos, name) => {
+                    let tok = Token::String(pos, name.clone());
+                    AstNode::Literal(tok, AstLiteralNode::StringLiteral(name))
+                },
+                tok @ Token::Int(_, _) |
+                tok @ Token::Float(_, _) |
+                tok @ Token::String(_, _) |
+                tok @ Token::StringInterp(_, _) |
+                tok @ Token::Bool(_, _) => self.parse_literal(tok)?,
+                Token::LParen(_, _) => {
+                    let expr = self.parse_expr()?;
+                    self.expect_next()?; // Consume ')'
+                    expr
+                }
+                tok => return Err(ParseErrorKind::UnexpectedToken(tok))
+            };
+
             self.expect_next_token(TokenType::Colon)?;
             let field_value = self.parse_expr()?;
-            items.push((field_name, field_value));
+            items.push((field, field_value));
 
             let token = self.expect_peek()?;
             if let Token::Comma(_) = token {
@@ -2153,13 +2170,49 @@ mod tests {
             Token::LBrace(Position::new(1, 1)),
             MapNode {
                 items: vec![
-                    (ident_token!((1, 3), "a"), int_literal!((1, 6), 1)),
-                    (ident_token!((1, 9), "b"), bool_literal!((1, 12), true)),
+                    (string_literal!((1, 3), "a"), int_literal!((1, 6), 1)),
+                    (string_literal!((1, 9), "b"), bool_literal!((1, 12), true)),
                 ]
             },
         );
         assert_eq!(expected, ast[0]);
+
         let ast = parse("{ a: 1, b: true, }")?; // Testing trailing commas
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("{ 123: 1, 12.3: 2, \"b\": 3, true: 4 }")?;
+        let expected = AstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            MapNode {
+                items: vec![
+                    (int_literal!((1, 3), 123), int_literal!((1, 8), 1)),
+                    (float_literal!((1, 11), 12.3), int_literal!((1, 17), 2)),
+                    (string_literal!((1, 20), "b"), int_literal!((1, 25), 3)),
+                    (bool_literal!((1, 28), true), int_literal!((1, 34), 4)),
+                ]
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("{ (12 + 34): 1 }")?;
+        let expected = AstNode::Map(
+            Token::LBrace(Position::new(1, 1)),
+            MapNode {
+                items: vec![
+                    (
+                        AstNode::Binary(
+                            Token::Plus(Position::new(1, 7)),
+                            BinaryNode {
+                                left: Box::new(int_literal!((1, 4), 12)),
+                                op: BinaryOp::Add,
+                                right: Box::new(int_literal!((1, 9), 34)),
+                            }
+                        ),
+                        int_literal!((1, 14), 1)
+                    )
+                ]
+            },
+        );
         assert_eq!(expected, ast[0]);
 
         Ok(())
@@ -2172,27 +2225,20 @@ mod tests {
             Token::LBrace(Position::new(1, 1)),
             MapNode {
                 items: vec![
-                    (ident_token!((1, 3), "a"), AstNode::Map(
+                    (string_literal!((1, 3), "a"), AstNode::Map(
                         Token::LBrace(Position::new(1, 6)),
                         MapNode {
                             items: vec![
-                                (ident_token!((1, 8), "a1"), int_literal!((1, 12), 1)),
-                                (ident_token!((1, 15), "a2"), int_literal!((1, 19), 2)),
+                                (string_literal!((1, 8), "a1"), int_literal!((1, 12), 1)),
+                                (string_literal!((1, 15), "a2"), int_literal!((1, 19), 2)),
                             ]
                         },
                     )),
-                    (ident_token!((1, 24), "b"), bool_literal!((1, 27), true)),
+                    (string_literal!((1, 24), "b"), bool_literal!((1, 27), true)),
                 ]
             },
         );
         Ok(assert_eq!(expected, ast[0]))
-    }
-
-    #[test]
-    fn parse_map_error() {
-        let error = parse("{ 123: true }").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 3), 123));
-        assert_eq!(expected, error);
     }
 
     #[test]

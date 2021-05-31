@@ -156,7 +156,7 @@ pub struct SetNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MapNode {
-    pub items: Vec<(Token, AstNode)>,
+    pub items: Vec<(AstNode, AstNode)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

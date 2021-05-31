@@ -1032,8 +1032,13 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for Compiler<'a, R> {
 
         let num_items = node.items.len();
         for (key, value) in node.items {
-            let key = Token::get_ident_name(&key).clone();
-            self.add_and_write_constant(Value::new_string_obj(key), line);
+            match key {
+                TypedAstNode::Identifier(_, n) => {
+                    let key = Value::new_string_obj(n.name);
+                    self.add_and_write_constant(key, line);
+                }
+                key_expr => self.visit(key_expr)?
+            }
             self.visit(value)?;
         }
 
