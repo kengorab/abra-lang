@@ -2,7 +2,7 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, InterfaceDeclNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, InterfaceDeclNode, FuncSig};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind, TypedMatchCaseArgument};
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, InvalidAssignmentTargetReason, TypecheckerError};
@@ -1049,7 +1049,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
     }
 
     fn get_func_signature(&mut self, type_args: &Vec<Token>, node: &AstNode) -> Result<(bool, Token, Type), TypecheckerErrorKind> {
-        let FunctionDeclNode { name, type_args: fn_type_args, ret_type, args, .. } = match &node {
+        let FunctionDeclNode { sig: FuncSig { name, type_args: fn_type_args, ret_type, args, .. }, .. } = match &node {
             AstNode::FunctionDecl(_, node) => node,
             _ => unreachable!()
         };
@@ -1220,7 +1220,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         let mut typed_methods = Vec::new();
         for func_decl_node in methods {
             let name_tok = match &func_decl_node {
-                AstNode::FunctionDecl(_, FunctionDeclNode { name, .. }) => name.clone(),
+                AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { name, .. }, .. }) => name.clone(),
                 _ => unreachable!()
             };
             let name = Token::get_ident_name(&name_tok).clone();
@@ -1695,7 +1695,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
     }
 
     fn visit_func_decl(&mut self, token: Token, node: FunctionDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
-        let FunctionDeclNode { export_token, name, type_args, args, ret_type: ret_ann_type, body, .. } = node;
+        let FunctionDeclNode { export_token, sig: FuncSig { name, type_args, args, ret_type: ret_ann_type }, body, .. } = node;
 
         let func_name = Token::get_ident_name(&name);
         let is_exported = if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {

@@ -188,8 +188,7 @@ pub struct BindingDeclNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FunctionDeclNode {
-    pub export_token: Option<Token>,
+pub struct FuncSig {
     // Must be a Token::Ident
     pub name: Token,
     // Must be a Token::Idents
@@ -197,6 +196,12 @@ pub struct FunctionDeclNode {
     // Tokens represent arg idents, and must be Token::Ident
     pub args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
     pub ret_type: Option<TypeIdentifier>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionDeclNode {
+    pub export_token: Option<Token>,
+    pub sig: FuncSig,
     pub body: Vec<AstNode>,
 }
 
@@ -242,6 +247,7 @@ pub struct InterfaceDeclNode {
     pub export_token: Option<Token>,
     // Must be a Token::Ident
     pub name: Token,
+    pub fn_sigs: Vec<FuncSig>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

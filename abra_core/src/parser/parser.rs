@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, InterfaceDeclNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, InterfaceDeclNode, FuncSig};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -522,7 +522,7 @@ impl Parser {
         Ok(type_args)
     }
 
-    fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+    fn parse_func_signature(&mut self) -> Result<(Token, FuncSig), ParseErrorKind> {
         let token = self.expect_next()?;
         let name = self.expect_next_token(TokenType::Ident)?;
 
@@ -539,6 +539,12 @@ impl Parser {
             _ => None
         };
 
+        Ok((token, FuncSig { name, type_args, args, ret_type }))
+    }
+
+    fn parse_func_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+        let (token, sig) = self.parse_func_signature()?;
+
         let body = match self.expect_peek()? {
             Token::Assign(_) => {
                 self.expect_next()?;
@@ -548,7 +554,7 @@ impl Parser {
             t => Err(ParseErrorKind::UnexpectedToken(t.clone()))
         }?;
 
-        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
+        Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, sig, body }))
     }
 
     fn parse_binding_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
@@ -660,9 +666,25 @@ impl Parser {
         let name = self.expect_next_token(TokenType::Ident)?;
 
         self.expect_next_token(TokenType::LBrace)?;
+
+        let mut fn_sigs = Vec::new();
+        loop {
+            match self.expect_peek()? {
+                Token::RBrace(_) => break,
+                Token::Func(_) => {
+                    let (_, sig) = self.parse_func_signature()?;
+                    fn_sigs.push(sig);
+                }
+                _ => {
+                    let tok = self.expect_next()?;
+                    return Err(ParseErrorKind::ExpectedOneOf(vec![TokenType::RBrace, TokenType::Func], tok));
+                }
+            }
+        }
+
         self.expect_next_token(TokenType::RBrace)?;
 
-        Ok(AstNode::InterfaceDecl(keyword_tok, InterfaceDeclNode { export_token, name }))
+        Ok(AstNode::InterfaceDecl(keyword_tok, InterfaceDeclNode { export_token, name, fn_sigs }))
     }
 
     #[inline]
@@ -1409,7 +1431,7 @@ impl Parser {
                 Token::Ident(pos, name) => {
                     let tok = Token::String(pos, name.clone());
                     AstNode::Literal(tok, AstLiteralNode::StringLiteral(name))
-                },
+                }
                 tok @ Token::Int(_, _) |
                 tok @ Token::Float(_, _) |
                 tok @ Token::String(_, _) |
@@ -2213,7 +2235,7 @@ mod tests {
                                 left: Box::new(int_literal!((1, 4), 12)),
                                 op: BinaryOp::Add,
                                 right: Box::new(int_literal!((1, 9), 34)),
-                            }
+                            },
                         ),
                         int_literal!((1, 14), 1)
                     )
@@ -2798,10 +2820,12 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 export_token: None,
-                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
-                type_args: vec![],
-                args: vec![],
-                ret_type: None,
+                sig: FuncSig {
+                    name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                    type_args: vec![],
+                    args: vec![],
+                    ret_type: None,
+                },
                 body: vec![
                     int_literal!((1, 14), 123)
                 ],
@@ -2814,10 +2838,12 @@ mod tests {
             Token::Func(Position::new(1, 1)),
             FunctionDeclNode {
                 export_token: None,
-                name: Token::Ident(Position::new(1, 6), "abc".to_string()),
-                type_args: vec![],
-                args: vec![],
-                ret_type: None,
+                sig: FuncSig {
+                    name: Token::Ident(Position::new(1, 6), "abc".to_string()),
+                    type_args: vec![],
+                    args: vec![],
+                    ret_type: None,
+                },
                 body: vec![
                     AstNode::BindingDecl(
                         Token::Val(Position::new(1, 14)),
@@ -2837,7 +2863,7 @@ mod tests {
 
         let ast = parse("func abc(a: Int) = 123")?;
         let args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { args, .. }, .. }) => args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -2847,7 +2873,7 @@ mod tests {
 
         let ast = parse("func abc(a: Int, b: Int?) = 123")?;
         let args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { args, .. }, .. }) => args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -2859,7 +2885,7 @@ mod tests {
         // Testing trailing comma in param list
         let ast = parse("func abc(a: Int,) = 123")?;
         let args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { args, .. }, .. }) => args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -2870,7 +2896,7 @@ mod tests {
         // Testing default arg values
         let ast = parse("func abc(a: Int, b: Int = 2, c = 4) = 123")?;
         let args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { args, .. }, .. }) => args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -2883,7 +2909,7 @@ mod tests {
         // Testing return type
         let ast = parse("func abc(a: Int): String = 123")?;
         let ret_type = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { ret_type, .. }) => ret_type,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { ret_type, .. }, .. }) => ret_type,
             _ => unreachable!()
         };
         let expected = Some(TypeIdentifier::Normal { ident: ident_token!((1, 19), "String"), type_args: None });
@@ -2892,7 +2918,7 @@ mod tests {
         // Testing varargs param
         let ast = parse("func abc(*a: Int[]) = 123")?;
         let args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { args, .. }) => args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { args, .. }, .. }) => args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -2907,7 +2933,7 @@ mod tests {
     fn parse_func_decl_type_args() -> TestResult {
         let ast = parse("func abc<T>(a: T, b: T?) = 123")?;
         let type_args = match ast.first().unwrap() {
-            AstNode::FunctionDecl(_, FunctionDeclNode { type_args, .. }) => type_args,
+            AstNode::FunctionDecl(_, FunctionDeclNode { sig: FuncSig { type_args, .. }, .. }) => type_args,
             _ => unreachable!()
         };
         let expected = vec![
@@ -3365,12 +3391,14 @@ mod tests {
                         Token::Func(Position::new(2, 1)),
                         FunctionDeclNode {
                             export_token: None,
-                            name: Token::Ident(Position::new(2, 6), "hello".to_string()),
-                            type_args: vec![],
-                            args: vec![
-                                (Token::Self_(Position::new(2, 12)), None, false, None),
-                            ],
-                            ret_type: None,
+                            sig: FuncSig {
+                                name: Token::Ident(Position::new(2, 6), "hello".to_string()),
+                                type_args: vec![],
+                                args: vec![
+                                    (Token::Self_(Position::new(2, 12)), None, false, None),
+                                ],
+                                ret_type: None,
+                            },
                             body: vec![
                                 string_literal!((2, 20), "hello"),
                             ],
@@ -3488,6 +3516,42 @@ mod tests {
             InterfaceDeclNode {
                 export_token: None,
                 name: ident_token!((1, 11), "Foo"),
+                fn_sigs: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let input = "\
+          interface Foo {\n\
+            func bar(self, i: Int): Int\n\
+            func baz(s: String): Int[]\n\
+          }\
+        ";
+        let ast = parse(input)?;
+        let expected = AstNode::InterfaceDecl(
+            Token::Interface(Position::new(1, 1)),
+            InterfaceDeclNode {
+                export_token: None,
+                name: ident_token!((1, 11), "Foo"),
+                fn_sigs: vec![
+                    FuncSig {
+                        name: ident_token!((2, 6), "bar"),
+                        type_args: vec![],
+                        args: vec![
+                            (Token::Self_(Position::new(2, 10)), None, false, None),
+                            (ident_token!((2, 16), "i"), Some(TypeIdentifier::Normal { ident: ident_token!((2, 19), "Int"), type_args: None }), false, None),
+                        ],
+                        ret_type: Some(TypeIdentifier::Normal { ident: ident_token!((2, 25), "Int"), type_args: None }),
+                    },
+                    FuncSig {
+                        name: ident_token!((3, 6), "baz"),
+                        type_args: vec![],
+                        args: vec![
+                            (ident_token!((3, 10), "s"), Some(TypeIdentifier::Normal { ident: ident_token!((3, 13), "String"), type_args: None }), false, None),
+                        ],
+                        ret_type: Some(TypeIdentifier::Array { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((3, 22), "Int"), type_args: None }) }),
+                    },
+                ],
             },
         );
         assert_eq!(expected, ast[0]);
@@ -4940,10 +5004,12 @@ mod tests {
             Token::Func(Position::new(1, 8)),
             FunctionDeclNode {
                 export_token: Some(Token::Export(Position::new(1, 1))),
-                name: ident_token!((1, 13), "abc"),
-                type_args: vec![],
-                args: vec![],
-                ret_type: None,
+                sig: FuncSig {
+                    name: ident_token!((1, 13), "abc"),
+                    type_args: vec![],
+                    args: vec![],
+                    ret_type: None,
+                },
                 body: vec![],
             },
         );
