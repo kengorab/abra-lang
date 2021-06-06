@@ -284,6 +284,7 @@ impl<'a> Lexer<'a> {
                 "match" => Token::Match(pos),
                 "type" => Token::Type(pos),
                 "enum" => Token::Enum(pos),
+                "interface" => Token::Interface(pos),
                 "return" => {
                     let saw_newline = self.skip_whitespace();
                     let has_newline = saw_newline || self.peek().is_none();
@@ -787,7 +788,7 @@ mod tests {
     #[test]
     fn test_tokenize_keywords() {
         let input = "true false val var if else func while break for in \
-        type enum self match readonly import export from continue";
+        type enum interface self match readonly import export from continue";
         let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
@@ -803,13 +804,14 @@ mod tests {
             Token::In(Position::new(1, 49)),
             Token::Type(Position::new(1, 52)),
             Token::Enum(Position::new(1, 57)),
-            Token::Self_(Position::new(1, 62)),
-            Token::Match(Position::new(1, 67)),
-            Token::Readonly(Position::new(1, 73)),
-            Token::Import(Position::new(1, 82)),
-            Token::Export(Position::new(1, 89)),
-            Token::From(Position::new(1, 96)),
-            Token::Continue(Position::new(1, 101)),
+            Token::Interface(Position::new(1, 62)),
+            Token::Self_(Position::new(1, 72)),
+            Token::Match(Position::new(1, 77)),
+            Token::Readonly(Position::new(1, 83)),
+            Token::Import(Position::new(1, 92)),
+            Token::Export(Position::new(1, 99)),
+            Token::From(Position::new(1, 106)),
+            Token::Continue(Position::new(1, 111)),
         ];
         assert_eq!(expected, tokens);
     }

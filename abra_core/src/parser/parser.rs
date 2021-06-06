@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, InterfaceDeclNode};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -235,6 +235,7 @@ impl Parser {
             Token::Val(_) => self.parse_binding_decl(export_token),
             Token::Var(_) => self.parse_binding_decl(export_token),
             Token::Type(_) | Token::Enum(_) => self.parse_type_decl(export_token),
+            Token::Interface(_) => self.parse_interface_decl(export_token),
             Token::If(_) => self.parse_if_statement(),
             Token::Match(_) => self.parse_match_statement(),
             Token::While(_) => self.parse_while_statement(),
@@ -594,12 +595,7 @@ impl Parser {
         let keyword_tok = self.expect_next()?;
         let is_enum = if let Token::Enum(_) = &keyword_tok { true } else { false };
 
-        let name = self.expect_next().and_then(|tok| {
-            match tok {
-                Token::Ident(_, _) => Ok(tok),
-                _ => Err(ParseErrorKind::UnexpectedToken(tok))
-            }
-        })?;
+        let name = self.expect_next_token(TokenType::Ident)?;
 
         let type_args = self.parse_type_args()?;
 
@@ -656,6 +652,17 @@ impl Parser {
         } else {
             Ok(AstNode::TypeDecl(keyword_tok, TypeDeclNode { export_token, name, fields, methods, type_args }))
         }
+    }
+
+    fn parse_interface_decl(&mut self, export_token: Option<Token>) -> Result<AstNode, ParseErrorKind> {
+        let keyword_tok = self.expect_next()?;
+
+        let name = self.expect_next_token(TokenType::Ident)?;
+
+        self.expect_next_token(TokenType::LBrace)?;
+        self.expect_next_token(TokenType::RBrace)?;
+
+        Ok(AstNode::InterfaceDecl(keyword_tok, InterfaceDeclNode { export_token, name }))
     }
 
     #[inline]
@@ -3465,6 +3472,22 @@ mod tests {
                     ])),
                 ],
                 methods: vec![],
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_interface_decl() -> TestResult {
+        let input = "interface Foo {}";
+        let ast = parse(input)?;
+        let expected = AstNode::InterfaceDecl(
+            Token::Interface(Position::new(1, 1)),
+            InterfaceDeclNode {
+                export_token: None,
+                name: ident_token!((1, 11), "Foo"),
             },
         );
         assert_eq!(expected, ast[0]);
