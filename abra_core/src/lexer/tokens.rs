@@ -48,6 +48,7 @@ pub enum Token {
     #[strum(to_string = "match", serialize = "Match")] Match(Position),
     #[strum(to_string = "type", serialize = "Type")] Type(Position),
     #[strum(to_string = "enum", serialize = "Enum")] Enum(Position),
+    #[strum(to_string = "interface", serialize = "Interface")] Interface(Position),
     #[strum(to_string = "return", serialize = "Return")] Return(Position, bool),
     #[strum(to_string = "readonly", serialize = "Readonly")] Readonly(Position),
     #[strum(to_string = "import", serialize = "Import")] Import(Position),
@@ -126,6 +127,7 @@ impl Token {
             Token::Match(pos) |
             Token::Type(pos) |
             Token::Enum(pos) |
+            Token::Interface(pos) |
             Token::Return(pos, _) |
             Token::Readonly(pos) |
             Token::Import(pos) |
@@ -207,6 +209,7 @@ impl Token {
             Token::Match(pos) => Range::with_length(pos, 4),
             Token::Type(pos) => Range::with_length(pos, 3),
             Token::Enum(pos) => Range::with_length(pos, 3),
+            Token::Interface(pos) => Range::with_length(pos, 8),
             Token::Return(pos, _) => Range::with_length(pos, 5),
             Token::Readonly(pos) => Range::with_length(pos, 7),
             Token::Import(pos) => Range::with_length(pos, 5),

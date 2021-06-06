@@ -1,11 +1,39 @@
-val map = {
-  //"foo-bar": "bar",
-  //(1 + "2"): "baz",
-  //(1 + "2"): "baz",
-  ("foo" + "bar"): "bar",
-  ("foo" + "bar"): "bar",
-  foo: "baz",
-  foo: "qux",
+interface Employee {
+  func joinCompany(company: String)
+  func getPaid(self, paycheck: Float)
+  func quit(self)
 }
 
-println(map)
+type Person: Employee, Object {
+  firstName: String
+  lastName: String
+
+  func Employee.joinCompany(company: String) = println("HIRED!")
+
+  func engineer(firstName: String, lastName: String): Self =
+    Person(firstName: firstName, lastName: lastName, occupation: Occupation.SoftwareEngineer)
+
+  func Employee.getPaid(self, paycheck: Float) = println("Thanks for the \$$paycheck!")
+
+  func Employee.quit(self) = println("I'm outta here")
+}
+
+enum SoftwareEngineer: Employee {
+  JuniorEng
+  SeniorEng
+
+  func Employee.joinCompany(company: String) = println("HIRED!")
+
+  func Employee.getPaid(self, paycheck: Float) = println("Thanks for the \$$paycheck!")
+
+  func Employee.quit(self) = println("I'm outta here")
+}
+
+type Company {
+  employees: Employee[] = []
+
+  func hire(self, employee: Employee) = self.employees.push(employee)
+}
+
+Company()
+  .hire(SoftwareEngineer::SeniorEng)
