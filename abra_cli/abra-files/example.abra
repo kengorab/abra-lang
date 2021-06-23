@@ -1,11 +1,14 @@
-val map = {
-  //"foo-bar": "bar",
-  //(1 + "2"): "baz",
-  //(1 + "2"): "baz",
-  ("foo" + "bar"): "bar",
-  ("foo" + "bar"): "bar",
-  foo: "baz",
-  foo: "qux",
-}
+func foo(): String {
+  if true return "asdf"
+  else match None {
+    None => return "zxcv"
+    _ => {
+      while true {
+        if true break
+        else continue
+      }
 
-println(map)
+      "qwer"
+    }
+  }
+}
