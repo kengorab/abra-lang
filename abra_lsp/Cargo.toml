@@ -1,6 +1,6 @@
 [package]
 name = "abra-lsp"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Ken Gorab <ken.gorab@gmail.com>"]
 edition = "2018"
 
