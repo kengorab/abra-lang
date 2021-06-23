@@ -675,6 +675,9 @@ impl Parser {
                     }
                 }
             }
+            Some(Token::Return(_, _)) |
+            Some(Token::Break(_)) |
+            Some(Token::Continue(_)) => Ok(vec![self.parse_stmt(None)?]),
             _ => Ok(vec![self.parse_expr()?])
         }
     }
@@ -3832,6 +3835,14 @@ mod tests {
             },
         );
         assert_eq!(expected, ast[0]);
+
+        // Test block with special expressions
+        let res = parse("if true return 123");
+        assert!(res.is_ok());
+        let res = parse("if true break");
+        assert!(res.is_ok());
+        let res = parse("if true continue");
+        assert!(res.is_ok());
 
         Ok(())
     }
