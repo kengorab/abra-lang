@@ -756,13 +756,12 @@ mod tests {
         let expected = Value::Fn(FnValue {
             name: "abc".to_string(),
             code: vec![
-                Opcode::Constant(1, 3),
+                Opcode::Constant(1, 1),
                 Opcode::LStore(0),
                 Opcode::Return
             ],
             upvalues: vec![],
             receiver: None,
-            has_return: true,
         });
         assert_eq!(expected, result);
     }

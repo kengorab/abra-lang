@@ -1058,7 +1058,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         // Check to see if there is already a fn binding; pre-hoisted fns use fn_bindings, not normal bindings
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_fn_binding_in_current_scope(&func_name) {
             if orig_ident != name {
-                let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
+                let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
                     .exports.contains_key(&func_name);
                 let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                 return Err(TypecheckerErrorKind::DuplicateBinding { ident: name.clone(), orig_ident });
@@ -1273,7 +1273,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let name = Token::get_ident_name(ident);
 
                 if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&name) {
-                    let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
+                    let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
                         .exports.contains_key(&name);
                     let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                     return Err(TypecheckerErrorKind::DuplicateBinding { ident: ident.clone(), orig_ident });
@@ -1699,7 +1699,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
         let func_name = Token::get_ident_name(&name);
         let is_exported = if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
-            let is_prelude = self.module_loader.get_module(&ModuleId(false, vec!["prelude".to_string()]))
+            let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
                 .exports.contains_key(&func_name);
             let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
             return Err(TypecheckerErrorKind::DuplicateBinding { ident: name, orig_ident });
@@ -2946,13 +2946,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             match exported_value {
                 ExportedValue::Binding(typ) => {
                     self.add_imported_binding(&import_name, import_ident_token, &typ);
-
-                    // TODO: Fix this mess (#306)
-                    let is_const_import = if let Type::Fn(_) = &typ {
-                        let module_name = module_id.get_name();
-                        module_name == "prelude" || module_name == "io"
-                    } else { false };
-                    typed_imports.push((import_name, is_const_import));
                 }
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {
@@ -2970,10 +2963,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                             self.add_type(import_name.clone(), node.clone(), backing_type.clone(), true);
                         }
                     }
-
-                    typed_imports.push((import_name, true));
                 }
             }
+
+            typed_imports.push(import_name);
         }
 
         Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id }))

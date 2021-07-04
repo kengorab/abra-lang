@@ -31,7 +31,6 @@ impl Serialize for RunResultValue {
             Value::Int(val) => serializer.serialize_i64(*val),
             Value::Float(val) => serializer.serialize_f64(*val),
             Value::Bool(val) => serializer.serialize_bool(*val),
-            Value::Str(val) => serializer.serialize_str(val),
             Value::StringObj(o) => {
                 serializer.serialize_str(&*o.borrow()._inner)
             }

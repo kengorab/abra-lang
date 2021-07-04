@@ -5,7 +5,7 @@ use itertools::Itertools;
 pub fn invoke_fn(vm: &mut VM, fn_obj: &Value, args: Vec<Value>) -> Value {
     let res = vm.invoke_fn(args, fn_obj.clone());
     match res {
-        Ok(v) => v,//.unwrap_or(Value::Nil),
+        Ok(v) => v,
         Err(e) => {
             eprintln!("Runtime error: {:?}", e);
             std::process::exit(1);
@@ -51,7 +51,6 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::Int(val) => format!("{}", val),
         Value::Float(val) => format!("{}", val),
         Value::Bool(val) => format!("{}", val),
-        Value::Str(val) => val.clone(),
         Value::StringObj(o) => {
             let str = &*o.borrow()._inner;
             format!("{}", str)

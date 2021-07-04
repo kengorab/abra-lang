@@ -17,7 +17,6 @@ pub struct FnValue {
     pub code: Vec<Opcode>,
     pub upvalues: Vec<Upvalue>,
     pub receiver: Option<Box<Value>>,
-    pub has_return: bool,
 }
 
 impl Hash for FnValue {
@@ -26,7 +25,6 @@ impl Hash for FnValue {
         self.code.hash(hasher);
         self.upvalues.hash(hasher);
         self.receiver.hash(hasher);
-        self.has_return.hash(hasher);
         hasher.finish();
     }
 }
@@ -37,7 +35,6 @@ pub struct ClosureValue {
     pub code: Vec<Opcode>,
     pub captures: Vec<Arc<RefCell<vm::Upvalue>>>,
     pub receiver: Option<Box<Value>>,
-    pub has_return: bool,
 }
 
 impl Hash for ClosureValue {
@@ -49,7 +46,6 @@ impl Hash for ClosureValue {
             uv.hash(hasher);
         }
         self.receiver.hash(hasher);
-        self.has_return.hash(hasher);
         hasher.finish();
     }
 }
@@ -86,17 +82,17 @@ impl NativeFn {
 pub struct TypeValue {
     pub name: String,
     pub module_name: String,
-    pub constructor: Option<fn(usize, usize, Vec<Value>) -> Value>,
+    pub constructor: Option<fn(usize, Vec<Value>) -> Value>,
     pub fields: Vec<String>,
     pub methods: Vec<(String, Value)>,
     pub static_fields: Vec<(String, Value)>,
 }
 
 impl TypeValue {
-    pub fn construct(self, module_idx: usize, type_id: usize, args: Vec<Value>) -> Value {
+    pub fn construct(&self, type_id: usize, args: Vec<Value>) -> Value {
         match self.constructor {
-            Some(constructor) => constructor(module_idx, type_id, args),
-            None => Value::new_instance_obj(module_idx, type_id, args)
+            Some(constructor) => constructor(type_id, args),
+            None => Value::new_instance_obj(type_id, args)
         }
     }
 }
@@ -115,10 +111,6 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
-    /// Represents a compile-time string constant (ie. the name of a function, or the key of a map).
-    /// These are only transient values and should not remain on the stack. Compare to an actual,
-    /// heap-allocated, run-time StringObj value.
-    Str(String),
     StringObj(Arc<RefCell<NativeString>>),
     ArrayObj(Arc<RefCell<NativeArray>>),
     TupleObj(Arc<RefCell<Vec<Value>>>),
@@ -156,13 +148,13 @@ impl Value {
         Value::MapObj(Arc::new(RefCell::new(NativeMap::new(items))))
     }
 
-    pub fn new_instance_obj(module_idx: usize, type_id: usize, fields: Vec<Value>) -> Value {
-        let inst = InstanceObj { type_id: (module_idx, type_id), fields };
+    pub fn new_instance_obj(type_id: usize, fields: Vec<Value>) -> Value {
+        let inst = InstanceObj { type_id, fields };
         Value::InstanceObj(Arc::new(RefCell::new(inst)))
     }
 
-    pub fn new_native_instance_obj(module_idx: usize, type_id: usize, inst: Box<dyn NativeValue>) -> Value {
-        let inst = NativeInstanceObj { type_id: (module_idx, type_id), inst };
+    pub fn new_native_instance_obj(type_id: usize, inst: Box<dyn NativeValue>) -> Value {
+        let inst = NativeInstanceObj { type_id, inst };
         Value::NativeInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
@@ -225,7 +217,6 @@ impl Display for Value {
             Value::Int(v) => write!(f, "{}", v),
             Value::Float(v) => write!(f, "{}", v),
             Value::Bool(v) => write!(f, "{}", v),
-            Value::Str(val) => write!(f, "{}", val),
             Value::StringObj(o) => write!(f, "\"{}\"", o.borrow()._inner),
             Value::ArrayObj(o) => {
                 let items = &*o.borrow()._inner.iter()
@@ -279,7 +270,6 @@ impl Hash for Value {
             Value::Int(i) => i.hash(hasher),
             Value::Float(f) => integer_decode(*f).hash(hasher),
             Value::Bool(b) => b.hash(hasher),
-            Value::Str(s) => s.hash(hasher),
             Value::StringObj(o) => (&*o.borrow()).hash(hasher),
             Value::ArrayObj(o) => (&*o.borrow()).hash(hasher),
             Value::TupleObj(o) => (&*o.borrow()).hash(hasher),
@@ -308,13 +298,13 @@ impl Eq for Value {}
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct InstanceObj {
-    pub type_id: (usize, usize),
+    pub type_id: usize,
     pub fields: Vec<Value>,
 }
 
 #[derive(Debug, Hash, Eq, PartialEq)]
 pub struct EnumInstanceObj {
-    pub type_id: (usize, usize),
+    pub type_id: usize,
     pub idx: usize,
     pub values: Option<Vec<Value>>,
 }
@@ -340,7 +330,7 @@ impl PartialEq for EnumVariantObj {
 
 #[derive(Debug)]
 pub struct NativeInstanceObj {
-    pub type_id: (usize, usize),
+    pub type_id: usize,
     pub inst: Box<dyn NativeValue>,
 }
 

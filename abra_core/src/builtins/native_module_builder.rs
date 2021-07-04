@@ -6,10 +6,11 @@ use crate::vm::compiler::Module;
 use crate::parser::ast::ModuleId;
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub struct ModuleSpec {
     pub(crate) typed_module: TypedModule,
     pub(crate) compiled_module: Module,
-    pub(crate) constant_indexes_by_ident: HashMap<String, usize>,
+    pub(crate) constant_names: Vec<String>,
 }
 
 #[derive(Default)]
@@ -27,16 +28,11 @@ impl ModuleSpecBuilder {
     }
 
     pub fn build(self) -> ModuleSpec {
-        let constant_indexes_by_ident = self.constant_names.into_iter()
-            .enumerate()
-            .map(|(idx, ident)| (ident, idx))
-            .collect();
-
         let module_id = ModuleId::from_name(self.name.as_str());
         ModuleSpec {
             typed_module: TypedModule { module_id, exports: self.exports, referencable_types: self.referencable_types, ..TypedModule::default() },
-            compiled_module: Module { name: self.name, constants: self.constants, code: vec![] },
-            constant_indexes_by_ident,
+            compiled_module: Module { name: self.name, is_native: true, num_globals: self.constants.len(), constants: self.constants,  code: vec![] },
+            constant_names: self.constant_names,
         }
     }
 

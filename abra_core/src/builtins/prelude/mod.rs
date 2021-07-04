@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub use index::{PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX};
+pub use index::{PRELUDE_PRINTLN_INDEX, PRELUDE_RANGE_INDEX, PRELUDE_STRING_INDEX};
 pub use index::load_module;
 pub use native_array::NativeArray;
 pub use native_float::NativeFloat;
