@@ -44,9 +44,11 @@ fn range(mut args: Arguments) -> Value {
 }
 
 #[cfg(test)]
-pub static PRELUDE_PRINTLN_INDEX: u8 = 0;
+pub static PRELUDE_PRINTLN_INDEX: usize = 0;
 #[cfg(test)]
-pub static PRELUDE_STRING_INDEX: u8 = 7;
+pub static PRELUDE_RANGE_INDEX: usize = 2;
+#[cfg(test)]
+pub static PRELUDE_STRING_INDEX: usize = 7;
 
 pub fn load_module() -> ModuleSpec {
     ModuleSpecBuilder::new("prelude")

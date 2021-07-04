@@ -34,7 +34,7 @@ pub enum Opcode {
     Eq,
     Neq,
     Xor,
-    New(usize),
+    New(/* type_id: */ usize, /* num_args: */ usize),
     GetField(usize),
     GetMethod(usize),
     SetField(usize),
@@ -49,10 +49,10 @@ pub enum Opcode {
     TupleLoad,
     TupleStore,
     SetMk(usize),
-    GStore(/* module_id: */ usize, /* const_idx: */ usize),
+    GStore(usize),
     LStore(usize),
     UStore(usize),
-    GLoad(/* module_id: */ usize, /* const_idx: */ usize),
+    GLoad(usize),
     LLoad(usize),
     ULoad(usize),
     Jump(usize),
@@ -75,7 +75,7 @@ impl Opcode {
 
         let imm = match self {
             Opcode::Constant(module_idx, const_idx) => Some(vec![module_idx, const_idx]),
-            Opcode::New(num_fields) => Some(vec![num_fields]),
+            Opcode::New(type_global_idx, num_fields) => Some(vec![type_global_idx, num_fields]),
             Opcode::GetField(field_idx) => Some(vec![field_idx]),
             Opcode::GetMethod(method_idx) => Some(vec![method_idx]),
             Opcode::SetField(field_idx) => Some(vec![field_idx]),
@@ -83,8 +83,7 @@ impl Opcode {
             Opcode::ArrMk(size) |
             Opcode::TupleMk(size) |
             Opcode::SetMk(size) => Some(vec![size]),
-            Opcode::GStore(module_idx, slot) |
-            Opcode::GLoad(module_idx, slot) => Some(vec![module_idx, slot]),
+            Opcode::GStore(slot) | Opcode::GLoad(slot) => Some(vec![slot]),
             Opcode::LStore(slot) |
             Opcode::LLoad(slot) => Some(vec![slot]),
             Opcode::UStore(upvalue_idx) |

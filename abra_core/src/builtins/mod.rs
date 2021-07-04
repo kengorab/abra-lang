@@ -14,4 +14,4 @@ pub mod prelude;
 mod date;
 mod io;
 
-pub use native_modules::load_module;
+pub use native_modules::load_native_module;

@@ -1,14 +1,41 @@
-func foo(): String {
-  if true return "asdf"
-  else match None {
-    None => return "zxcv"
-    _ => {
-      while true {
-        if true break
-        else continue
-      }
+import b, Shirt, Size from .example2
+import Date from date
 
-      "qwer"
-    }
-  }
+val now = Date.now()
+now.addDays(1)
+now.addDays(1).addDays(1).toString()
+
+println(Size.Custom("foo"))
+
+val arr = Array.fill(10, 1)
+val two = 2
+arr.push(two)
+
+val [first, *_, last] = arr
+println(first, last, b)
+
+println(Date.now())
+
+val shirt = Shirt(color: "Blue", size: Size.M)
+println(shirt)
+
+val huh: Shirt | Date = shirt
+match huh {
+  Shirt => println("ok")
+  Date => println("huh?")
 }
+
+match shirt.size {
+  Size.S => println("small")
+  Size.M => println("medium")
+  Size.L => println("large")
+  Size.XL => println("xl")
+  Size.Custom(s) => println(s.toLower())
+}
+
+type Person {
+  name: String
+}
+
+val p = Person(name: "A")
+println(p)

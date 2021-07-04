@@ -900,7 +900,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
             let constructor_fn_name_ident = format_ident!("{}", &constructor_fn_name);
             quote! {
                 let inst = Self::#constructor_fn_name_ident(args);
-                crate::vm::value::Value::new_native_instance_obj(module_idx, type_id, std::boxed::Box::new(inst))
+                crate::vm::value::Value::new_native_instance_obj(type_id, std::boxed::Box::new(inst))
             }
         }
         None => {
@@ -912,7 +912,7 @@ fn gen_construct_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
     };
 
     quote! {
-        fn construct(module_idx: usize, type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
+        fn construct(type_id: usize, args: std::vec::Vec<crate::vm::value::Value>) -> crate::vm::value::Value where Self: core::marker::Sized {
             #body
         }
     }
@@ -968,9 +968,8 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                         None => {
                             quote! {
                                 let inst = inst.#native_name_ident(#arguments);
-                                let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
+                                let type_id = vm.type_id_for_name(#fully_qualified_type_name);
                                 crate::vm::value::Value::new_native_instance_obj(
-                                    module_idx,
                                     type_id,
                                     std::boxed::Box::new(inst)
                                 )
@@ -1074,9 +1073,8 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
                     if let TypeRepr::SelfType(_) = &static_method.return_type {
                         quote! {
                             let inst = Self::#native_name_ident(#arguments);
-                            let (module_idx, type_id) = vm.type_id_for_name(#fully_qualified_type_name);
+                            let type_id = vm.type_id_for_name(#fully_qualified_type_name);
                             crate::vm::value::Value::new_native_instance_obj(
-                                module_idx,
                                 type_id,
                                 std::boxed::Box::new(inst)
                             )

@@ -91,10 +91,11 @@ impl VMContext {
 pub struct VM {
     pub ctx: VMContext,
     constants: Vec<Vec<Value>>,
-    type_constant_indexes: HashMap<String, (usize, usize)>,
+    type_constant_indexes: HashMap<String, usize>,
     call_stack: Vec<CallFrame>,
     stack: Vec<Value>,
-    globals: HashMap<String, Value>,
+    globals: Vec<Value>,
+    num_globals: usize,
     open_upvalues: HashMap<usize, Arc<RefCell<Upvalue>>>,
 }
 
@@ -108,7 +109,8 @@ impl VM {
             type_constant_indexes: HashMap::new(),
             call_stack: vec![],
             stack: Vec::new(),
-            globals: HashMap::new(),
+            globals: vec![Value::Nil; 1024],
+            num_globals: 0,
             open_upvalues: HashMap::new(),
         }
     }
@@ -186,27 +188,27 @@ impl VM {
         Ok(())
     }
 
-    pub fn load_type(&self, (module_idx, type_id): (usize, usize)) -> &TypeValue {
-        if let Some(Value::Type(tv)) = self.constants[module_idx].get(type_id) {
+    pub fn load_type(&self, type_id: usize) -> &TypeValue {
+        if let Value::Type(tv) = &self.globals[type_id] {
             tv
         } else { panic!("Could not load type for id: {}", type_id) }
     }
 
-    pub fn load_enum(&self, (module_idx, type_id): (usize, usize)) -> &EnumValue {
-        if let Some(Value::Enum(ev)) = self.constants[module_idx].get(type_id) {
+    pub fn load_enum(&self, type_id: usize) -> &EnumValue {
+        if let Value::Enum(ev) = &self.globals[type_id] {
             ev
         } else { panic!("Could not load enum for id: {}", type_id) }
     }
 
-    fn load_type_methods(&self, (module_idx, type_id): (usize, usize)) -> &Vec<(String, Value)> {
-        match &self.constants[module_idx].get(type_id) {
-            Some(Value::Type(tv)) => &tv.methods,
-            Some(Value::Enum(ev)) => &ev.methods,
+    fn load_type_methods(&self, type_id: usize) -> &Vec<(String, Value)> {
+        match &self.globals[type_id] {
+            Value::Type(tv) => &tv.methods,
+            Value::Enum(ev) => &ev.methods,
             _ => unreachable!()
         }
     }
 
-    pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> (usize, usize) {
+    pub fn type_id_for_name<S: AsRef<str>>(&self, name: S) -> usize {
         let name = name.as_ref();
         self.type_constant_indexes[name]
     }
@@ -299,8 +301,8 @@ impl VM {
     #[inline]
     fn make_closure(&mut self) -> Result<(), InterpretError> {
         let function = self.pop_expect()?;
-        let (name, code, upvalues, receiver, has_return) = match function {
-            Value::Fn(FnValue { name, code, upvalues, receiver, has_return }) => Ok((name, code, upvalues, receiver, has_return)),
+        let (name, code, upvalues, receiver) = match function {
+            Value::Fn(FnValue { name, code, upvalues, receiver }) => Ok((name, code, upvalues, receiver)),
             v @ _ => Err(InterpretError::TypeError("Function".to_string(), to_string(&v, self))),
         }?;
 
@@ -330,7 +332,7 @@ impl VM {
         // in order for the upvalue_idx's to line up properly.
         let captures = captures.rev().collect::<Vec<_>>();
 
-        self.push(Value::Closure(ClosureValue { name, code, captures, receiver, has_return }));
+        self.push(Value::Closure(ClosureValue { name, code, captures, receiver }));
         Ok(())
     }
 
@@ -461,23 +463,25 @@ impl VM {
     }
 
     pub fn run(&mut self, module: Module) -> Result<Value, InterpretError> {
-        let module_idx = self.constants.len();
+        let Module { name, is_native, num_globals, code, constants, .. } = module;
 
-        let Module { name, code, constants, .. } = module;
-
-        let type_constant_indexes = constants.iter().enumerate()
-            .filter_map(|(idx, a)|
-                match a {
+        if is_native {
+            for v in &constants {
+                match &v {
                     Value::Type(TypeValue { name, module_name, .. }) |
                     Value::Enum(EnumValue { name, module_name, .. }) => {
                         let fully_qualified_type_name = format!("{}/{}", module_name, name);
-                        Some((fully_qualified_type_name, (module_idx, idx)))
+                        self.type_constant_indexes.insert(fully_qualified_type_name, self.num_globals);
                     }
-                    _ => None
-                }
-            );
+                    _ => {}
+                };
+                self.globals[self.num_globals] = v.clone();
+                self.num_globals += 1;
+            }
+        } else {
+            self.num_globals += num_globals;
+        }
 
-        self.type_constant_indexes.extend(type_constant_indexes);
         self.constants.push(constants);
 
         if code.is_empty() {
@@ -573,23 +577,17 @@ impl VM {
                     let val = if a && b { false } else { a || b };
                     self.push(Value::Bool(val));
                 }
-                Opcode::New(num_fields) => {
+                Opcode::New(type_id, num_fields) => {
                     let mut fields = Vec::with_capacity(num_fields);
                     for _ in 0..num_fields {
                         let field_value = self.pop_expect()?;
                         fields.push(field_value);
                     }
 
-                    let inst = match self.pop_expect()? {
-                        Value::Type(tv) => {
-                            let fully_qualified_type_name = format!("{}/{}", tv.module_name, tv.name);
-                            let type_id = self.type_constant_indexes[&fully_qualified_type_name];
-                            tv.construct(type_id.0, type_id.1, fields)
-                        }
-                        Value::Enum(ev) => {
+                    let inst = match &self.globals[type_id] {
+                        Value::Type(tv) => tv.construct(type_id, fields),
+                        Value::Enum(_) => {
                             let idx = pop_expect_int!(self)? as usize;
-                            let fully_qualified_type_name = format!("{}/{}", ev.module_name, ev.name);
-                            let type_id = self.type_constant_indexes[&fully_qualified_type_name];
                             let inst = EnumInstanceObj { idx, type_id, values: Some(fields) };
                             Value::new_enum_instance_obj(inst)
                         }
@@ -869,27 +867,14 @@ impl VM {
                     };
                     self.push(value);
                 }
-                Opcode::GStore(module_idx, const_idx) => {
-                    let global_name = match self.constants[module_idx].get(const_idx) {
-                        Some(Value::Str(value)) => Ok(value.clone()),
-                        None => Err(InterpretError::ConstIdxOutOfBounds),
-                        Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
-                    }?;
+                Opcode::GStore(global_idx) => {
                     let value = self.pop_expect()?;
-                    self.globals.insert(global_name, value);
+                    self.globals[global_idx] = value;
                 }
                 Opcode::LStore(stack_slot) => self.store_local(stack_slot)?,
                 Opcode::UStore(upvalue_idx) => self.store_upvalue(upvalue_idx)?,
-                Opcode::GLoad(module_idx, const_idx) => {
-                    let global_name = match self.constants[module_idx].get(const_idx) {
-                        Some(Value::Str(value)) => Ok(value),
-                        None => Err(InterpretError::ConstIdxOutOfBounds),
-                        Some(v) => Err(InterpretError::TypeError("String".to_string(), v.to_string()))
-                    }?;
-                    let value = self.globals.get(global_name)
-                        .unwrap_or(&Value::Nil)
-                        .clone();
-                    self.push(value);
+                Opcode::GLoad(global_idx) => {
+                    self.push(self.globals[global_idx].clone())
                 }
                 Opcode::LLoad(stack_slot) => self.load_local(stack_slot)?,
                 Opcode::ULoad(upvalue_idx) => self.load_upvalue(upvalue_idx)?,
@@ -943,13 +928,13 @@ impl VM {
                 Opcode::Typeof => {
                     let v = self.pop_expect()?;
                     match v {
-                        Value::Int(_) => self.load_constant(self.type_constant_indexes["prelude/Int"])?,
-                        Value::Float(_) => self.load_constant(self.type_constant_indexes["prelude/Float"])?,
-                        Value::Bool(_) => self.load_constant(self.type_constant_indexes["prelude/Bool"])?,
-                        Value::StringObj(_) => self.load_constant(self.type_constant_indexes["prelude/String"])?,
-                        Value::ArrayObj(_) => self.load_constant(self.type_constant_indexes["prelude/Array"])?,
-                        Value::SetObj(_) => self.load_constant(self.type_constant_indexes["prelude/Set"])?,
-                        Value::MapObj(_) => self.load_constant(self.type_constant_indexes["prelude/Map"])?,
+                        Value::Int(_) => self.load_constant((0, self.type_constant_indexes["prelude/Int"]))?,
+                        Value::Float(_) => self.load_constant((0, self.type_constant_indexes["prelude/Float"]))?,
+                        Value::Bool(_) => self.load_constant((0, self.type_constant_indexes["prelude/Bool"]))?,
+                        Value::StringObj(_) => self.load_constant((0, self.type_constant_indexes["prelude/String"]))?,
+                        Value::ArrayObj(_) => self.load_constant((0, self.type_constant_indexes["prelude/Array"]))?,
+                        Value::SetObj(_) => self.load_constant((0, self.type_constant_indexes["prelude/Set"]))?,
+                        Value::MapObj(_) => self.load_constant((0, self.type_constant_indexes["prelude/Map"]))?,
                         Value::InstanceObj(o) => {
                             let i = &*o.borrow();
                             let type_value = self.load_type(i.type_id).clone();
@@ -972,7 +957,6 @@ impl VM {
                         Value::NativeFn(_) |
                         Value::Type(_) |
                         Value::Enum(_) => unimplemented!(),
-                        Value::Str(_) => unreachable!("There should never be a value of type Str"),
                     }
                 }
                 Opcode::Return => {

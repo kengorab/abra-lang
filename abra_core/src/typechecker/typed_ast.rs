@@ -334,7 +334,7 @@ pub enum TypedMatchKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedImportNode {
-    pub imports: Vec<(/* import_name: */ String, /* is_const: */ bool)>,
+    pub imports: Vec<String>,
     pub module_id: ModuleId,
 }
 
