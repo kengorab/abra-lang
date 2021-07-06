@@ -850,8 +850,10 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 continue;
             }
 
-            if let Some(arg_tok) = arg_idents.get(&arg_name) {
-                return Err(TypecheckerErrorKind::DuplicateBinding { orig_ident: Some(arg_tok.clone()), ident: token.clone() });
+            if &arg_name != "_" {
+                if let Some(arg_tok) = arg_idents.get(&arg_name) {
+                    return Err(TypecheckerErrorKind::DuplicateBinding { orig_ident: Some(arg_tok.clone()), ident: token.clone() });
+                }
             }
             if is_vararg {
                 if !allow_varargs {

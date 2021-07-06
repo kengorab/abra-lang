@@ -72,6 +72,10 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         }
         Value::MapObj(o) => {
             let map = &*o.borrow();
+            if map._inner.is_empty() {
+                return format!("{{}}");
+            }
+
             let fields = map._inner.iter()
                 .map(|(k, v)| {
                     let k = to_string(k, vm);

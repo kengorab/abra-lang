@@ -1,10 +1,258 @@
 import * from test
 
 describe("Map", () => {
+  // Fields
+  describe(".size", () => {
+    it("should return 0 if self is empty", () => {
+      val map: Map<String, String> = {}
+      expect(map.size).toEqual(0)
+    })
+
+    it("should return 1 if self has 1 entry", () => {
+      val map = { a: 1 }
+      expect(map.size).toEqual(1)
+    })
+
+    it("should return 4 if self has 4 entries", () => {
+      val map = { a: 1, b: 2, c: 3, d: 4 }
+      expect(map.size).toEqual(4)
+    })
+  })
+
+  // Operators
+  describe("[]", () => {
+    it("should return the value for the key", () => {
+      val map = { a: 1, b: 2, c: 3 }
+      expect(map["a"]).toEqual(1)
+      expect(map["b"]).toEqual(2)
+      expect(map["c"]).toEqual(3)
+    })
+
+    it("should return None if no value exists for the key", () => {
+      val map = { a: 1, b: 2, c: 3 }
+      expect(map["d"]).toEqual(None)
+      expect({ (1): 2, (3): 4 }[5]).toEqual(None)
+    })
+  })
+
+  describe("[]=", () => {
+    it("should set the value of self for the key to given value", () => {
+      val map = { a: 1, b: 2 }
+      map["a"] = 3
+      expect(map).toEqual({ a: 3, b: 2 })
+    })
+
+    it("should insert the key-value pair if no value currently exists for the key", () => {
+      val map = { "hello": "world" }
+      map["hola"] = "mundo"
+      expect(map).toEqual({ hello: "world", hola: "mundo" })
+    })
+  })
+
+  // Static methods
+  describe("::fromPairs", () => {
+    it("should create an empty map when given an empty array", () => {
+      val pairs: (String, String)[] = []
+      val map = Map.fromPairs(pairs)
+      expect(map).toEqual({})
+    })
+
+    it("should create a map from the given key-value pairs", () => {
+      val map1 = Map.fromPairs([("a", 1), ("b", 2)])
+      expect(map1).toEqual({ a: 1, b: 2 })
+
+      val map2 = Map.fromPairs([(0 + 1, 1 + 2), (1 + 1, 2 + 2)])
+      expect(map2).toEqual({ (1): 3, (2): 4 })
+    })
+
+    it("should overwrite earlier keys with subsequent keys", () => {
+      val map = Map.fromPairs([("a", 1), ("a", 10)])
+      expect(map).toEqual({ a: 10 })
+    })
+  })
+
+  // Instance methods
+  describe("#toString", () => {
+    it("should return a stringified empty map if self is empty", () => {
+      expect({}.toString()).toEqual("{}")
+    })
+
+    it("should return a stringified map, for string keys", () => {
+      val possibilities = ["{ a: 1, b: 2 }", "{ b: 2, a: 1 }"]
+      val str = { a: 1, "b": 2 }.toString()
+      expect(possibilities.contains(str)).toEqual(true)
+    })
+
+    it("should return a stringified map, for expression keys", () => {
+      val possibilities = #{"{ (a, b): 1, (c, d): 2 }", "{ (c, d): 2, (a, b): 1 }"}
+      val key1 = ("a", "b")
+      val key2 = ("c", "d")
+      val str = { (key1): 1, (key2): 2 }.toString()
+      expect(possibilities.contains(str)).toEqual(true)
+    })
+  })
+
   describe("#isEmpty", () => {
-    it("should return true for an empty map", () => {
+    it("should return true if the map is empty", () => {
       val map: Map<String, String> = {}
       expect(map.isEmpty()).toEqual(true)
+    })
+
+    it("should return false if the map is not empty", () => {
+      val map = { a: 1 }
+      expect(map.isEmpty()).toEqual(false)
+    })
+  })
+
+  describe("#enumerate", () => {
+    it("should return an empty array if self is empty", () => {
+      val map: Map<String, Int> = {}
+      expect(map.enumerate()).toEqual([])
+    })
+
+    it("should return an array of tuples, of the form (key, value)", () => {
+      expect({ a: 1 }.enumerate()).toEqual([("a", 1)])
+
+      val possibilities = #{
+        [("a", 1), ("b", 2)],
+        [("b", 2), ("a", 1)],
+      }
+      val res = { a: 1, b: 2 }.enumerate()
+      expect(possibilities.contains(res)).toEqual(true)
+    })
+  })
+
+  describe("#keys", () => {
+    it("should return an empty set if self is empty", () => {
+      expect({}.keys()).toEqual(#{})
+    })
+
+    it("should return a set of self's keys", () => {
+      expect({ a: 1, b: 2 }.keys()).toEqual(#{"a", "b"})
+
+      val key1 = [1, 2]
+      val key2 = [3, 4]
+      expect({ (key1): true, (key2): false }.keys()).toEqual(#{key1, key2})
+    })
+  })
+
+  describe("#values", () => {
+    it("should return an empty set if self is empty", () => {
+      expect({}.values()).toEqual(#{})
+    })
+
+    it("should return a set of self's values", () => {
+      expect({ a: 1, b: 2 }.values()).toEqual(#{1, 2})
+      expect({ a: 1, b: 1 }.values()).toEqual(#{1})
+      expect({ ([1, 2]): true, ([3, 4]): false }.values()).toEqual(#{true, false})
+    })
+  })
+
+  describe("#entries", () => {
+    it("should return an empty set if self is empty", () => {
+      expect({}.entries().isEmpty()).toEqual(true)
+    })
+
+    it("should return a set of key-value pairs of self", () => {
+      val map1 = { a: 1, b: 2 }
+      expect(map1.entries()).toEqual(#{("a", 1), ("b", 2)})
+
+      val map2 = { ([1, 2]): true, ([3, 4]): false }
+      expect(map2.entries()).toEqual(#{ ([1, 2], true), ([3, 4], false) })
+    })
+  })
+
+  describe("#containsKey", () => {
+    it("should return true if self contains the key", () => {
+      val map1 = { a: 1, b: 2 }
+      expect(map1.containsKey("a")).toEqual(true)
+
+      val str = "hello world"
+      val map2 = { ("abc" + "def"): "ghi", (str): "👋" }
+      expect(map2.containsKey("abcdef")).toEqual(true)
+      expect(map2.containsKey(str)).toEqual(true)
+    })
+
+    it("should return false if self does not contain the key", () => {
+      val map1 = { a: 1, b: 2 }
+      expect(map1.containsKey("c")).toEqual(false)
+
+      val str = "hello world"
+      val map2 = { ("abc" + "def"): "ghi", (str): "👋" }
+      expect(map2.containsKey("bogus")).toEqual(false)
+    })
+  })
+
+  describe("#mapValues", () => {
+    it("should return an empty map if self is empty", () => {
+      val map: Map<String, String> = {}
+      expect(map.mapValues((_, _) => 0)).toEqual({})
+    })
+
+    it("should return a new map with new values from the mapping function", () => {
+      val map = { a: 1, b: 2, c: 3 }
+      expect(map.mapValues((key, value) => key + value)).toEqual({ a: "a1", b: "b2", c: "c3" })
+    })
+  })
+
+  describe("#getOrDefault", () => {
+    it("should return the value if self contains the key", () => {
+      expect({ a: 1, b: 2 }.getOrDefault("a", 12)).toEqual(1)
+    })
+
+    it("should return the default value if self does not contain the key", () => {
+      expect({ a: 1, b: 2 }.getOrDefault("c", 12)).toEqual(12)
+    })
+  })
+
+  describe("#getOrElse", () => {
+    it("should return the value if self contains the key", () => {
+      expect({ a: 1, b: 2 }.getOrElse("a", () => 12)).toEqual(1)
+    })
+
+    it("should not call the function if self contains the key", () => {
+      var called = false
+      { a: 1, b: 2 }.getOrElse("a", () => {
+        called = true
+        12
+      })
+      expect(called).toEqual(false)
+    })
+
+    it("should return the returned value if self does not contain the key", () => {
+      expect({ a: 1, b: 2 }.getOrElse("c", () => 12)).toEqual(12)
+    })
+  })
+
+  describe("#update", () => {
+    it("does nothing if self is empty", () => {
+      val map: Map<String, String> = {}
+      map.update("a", _ => "hello")
+      expect(map).toEqual({})
+
+      var called = false
+      map.update("a", _ => {
+        called = true
+        "hello"
+      })
+      expect(called).toEqual(false)
+    })
+
+    it("does nothing if self does not contain the key", () => {
+      var called = false
+      val map: Map<String, String> = {}
+      map.update("a", _ => {
+        called = true
+        "hello"
+      })
+      expect(called).toEqual(false)
+      expect(map).toEqual({})
+    })
+
+    it("updates the value in self for the given key", () => {
+      val map = { a: 1, b: 2 }
+      map.update("b", value => value * 2)
+      expect(map).toEqual({ a: 1, b: 4 })
     })
   })
 })

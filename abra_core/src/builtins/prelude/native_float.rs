@@ -42,7 +42,7 @@ impl NativeFloat {
         Value::Float(i / (power as f64))
     }
 
-    #[abra_pseudomethod(signature = "abs(): Int")]
+    #[abra_pseudomethod(signature = "abs(): Float")]
     fn abs(rcv: Value) -> Value {
         Value::Float(rcv.as_float().abs())
     }

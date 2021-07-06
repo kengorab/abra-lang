@@ -1044,13 +1044,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let num_items = node.items.len();
         for (key, value) in node.items {
-            match key {
-                TypedAstNode::Identifier(_, n) => {
-                    let key = Value::new_string_obj(n.name);
-                    self.add_and_write_constant(key, line);
-                }
-                key_expr => self.visit(key_expr)?
-            }
+            self.visit(key)?;
             self.visit(value)?;
         }
 

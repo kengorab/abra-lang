@@ -1,0 +1,202 @@
+import * from test
+
+// Used in tests later on
+type Person { name: String }
+
+describe("Set", () => {
+  // Fields
+  describe(".size", () => {
+    it("should return 0 if self is empty", () => {
+      val set: Set<Int> = #{}
+      expect(set.size).toEqual(0)
+    })
+
+    it("should return 1 if self has 1 item", () => {
+      val set = #{1}
+      expect(set.size).toEqual(1)
+    })
+
+    it("should return 1 if self has 2 duplicate items", () => {
+      val set = #{1, 1}
+      expect(set.size).toEqual(1)
+    })
+  })
+
+  // Instance methods
+  describe("#toString", () => {
+    it("should return a stringified empty set if self is empty", () => {
+      expect(#{}.toString()).toEqual("#{}")
+    })
+
+    it("should return a stringified set", () => {
+      val possibilities1 = #{"#{1, 2, 3}", "#{1, 3, 2}", "#{2, 3, 1}", "#{2, 1, 3}", "#{3, 2, 1}", "#{3, 1, 2}"}
+      val str1 = #{1, 2, 3}.toString()
+      expect(possibilities1.contains(str1)).toEqual(true)
+
+      val possibilities2 = #{"#{[1, 2], [3, 4]}", "#{[3, 4], [1, 2]}"}
+      val str2 = #{[1, 2], [3, 4]}.toString()
+      expect(possibilities2.contains(str2)).toEqual(true)
+
+      val possibilities3 = #{"#{(1, 2), (3, 4)}", "#{(3, 4), (1, 2)}"}
+      val str3 = #{(1, 2), (3, 4)}.toString()
+      expect(possibilities3.contains(str3)).toEqual(true)
+    })
+  })
+
+  describe("#isEmpty", () => {
+    it("should return true if self has 0 items", () => {
+      expect(#{}.isEmpty()).toEqual(true)
+    })
+
+    it("should return false if self has items", () => {
+      expect(#{1}.isEmpty()).toEqual(false)
+    })
+  })
+
+  describe("#enumerate", () => {
+    it("should return an empty array if self is empty", () => {
+      val set: Set<Int> = #{}
+      expect(set.enumerate()).toEqual([])
+    })
+
+    it("should return an array of tuples, of the form (item, index)", () => {
+      expect(#{"a"}.enumerate()).toEqual([("a", 0)])
+    })
+  })
+
+  describe("#contains", () => {
+    it("should return true if self contains item", () => {
+      expect(#{1, 2, 3}.contains(3)).toEqual(true)
+      expect(#{(1, 2), (3, 4)}.contains((3, 4))).toEqual(true)
+    })
+
+    it("should return false if self does not contain item", () => {
+      expect(#{1, 2, 3}.contains(4)).toEqual(false)
+      expect(#{(1, 2), (3, 4)}.contains((2, 3))).toEqual(false)
+    })
+
+    it("should return true if self contains instance of type", () => {
+      #{Person(name: "Ken"), Person(name: "Ken")}.contains(Person(name: "Ken"))
+    })
+  })
+
+  describe("#insert", () => {
+    it("should insert item into self", () => {
+      val set = #{1}
+      set.insert(3)
+      expect(set).toEqual(#{1, 3})
+    })
+
+    it("should not insert duplicate item into self", () => {
+      val set = #{1}
+      set.insert(3)
+      set.insert(3)
+      expect(set).toEqual(#{1, 3})
+    })
+  })
+
+  describe("#remove", () => {
+    it("should remove item from self", () => {
+      val set = #{1}
+      set.remove(1)
+      expect(set).toEqual(#{})
+    })
+
+    it("should do nothing if self is empty", () => {
+      val set: Set<Int> = #{}
+      set.remove(1)
+      expect(set).toEqual(#{})
+    })
+  })
+
+  describe("#map", () => {
+    it("should return an empty array if self is empty", () => {
+      val set: Set<Int> = #{}
+      expect(set.map(i => i + 1)).toEqual([])
+    })
+
+    it("should return an array with fn applied to each element of self", () => {
+      val set = #{"a", "b"}
+      expect(set.map(c => c.length)).toEqual([1, 1])
+    })
+  })
+
+  describe("#filter", () => {
+    it("should return an empty set if self is empty", () => {
+      val set: Set<Int> =#{} 
+      expect(set.filter(i => i > 1)).toEqual(#{})
+    })
+
+    it("should return an empty set if predicate never returns true", () => {
+      val set = #{1, 2, 3}
+      expect(set.filter(i => i == 0)).toEqual(#{})
+    })
+
+    it("should return a set containing items of self where the predicate is true", () => {
+      val set = #{1, 2, 3}
+      expect(set.filter(i => i > 1)).toEqual(#{2, 3})
+    })
+  })
+
+  describe("#reduce", () => {
+    it("should return the initial value if self is empty", () => {
+      val set: Set<Int> = #{}
+      expect(set.reduce(17, (acc, i) => acc + i)).toEqual(17)
+    })
+
+    it("should return accumulated result of applying fn to each item of self", () => {
+      val set = #{1, 2, 3}
+      expect(set.reduce(18, (acc, i) => acc + i)).toEqual(24)
+    })
+
+    it("should return accumulated result of applying fn to each item of self", () => {
+      val set = #{"a", "b", "c"}
+      val possibilities = #{"abc", "bca", "cab", "acb", "bac", "cba"}
+      val res = set.reduce("", (acc, n) => acc + n)
+      expect(possibilities.contains(res)).toEqual(true)
+    })
+  })
+
+  describe("#asArray", () => {
+    it("should return an array representation of self", () => {
+      expect(#{}.asArray()).toEqual([])
+
+      val possibilities = #{[3, 4, 5], [3, 5, 4], [4, 3, 5], [4, 5, 3], [5, 4, 3], [5, 3, 4]}
+      expect(possibilities.contains(#{3, 4, 5}.asArray())).toEqual(true)
+    })
+  })
+
+  describe("#union", () => {
+    it("should return an empty set if self and other are empty", () => {
+      expect(#{}.union(#{})).toEqual(#{})
+    })
+
+    it("should return a set with all elements of self and other", () => {
+      expect(#{1}.union(#{1, 2})).toEqual(#{1, 2})
+      expect(#{1, 3, 5,}.union(#{2, 4,})).toEqual(#{1, 2, 3, 4, 5})
+    })
+  })
+
+  describe("#difference", () => {
+    it("should return an empty set if self and other are empty", () => {
+      expect(#{}.difference(#{})).toEqual(#{})
+    })
+
+    it("should return a set with all elements of self that are not in other", () => {
+      expect(#{1}.difference(#{1, 2})).toEqual(#{})
+      expect(#{1, 2}.difference(#{2})).toEqual(#{1})
+    })
+  })
+
+  describe("#intersection", () => {
+    it("should return an empty set if self and other are empty", () => {
+      expect(#{}.intersection(#{})).toEqual(#{})
+    })
+
+    it("should return a set with all elements of self that are in other", () => {
+      expect(#{1, 2, 3}.intersection(#{})).toEqual(#{})
+      expect(#{1, 2}.intersection(#{3, 4})).toEqual(#{})
+      expect(#{1}.intersection(#{1, 2})).toEqual(#{1})
+    })
+  })
+})

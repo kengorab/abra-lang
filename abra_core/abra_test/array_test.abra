@@ -3,12 +3,12 @@ import * from test
 describe("Array", () => {
   // Fields
   describe(".length", () => {
-    it("should return 0 if the array is empty", () => {
+    it("should return 0 if self is empty", () => {
       val arr: Int[] = []
       expect(arr.length).toEqual(0)
     })
 
-    it("should return 1 if the array has 1 item", () => {
+    it("should return 1 if self has 1 item", () => {
       val arr = [1]
       expect(arr.length).toEqual(1)
     })
