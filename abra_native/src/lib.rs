@@ -870,7 +870,7 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
 fn gen_native_value_code(type_spec: &TypeSpec) -> TokenStream {
     let construct_method_code = gen_construct_code(type_spec);
     let get_type_value_method_code = gen_get_type_value_method_code(type_spec);
-    let to_string_method_code = gen_to_string_method_code(&type_spec.to_string_method);
+    let to_string_method_code = gen_to_string_method_code(type_spec);
     let get_field_values_method_code = gen_get_field_values_method_code(type_spec);
     let get_field_value_method_code = gen_get_field_value_method_code(type_spec);
     let set_field_value_method_code = gen_set_field_value_method_code(type_spec);
@@ -1145,8 +1145,8 @@ fn gen_get_type_value_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStr
     }
 }
 
-fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_macro2::TokenStream {
-    match to_string_method_name {
+fn gen_to_string_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
+    match &type_spec.to_string_method {
         Some(method_name) => {
             let method_name_ident = format_ident!("{}", method_name);
             quote! {
@@ -1155,27 +1155,38 @@ fn gen_to_string_method_code(to_string_method_name: &Option<String>) -> proc_mac
                 }
             }
         }
-        None => quote! {
-            fn method_to_string(&self, vm: &mut crate::vm::vm::VM) -> crate::vm::value::Value {
-                use itertools::Itertools;
+        None => {
+            let mut format_str = vec![format!("{}(", type_spec.name)];
+            let mut fields_code = Vec::new();
+            let num_fields = type_spec.fields.len();
+            for (idx, field) in type_spec.fields.iter().enumerate() {
+                format_str.push(format!(
+                    "{}{}: {{}}{}",
+                    if idx > 0 { ", " } else { "" },
+                    &field.name,
+                    if idx == num_fields - 1 { ")" } else { "" }
+                ));
 
-                let typ_val = Self::get_type_value();
-                let fields = typ_val.fields.into_iter().zip(self.get_field_values())
-                    .map(|(field_name, field_value)| format!("{}: {}", field_name, crate::builtins::common::to_string(&field_value, vm)))
-                    .join(", ");
+                let getter_name = &field.getter.as_ref().unwrap().native_method_name;
+                let method_name_ident = format_ident!("{}", getter_name);
+                fields_code.push(quote!{ self.#method_name_ident() });
+            }
+            let format_str = format_str.join("");
 
-                crate::vm::value::Value::new_string_obj(format!("{}({})", typ_val.name, fields))
+            quote! {
+                fn method_to_string(&self, vm: &mut crate::vm::vm::VM) -> crate::vm::value::Value {
+                    crate::vm::value::Value::new_string_obj(format!(#format_str, #(#fields_code),*))
+                }
             }
         }
     }
 }
 
 fn gen_get_field_values_method_code(type_spec: &TypeSpec) -> proc_macro2::TokenStream {
-    let code = type_spec.fields.iter().filter_map(|field| {
-        field.getter.as_ref().map(|getter| {
-            let method_name_ident = format_ident!("{}", getter.native_method_name);
-            quote! { self.#method_name_ident() }
-        })
+    let code = type_spec.fields.iter().map(|field| {
+        let getter_name = &field.getter.as_ref().unwrap().native_method_name;
+        let method_name_ident = format_ident!("{}", getter_name);
+        quote! { self.#method_name_ident() }
     });
 
     quote! {
