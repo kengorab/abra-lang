@@ -14,7 +14,7 @@ pub trait ModuleReader {
 
 pub enum ModuleLoaderError {
     WrappedError(Error),
-    CannotLoadModule,
+    NoSuchModule,
     CircularDependency,
 }
 
@@ -56,7 +56,7 @@ impl<R: ModuleReader> ModuleLoader<R> {
         } else {
             self.module_reader.read_module(&module_id)
         };
-        let contents = contents.ok_or(ModuleLoaderError::CannotLoadModule)?;
+        let contents = contents.ok_or(ModuleLoaderError::NoSuchModule)?;
 
         self.typed_module_cache.insert(module_name.clone(), None);
         match typecheck(module_id.clone(), &contents, self) {

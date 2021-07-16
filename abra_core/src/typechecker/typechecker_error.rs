@@ -71,7 +71,8 @@ pub enum TypecheckerErrorKind {
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
     InvalidAccess { token: Token, is_field: bool, is_get: bool },
-    InvalidModuleImport { token: Token, module_name: String, circular: bool },
+    CircularModuleImport { token: Token, module_name: String },
+    InvalidModuleImport { token: Token, module_name: String },
     InvalidImportValue { ident: Token },
 }
 
@@ -140,6 +141,7 @@ impl TypecheckerError {
             TypecheckerErrorKind::InvalidProtocolMethod { token, .. } => token,
             TypecheckerErrorKind::VarargMismatch { token, .. } => token,
             TypecheckerErrorKind::InvalidAccess { token, .. } => token,
+            TypecheckerErrorKind::CircularModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidImportValue { ident: token } => token,
         }
@@ -787,32 +789,24 @@ impl DisplayError for TypecheckerError {
                     access_kind, target, access_str
                 )
             }
-            TypecheckerErrorKind::InvalidModuleImport { module_name, circular, .. } => {
-                let reason = if *circular {
-                    format!(
-                        "Circular dependency detected within the module '{}'. It appears that some \
-                        module imported by '{}' is trying to import '{}', which resulted in a cycle.",
-                        module_name, module_name, module_name
-                    )
-                } else {
-                    format!(
-                        "The module '{}' could not be loaded. Please ensure that the import path of the \
-                        module is correct, and that there is a module at that location",
-                        module_name
-                    )
-                };
-
+            TypecheckerErrorKind::CircularModuleImport { module_name, .. } => {
+                let reason = format!(
+                    "Circular dependency detected within the module '{}'. It appears that some \
+                    module imported by '{}' is trying to import '{}', which resulted in a cycle.",
+                    module_name, module_name, module_name
+                );
+                format!("Could not import module\n{}\n{}", cursor_line, reason)
+            }
+            TypecheckerErrorKind::InvalidModuleImport { module_name, .. } => {
                 format!(
-                    "Could not import module\n{}\n{}",
-                    cursor_line, reason
+                    "Could not import module '{}'\n{}\nNo such module exists",
+                    module_name, cursor_line
                 )
             }
             TypecheckerErrorKind::InvalidImportValue { ident } => {
                 format!(
-                    "Invalid import\n{}\n\
-                    This module does not export any value called '{}'",
-                    cursor_line,
-                    Token::get_ident_name(ident)
+                    "Invalid import\n{}\nThis module does not export any value called '{}'",
+                    cursor_line, Token::get_ident_name(ident)
                 )
             }
         };

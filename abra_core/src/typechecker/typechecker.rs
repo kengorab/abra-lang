@@ -8973,7 +8973,6 @@ mod tests {
         let expected = TypecheckerErrorKind::InvalidModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2.some_mod".to_string(),
-            circular: false,
         };
         assert_eq!(expected, err);
 
@@ -8993,10 +8992,9 @@ mod tests {
             ")
         ];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidModuleImport {
+        let expected = TypecheckerErrorKind::CircularModuleImport {
             token: Token::Import(Position::new(1, 1)),
             module_name: ".mod2".to_string(),
-            circular: true,
         };
         assert_eq!(expected, err);
 

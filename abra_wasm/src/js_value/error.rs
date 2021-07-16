@@ -663,13 +663,21 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerErrorKind::InvalidModuleImport { token, module_name, circular } => {
+                TypecheckerErrorKind::CircularModuleImport { token, module_name } => {
+                    let mut obj = serializer.serialize_map(Some(4))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "circularModuleImport")?;
+                    obj.serialize_entry("token", &JsToken(token))?;
+                    obj.serialize_entry("moduleName", module_name)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerErrorKind::InvalidModuleImport { token, module_name } => {
                     let mut obj = serializer.serialize_map(Some(4))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidModuleImport")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("moduleName", module_name)?;
-                    obj.serialize_entry("circular", circular)?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
