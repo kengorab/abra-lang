@@ -45,7 +45,7 @@ pub enum TypecheckerErrorKind {
     InvalidIndexingTarget { token: Token, target_type: Type, index_mode: IndexingMode<AstNode> },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     InvalidTupleIndexingSelector { token: Token, types: Vec<Type>, non_constant: bool, index: i64 },
-    UnknownMember { token: Token, target_type: Type },
+    UnknownMember { token: Token, target_type: Type, module_id: Option<ModuleId> },
     MissingRequiredParams { token: Token, missing_params: Vec<String> },
     InvalidMixedParamType { token: Token },
     InvalidTypeFuncInvocation { token: Token },
@@ -71,8 +71,10 @@ pub enum TypecheckerErrorKind {
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
     InvalidAccess { token: Token, is_field: bool, is_get: bool },
-    InvalidModuleImport { token: Token, module_name: String, circular: bool },
+    CircularModuleImport { token: Token, module_name: String },
+    InvalidModuleImport { token: Token, module_name: String },
     InvalidImportValue { ident: Token },
+    ForbiddenImportAliasing { import_token: Token, module_id: ModuleId },
 }
 
 #[derive(Debug, PartialEq)]
@@ -140,8 +142,10 @@ impl TypecheckerError {
             TypecheckerErrorKind::InvalidProtocolMethod { token, .. } => token,
             TypecheckerErrorKind::VarargMismatch { token, .. } => token,
             TypecheckerErrorKind::InvalidAccess { token, .. } => token,
+            TypecheckerErrorKind::CircularModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidImportValue { ident: token } => token,
+            TypecheckerErrorKind::ForbiddenImportAliasing { import_token, .. } => import_token,
         }
     }
 }
@@ -199,6 +203,7 @@ fn type_repr(t: &Type) -> String {
             format!("{}<{}>", name, type_args_repr)
         }
         Type::Enum(EnumType { name, .. }) => format!("{}", name),
+        Type::Module(_) => "Module".to_string(),
         Type::Placeholder => "_".to_string(),
         Type::Generic(name) => name.clone(),
         Type::Reference(name, type_args) => {
@@ -531,15 +536,24 @@ impl DisplayError for TypecheckerError {
                     cursor_line, message
                 )
             }
-            TypecheckerErrorKind::UnknownMember { token, target_type } => {
+            TypecheckerErrorKind::UnknownMember { token, target_type, module_id } => {
                 let field_name = Token::get_ident_name(token);
 
-                format!(
-                    "Unknown member '{}'\n{}\n\
-                    Type {} does not have a member with name '{}'",
-                    field_name, cursor_line,
-                    type_repr(target_type), field_name
-                )
+                if let Some(module_id) = module_id {
+                    format!(
+                        "Unknown member '{}'\n{}\n\
+                        Module '{}' does not have an export with name '{}'",
+                        field_name, cursor_line,
+                        module_id.get_name(), field_name
+                    )
+                } else {
+                    format!(
+                        "Unknown member '{}'\n{}\n\
+                        Type {} does not have a member with name '{}'",
+                        field_name, cursor_line,
+                        type_repr(target_type), field_name
+                    )
+                }
             }
             TypecheckerErrorKind::MissingRequiredParams { missing_params, .. } => {
                 let missing_params = missing_params.join(", ");
@@ -787,33 +801,42 @@ impl DisplayError for TypecheckerError {
                     access_kind, target, access_str
                 )
             }
-            TypecheckerErrorKind::InvalidModuleImport { module_name, circular, .. } => {
-                let reason = if *circular {
-                    format!(
-                        "Circular dependency detected within the module '{}'. It appears that some \
-                        module imported by '{}' is trying to import '{}', which resulted in a cycle.",
-                        module_name, module_name, module_name
-                    )
-                } else {
-                    format!(
-                        "The module '{}' could not be loaded. Please ensure that the import path of the \
-                        module is correct, and that there is a module at that location",
-                        module_name
-                    )
-                };
-
+            TypecheckerErrorKind::CircularModuleImport { module_name, .. } => {
+                let reason = format!(
+                    "Circular dependency detected within the module '{}'. It appears that some \
+                    module imported by '{}' is trying to import '{}', which resulted in a cycle.",
+                    module_name, module_name, module_name
+                );
+                format!("Could not import module\n{}\n{}", cursor_line, reason)
+            }
+            TypecheckerErrorKind::InvalidModuleImport { module_name, .. } => {
                 format!(
-                    "Could not import module\n{}\n{}",
-                    cursor_line, reason
+                    "Could not import module '{}'\n{}\nNo such module exists",
+                    module_name, cursor_line
                 )
             }
             TypecheckerErrorKind::InvalidImportValue { ident } => {
                 format!(
-                    "Invalid import\n{}\n\
-                    This module does not export any value called '{}'",
-                    cursor_line,
-                    Token::get_ident_name(ident)
+                    "Invalid import\n{}\nThis module does not export any value called '{}'",
+                    cursor_line, Token::get_ident_name(ident)
                 )
+            }
+            TypecheckerErrorKind::ForbiddenImportAliasing { module_id, .. } => {
+                let ModuleId(is_local_import, path) = module_id;
+                let suggestion = format!("import {} as {}", module_id.get_name(), path.last().unwrap());
+                if *is_local_import {
+                    format!(
+                        "Invalid import\n{}\n\
+                        Local imports need to be properly aliased, for example:\n  {}",
+                        cursor_line, suggestion
+                    )
+                } else {
+                    format!(
+                        "Invalid import\n{}\n\
+                        Module name '{}' is not a valid identifier, try an alias like:\n  {}",
+                        cursor_line, module_id.get_name(), suggestion
+                    )
+                }
             }
         };
 
@@ -1392,9 +1415,9 @@ Cannot index into a target of type String, using a selector of type String"
             kind: TypecheckerErrorKind::UnknownMember {
                 token: Token::Ident(Position::new(1, 11), "size".to_string()),
                 target_type: Type::Array(Box::new(Type::Int)),
+                module_id: None,
             },
         };
-
         let expected = format!("\
 Error at /tests/test.abra:1:11
 Unknown member 'size'
@@ -1419,15 +1442,34 @@ Type Int[] does not have a member with name 'size'"
                     static_fields: vec![],
                     methods: vec![],
                 }),
+                module_id: None,
             },
         };
-
         let expected = format!("\
 Error at /tests/test.abra:2:18
 Unknown member 'nAme'
   |  val p = Person({{ nAme: \"hello\" }})
                       ^^^^
 Type Person does not have a member with name 'nAme'"
+        );
+        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
+
+        let module_id = ModuleId::from_name("test");
+        let src = "import io\nio.fooBar()".to_string();
+        let err = TypecheckerError {
+            module_id,
+            kind: TypecheckerErrorKind::UnknownMember {
+                token: Token::Ident(Position::new(2, 4), "fooBar".to_string()),
+                target_type: Type::Module(ModuleId::from_name("io")),
+                module_id: Some(ModuleId::from_name("io")),
+            },
+        };
+        let expected = format!("\
+Error at /tests/test.abra:2:4
+Unknown member 'fooBar'
+  |  io.fooBar()
+        ^^^^^^
+Module 'io' does not have an export with name 'fooBar'"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
     }

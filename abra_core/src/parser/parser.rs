@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -759,49 +759,100 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
+    fn parse_import_module(&mut self) -> Result<(Option<Token>, Vec<Token>), ParseErrorKind> {
+        let leading_dot_token = if let Token::Dot(_) = self.expect_peek()? {
+            let token = self.expect_next_token(TokenType::Dot)?; // Consume '.'
+            Some(token)
+        } else { None };
+
+        let mut path = Vec::new();
+        loop {
+            let ident = self.expect_next_token(TokenType::Ident)?;
+            path.push(ident);
+
+            if let Some(Token::Dot(_)) = self.peek() {
+                self.expect_next_token(TokenType::Dot)?; // Consume '.'
+            } else {
+                break;
+            }
+        }
+
+        Ok((leading_dot_token, path))
+    }
+
     fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?; // Consume 'import' token
         if !is_proper {
             return Err(ParseErrorKind::UnexpectedToken(token));
         }
 
-        let mut star_token = None;
-        let mut imports = Vec::new();
-        if let Token::Star(_) = self.expect_peek()? {
-            let token = self.expect_next()?; // Consume '*'
-            star_token = Some(token);
-        } else {
-            loop {
-                let ident = self.expect_next_token(TokenType::Ident)?;
-                imports.push(ident);
+        if let Token::Dot(_) = self.expect_peek()? {
+            let (leading_dot_token, path) = self.parse_import_module()?;
 
-                if let Token::Comma(_) = self.expect_peek()? {
-                    self.expect_next()?; // Consume ','
-                } else {
-                    break;
+            let alias = if let Some(Token::As(_)) = self.peek() {
+                self.expect_next_token(TokenType::As)?;
+                let alias_token = self.expect_next_token(TokenType::Ident)?;
+                Some(alias_token)
+            } else { None };
+            let kind = ImportKind::Alias(alias);
+
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+        } else if let Token::Star(_) = self.expect_peek()? {
+            let star_token = self.expect_next()?; // Consume '*'
+            let kind = ImportKind::ImportAll(star_token);
+            self.expect_next_token(TokenType::From)?;
+            let (leading_dot_token, path) = self.parse_import_module()?;
+
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+        } else {
+            let ident = self.expect_next_token(TokenType::Ident)?;
+            match self.peek() {
+                Some(Token::Comma(_)) => {
+                    self.expect_next_token(TokenType::Comma)?;
+
+                    let mut imports = vec![ident];
+                    loop {
+                        let ident = self.expect_next_token(TokenType::Ident)?;
+                        imports.push(ident);
+
+                        if let Token::Comma(_) = self.expect_peek()? {
+                            self.expect_next_token(TokenType::Comma)?; // Consume ','
+                        } else {
+                            break;
+                        }
+                    }
+
+                    let kind = ImportKind::ImportList(imports);
+                    self.expect_next_token(TokenType::From)?;
+                    let (leading_dot_token, path) = self.parse_import_module()?;
+
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+                }
+                Some(Token::From(_)) => {
+                    let kind = ImportKind::ImportList(vec![ident]);
+                    self.expect_next_token(TokenType::From)?;
+                    let (leading_dot_token, path) = self.parse_import_module()?;
+
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+                }
+                _ => {
+                    let path = match self.peek() {
+                        Some(Token::Dot(_)) => {
+                            let (_, path) = self.parse_import_module()?;
+                            vec![vec![ident], path].concat()
+                        }
+                        _ => vec![ident]
+                    };
+                    let alias = if let Some(Token::As(_)) = self.peek() {
+                        self.expect_next_token(TokenType::As)?;
+                        let alias_token = self.expect_next_token(TokenType::Ident)?;
+                        Some(alias_token)
+                    } else { None };
+                    let kind = ImportKind::Alias(alias);
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token: None, path }))
                 }
             }
         }
-
-        self.expect_next_token(TokenType::From)?;
-
-        let mut path = Vec::new();
-        let dot_token = if let Token::Dot(_) = self.expect_peek()? {
-            let token = self.expect_next()?; // Consume '.'
-            Some(token)
-        } else { None };
-        loop {
-            let ident = self.expect_next_token(TokenType::Ident)?;
-            path.push(ident);
-
-            if let Some(Token::Dot(_)) = self.peek() {
-                self.expect_next()?; // Consume '.'
-            } else {
-                break;
-            }
-        }
-
-        Ok(AstNode::ImportStatement(token, ImportNode { imports, star_token, leading_dot_token: dot_token, path }))
     }
 
     fn parse_if_node(&mut self) -> Result<IfNode, ParseErrorKind> {
@@ -4849,8 +4900,7 @@ mod tests {
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
-                    imports: vec![],
-                    star_token: Some(Token::Star(Position::new(1, 8))),
+                    kind: ImportKind::ImportAll(Token::Star(Position::new(1, 8))),
                     leading_dot_token: None,
                     path: vec![ident_token!((1, 15), "abc"), ident_token!((1, 19), "def")],
                 },
@@ -4863,8 +4913,7 @@ mod tests {
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
-                    imports: vec![ident_token!((1, 8), "Date")],
-                    star_token: None,
+                    kind: ImportKind::ImportList(vec![ident_token!((1, 8), "Date")]),
                     leading_dot_token: None,
                     path: vec![ident_token!((1, 18), "time"), ident_token!((1, 23), "date")],
                 },
@@ -4877,11 +4926,10 @@ mod tests {
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
-                    imports: vec![
+                    kind: ImportKind::ImportList(vec![
                         ident_token!((1, 8), "SomeType"),
                         ident_token!((1, 18), "someFunc"),
-                    ],
-                    star_token: None,
+                    ]),
                     leading_dot_token: Some(Token::Dot(Position::new(1, 32))),
                     path: vec![ident_token!((1, 33), "local"), ident_token!((1, 39), "module")],
                 },
@@ -4889,7 +4937,102 @@ mod tests {
         ];
         assert_eq!(expected, ast);
 
+        let ast = parse("import time.date")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    kind: ImportKind::Alias(None),
+                    leading_dot_token: None,
+                    path: vec![ident_token!((1, 8), "time"), ident_token!((1, 13), "date")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("import time.date as date")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    kind: ImportKind::Alias(Some(ident_token!((1, 21), "date"))),
+                    leading_dot_token: None,
+                    path: vec![ident_token!((1, 8), "time"), ident_token!((1, 13), "date")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("import .local.module")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    kind: ImportKind::Alias(None),
+                    leading_dot_token: Some(Token::Dot(Position::new(1, 8))),
+                    path: vec![ident_token!((1, 9), "local"), ident_token!((1, 15), "module")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
+        let ast = parse("import .local.module as module")?;
+        let expected = vec![
+            AstNode::ImportStatement(
+                Token::Import(Position::new(1, 1)),
+                ImportNode {
+                    kind: ImportKind::Alias(Some(ident_token!((1, 25), "module"))),
+                    leading_dot_token: Some(Token::Dot(Position::new(1, 8))),
+                    path: vec![ident_token!((1, 9), "local"), ident_token!((1, 15), "module")],
+                },
+            )
+        ];
+        assert_eq!(expected, ast);
+
         Ok(())
+    }
+
+    #[test]
+    fn parse_import_statement_errors() {
+        let error = parse("import *, a from io").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::From, Token::Comma(Position::new(1, 9)));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc, from io").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::From(Position::new(1, 13)));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc from 123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 17), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc from .123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 18), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import 123 from .123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 8), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import 123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 8), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import .123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 9), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import ..a").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Dot(Position::new(1, 9)));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc as 123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 15), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc from foo as bar").unwrap_err();
+        let expected = ParseErrorKind::UnexpectedToken(Token::As(Position::new(1, 21)));
+        assert_eq!(expected, error);
     }
 
     #[test]

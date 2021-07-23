@@ -1779,6 +1779,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let type_global_idx = if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = *target {
             *self.get_global_idx(&self.module_id, &name)
                 .expect(&format!("There should be a designated global slot for name {}", name))
+        } else if let TypedAstNode::Accessor(_, TypedAccessorNode { target, field_ident, .. }) = *target {
+            if let Type::Module(module_id) = target.get_type() {
+                let name = Token::get_ident_name(&field_ident);
+                *self.get_global_idx(&module_id, &name)
+                    .expect(&format!("There should be a designated global slot for name {}/{}", module_id.get_name(), name))
+            } else {
+                unimplemented!("Unsupported instantiation on line {}", line)
+            }
         } else {
             unimplemented!("Unsupported instantiation on line {}", line)
         };
@@ -1870,18 +1878,28 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             let if_node = if_node.expect("It should be Some after the unwinding is through");
 
             self.visit(if_node)?;
-        } else {
-            let TypedAccessorNode { target, field_ident, field_idx, is_method, .. } = node;
-            let field_name = Token::get_ident_name(&field_ident);
-            self.metadata.field_gets.push(field_name);
 
-            self.visit(*target)?;
-            if is_method {
-                self.write_opcode(Opcode::GetMethod(field_idx), line);
-            } else {
-                self.write_opcode(Opcode::GetField(field_idx), line);
-            }
+            return Ok(())
         }
+
+        let TypedAccessorNode { target, field_ident, field_idx, is_method, .. } = node;
+        let field_name = Token::get_ident_name(&field_ident);
+
+        if let Type::Module(module_id) = target.get_type() {
+            let global_idx = self.get_global_idx(&module_id, &field_name);
+            let global_idx = *global_idx.expect(&format!("There should be a designated global slot for name {}", field_name));
+            self.write_opcode(Opcode::GLoad(global_idx), line);
+
+            return Ok(())
+        }
+
+        self.visit(*target)?;
+        if is_method {
+            self.write_opcode(Opcode::GetMethod(field_idx), line);
+        } else {
+            self.write_opcode(Opcode::GetField(field_idx), line);
+        }
+        self.metadata.field_gets.push(field_name);
 
         Ok(())
     }
@@ -2145,7 +2163,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
     fn visit_import_statement(&mut self, token: Token, node: TypedImportNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedImportNode { imports, module_id } = node;
+        let TypedImportNode { imports, module_id, alias_name } = node;
+
+        if let Some(alias_name) = alias_name {
+            self.add_and_write_constant(Value::Module(module_id), line);
+            self.write_store_global_instr(alias_name, line);
+
+            return Ok(())
+        }
 
         for import_name in imports {
             let global_idx = self.get_global_idx(&module_id, &import_name);
@@ -5514,6 +5539,34 @@ mod tests {
                 Opcode::Return
             ],
             constants: vec![],
+        };
+        assert_eq!(expected, chunk);
+    }
+
+    #[test]
+    fn compile_import_alias() {
+        let mod1 = "\
+          import .constants as constants\n\
+          val y = constants.x + 4\
+        ";
+        let modules = vec![
+            (".constants", "export val x = 123"),
+        ];
+        let chunk = test_compile_with_modules(mod1, modules);
+        let expected = Module {
+            name: "_test".to_string(),
+            is_native: false,
+            num_globals: 2,
+            code: vec![
+                Opcode::Constant(2, 0),
+                Opcode::GStore(global_idx(1)),
+                Opcode::GLoad(global_idx(0)),
+                Opcode::IConst4,
+                Opcode::IAdd,
+                Opcode::GStore(global_idx(2)),
+                Opcode::Return
+            ],
+            constants: vec![Value::Module(ModuleId::from_name(".constants"))],
         };
         assert_eq!(expected, chunk);
     }

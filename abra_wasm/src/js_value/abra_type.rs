@@ -147,6 +147,11 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("methods", &methods)?;
                 obj.end()
             }
+            Type::Module(_) => {
+                let mut obj = serializer.serialize_map(Some(1))?;
+                obj.serialize_entry("kind", "Module")?;
+                obj.end()
+            }
             Type::Placeholder => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("kind", "Placeholder")?;

@@ -956,7 +956,8 @@ impl VM {
                         Value::Closure(_) |
                         Value::NativeFn(_) |
                         Value::Type(_) |
-                        Value::Enum(_) => unimplemented!(),
+                        Value::Enum(_) |
+                        Value::Module(_) => unimplemented!(),
                     }
                 }
                 Opcode::Return => {

@@ -343,9 +343,15 @@ impl MatchCaseType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ImportKind {
+    ImportAll(/* star_token: */ Token),
+    ImportList(/* imports: */ Vec<Token>),
+    Alias(/* alias_token: */ Option<Token>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ImportNode {
-    pub imports: Vec<Token>,
-    pub star_token: Option<Token>,
+    pub kind: ImportKind,
     pub leading_dot_token: Option<Token>,
     pub path: Vec<Token>,
 }

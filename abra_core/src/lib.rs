@@ -67,20 +67,12 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
     for (import_token, import_module_id) in imports {
         loader.load_module(&import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
-            ModuleLoaderError::CannotLoadModule => {
-                let kind = TypecheckerErrorKind::InvalidModuleImport {
-                    token: import_token,
-                    module_name: import_module_id.get_name(),
-                    circular: false,
-                };
-                Error::TypecheckerError(TypecheckerError { module_id: import_module_id, kind })
+            ModuleLoaderError::NoSuchModule => {
+                let kind = TypecheckerErrorKind::InvalidModuleImport { token: import_token, module_name: import_module_id.get_name() };
+                Error::TypecheckerError(TypecheckerError { module_id: module_id.clone(), kind })
             }
             ModuleLoaderError::CircularDependency => {
-                let kind = TypecheckerErrorKind::InvalidModuleImport {
-                    token: import_token,
-                    module_name: import_module_id.get_name(),
-                    circular: true,
-                };
+                let kind = TypecheckerErrorKind::CircularModuleImport { token: import_token, module_name: import_module_id.get_name() };
                 Error::TypecheckerError(TypecheckerError { module_id: import_module_id, kind })
             }
         })?

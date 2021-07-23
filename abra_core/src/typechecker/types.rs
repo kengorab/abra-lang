@@ -1,4 +1,4 @@
-use crate::parser::ast::TypeIdentifier;
+use crate::parser::ast::{TypeIdentifier, ModuleId};
 use crate::lexer::tokens::Token;
 use std::collections::{HashMap, HashSet};
 
@@ -20,6 +20,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
+    Module(ModuleId),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
@@ -60,6 +61,7 @@ impl PartialEq for Type {
             (Type::Bool, Type::Bool) |
             (Type::Unknown, Type::Unknown) |
             (Type::Placeholder, Type::Placeholder) => true,
+            (Type::Module(m1), Type::Module(m2)) => m1.eq(&m2),
             (_, _) => false,
         }
     }
