@@ -2419,6 +2419,24 @@ mod tests {
         ];
         let chunk = interpret_with_modules(mod1, modules);
         assert_eq!(Value::Int(127), chunk);
+
+        // Import aliases, use types & enums
+        let mod1 = r#"
+          import .mod as m
+          val b1 = m.Baz(foo: m.Foo.Bar, bar: 24)
+          val b2 = m.Baz(foo: m.Foo.Bar, bar: 12)
+          val r = if b1.foo == m.Foo.Bar {
+            b1.bar
+          } else {
+            b2.bar
+          }
+          r
+        "#;
+        let modules = vec![
+            (".mod", "export enum Foo { Bar }\nexport type Baz { foo: Foo, bar: Int }"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Value::Int(24), chunk);
     }
 
     #[test]

@@ -3015,7 +3015,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let field_name = Token::get_ident_name(&field_ident).clone();
 
         fn get_field_data<R: ModuleReader>(
-            zelf: &Typechecker<R>,
+            zelf: &mut Typechecker<R>,
             target_type: &Type,
             field_name: &String,
             token: &Token,
@@ -3125,7 +3125,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         Ok((None, HashMap::new()))
                     } else {
                         let enum_type = enum_types.into_iter().next().unwrap();
-                        get_field_data(&zelf, &enum_type, field_name, token)
+                        get_field_data(zelf, &enum_type, field_name, token)
                     }
                 }
                 Type::Module(module_id) => {
@@ -3133,7 +3133,38 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                     let field_data = module.exports.get(field_name).map(|export| {
                         match export {
                             ExportedValue::Binding(typ) => FieldSpec { idx: 0, typ: typ.clone(), is_method: false, readonly: true },
-                            _ => unimplemented!()
+                            ExportedValue::Type { reference, backing_type, node } => {
+                                let typ = match reference {
+                                    Some(typeref) => {
+                                        let typeref_name = format!("{}/{}", module_id.get_name(), &field_name);
+                                        let mut backing_type = backing_type.clone();
+                                        match &mut backing_type {
+                                            Type::Struct(st) => st.name = typeref_name.clone(),
+                                            Type::Enum(et) => et.name = typeref_name.clone(),
+                                            _ => unreachable!()
+                                        }
+                                        let binding_type = Type::Type(typeref_name.clone(), Box::new(backing_type.clone()), false);
+
+                                        let scope = zelf.scopes.first_mut().unwrap();
+                                        if !scope.types.contains_key(&typeref_name) {
+                                            scope.types.insert(typeref_name.clone(), (typeref.clone(), node.clone(), true));
+                                        }
+
+                                        zelf.referencable_types.insert(typeref_name.clone(), backing_type.clone());
+                                        binding_type
+                                    }
+                                    None => {
+                                        let binding_type = Type::Type(field_name.clone(), Box::new(backing_type.clone()), false);
+                                        let scope = zelf.scopes.first_mut().unwrap();
+                                        if !scope.types.contains_key(field_name) {
+                                            scope.types.insert(field_name.clone(), (backing_type.clone(), node.clone(), true));
+                                        }
+                                        binding_type
+                                    }
+                                };
+
+                                FieldSpec { idx: 0, typ, is_method: false, readonly: true }
+                            }
                         }
                     });
                     Ok((field_data, HashMap::new()))
@@ -3142,7 +3173,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             }
         }
 
-        let (field_data, mut generics) = get_field_data(&self, &target_type, &field_name, &token)?;
+        let (field_data, mut generics) = get_field_data(self, &target_type, &field_name, &token)?;
         let (field_idx, mut typ, is_method, is_readonly) = match field_data {
             Some(FieldSpec { idx, typ, is_method, readonly }) => {
                 if let Some(ident_type_args) = &ident_type_args {
@@ -3169,7 +3200,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                     _ => None
                 };
 
-                return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone(), module_id })
+                return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone(), module_id });
             }
         };
         if is_opt {
@@ -9140,6 +9171,14 @@ mod tests {
           println(io.prompt)
         ");
         assert!(res.is_ok());
+
+        let mod1 = "\
+          import .mod2 as mod2\n\
+          println(mod2.A(a: 123))
+        ";
+        let modules = vec![(".mod2", "export type A { a: Int }")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -9152,7 +9191,7 @@ mod tests {
         let res = test_typecheck_with_modules(mod1, modules);
         let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((2, 17), "io"),
-            orig_ident: Some(ident_token!((1, 8), "io"))
+            orig_ident: Some(ident_token!((1, 8), "io")),
         };
         assert_eq!(expected, res.unwrap_err());
 
@@ -9164,7 +9203,7 @@ mod tests {
         let res = test_typecheck_with_modules(mod1, modules);
         let expected = TypecheckerErrorKind::DuplicateBinding {
             ident: ident_token!((2, 17), "foo"),
-            orig_ident: Some(ident_token!((1, 17), "foo"))
+            orig_ident: Some(ident_token!((1, 17), "foo")),
         };
         assert_eq!(expected, res.unwrap_err());
 
@@ -9186,7 +9225,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((2, 14), "z"),
             target_type: Type::Module(ModuleId::from_name(".mod2")),
-            module_id: Some(ModuleId::from_name(".mod2"))
+            module_id: Some(ModuleId::from_name(".mod2")),
         };
         assert_eq!(expected, res.unwrap_err());
     }

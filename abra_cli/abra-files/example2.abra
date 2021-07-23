@@ -6,5 +6,4 @@ export enum Size { S, M, L, XL, Custom(size: String) }
 
 export type Shirt {
   color: String
-  size: Size
 }

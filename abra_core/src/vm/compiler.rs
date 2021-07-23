@@ -1779,6 +1779,14 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let type_global_idx = if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = *target {
             *self.get_global_idx(&self.module_id, &name)
                 .expect(&format!("There should be a designated global slot for name {}", name))
+        } else if let TypedAstNode::Accessor(_, TypedAccessorNode { target, field_ident, .. }) = *target {
+            if let Type::Module(module_id) = target.get_type() {
+                let name = Token::get_ident_name(&field_ident);
+                *self.get_global_idx(&module_id, &name)
+                    .expect(&format!("There should be a designated global slot for name {}/{}", module_id.get_name(), name))
+            } else {
+                unimplemented!("Unsupported instantiation on line {}", line)
+            }
         } else {
             unimplemented!("Unsupported instantiation on line {}", line)
         };
