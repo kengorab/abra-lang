@@ -2408,6 +2408,17 @@ mod tests {
         ];
         let chunk = interpret_with_modules(mod1, modules);
         assert_eq!(Value::Int(127), chunk);
+
+        // Import aliases
+        let mod1 = r#"
+          import .constants as C
+          C.x + 4
+        "#;
+        let modules = vec![
+            (".constants", "export val x = 123"),
+        ];
+        let chunk = interpret_with_modules(mod1, modules);
+        assert_eq!(Value::Int(127), chunk);
     }
 
     #[test]

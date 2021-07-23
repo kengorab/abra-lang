@@ -96,6 +96,7 @@ impl Serialize for RunResultValue {
             Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),
             Value::Type(TypeValue { name, .. }) => serializer.serialize_str(name),
             Value::Enum(EnumValue { name, .. }) => serializer.serialize_str(name),
+            Value::Module(module_id) => serializer.serialize_str(&module_id.get_name()),
         }
     }
 }

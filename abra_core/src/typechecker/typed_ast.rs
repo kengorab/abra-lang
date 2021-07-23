@@ -336,6 +336,7 @@ pub enum TypedMatchKind {
 pub struct TypedImportNode {
     pub imports: Vec<String>,
     pub module_id: ModuleId,
+    pub alias_name: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

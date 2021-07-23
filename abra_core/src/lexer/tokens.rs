@@ -53,6 +53,7 @@ pub enum Token {
     #[strum(to_string = "import", serialize = "Import")] Import(Position),
     #[strum(to_string = "export", serialize = "Export")] Export(Position),
     #[strum(to_string = "from", serialize = "From")] From(Position),
+    #[strum(to_string = "as", serialize = "As")] As(Position),
 
     // Identifiers
     #[strum(to_string = "identifier", serialize = "Ident")] Ident(Position, String),
@@ -131,6 +132,7 @@ impl Token {
             Token::Import(pos) |
             Token::Export(pos) |
             Token::From(pos) |
+            Token::As(pos) |
 
             Token::Ident(pos, _) |
             Token::Self_(pos) |
@@ -212,6 +214,7 @@ impl Token {
             Token::Import(pos) => Range::with_length(pos, 5),
             Token::Export(pos) => Range::with_length(pos, 5),
             Token::From(pos) => Range::with_length(pos, 3),
+            Token::As(pos) => Range::with_length(pos, 1),
 
             Token::Ident(pos, i) => Range::with_length(pos, i.len() - 1),
             Token::Self_(pos) => Range::with_length(pos, 3),

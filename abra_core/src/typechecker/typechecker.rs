@@ -2,7 +2,7 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind, TypedMatchCaseArgument};
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, InvalidAssignmentTargetReason, TypecheckerError};
@@ -622,9 +622,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let variant_name = Token::get_ident_name(&variant_ident);
                     let variant_idx = enum_type.variants.iter().position(|(name, _)| name == &variant_name);
                     if variant_idx.is_none() {
-                        return Err(TypecheckerErrorKind::UnknownMember { token: variant_ident, target_type: typ });
+                        return Err(TypecheckerErrorKind::UnknownMember { token: variant_ident, target_type: typ, module_id: None });
                     } else if let Some(token) = idents.next() {
-                        return Err(TypecheckerErrorKind::UnknownMember { token, target_type: typ });
+                        return Err(TypecheckerErrorKind::UnknownMember { token, target_type: typ, module_id: None });
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
@@ -2920,21 +2920,45 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let module_id = node.get_module_id();
-        let ImportNode { imports, star_token, .. } = &node;
         let module = self.module_loader.get_module(&module_id);
 
-        let imports = if let Some(star_token) = star_token {
-            module.exports.iter().map(|(export_name, export_value)| {
-                (export_name.clone(), star_token, export_value)
-            }).collect::<Vec<_>>()
-        } else {
-            imports.iter().map(|import_token| {
-                let import_name = Token::get_ident_name(&import_token);
-                match module.exports.get(&import_name) {
-                    None => Err(TypecheckerErrorKind::InvalidImportValue { ident: import_token.clone() }),
-                    Some(export) => Ok((import_name, import_token, export))
+        let imports = match &node.kind {
+            ImportKind::ImportAll(star_token) => {
+                module.exports.iter().map(|(export_name, export_value)| {
+                    (export_name.clone(), star_token, export_value)
+                }).collect::<Vec<_>>()
+            }
+            ImportKind::ImportList(imports) => {
+                imports.iter().map(|import_token| {
+                    let import_name = Token::get_ident_name(&import_token);
+                    match module.exports.get(&import_name) {
+                        None => Err(TypecheckerErrorKind::InvalidImportValue { ident: import_token.clone() }),
+                        Some(export) => Ok((import_name, import_token, export))
+                    }
+                }).collect::<Result<Vec<_>, _>>()?
+            }
+            ImportKind::Alias(alias_token) => {
+                let alias_token = match alias_token {
+                    None => {
+                        let ModuleId(is_local_import, path) = &module_id;
+                        if *is_local_import || path.len() > 1 {
+                            return Err(TypecheckerErrorKind::ForbiddenImportAliasing { import_token: token, module_id });
+                        }
+                        node.path.first().as_ref().unwrap()
+                    }
+                    Some(tok) => tok
+                };
+                let alias_name = Token::get_ident_name(alias_token);
+                if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&alias_name) {
+                    let ident = (*alias_token).clone();
+                    return Err(TypecheckerErrorKind::DuplicateBinding { ident, orig_ident: Some(orig_ident.clone()) });
                 }
-            }).collect::<Result<Vec<_>, _>>()?
+
+                let typ = Type::Module(module_id.clone());
+                self.add_binding(&alias_name, &alias_token, &typ, false);
+
+                return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id, alias_name: Some(alias_name) }));
+            }
         };
 
         let mut typed_imports = Vec::new();
@@ -2971,7 +2995,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             typed_imports.push(import_name);
         }
 
-        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id }))
+        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id, alias_name: None }))
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
@@ -3104,6 +3128,16 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         get_field_data(&zelf, &enum_type, field_name, token)
                     }
                 }
+                Type::Module(module_id) => {
+                    let module = zelf.module_loader.get_module(&module_id);
+                    let field_data = module.exports.get(field_name).map(|export| {
+                        match export {
+                            ExportedValue::Binding(typ) => FieldSpec { idx: 0, typ: typ.clone(), is_method: false, readonly: true },
+                            _ => unimplemented!()
+                        }
+                    });
+                    Ok((field_data, HashMap::new()))
+                }
                 _ => Ok((None, HashMap::new()))
             }
         }
@@ -3129,7 +3163,14 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 }
                 (idx, Type::substitute_generics(&typ, &generics), is_method, readonly)
             }
-            None => return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone() })
+            None => {
+                let module_id = match self.resolve_ref_type(&target_type) {
+                    Type::Module(module_id) => Some(module_id),
+                    _ => None
+                };
+
+                return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone(), module_id })
+            }
         };
         if is_opt {
             typ = Type::Option(Box::new(typ))
@@ -5964,6 +6005,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((6, 11), "hex"),
             target_type: Type::Reference("_test/Color".to_string(), vec![]),
+            module_id: None,
         };
         assert_eq!(expected, error);
 
@@ -5982,6 +6024,7 @@ mod tests {
                 Box::new(Type::Reference("_test/Color".to_string(), vec![])),
                 true,
             ),
+            module_id: None,
         };
         assert_eq!(expected, error);
 
@@ -6223,6 +6266,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((3, 3), "bogusField"),
             target_type: Type::Reference("_test/Person".to_string(), vec![]),
+            module_id: None,
         };
         assert_eq!(expected, err);
 
@@ -7766,6 +7810,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((3, 3), "firstName"),
             target_type: Type::Reference("_test/Person".to_string(), vec![]),
+            module_id: None,
         };
         assert_eq!(expected, error);
 
@@ -7773,6 +7818,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((1, 6), "value"),
             target_type: Type::Bool,
+            module_id: None,
         };
         assert_eq!(expected, error);
     }
@@ -7939,6 +7985,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((1, 15), "toUpper"),
             target_type: Type::Int,
+            module_id: None,
         };
         assert_eq!(expected, error);
 
@@ -8376,6 +8423,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((4, 11), "Sideways"),
             target_type: Type::Reference("_test/Direction".to_string(), vec![]),
+            module_id: None,
         };
         assert_eq!(expected, err);
 
@@ -8390,6 +8438,7 @@ mod tests {
         let expected = TypecheckerErrorKind::UnknownMember {
             token: ident_token!((4, 16), "A"),
             target_type: Type::Reference("_test/Direction".to_string(), vec![]),
+            module_id: None,
         };
         assert_eq!(expected, err);
 
@@ -9074,5 +9123,71 @@ mod tests {
             ModuleId::from_name(".mod2"),
         ];
         assert_eq!(expected, loader.ordering);
+    }
+
+    #[test]
+    fn typecheck_import_alias() {
+        let mod1 = "\
+          import .mod2 as mod2\n\
+          println(mod2.a)
+        ";
+        let modules = vec![(".mod2", "export val a = 1")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        assert!(res.is_ok());
+
+        let res = test_typecheck("\
+          import io\n\
+          println(io.prompt)
+        ");
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn typecheck_import_alias_errors() {
+        let mod1 = "\
+          import io\n\
+          import .mod2 as io
+        ";
+        let modules = vec![(".mod2", "export val a = 1")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        let expected = TypecheckerErrorKind::DuplicateBinding {
+            ident: ident_token!((2, 17), "io"),
+            orig_ident: Some(ident_token!((1, 8), "io"))
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        let mod1 = "\
+          import .mod2 as foo\n\
+          import .mod3 as foo
+        ";
+        let modules = vec![(".mod2", "export val a = 1"), (".mod3", "export val b = 2")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        let expected = TypecheckerErrorKind::DuplicateBinding {
+            ident: ident_token!((2, 17), "foo"),
+            orig_ident: Some(ident_token!((1, 17), "foo"))
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        let mod1 = "import .mod2";
+        let modules = vec![(".mod2", "export val a = 1")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        let expected = TypecheckerErrorKind::ForbiddenImportAliasing {
+            import_token: Token::Import(Position::new(1, 1)),
+            module_id: ModuleId::from_name(".mod2"),
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        let mod1 = "\
+          import .mod2 as mod2\n\
+          println(mod2.z)
+        ";
+        let modules = vec![(".mod2", "export val a = 1")];
+        let res = test_typecheck_with_modules(mod1, modules);
+        let expected = TypecheckerErrorKind::UnknownMember {
+            token: ident_token!((2, 14), "z"),
+            target_type: Type::Module(ModuleId::from_name(".mod2")),
+            module_id: Some(ModuleId::from_name(".mod2"))
+        };
+        assert_eq!(expected, res.unwrap_err());
     }
 }

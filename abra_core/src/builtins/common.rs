@@ -124,6 +124,7 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
         Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),
         Value::Type(TypeValue { name, .. }) => format!("<type {}>", name),
         Value::Enum(EnumValue { name, .. }) => format!("<enum {}>", name),
+        Value::Module(module_id) => format!("<module {}>", module_id.get_name()),
         Value::Nil => format!("None"),
     }
 }

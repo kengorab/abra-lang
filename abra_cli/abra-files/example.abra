@@ -1,1 +1,24 @@
-import foo from .bar
+import .example2 as foo
+import .example3 as bar
+import .example4 as ex4
+import io
+
+println(foo)
+bar.sayC()
+println(io.readFile)
+
+//import * from io        // This is fine, all exports from `io` are accessible in current module
+//import readFile from io // This is fine, `readFile` from `io` is accessible in current module
+//
+//import io               // This is fine, `io.readFile` is accessible
+//import io as io         // This is fine, `io.readFile` is accessible
+//import io as IO         // This is fine, `IO.readFile` is accessible (`io.readFile` is not)
+//
+//---
+//
+//import * from .foo.bar  // This is fine, all exports from `.foo.bar` are accessible in current module
+//import a from .foo.bar  // This is fine, `a` from `.foo.bar` is accessible in current module
+//
+//import .foo.bar         // This is NOT fine, imports of local modules MUST be aliased
+//import .foo.bar as fb   // This is fine, `fb.baz` is accessible
+//import .foo.bar as FB   // This is fine, `FB.baz` is accessible

@@ -392,12 +392,15 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
-                TypecheckerErrorKind::UnknownMember { token, target_type } => {
+                TypecheckerErrorKind::UnknownMember { token, target_type, module_id } => {
                     let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "unknownMember")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("targetType", &JsType(target_type))?;
+                    if let Some(module_id) = module_id {
+                        obj.serialize_entry("moduleName", &module_id.get_name())?;
+                    }
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
@@ -673,11 +676,20 @@ impl<'a> Serialize for JsWrappedError<'a> {
                     obj.end()
                 }
                 TypecheckerErrorKind::InvalidModuleImport { token, module_name } => {
-                    let mut obj = serializer.serialize_map(Some(4))?;
+                    let mut obj = serializer.serialize_map(Some(5))?;
                     obj.serialize_entry("kind", "typecheckerError")?;
                     obj.serialize_entry("subKind", "invalidModuleImport")?;
                     obj.serialize_entry("token", &JsToken(token))?;
                     obj.serialize_entry("moduleName", module_name)?;
+                    obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
+                    obj.end()
+                }
+                TypecheckerErrorKind::ForbiddenImportAliasing { import_token, module_id } => {
+                    let mut obj = serializer.serialize_map(Some(5))?;
+                    obj.serialize_entry("kind", "typecheckerError")?;
+                    obj.serialize_entry("subKind", "forbiddenImportAliasing")?;
+                    obj.serialize_entry("importToken", &JsToken(import_token))?;
+                    obj.serialize_entry("moduleName", &module_id.get_name())?;
                     obj.serialize_entry("range", &JsRange(&typechecker_error.get_token().get_range()))?;
                     obj.end()
                 }
