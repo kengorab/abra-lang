@@ -841,12 +841,14 @@ fn gen_native_type_code(type_spec: &TypeSpec) -> TokenStream {
     });
 
     let native_type_name_ident = format_ident!("{}", &type_spec.native_type_name);
+    let is_constructable = !type_spec.is_noconstruct;
     let ts = quote! {
         impl crate::builtins::native_value_trait::NativeTyp for #native_type_name_ident {
             fn get_type() -> crate::typechecker::types::StructType where Self: Sized {
                 crate::typechecker::types::StructType {
                     name: #type_name.to_string(),
                     type_args: vec![ #(#type_args),* ],
+                    constructable: #is_constructable,
                     fields: vec![ #(#fields),* ],
                     static_fields: vec![ #(#static_methods),* ],
                     methods: vec![

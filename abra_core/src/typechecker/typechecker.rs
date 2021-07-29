@@ -1161,7 +1161,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         let typedef = EnumType { name: new_type_name.clone(), type_args: type_arg_names, variants: vec![], static_fields: vec![], methods: vec![] };
                         Type::Enum(typedef)
                     } else {
-                        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), fields: vec![], static_fields: vec![], methods: vec![] };
+                        let typedef = StructType { name: new_type_name.clone(), type_args: type_arg_names.clone(), constructable: true, fields: vec![], static_fields: vec![], methods: vec![] };
                         Type::Struct(typedef)
                     };
                     self.referencable_types.insert(typeref_name, referencable_type);
@@ -2689,8 +2689,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             }
             Type::Type(typeref_name, t, _) => match self.resolve_ref_type(&*t) {
                 Type::Struct(struct_type) => {
-                    let StructType { name, fields: expected_fields, type_args, .. } = &struct_type;
+                    let StructType { name, fields: expected_fields, type_args, constructable, .. } = &struct_type;
                     let target_token = target.get_token().clone();
+
+                    if !constructable {
+                        let typ = Type::Struct(struct_type);
+                        return Err(TypecheckerErrorKind::InvalidInstantiation { token: target_token, typ });
+                    }
 
                     let num_named = args.iter().filter(|(arg, _)| arg.is_some()).count();
                     if args.len() != num_named {
@@ -2757,31 +2762,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
                     Ok(TypedAstNode::Instantiation(token, TypedInstantiationNode { typ, target: Box::new(target), fields }))
                 }
-                t @ Type::Int | t @ Type::Float | t @ Type::String | t @ Type::Bool => {
-                    if args.len() != 1 {
-                        return Err(TypecheckerErrorKind::IncorrectArity { token: target.get_token().clone(), expected: 1, actual: args.len() });
-                    }
-                    let mut args = args;
-                    let (arg_name, node) = args.remove(0);
-                    match arg_name {
-                        Some(arg_name_tok) => {
-                            return Err(TypecheckerErrorKind::UnexpectedParamName { token: arg_name_tok });
-                        }
-                        None => {
-                            let mut typed_arg = self.visit(node)?;
-                            let arg_type = typed_arg.get_type();
-                            if !self.are_types_equivalent(&mut typed_arg, &t)? {
-                                return Err(TypecheckerErrorKind::Mismatch { token: typed_arg.get_token().clone(), expected: t.clone(), actual: arg_type });
-                            }
-
-                            match typed_arg {
-                                lit @ TypedAstNode::Literal(_, _) => Ok(lit),
-                                _ => unreachable!()
-                            }
-                        }
-                    }
-                }
-                typ => Err(TypecheckerErrorKind::InvalidInstantiation { token: target.get_token().clone(), typ }),
+                _ => Err(TypecheckerErrorKind::InvalidInstantiation { token: target.get_token().clone(), typ: *t }),
             }
             target_type => Err(TypecheckerErrorKind::InvalidInvocationTarget { token: target.get_token().clone(), target_type })
         }
@@ -5110,6 +5091,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }],
             static_fields: vec![],
             methods: vec![to_string_method_type()],
@@ -5142,6 +5124,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
                 StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
@@ -5170,6 +5153,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Node".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
                 StructTypeField {
@@ -5198,6 +5182,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Foo".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "a".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
                 StructTypeField { name: "b".to_string(), typ: Type::Int, has_default_value: false, readonly: true },
@@ -5370,6 +5355,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
@@ -5429,6 +5415,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
@@ -5491,6 +5478,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
@@ -5713,6 +5701,7 @@ mod tests {
         let list_struct_type = Type::Struct(StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Type::Generic("T".to_string()))],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "items".to_string(), typ: Type::Array(Box::new(Type::Generic("T".to_string()))), has_default_value: false, readonly: false }
             ],
@@ -6232,6 +6221,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
@@ -6983,6 +6973,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
@@ -7013,6 +7004,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
                 StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
@@ -7168,19 +7160,30 @@ mod tests {
 
     #[test]
     fn typecheck_invocation_primitive_instantiation_error() {
-        let error = test_typecheck("Int(1.2)").unwrap_err();
-        let expected = TypecheckerErrorKind::Mismatch {
-            token: Token::Float(Position::new(1, 5), 1.2),
-            expected: Type::Int,
-            actual: Type::Float,
-        };
-        assert_eq!(expected, error);
+        let cases = vec![
+            (Type::Unit, "Unit"),
+            (Type::Any, "Any"),
+            (Type::Int, "Int"),
+            (Type::Float, "Float"),
+            (Type::String, "String"),
+            (Type::Bool, "Bool"),
+            (Type::Reference("Array".to_string(), vec![Type::Generic("T".to_string())]), "Array"),
+            (Type::Reference("Set".to_string(), vec![Type::Generic("T".to_string())]), "Set"),
+            (Type::Reference("Map".to_string(), vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())]), "Map"),
+        ];
+        for (typ, input) in cases {
+            let error = test_typecheck(&format!("{}(1.2)", input)).unwrap_err();
+            let expected = TypecheckerErrorKind::InvalidInstantiation { token: ident_token!((1, 1), input), typ };
+            assert_eq!(expected, error);
+        }
 
-        let error = test_typecheck("String(1.2)").unwrap_err();
-        let expected = TypecheckerErrorKind::Mismatch {
-            token: Token::Float(Position::new(1, 8), 1.2),
-            expected: Type::String,
-            actual: Type::Float,
+        let error = test_typecheck("\
+          enum Foo { Bar }\n\
+          Foo(1.2)\
+        ").unwrap_err();
+        let expected = TypecheckerErrorKind::InvalidInstantiation {
+            token: ident_token!((2, 1), "Foo"),
+            typ: Type::Reference("_test/Foo".to_string(), vec![]),
         };
         assert_eq!(expected, error);
     }
@@ -7632,6 +7635,7 @@ mod tests {
         let expected_typ = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false }
             ],
@@ -7662,6 +7666,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: false, readonly: false },
                 StructTypeField { name: "age".to_string(), typ: Type::Int, has_default_value: true, readonly: false },
@@ -7747,6 +7752,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![],
             static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), true)],
             methods: vec![to_string_method_type()],
@@ -7790,6 +7796,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::Option(Box::new(Type::String)), has_default_value: true, readonly: false }
             ],
@@ -7820,6 +7827,7 @@ mod tests {
         let expected_type = Type::Struct(StructType {
             name: "Person".to_string(),
             type_args: vec![],
+            constructable: true,
             fields: vec![
                 StructTypeField { name: "name".to_string(), typ: Type::String, has_default_value: true, readonly: false }
             ],
