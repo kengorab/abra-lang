@@ -92,6 +92,7 @@ impl PartialEq for FnType {
 pub struct StructType {
     pub name: String,
     pub type_args: Vec<(String, Type)>,
+    pub constructable: bool,
     pub fields: Vec<StructTypeField>,
     pub static_fields: Vec<(/* name: */ String, /* type: */ Type, /* has_default_value: */ bool)>,
     pub methods: Vec<(String, Type)>,
@@ -738,6 +739,7 @@ mod test {
         let struct_type = StructType {
             name: "List".to_string(),
             type_args: vec![("T".to_string(), Generic("T".to_string()))],
+            constructable: true,
             fields: vec![],
             static_fields: vec![],
             methods: vec![],

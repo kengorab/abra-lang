@@ -103,10 +103,11 @@ impl<'a> Serialize for JsType<'a> {
                 obj.serialize_entry("kind", "Unknown")?;
                 obj.end()
             }
-            Type::Struct(StructType { name, type_args, fields, methods, static_fields }) => {
+            Type::Struct(StructType { name, type_args, constructable, fields, methods, static_fields }) => {
                 let mut obj = serializer.serialize_map(Some(6))?;
                 obj.serialize_entry("kind", "Struct")?;
                 obj.serialize_entry("name", name)?;
+                obj.serialize_entry("constructable", constructable)?;
                 let type_args: Vec<(String, JsType)> = type_args.iter()
                     .map(|(name, typ)| (name.clone(), JsType(typ)))
                     .collect();
