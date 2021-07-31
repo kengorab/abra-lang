@@ -717,6 +717,25 @@ fn gen_rust_type_path(type_repr: &TypeRepr, module_name: &String, type_ref_name:
                     let typ = format_ident!("{}", i);
                     quote! { crate::typechecker::types::Type::#typ }
                 }
+                "Set" => {
+                    let inner_type = type_args.get(0).expect("Sets require T value");
+                    let inner_type_repr = gen_rust_type_path(inner_type, module_name, type_ref_name);
+
+                    quote! { crate::typechecker::types::Type::Set(std::boxed::Box::new(#inner_type_repr)) }
+                }
+                "Map" => {
+                    let key_type = type_args.get(0).expect("Maps require K value");
+                    let key_type_repr = gen_rust_type_path(key_type, module_name, type_ref_name);
+                    let val_type = type_args.get(1).expect("Maps require V value");
+                    let val_type_repr = gen_rust_type_path(val_type, module_name, type_ref_name);
+
+                    quote! {
+                        crate::typechecker::types::Type::Map(
+                            std::boxed::Box::new(#key_type_repr),
+                            std::boxed::Box::new(#val_type_repr)
+                        )
+                    }
+                }
                 i => {
                     let type_args = type_args.iter().map(|type_arg| {
                         gen_rust_type_path(type_arg, module_name, type_ref_name)

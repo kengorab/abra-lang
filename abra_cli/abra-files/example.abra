@@ -1,8 +1,1 @@
-//import .example2 as e
-//
-//println(e.Shirt(color: "Blue"))
-
-//println(Process.args)
-
-enum Foo { Bar }
-val a = Foo()
+println(process.args)

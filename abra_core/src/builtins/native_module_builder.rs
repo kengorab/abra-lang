@@ -31,7 +31,7 @@ impl ModuleSpecBuilder {
         let module_id = ModuleId::from_name(self.name.as_str());
         ModuleSpec {
             typed_module: TypedModule { module_id, exports: self.exports, referencable_types: self.referencable_types, ..TypedModule::default() },
-            compiled_module: Module { name: self.name, is_native: true, num_globals: self.constants.len(), constants: self.constants,  code: vec![] },
+            compiled_module: Module { name: self.name, is_native: true, num_globals: self.constants.len(), constants: self.constants, code: vec![] },
             constant_names: self.constant_names,
         }
     }

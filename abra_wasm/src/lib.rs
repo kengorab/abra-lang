@@ -297,7 +297,8 @@ pub fn run(input: &str, js_bridge: Option<AbraContext>) -> JsValue {
             }),
             None => Box::new(|input| console_log(input))
         },
-        prompt: Box::new(|_prompt| unimplemented!())
+        prompt: Box::new(|_prompt| unimplemented!()),
+        ..VMContext::default()
     };
 
     let module_reader = UnimplementedModuleReader;
@@ -321,7 +322,8 @@ pub fn run_module(module_name: &str, module_reader: JsModuleReader, js_bridge: O
             }),
             None => Box::new(|input| console_log(input))
         },
-        prompt: Box::new(|_prompt| unimplemented!())
+        prompt: Box::new(|_prompt| unimplemented!()),
+        ..VMContext::default()
     };
 
     let input = match module_reader._read_module(module_name) {

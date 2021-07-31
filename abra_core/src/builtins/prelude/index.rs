@@ -1,6 +1,6 @@
 use abra_native::abra_function;
 use crate::typechecker::types::Type;
-use crate::builtins::prelude::{NativeInt, NativeSet, NativeFloat, NativeString, NativeArray, NativeMap};
+use crate::builtins::prelude::{NativeInt, NativeSet, NativeFloat, NativeString, NativeArray, NativeMap, Process};
 use crate::builtins::common::to_string;
 use crate::builtins::native_module_builder::{ModuleSpec, TypeSpec, ModuleSpecBuilder};
 use crate::vm::value::Value;
@@ -48,7 +48,11 @@ pub static PRELUDE_PRINTLN_INDEX: usize = 0;
 #[cfg(test)]
 pub static PRELUDE_RANGE_INDEX: usize = 2;
 #[cfg(test)]
-pub static PRELUDE_STRING_INDEX: usize = 7;
+pub static PRELUDE_STRING_INDEX: usize = 8;
+#[cfg(test)]
+pub static NUM_PRELUDE_BINDINGS: usize = 15;
+
+pub static PRELUDE_PROCESS_INDEX: usize = 4;
 
 pub fn load_module() -> ModuleSpec {
     ModuleSpecBuilder::new("prelude")
@@ -56,6 +60,7 @@ pub fn load_module() -> ModuleSpec {
         .add_function(print__gen_spec)
         .add_function(range__gen_spec)
         .add_binding("None", Type::Option(Box::new(Type::Placeholder)), Value::Nil)
+        .add_binding("process", Type::Reference("prelude/Process".to_string(), vec![]), Value::Nil)
         .add_type(
             TypeSpec::builder("Int", Type::Int)
                 .with_native_value::<NativeInt>()
@@ -86,6 +91,7 @@ pub fn load_module() -> ModuleSpec {
                 .with_typeref()
                 .with_native_value::<NativeSet>()
         )
+        .add_type_impl::<Process>()
         .build()
 }
 
@@ -96,7 +102,7 @@ mod test {
 
     #[test]
     fn test_importing_module_explicitly_fails() {
-        let imports = &["println", "print", "range", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set"];
+        let imports = &["println", "print", "range", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set", "Process", "process"];
         for import in imports {
             let result = interpret_get_result(format!("import {} from prelude", import));
             assert!(result.is_err());
