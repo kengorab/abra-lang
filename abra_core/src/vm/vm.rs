@@ -1,4 +1,6 @@
 use crate::builtins::common::to_string;
+use crate::builtins::native_value_trait::NativeValue;
+use crate::builtins::prelude::{Process, PRELUDE_PROCESS_INDEX};
 use crate::vm::compiler::{Module, UpvalueCaptureKind};
 use crate::vm::opcode::Opcode;
 use crate::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, InstanceObj, EnumValue, EnumInstanceObj};
@@ -7,7 +9,6 @@ use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::cell::RefCell;
 use std::sync::Arc;
-use crate::builtins::native_value_trait::NativeValue;
 
 // Helper macros
 macro_rules! pop_expect_int {
@@ -62,13 +63,21 @@ struct CallFrame {
 pub struct VMContext {
     pub print: Box<dyn Fn(&str)>,
     pub prompt: Box<dyn Fn(&str) -> String>,
+    pub args: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
 impl VMContext {
+    pub fn new(args: Vec<String>, env: HashMap<String, String>) -> Self {
+        VMContext { args, env, ..Self::default() }
+    }
+
     pub fn default() -> Self {
         VMContext {
             print: Box::new(VMContext::print),
             prompt: Box::new(VMContext::prompt),
+            args: vec![],
+            env: HashMap::new(),
         }
     }
 
@@ -447,6 +456,16 @@ impl VM {
         Ok(())
     }
 
+    fn init_globals(&mut self) {
+        // There are certain global values which need to be initialized dynamically, after the
+        // prelude module is loaded & evaluated.
+
+        // Save an instance of the builtin `Process` type as the global `process`
+        let process = Process::init(&self);
+        let process = Value::new_native_instance_obj(self.type_id_for_name("prelude/Process"), Box::new(process));
+        self.globals[PRELUDE_PROCESS_INDEX] = process;
+    }
+
     pub fn invoke_fn(&mut self, args: Vec<Value>, func: Value) -> Result<Value, InterpretError> {
         let arity = args.len();
         if let Value::NativeFn(native_fn) = &func {
@@ -477,6 +496,10 @@ impl VM {
                 };
                 self.globals[self.num_globals] = v.clone();
                 self.num_globals += 1;
+            }
+
+            if name == "prelude" {
+                self.init_globals();
             }
         } else {
             self.num_globals += num_globals;

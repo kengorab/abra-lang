@@ -29,11 +29,16 @@ enum SubCommand {
 
 #[derive(Clap)]
 struct RunOpts {
-    file_path: String
+    #[clap(help = "Path to an abra file to run")]
+    file_path: String,
+
+    #[clap(last = true, help = "Arguments to pass to the abra program")]
+    args: Vec<String>,
 }
 
 #[derive(Clap)]
 struct DisassembleOpts {
+    #[clap(help = "Path to an abra file to disassemble")]
     file_path: String,
 
     #[clap(short = "o", help = "Where to write bytecode to (default: stdout)")]
@@ -69,7 +74,8 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 
     let module_id = ModuleId::from_path(&opts.file_path);
 
-    let mut vm = VM::new(VMContext::default());
+    let env = std::env::vars().collect();
+    let mut vm = VM::new(VMContext::new(opts.args, env));
     let result = compile_and_run(module_id, contents, current_path, &mut vm)?;
     if result != Value::Nil {
         println!("{}", to_string(&result, &mut vm));

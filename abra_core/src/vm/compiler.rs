@@ -1879,7 +1879,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
             self.visit(if_node)?;
 
-            return Ok(())
+            return Ok(());
         }
 
         let TypedAccessorNode { target, field_ident, field_idx, is_method, .. } = node;
@@ -1890,7 +1890,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             let global_idx = *global_idx.expect(&format!("There should be a designated global slot for name {}", field_name));
             self.write_opcode(Opcode::GLoad(global_idx), line);
 
-            return Ok(())
+            return Ok(());
         }
 
         self.visit(*target)?;
@@ -2169,7 +2169,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             self.add_and_write_constant(Value::Module(module_id), line);
             self.write_store_global_instr(alias_name, line);
 
-            return Ok(())
+            return Ok(());
         }
 
         for import_name in imports {
@@ -2187,7 +2187,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builtins::prelude::{PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX, PRELUDE_RANGE_INDEX};
+    use crate::builtins::prelude::{PRELUDE_PRINTLN_INDEX, PRELUDE_STRING_INDEX, PRELUDE_RANGE_INDEX, NUM_PRELUDE_BINDINGS};
     use crate::common::test_utils::MockModuleReader;
     use crate::parser::ast::ModuleId;
     use itertools::Itertools;
@@ -2224,10 +2224,8 @@ mod tests {
         }))
     }
 
-    const PRELUDE_OFFSET: usize = 13;
-
     fn global_idx(idx: usize) -> usize {
-        PRELUDE_OFFSET + idx
+        NUM_PRELUDE_BINDINGS + idx
     }
 
     #[test]
