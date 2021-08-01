@@ -1,1 +1,5 @@
-println(process.args)
+val m = { a: 1, b: 2 }
+println(m)
+println(m.remove("a"))
+println(m.remove("a"))
+println(m)

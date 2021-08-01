@@ -137,6 +137,16 @@ impl NativeMap {
             *item = invoke_fn(vm, &callback, vec![item.clone()]);
         }
     }
+
+    #[abra_method(signature = "remove(key: K): V?")]
+    fn remove(&mut self, mut args: Arguments) -> Value {
+        let key = args.next_value();
+
+        match self._inner.remove(&key) {
+            None => Value::Nil,
+            Some(v) => v
+        }
+    }
 }
 
 impl Hash for NativeMap {
@@ -375,6 +385,30 @@ mod test {
         let result = interpret(r#"
           val map = {a:1, b:2}
           map.update("c", n => n + 100)
+          map
+        "#);
+        let expected = map! {
+          new_string_obj("a") => Value::Int(1),
+          new_string_obj("b") => Value::Int(2)
+        };
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_map_remove() {
+        let result = interpret(r#"
+          val map = {a:1, b:2}
+          map.remove("a")
+          map
+        "#);
+        let expected = map! {
+          new_string_obj("b") => Value::Int(2)
+        };
+        assert_eq!(expected, result);
+
+        let result = interpret(r#"
+          val map = {a:1, b:2}
+          map.remove("c")
           map
         "#);
         let expected = map! {

@@ -859,13 +859,31 @@ impl VM {
                     #[inline]
                     fn get_range_endpoints(len: usize, start: i64, end: Value) -> (usize, usize) {
                         let len = len as i64;
-                        let start = if start < 0 { start + len } else { start };
+                        let start = if start < 0 {
+                            start + len
+                        } else if len == 0 {
+                            0
+                        } else if start > len - 1 {
+                            len
+                        } else {
+                            start
+                        };
+
                         let end = match end {
                             Value::Int(end) => end,
                             Value::Nil => len,
                             _ => unreachable!()
                         };
-                        let end = if end < 0 { end + len } else { end };
+                        let end = if end < 0 {
+                            end + len
+                        } else if end < start {
+                            start
+                        } else if end >= len {
+                            len
+                        } else {
+                            end
+                        };
+
                         (start as usize, end as usize - start as usize)
                     }
 

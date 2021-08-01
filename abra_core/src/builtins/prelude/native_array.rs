@@ -446,6 +446,17 @@ impl NativeArray {
             *item = invoke_fn(vm, &callback, vec![item.clone()]);
         }
     }
+    
+    #[abra_method(signature = "reverse(): T[]")]
+    fn reverse(&self) -> Self {
+        let len = self._inner.len();
+        let mut new_items = vec![Value::Nil; len];
+        for i in 0..len {
+            new_items[len - 1 - i] = self._inner[i].clone();
+        }
+
+        Self::new(new_items)
+    }
 }
 
 #[cfg(test)]
@@ -1086,6 +1097,23 @@ mod test {
           arr
         "#);
         let expected = array![Value::Int(1), Value::Int(2), Value::Int(3)];
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn test_array_reverse() {
+        let result = interpret(r#"
+          val arr = [1, 2, 3]
+          arr.reverse()
+        "#);
+        let expected = array![Value::Int(3), Value::Int(2), Value::Int(1)];
+        assert_eq!(expected, result);
+
+        let result = interpret(r#"
+          val arr: Int[] = []
+          arr.reverse()
+        "#);
+        let expected = array![];
         assert_eq!(expected, result);
     }
 }

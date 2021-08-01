@@ -255,4 +255,24 @@ describe("Map", () => {
       expect(map).toEqual({ a: 1, b: 4 })
     })
   })
+
+  describe("#remove", () => {
+    it("does nothing if self is empty", () => {
+      val map: Map<String, String> = {}
+      map.remove("a")
+      expect(map).toEqual({})
+    })
+
+    it("does nothing if self does not contain the key", () => {
+      val map = { b: 3 }
+      map.remove("a")
+      expect(map).toEqual({ b: 3 })
+    })
+
+    it("removes the value in self for the given key", () => {
+      val map = { a: 1, b: 2 }
+      map.remove("b")
+      expect(map).toEqual({ a: 1 })
+    })
+  })
 })

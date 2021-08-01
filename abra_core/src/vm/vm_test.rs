@@ -540,11 +540,18 @@ mod tests {
 
         let input = "[1, 2, 3][-3:]";
         let result = interpret(input);
-        let expected = Value::new_array_obj(vec![
-            Value::Int(1),
-            Value::Int(2),
-            Value::Int(3)
-        ]);
+        let expected = Value::new_array_obj(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(expected, result);
+
+        // Starting and ending ranges outside of bounds
+        let input = "[1, 2, 3][3:]";
+        let result = interpret(input);
+        let expected = Value::new_array_obj(vec![]);
+        assert_eq!(expected, result);
+
+        let input = "[1, 2, 3][:4]";
+        let result = interpret(input);
+        let expected = Value::new_array_obj(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         assert_eq!(expected, result);
     }
 

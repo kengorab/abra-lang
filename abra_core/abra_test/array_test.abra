@@ -136,6 +136,21 @@ describe("Array", () => {
       expect(arr[3:]).toEqual(["d", "e", "f", "g"])
       expect(arr[-2:]).toEqual(["f", "g"])
     })
+
+    it("should return an empty array if start is outside the array", () => {
+      val arr = ["a", "b", "c"]
+      expect(arr[5:]).toEqual([])
+    })
+
+    it("should handle if end is outside the array", () => {
+      val arr = ["a", "b", "c"]
+      expect(arr[1:10]).toEqual(["b", "c"])
+    })
+
+    it("should return an empty array if end is less than start", () => {
+      val arr = ["a", "b", "c", "d", "e", "f", "g"]
+      expect(arr[4:3]).toEqual([])
+    })
   })
 
   // Instance methods
@@ -705,6 +720,19 @@ describe("Array", () => {
         ch.toUpper()
       })
       expect(called).toEqual(false)
+    })
+  })
+
+  describe("#reverse", () => {
+    it("should return a new array, with items of self in reverse order", () => {
+      val arr = ["a", "b", "c"]
+      expect(arr.reverse()).toEqual(["c", "b", "a"])
+    })
+
+    it("should not modify the original", () => {
+      val arr = ["a", "b", "c"]
+      expect(arr.reverse()).toEqual(["c", "b", "a"])
+      expect(arr).toEqual(["a", "b", "c"])
     })
   })
 })
