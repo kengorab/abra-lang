@@ -549,6 +549,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
             if block.is_empty() && !is_stmt {
                 let token = match match_type {
+                    MatchCaseType::None(ident) => ident,
                     MatchCaseType::Ident(ident, _) => ident,
                     MatchCaseType::Wildcard(token) => token,
                     MatchCaseType::Compound(idents, _) => idents.get(1).expect("There should be at least 2 idents").clone(),
@@ -560,53 +561,48 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
 
             let mut binding = None;
             let branch_cond = match match_type {
+                MatchCaseType::None(token) => {
+                    let idx = possibilities.iter().position(|t| t == &Type::Unknown);
+                    if let Some(idx) = idx {
+                        possibilities.remove(idx);
+
+                        if let Some(ident) = case_binding {
+                            let ident_name = Token::get_ident_name(&ident).clone();
+                            self.add_binding(ident_name.as_str(), &ident, &Type::Unknown, false);
+                            binding = Some(ident_name)
+                        }
+
+                        TypedMatchKind::None
+                    } else {
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token, typ: None, is_unreachable_none: true, prior_covering_case_tok: None });
+                    }
+                }
                 MatchCaseType::Ident(ident, args) => {
                     if seen_wildcard {
                         return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: false, prior_covering_case_tok: None });
                     }
 
-                    if let Token::None(_) = &ident {
-                        if args.is_some() {
-                            return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: ident, typ: None, enum_variant: None });
+                    let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
+                    let typ = self.type_from_type_ident(&type_ident, true)?;
+                    if let Type::Generic(_) = &typ {
+                        return Err(TypecheckerErrorKind::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
+                    } else if args.is_some() {
+                        return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
+                    }
+
+                    let possibility = possibilities.iter().enumerate()
+                        .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
+                    if let Some((idx, typ)) = possibility {
+                        if let Some(ident) = case_binding {
+                            let ident_name = Token::get_ident_name(&ident).clone();
+                            self.add_binding(ident_name.as_str(), &ident, &typ, false);
+                            binding = Some(ident_name)
                         }
 
-                        let idx = possibilities.iter().position(|t| t == &Type::Unknown);
-                        if let Some(idx) = idx {
-                            possibilities.remove(idx);
-
-                            if let Some(ident) = case_binding {
-                                let ident_name = Token::get_ident_name(&ident).clone();
-                                self.add_binding(ident_name.as_str(), &ident, &Type::Unknown, false);
-                                binding = Some(ident_name)
-                            }
-
-                            TypedMatchKind::None
-                        } else {
-                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: None, is_unreachable_none: true, prior_covering_case_tok: None });
-                        }
+                        possibilities.remove(idx);
+                        TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), args: None }
                     } else {
-                        let type_ident = TypeIdentifier::Normal { ident: ident.clone(), type_args: None };
-                        let typ = self.type_from_type_ident(&type_ident, true)?;
-                        if let Type::Generic(_) = &typ {
-                            return Err(TypecheckerErrorKind::Unimplemented(ident, "Cannot match against generic types in match case arms".to_string()));
-                        } else if args.is_some() {
-                            return Err(TypecheckerErrorKind::InvalidMatchCaseDestructuring { token: ident, typ: Some(typ), enum_variant: None });
-                        }
-
-                        let possibility = possibilities.iter().enumerate()
-                            .find(|(_, p)| typ.is_equivalent_to(p, &|typ_name| self.resolve_type(typ_name)));
-                        if let Some((idx, typ)) = possibility {
-                            if let Some(ident) = case_binding {
-                                let ident_name = Token::get_ident_name(&ident).clone();
-                                self.add_binding(ident_name.as_str(), &ident, &typ, false);
-                                binding = Some(ident_name)
-                            }
-
-                            possibilities.remove(idx);
-                            TypedMatchKind::Type { type_name: Token::get_ident_name(&ident), args: None }
-                        } else {
-                            return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false, prior_covering_case_tok: None });
-                        }
+                        return Err(TypecheckerErrorKind::UnreachableMatchCase { token: ident, typ: Some(typ), is_unreachable_none: false, prior_covering_case_tok: None });
                     }
                 }
                 MatchCaseType::Compound(idents, args) => {
@@ -3295,7 +3291,7 @@ mod tests {
         let expected = vec![
             int_literal!((1, 1), 1),
             float_literal!((1, 3), 2.34),
-            string_literal!((1, 8), "hello")
+            string_literal!((1, 8), "hello"),
         ];
         Ok(assert_eq!(expected, module.typed_nodes))
     }
@@ -4097,7 +4093,7 @@ mod tests {
         let expected_type = Type::Tuple(vec![
             Type::Int,
             Type::String,
-            Type::Array(Box::new(Type::Int))
+            Type::Array(Box::new(Type::Int)),
         ]);
         assert_eq!(expected_type, module.typed_nodes[1].get_type());
 
@@ -4128,7 +4124,7 @@ mod tests {
                 typ: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
                 items: vec![
                     (string_literal!((1, 3), "a"), int_literal!((1, 6), 1)),
-                    (string_literal!((1, 9), "b"), int_literal!((1, 12), 2))
+                    (string_literal!((1, 9), "b"), int_literal!((1, 12), 2)),
                 ],
             },
         );
@@ -4156,7 +4152,7 @@ mod tests {
                             typ: Type::Map(Box::new(Type::String), Box::new(Type::Bool)),
                             items: vec![(string_literal!((1, 24), "c"), bool_literal!((1, 27), false))],
                         },
-                    ))
+                    )),
                 ],
             },
         );
@@ -4428,7 +4424,7 @@ mod tests {
                                 ],
                             ),
                             false
-                        )
+                        ),
                     ],
                     false,
                 ),
@@ -4457,7 +4453,7 @@ mod tests {
                                         int_literal!((1, 41), 4),
                                     ],
                                 },
-                            )
+                            ),
                         ],
                     },
                 ))),
@@ -4629,7 +4625,7 @@ mod tests {
                             scope_depth: 1,
                         },
                     ),
-                    identifier!((1, 36), "a", Type::Array(Box::new(Type::Int)), 1)
+                    identifier!((1, 36), "a", Type::Array(Box::new(Type::Int)), 1),
                 ],
                 scope_depth: 0,
                 is_recursive: false,
@@ -5113,7 +5109,7 @@ mod tests {
                         ident: ident_token!((1, 29), "age"),
                         typ: Type::Int,
                         default_value: Some(int_literal!((1, 40), 0)),
-                    }
+                    },
                 ],
                 static_fields: vec![],
                 methods: vec![],
@@ -5363,7 +5359,7 @@ mod tests {
             methods: vec![
                 to_string_method_type(),
                 ("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false })),
-                ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }))
+                ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false })),
             ],
         });
         Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
@@ -5849,7 +5845,7 @@ mod tests {
                                         is_readonly: true,
                                     },
                                 )),
-                                Some(float_literal!((1, 67), 10.0))
+                                Some(float_literal!((1, 67), 10.0)),
                             ])
                         )
                     ),
@@ -6086,7 +6082,7 @@ mod tests {
                     scope_depth: 0,
                 },
             ),
-            identifier!((2, 1), "abc", Type::Int, 0)
+            identifier!((2, 1), "abc", Type::Int, 0),
         ];
         assert_eq!(expected, module.typed_nodes);
         Ok(())
@@ -6135,7 +6131,7 @@ mod tests {
                     target: Box::new(identifier_mut!((2, 1), "abc", Type::Int, 0)),
                     expr: Box::new(int_literal!((2, 7), 456)),
                 },
-            )
+            ),
         ];
         assert_eq!(expected, module.typed_nodes);
         Ok(())
@@ -6702,7 +6698,7 @@ mod tests {
                             scope_depth: 1,
                         },
                     ),
-                    identifier!((1, 28), "a", Type::String, 1)
+                    identifier!((1, 28), "a", Type::String, 1),
                 ],
                 else_block: None,
             },
@@ -6746,7 +6742,7 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(identifier!((2, 32), "b", Type::String, 1)),
                         },
-                    )
+                    ),
                 ],
                 else_block: Some(vec![
                     TypedAstNode::Binary(
@@ -7261,7 +7257,7 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
-                    )
+                    ),
                 ],
             },
         );
@@ -7479,7 +7475,7 @@ mod tests {
                     Token::LParen(Position::new(2, 5), false),
                     vec![
                         BindingPattern::Variable(ident_token!((2, 6), "x")),
-                        BindingPattern::Variable(ident_token!((2, 9), "y"))
+                        BindingPattern::Variable(ident_token!((2, 9), "y")),
                     ],
                 ),
                 index_ident: Some(ident_token!((2, 13), "i")),
@@ -7512,7 +7508,7 @@ mod tests {
                     Token::LParen(Position::new(2, 5), false),
                     vec![
                         BindingPattern::Variable(ident_token!((2, 6), "x")),
-                        BindingPattern::Variable(ident_token!((2, 9), "y"))
+                        BindingPattern::Variable(ident_token!((2, 9), "y")),
                     ],
                 ),
                 index_ident: Some(ident_token!((2, 13), "i")),
@@ -8182,7 +8178,7 @@ mod tests {
                         Some("i".to_string()),
                         vec![identifier!((3, 10), "i", Type::Int, 1)]
                     ),
-                    (TypedMatchKind::None, None, vec![int_literal!((4, 9), 0)])
+                    (TypedMatchKind::None, None, vec![int_literal!((4, 9), 0)]),
                 ],
             },
         );
@@ -8256,7 +8252,7 @@ mod tests {
                         TypedMatchKind::EnumVariant { variant_idx: 3, args: None },
                         None,
                         vec![int_literal!((7, 19), 3)],
-                    )
+                    ),
                 ],
             },
         );
@@ -8538,20 +8534,6 @@ mod tests {
             token: ident_token!((4, 5), "Bar"),
             typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
             enum_variant: Some("Bar".to_string()),
-        };
-        assert_eq!(expected, err);
-
-        let err = test_typecheck("\
-          val x: Int? = 0\n\
-          val i = match x {\n\
-            None(z) => 0\n\
-            _ => 1\n\
-          }
-        ").unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuring {
-            token: Token::None(Position::new(3, 1)),
-            typ: None,
-            enum_variant: None,
         };
         assert_eq!(expected, err);
 
@@ -9077,7 +9059,7 @@ mod tests {
             (".mod3", "\
               import b from .mod2\n\
               export val c = 6\
-            ")
+            "),
         ];
         let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
         let expected = TypecheckerErrorKind::CircularModuleImport {

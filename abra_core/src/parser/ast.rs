@@ -311,6 +311,7 @@ pub enum MatchCaseArgument {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCaseType {
+    None(Token),
     Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<MatchCaseArgument>>),
     Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<MatchCaseArgument>>),
     Wildcard(Token),

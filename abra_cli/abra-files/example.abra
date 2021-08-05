@@ -1,5 +1,6 @@
-val m = { a: 1, b: 2 }
-println(m)
-println(m.remove("a"))
-println(m.remove("a"))
-println(m)
+val x: Int? = 0
+val i = match x {
+  None(z) => 0
+  _ => 1
+}
+println(i)
