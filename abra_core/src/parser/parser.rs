@@ -1005,30 +1005,41 @@ impl Parser {
             }
             Token::LParen(_, _) => {
                 let lparen_token = self.expect_next()?;
-                let mut exprs: Vec<AstNode> = vec![];
+                let mut patterns = vec![];
                 loop {
                     match self.expect_peek()? {
-                        Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
-                            let token = self.expect_next()?;
-                            let expr = self.parse_literal(token.clone())?;
-                            exprs.push(expr);
-                        }
-                        Token::LParen(_, _) => unimplemented!("Nested tuples are not implemented yet"),
+                        // Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
+                        //     let token = self.expect_next()?;
+                        //     let expr = self.parse_literal(token.clone())?;
+                        //     exprs.push(expr);
+                        // }
+                        // Token::LParen(_, _) => unimplemented!("Nested tuples are not implemented yet"),
                         Token::Comma(_) => {
                             self.expect_next()?; // Consume ','
                         }
                         Token::RParen(_) => {
                             let rparen_token = self.expect_next()?;
-                            if exprs.is_empty() {
+                            if patterns.is_empty() {
                                 return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, rparen_token));
                             } else {
                                 break;
                             }
                         }
-                        t => return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone())),
+                        // t => return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone())),
+                        _ => {
+                            let (_, pattern) = self.parse_match_case_pattern()?;
+                            patterns.push(pattern);
+                            match self.expect_peek()? {
+                                Token::Comma(_) | Token::RParen(_) => continue,
+                                t => {
+                                    let valid_tokens = vec![TokenType::Comma, TokenType::LParen, TokenType::RParen];
+                                    return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone()))
+                                },
+                            }
+                        }
                     };
                 }
-                Ok((lparen_token.clone(), MatchCaseType::Tuple(lparen_token, exprs)))
+                Ok((lparen_token.clone(), MatchCaseType::Tuple(lparen_token, patterns)))
             }
             Token::None(_) => {
                 let ident = self.expect_next()?;
@@ -1051,45 +1062,79 @@ impl Parser {
 
                 let args = if let Some(Token::LParen(_, _)) = self.peek() {
                     case_token = self.expect_next()?; // Consume '('
-                    let mut args = Vec::new();
-                    let mut item_expected = true;
+                    // let mut args = Vec::new();
+                    // let mut item_expected = true;
+                    // loop {
+                    //     match self.expect_peek()? {
+                    //         Token::RParen(_) => {
+                    //             let tok = self.expect_next()?; // Consume ')'
+                    //             if args.is_empty() {
+                    //                 return Err(ParseErrorKind::ExpectedToken(TokenType::Ident, tok));
+                    //             }
+                    //             break;
+                    //         }
+                    //         _ => {
+                    //             if !item_expected {
+                    //                 let tok = self.expect_next()?;
+                    //                 return Err(ParseErrorKind::ExpectedToken(TokenType::RParen, tok));
+                    //             }
+                    //
+                    //             let arg = match self.expect_peek()? {
+                    //                 Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
+                    //                     let token = self.expect_next()?;
+                    //                     let expr = self.parse_literal(token.clone())?;
+                    //                     MatchCaseArgument::Literal(expr)
+                    //                 }
+                    //                 _ => {
+                    //                     let pat = self.parse_binding_pattern()?;
+                    //                     MatchCaseArgument::Pattern(pat)
+                    //                 }
+                    //             };
+                    //             args.push(arg);
+                    //
+                    //             if let Some(Token::Comma(_)) = self.peek() {
+                    //                 self.expect_next()?; // Consume ','
+                    //             } else {
+                    //                 item_expected = false;
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    let mut patterns = vec![];
                     loop {
                         match self.expect_peek()? {
+                            // Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
+                            //     let token = self.expect_next()?;
+                            //     let expr = self.parse_literal(token.clone())?;
+                            //     exprs.push(expr);
+                            // }
+                            // Token::LParen(_, _) => unimplemented!("Nested tuples are not implemented yet"),
+                            Token::Comma(_) => {
+                                self.expect_next()?; // Consume ','
+                            }
                             Token::RParen(_) => {
-                                let tok = self.expect_next()?; // Consume ')'
-                                if args.is_empty() {
-                                    return Err(ParseErrorKind::ExpectedToken(TokenType::Ident, tok));
-                                }
-                                break;
-                            }
-                            _ => {
-                                if !item_expected {
-                                    let tok = self.expect_next()?;
-                                    return Err(ParseErrorKind::ExpectedToken(TokenType::RParen, tok));
-                                }
-
-                                let arg = match self.expect_peek()? {
-                                    Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
-                                        let token = self.expect_next()?;
-                                        let expr = self.parse_literal(token.clone())?;
-                                        MatchCaseArgument::Literal(expr)
-                                    }
-                                    _ => {
-                                        let pat = self.parse_binding_pattern()?;
-                                        MatchCaseArgument::Pattern(pat)
-                                    }
-                                };
-                                args.push(arg);
-
-                                if let Some(Token::Comma(_)) = self.peek() {
-                                    self.expect_next()?; // Consume ','
+                                let rparen_token = self.expect_next()?;
+                                if patterns.is_empty() {
+                                    return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, rparen_token));
                                 } else {
-                                    item_expected = false;
+                                    break;
                                 }
                             }
-                        }
+                            // t => return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone())),
+                            _ => {
+                                let (_, pattern) = self.parse_match_case_pattern()?;
+                                patterns.push(pattern);
+                                match self.expect_peek()? {
+                                    Token::Comma(_) | Token::RParen(_) => continue,
+                                    t => {
+                                        let valid_tokens = vec![TokenType::Comma, TokenType::LParen, TokenType::RParen];
+                                        return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone()))
+                                    },
+                                }
+                            }
+                        };
                     }
-                    Some(args)
+                    Some(patterns)
                 } else { None };
                 let match_type = if idents.len() == 1 {
                     MatchCaseType::Ident(idents.into_iter().next().unwrap(), args)
@@ -1475,7 +1520,7 @@ impl Parser {
                 Token::Ident(pos, name) => {
                     let tok = Token::String(pos, name.clone());
                     AstNode::Literal(tok, AstLiteralNode::StringLiteral(name))
-                },
+                }
                 tok @ Token::Int(_, _) |
                 tok @ Token::Float(_, _) |
                 tok @ Token::String(_, _) |
@@ -1639,7 +1684,7 @@ mod tests {
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 10), " ghi".to_string()),
                         AstLiteralNode::StringLiteral(" ghi".to_string()),
-                    ))
+                    )),
                 ],
             },
         );
@@ -1675,7 +1720,7 @@ mod tests {
                     (None, AstNode::Literal(
                         Token::String(Position::new(1, 14), " ghi".to_string()),
                         AstLiteralNode::StringLiteral(" ghi".to_string()),
-                    ))
+                    )),
                 ],
             },
         );
@@ -2199,7 +2244,7 @@ mod tests {
                                 int_literal!((1, 14), 4),
                             ]
                         },
-                    )
+                    ),
                 ]
             },
         );
@@ -2279,7 +2324,7 @@ mod tests {
                                 left: Box::new(int_literal!((1, 4), 12)),
                                 op: BinaryOp::Add,
                                 right: Box::new(int_literal!((1, 9), 34)),
-                            }
+                            },
                         ),
                         int_literal!((1, 14), 1)
                     )
@@ -2349,7 +2394,7 @@ mod tests {
                         SetNode {
                             items: vec![int_literal!((1, 14), 3), int_literal!((1, 17), 4)]
                         },
-                    )
+                    ),
                 ]
             },
         );
@@ -2686,7 +2731,7 @@ mod tests {
                     },
                     TypeIdentifier::Array {
                         inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 20), "String"), type_args: None })
-                    }
+                    },
                 ]
             })
         };
@@ -2754,7 +2799,7 @@ mod tests {
                 },
                 TypeIdentifier::Array {
                     inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 19), "Int"), type_args: None })
-                }
+                },
             ],
             ret: Box::new(TypeIdentifier::Func {
                 args: vec![TypeIdentifier::Normal { ident: ident_token!((1, 30), "String"), type_args: None }],
@@ -2895,7 +2940,7 @@ mod tests {
                             expr: Some(Box::new(int_literal!((1, 22), 123))),
                         },
                     ),
-                    identifier!((1, 26), "a")
+                    identifier!((1, 26), "a"),
                 ],
             },
         );
@@ -2918,7 +2963,7 @@ mod tests {
         };
         let expected = vec![
             (ident_token!((1, 10), "a"), Some(TypeIdentifier::Normal { ident: ident_token!((1, 13), "Int"), type_args: None }), false, None),
-            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }) }), false, None)
+            (ident_token!((1, 18), "b"), Some(TypeIdentifier::Option { inner: Box::new(TypeIdentifier::Normal { ident: ident_token!((1, 21), "Int"), type_args: None }) }), false, None),
         ];
         assert_eq!(&expected, args);
 
@@ -3217,7 +3262,7 @@ mod tests {
                         int_literal!((1, 3), 1),
                         identifier!((1, 6), "a"),
                     ]),
-                string_literal!((1, 10), "abc")
+                string_literal!((1, 10), "abc"),
             ],
         );
         assert_eq!(expected, ast[0]);
@@ -3323,7 +3368,7 @@ mod tests {
                         type_ident: TypeIdentifier::Normal { ident: ident_token!((1, 38), "Bool"), type_args: None },
                         default_value: Some(bool_literal!((1, 45), true)),
                         readonly: None,
-                    }
+                    },
                 ],
                 methods: vec![],
             },
@@ -3738,7 +3783,7 @@ mod tests {
                 ArrayNode {
                     items: vec![identifier!((6, 2), "a")]
                 },
-            )
+            ),
         ];
         Ok(assert_eq!(expected, ast))
     }
@@ -3899,7 +3944,7 @@ mod tests {
                             expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         },
                     ),
-                    identifier!((1, 28), "a")
+                    identifier!((1, 28), "a"),
                 ],
                 else_block: None,
             },
@@ -4369,7 +4414,7 @@ mod tests {
                             op: BinaryOp::Add,
                             right: Box::new(int_literal!((3, 5), 1)),
                         },
-                    )
+                    ),
                 ],
             },
         );
@@ -4442,7 +4487,7 @@ mod tests {
                     Token::LParen(Position::new(1, 5), false),
                     vec![
                         BindingPattern::Variable(ident_token!((1, 6), "x")),
-                        BindingPattern::Variable(ident_token!((1, 9), "y"))
+                        BindingPattern::Variable(ident_token!((1, 9), "y")),
                     ],
                 ),
                 index_ident: Some(ident_token!((1, 13), "i")),
@@ -4451,7 +4496,7 @@ mod tests {
                     ArrayNode {
                         items: vec![
                             identifier!((1, 19), "a"),
-                            identifier!((1, 22), "b")
+                            identifier!((1, 22), "b"),
                         ]
                     },
                 )),
@@ -4635,6 +4680,7 @@ mod tests {
             true => {}\n\
             false => {}\n\
             (123, \"abc\", true) => {}\n\
+            (123, (\"abc\", a)) => {}\n\
             _ => 0\n\
             _ x => {\n\
               0\n\
@@ -4665,8 +4711,10 @@ mod tests {
                             match_type: MatchCaseType::Ident(
                                 ident_token!((4, 1), "Abc"),
                                 Some(vec![
-                                    MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((4, 5), "a"))),
-                                    MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((4, 8), "b"))),
+                                    MatchCaseType::Ident(ident_token!((4, 5), "a"), None),
+                                    MatchCaseType::Ident(ident_token!((4, 8), "b"), None),
+                                    // MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((4, 5), "a"))),
+                                    // MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((4, 8), "b"))),
                                 ]),
                             ),
                             case_binding: Some(ident_token!((4, 11), "abc")),
@@ -4679,7 +4727,8 @@ mod tests {
                             match_type: MatchCaseType::Compound(
                                 vec![ident_token!((5, 1), "A"), ident_token!((5, 3), "Bcd")],
                                 Some(vec![
-                                    MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((5, 7), "a")))
+                                    // MatchCaseArgument::Pattern(BindingPattern::Variable(ident_token!((5, 7), "a")))
+                                    MatchCaseType::Ident(ident_token!((5, 7), "a"), None),
                                 ]),
                             ),
                             case_binding: None,
@@ -4740,9 +4789,9 @@ mod tests {
                             match_type: MatchCaseType::Tuple(
                                 Token::LParen(Position::new(12, 1), true),
                                 vec![
-                                    int_literal!((12, 2), 123),
-                                    string_literal!((12, 7), "abc"),
-                                    bool_literal!((12, 14), true),
+                                    MatchCaseType::Constant(int_literal!((12, 2), 123)),
+                                    MatchCaseType::Constant(string_literal!((12, 7), "abc")),
+                                    MatchCaseType::Constant(bool_literal!((12, 14), true)),
                                 ],
                             ),
                             case_binding: None,
@@ -4750,13 +4799,30 @@ mod tests {
                         vec![]
                     ),
                     (
-                        MatchCase { token: ident_token!((13, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((13, 1), "_")), case_binding: None },
-                        vec![int_literal!((13, 6), 0)]
+                        MatchCase {
+                            token: Token::LParen(Position::new(13, 1), true),
+                            match_type: MatchCaseType::Tuple(
+                                Token::LParen(Position::new(13, 1), true),
+                                vec![
+                                    MatchCaseType::Constant(int_literal!((13, 2), 123)),
+                                    MatchCaseType::Tuple(Token::LParen(Position::new(13, 7), false), vec![
+                                        MatchCaseType::Constant(string_literal!((13, 8), "abc")),
+                                        MatchCaseType::Ident(ident_token!((13, 15), "a"), None),
+                                    ]),
+                                ],
+                            ),
+                            case_binding: None,
+                        },
+                        vec![]
                     ),
                     (
-                        MatchCase { token: ident_token!((14, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((14, 1), "_")), case_binding: Some(ident_token!((14, 3), "x")) },
-                        vec![int_literal!((15, 1), 0), identifier!((16, 1), "x")]
-                    )
+                        MatchCase { token: ident_token!((14, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((14, 1), "_")), case_binding: None },
+                        vec![int_literal!((14, 6), 0)]
+                    ),
+                    (
+                        MatchCase { token: ident_token!((15, 1), "_"), match_type: MatchCaseType::Wildcard(ident_token!((15, 1), "_")), case_binding: Some(ident_token!((15, 3), "x")) },
+                        vec![int_literal!((16, 1), 0), identifier!((17, 1), "x")]
+                    ),
                 ],
             },
         );
@@ -4870,7 +4936,7 @@ mod tests {
                 Token::Return(Position::new(2, 1), true),
                 None,
             ),
-            int_literal!((3, 1), 123)
+            int_literal!((3, 1), 123),
         ];
         assert_eq!(&expected, body);
 

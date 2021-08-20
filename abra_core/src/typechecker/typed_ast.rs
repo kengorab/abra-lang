@@ -327,9 +327,10 @@ pub enum TypedMatchKind {
     Wildcard,
     None,
     Type { type_name: String, args: Option<Vec<TypedMatchCaseArgument>> },
-    EnumVariant { variant_idx: usize, args: Option<Vec<TypedMatchCaseArgument>> },
+    EnumVariant { variant_idx: usize, args: Option<Vec<TypedMatchKind>> },
     Constant { node: TypedAstNode },
-    Tuple { nodes: Vec<TypedAstNode> },
+    Tuple { items: Vec<TypedMatchKind> },
+    Variable(/* ident: */ Token, /* type: */ Type),
 }
 
 #[derive(Clone, Debug, PartialEq)]

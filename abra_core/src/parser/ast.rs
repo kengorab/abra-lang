@@ -312,14 +312,15 @@ pub enum MatchCaseArgument {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MatchCaseType {
     None(Token),
-    Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<MatchCaseArgument>>),
-    Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<MatchCaseArgument>>),
+    Ident(/* ident_tok: */ Token, /* args: */ Option<Vec<MatchCaseType>>),
+    Compound(/* idents: */ Vec<Token>, /* args: */ Option<Vec<MatchCaseType>>),
     Wildcard(Token),
     Constant(AstNode),
-    Tuple(Token, Vec<AstNode>),
+    Tuple(Token, Vec<MatchCaseType>),
 }
 
 impl MatchCaseType {
+    // TODO: Remove this, and also the MatchCaseArgument enum
     pub fn get_lit_args(args: &Option<Vec<MatchCaseArgument>>) -> Option<Vec<Option<AstLiteralNode>>> {
         if let Some(args) = args {
             let mut saw_lit = false;

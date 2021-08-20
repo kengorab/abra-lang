@@ -1,6 +1,56 @@
-val x: Int? = 0
-val i = match x {
-  None(z) => 0
-  _ => 1
+//val t = (1, (2, 3))
+//match t {
+//  (a, (b, c)) => println(a, b, c)
+//  (1, (b, c)) => println(a, b, c)
+//}
+
+//val a: (Int | String, Int) | (Int, String) = (1, "1") //((1, 2), "a")
+//val a: (String | Int, Int) | (Int, String) = (1, "a")
+//match a {
+  //((a, b, c), "c") => {}
+  //((a, b), "c") => {}
+  //("a", "b") => {}
+  //(1, a) => {}
+  //(x, "a") => {}
+  //(x, s) => {}
+//}
+
+//val a = ("a", 1)
+//match a {
+//  (String s, 1) => {}
+//}
+
+// vvv   Test cases below   vvv
+enum Foo<T> { Bar(a: T, b: String) }
+val f = Foo.Bar(1, "a")
+match f {
+  Foo.Bar(1, "a") => {}
+  //Foo.Bar(a, "b") => {}
+  //Foo.Bar(1, b) => {}
 }
-println(i)
+
+//val a: (Int | String, Int) | (Int, String) = (1, "1")
+//match a {
+//  (a, 1) => {
+//    val a_: Int | String = a
+//  }
+//  (a, b) => {
+//    val a_: Int | String = a
+//    val b_: Int | String = b
+//  }
+//}
+
+//val a: ((Int, String), Int | String) | ((String, Int), Int | String) = (("a", 1), 2)
+//match a {
+//  ((a, "b"), 1) => {
+//    val a_: Bool = a
+//  }
+//}
+
+//val a = (1, "a")
+//match a {
+//  (a, b) => {
+//    val a_: Int = a
+//    val b_: String = b
+//  }
+//}

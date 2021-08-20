@@ -1587,29 +1587,30 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                     args
                 }
                 TypedMatchKind::EnumVariant { variant_idx, args } => {
-                    self.write_opcode(Opcode::Dup, token.get_position().line);
-                    self.write_int_constant(variant_idx as u32, token.get_position().line);
-
-                    self.write_opcode(Opcode::Eq, token.get_position().line);
-                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
-
-                    if let Some(args) = &args {
-                        for (idx, arg) in args.iter().enumerate() {
-                            match arg {
-                                TypedMatchCaseArgument::Pattern(_) => { continue; }
-                                TypedMatchCaseArgument::Literal(arg) => {
-                                    self.write_opcode(Opcode::Dup, token.get_position().line);
-                                    self.metadata.field_gets.push(format!("_{}", idx));
-                                    self.write_opcode(Opcode::GetField(idx), token.get_position().line);
-                                    self.visit(arg.clone())?;
-                                    self.write_opcode(Opcode::Eq, token.get_position().line);
-                                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
-                                }
-                            }
-                        }
-                    }
-
-                    args
+                    // self.write_opcode(Opcode::Dup, token.get_position().line);
+                    // self.write_int_constant(variant_idx as u32, token.get_position().line);
+                    //
+                    // self.write_opcode(Opcode::Eq, token.get_position().line);
+                    // next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+                    //
+                    // if let Some(args) = &args {
+                    //     for (idx, arg) in args.iter().enumerate() {
+                    //         match arg {
+                    //             TypedMatchCaseArgument::Pattern(_) => { continue; }
+                    //             TypedMatchCaseArgument::Literal(arg) => {
+                    //                 self.write_opcode(Opcode::Dup, token.get_position().line);
+                    //                 self.metadata.field_gets.push(format!("_{}", idx));
+                    //                 self.write_opcode(Opcode::GetField(idx), token.get_position().line);
+                    //                 self.visit(arg.clone())?;
+                    //                 self.write_opcode(Opcode::Eq, token.get_position().line);
+                    //                 next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+                    //             }
+                    //         }
+                    //     }
+                    // }
+                    //
+                    // args
+                    todo!()
                 }
                 TypedMatchKind::Constant { node, } => {
                     self.write_opcode(Opcode::Dup, token.get_position().line);
@@ -1619,15 +1620,17 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
                     None
                 }
-                TypedMatchKind::Tuple { nodes, } => {
-                    self.write_opcode(Opcode::Dup, token.get_position().line);
-                    let tuple_node = TypedTupleNode { typ: Type::Placeholder, items: nodes };
-                    self.visit_tuple(token.clone(), tuple_node)?;
-                    self.write_opcode(Opcode::Eq, token.get_position().line);
-                    next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
-
-                    None
+                TypedMatchKind::Tuple { items } => {
+                    // self.write_opcode(Opcode::Dup, token.get_position().line);
+                    // let tuple_node = TypedTupleNode { typ: Type::Placeholder, items: nodes };
+                    // self.visit_tuple(token.clone(), tuple_node)?;
+                    // self.write_opcode(Opcode::Eq, token.get_position().line);
+                    // next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
+                    //
+                    // None
+                    todo!()
                 }
+                TypedMatchKind::Variable(_, _) => todo!()
             };
 
             // Push a local representing the match target still left on the stack (from the previous DUP).

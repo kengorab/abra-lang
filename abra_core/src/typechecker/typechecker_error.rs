@@ -56,7 +56,7 @@ pub enum TypecheckerErrorKind {
     ForbiddenVariableType { binding: BindingPattern, typ: Type },
     InvalidInstantiation { token: Token, typ: Type },
     InvalidTypeArgumentArity { token: Token, expected: usize, actual: usize, actual_type: Type },
-    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool, prior_covering_case_tok: Option<Token> },
+    UnreachableMatchCase { token: Token, typ: Option<Type>, is_unreachable_none: bool, prior_covering_case_tok: Option<Token>, is_illegal_destructuring: bool },
     DuplicateMatchCase { token: Token },
     NonExhaustiveMatch { token: Token },
     EmptyMatchBlock { token: Token },
@@ -639,7 +639,7 @@ impl DisplayError for TypecheckerError {
                     } else { "".to_string() }
                 )
             }
-            TypecheckerErrorKind::UnreachableMatchCase { typ, is_unreachable_none, prior_covering_case_tok: is_already_covered, .. } => {
+            TypecheckerErrorKind::UnreachableMatchCase { typ, is_unreachable_none, prior_covering_case_tok: is_already_covered, is_illegal_destructuring, .. } => {
                 format!(
                     "Unreachable match case\n{}\n{}",
                     cursor_line,
@@ -651,7 +651,11 @@ impl DisplayError for TypecheckerError {
 
                         format!("This condition has already been handled by a previous case ({}:{})\n{}", pos.line, pos.col, cursor_line)
                     } else if let Some(typ) = typ {
-                        format!("Value cannot possibly be of type {} at this point", type_repr(typ))
+                        if *is_illegal_destructuring {
+                            format!("Value of type {} cannot possibly be destructured in this way", type_repr(typ))
+                        } else {
+                            format!("Value cannot possibly be of type {} at this point", type_repr(typ))
+                        }
                     } else {
                         "All possible cases have already been handled".to_string()
                     }
