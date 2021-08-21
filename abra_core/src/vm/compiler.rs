@@ -110,10 +110,10 @@ impl<'a> Compiler<'a> {
 
     fn compile_node(&mut self, node: TypedAstNode, is_last: bool) {
         let line = node.get_token().get_position().line;
-        let should_pop = should_pop_after_node(&node);
+        let is_expr = is_expression(&node);
         self.visit(node).unwrap();
 
-        if !is_last && should_pop {
+        if !is_last && is_expr {
             self.write_opcode(Opcode::Pop(1), line);
         }
     }
@@ -148,9 +148,7 @@ pub fn compile(
     Ok((module, metadata))
 }
 
-fn should_pop_after_node(node: &TypedAstNode) -> bool {
-    // Really this function could be `is_expression`, with the exception of invocations: invocation
-    // of Unit invokables results in no value pushed to the stack, so there is nothing to pop
+fn is_expression(node: &TypedAstNode) -> bool {
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
@@ -511,14 +509,14 @@ impl<'a> Compiler<'a> {
             last_line = line;
             let is_last_node = idx == body_len - 1;
 
-            let should_pop = should_pop_after_node(&node);
+            let is_expr = is_expression(&node);
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
             };
             self.visit(node)?;
 
-            if should_pop {
+            if is_expr {
                 self.write_opcode(Opcode::Pop(1), line);
             }
 
@@ -644,11 +642,11 @@ impl<'a> Compiler<'a> {
         for (idx, node) in body.into_iter().enumerate() {
             last_line = node.get_token().get_position().line;
             let is_last_line = idx == body_len - 1;
-            let should_pop = should_pop_after_node(&node);
+            let is_expr = is_expression(&node);
             self.visit(node)?;
 
             // Handle bare expressions
-            if !is_last_line && should_pop {
+            if !is_last_line && is_expr {
                 self.write_opcode(Opcode::Pop(1), line);
             }
             if is_last_line {
@@ -700,7 +698,7 @@ impl<'a> Compiler<'a> {
     }
 
     #[inline]
-    fn visit_block(&mut self, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
+    fn visit_block(&mut self, block: Vec<TypedAstNode>, block_is_stmt: bool) -> Result<(), ()> {
         self.hoist_fn_defs(&block)?;
 
         let block_len = block.len();
@@ -708,7 +706,7 @@ impl<'a> Compiler<'a> {
             let line = node.get_token().get_position().line;
             let is_last_line = idx == block_len - 1;
 
-            let should_pop = should_pop_after_node(&node);
+            let node_is_expr = is_expression(&node);
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
@@ -717,7 +715,7 @@ impl<'a> Compiler<'a> {
 
             // If we're in a statement and we should pop, then pop
             // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
-            if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
+            if (block_is_stmt && node_is_expr) || (!block_is_stmt && !is_last_line && node_is_expr) {
                 self.write_opcode(Opcode::Pop(1), line);
             }
 
@@ -734,7 +732,7 @@ impl<'a> Compiler<'a> {
             if is_last_line {
                 let mut pops = self.pop_scope_locals();
 
-                if !is_stmt {
+                if !block_is_stmt {
                     let first_local_idx = self.current_scope().first_local_idx;
                     if let Some(idx) = first_local_idx {
                         // Push an empty string into metadata since this isn't a "real" store
