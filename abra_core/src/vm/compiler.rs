@@ -42,23 +42,6 @@ struct Scope {
     first_local_idx: Option<usize>,
 }
 
-pub struct Compiler<'a> {
-    module_id: ModuleId,
-    module_idx: usize,
-    code: Vec<Opcode>,
-    constants: Vec<Value>,
-    scopes: Vec<Scope>,
-    locals: Vec<Local>,
-    upvalues: Vec<Upvalue>,
-    globals: &'a mut HashMap<ModuleId, HashMap<String, usize>>,
-    interrupt_handles: Vec<JumpHandle>,
-    loop_start_handle: Option<JumpHandle>,
-    return_handles: Vec<JumpHandle>,
-    metadata: Metadata,
-    anon_idx: usize,
-    temp_idx: usize,
-}
-
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Metadata {
     pub loads: Vec<String>,
@@ -86,30 +69,67 @@ struct JumpHandle {
     instr_slot: usize,
 }
 
+pub struct Compiler<'a> {
+    module_id: ModuleId,
+    module_idx: usize,
+    code: Vec<Opcode>,
+    constants: Vec<Value>,
+    scopes: Vec<Scope>,
+    locals: Vec<Local>,
+    upvalues: Vec<Upvalue>,
+    globals: &'a mut HashMap<ModuleId, HashMap<String, usize>>,
+    interrupt_handles: Vec<JumpHandle>,
+    loop_start_handle: Option<JumpHandle>,
+    return_handles: Vec<JumpHandle>,
+    metadata: Metadata,
+    anon_idx: usize,
+    temp_idx: usize,
+}
+
+impl<'a> Compiler<'a> {
+    pub fn new(module_id: ModuleId, module_idx: usize, globals: &'a mut HashMap<ModuleId, HashMap<String, usize>>) -> Self {
+        let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
+
+        Self {
+            module_id,
+            module_idx,
+            code: vec![],
+            constants: vec![],
+            scopes: vec![root_scope],
+            locals: vec![],
+            upvalues: vec![],
+            globals,
+            interrupt_handles: vec![],
+            loop_start_handle: None,
+            return_handles: vec![],
+            metadata: Metadata::default(),
+            anon_idx: 0,
+            temp_idx: 0,
+        }
+    }
+
+    fn compile_node(&mut self, node: TypedAstNode, is_last: bool) {
+        let line = node.get_token().get_position().line;
+        let is_expr = is_expression(&node);
+        self.visit(node).unwrap();
+
+        if !is_last && is_expr {
+            self.write_opcode(Opcode::Pop(1), line);
+        }
+    }
+
+    fn build_module_final(self) -> Module {
+        let num_globals = self.globals.get(&self.module_id).unwrap().len();
+        Module { name: self.module_id.get_name(), is_native: false, num_globals, constants: self.constants, code: self.code }
+    }
+}
+
 pub fn compile(
     module: TypedModule,
     module_idx: usize,
     globals: &mut HashMap<ModuleId, HashMap<String, usize>>,
 ) -> Result<(Module, Metadata), ()> {
-    let metadata = Metadata::default();
-    let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
-
-    let mut compiler = Compiler {
-        module_id: module.module_id,
-        module_idx,
-        code: Vec::new(),
-        constants: Vec::new(),
-        scopes: vec![root_scope],
-        locals: Vec::new(),
-        upvalues: Vec::new(),
-        globals,
-        interrupt_handles: Vec::new(),
-        loop_start_handle: None,
-        return_handles: Vec::new(),
-        metadata,
-        anon_idx: 0,
-        temp_idx: 0,
-    };
+    let mut compiler = Compiler::new(module.module_id, module_idx, globals);
 
     let ast = module.typed_nodes;
     compiler.hoist_fn_defs(&ast)?;
@@ -118,31 +138,17 @@ pub fn compile(
     let mut last_line = 0;
     for (idx, node) in ast.into_iter().enumerate() {
         let line = node.get_token().get_position().line;
-        let should_pop = should_pop_after_node(&node);
-        compiler.visit(node).unwrap();
-
-        if idx != len - 1 && should_pop {
-            compiler.write_opcode(Opcode::Pop(1), line);
-        }
+        compiler.compile_node(node, idx == len - 1);
         last_line = line
     }
     compiler.write_opcode(Opcode::Return, last_line + 1);
 
-    let num_globals = compiler.globals.get(&compiler.module_id).unwrap().len();
-
-    let module = Module {
-        name: compiler.module_id.get_name(),
-        is_native: false,
-        num_globals,
-        constants: compiler.constants,
-        code: compiler.code,
-    };
-    Ok((module, compiler.metadata))
+    let metadata = compiler.metadata.clone();
+    let module = compiler.build_module_final();
+    Ok((module, metadata))
 }
 
-fn should_pop_after_node(node: &TypedAstNode) -> bool {
-    // Really this function could be `is_expression`, with the exception of invocations: invocation
-    // of Unit invokables results in no value pushed to the stack, so there is nothing to pop
+fn is_expression(node: &TypedAstNode) -> bool {
     match node {
         TypedAstNode::BindingDecl(_, _) |
         TypedAstNode::FunctionDecl(_, _) |
@@ -175,7 +181,7 @@ impl<'a> Compiler<'a> {
         self.constants.iter().position(|v| v == value)
     }
 
-    fn get_type_constant_index(&mut self, type_name: &String) -> usize {
+    fn get_type_constant_index(&self, type_name: &String) -> usize {
         match self.get_global_idx(&self.module_id.clone(), type_name) {
             Some(idx) => *idx,
             None => *self.get_global_idx(&ModuleId::from_name("prelude"), type_name)
@@ -503,14 +509,14 @@ impl<'a> Compiler<'a> {
             last_line = line;
             let is_last_node = idx == body_len - 1;
 
-            let should_pop = should_pop_after_node(&node);
+            let is_expr = is_expression(&node);
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
             };
             self.visit(node)?;
 
-            if should_pop {
+            if is_expr {
                 self.write_opcode(Opcode::Pop(1), line);
             }
 
@@ -636,11 +642,11 @@ impl<'a> Compiler<'a> {
         for (idx, node) in body.into_iter().enumerate() {
             last_line = node.get_token().get_position().line;
             let is_last_line = idx == body_len - 1;
-            let should_pop = should_pop_after_node(&node);
+            let is_expr = is_expression(&node);
             self.visit(node)?;
 
             // Handle bare expressions
-            if !is_last_line && should_pop {
+            if !is_last_line && is_expr {
                 self.write_opcode(Opcode::Pop(1), line);
             }
             if is_last_line {
@@ -692,7 +698,7 @@ impl<'a> Compiler<'a> {
     }
 
     #[inline]
-    fn visit_block(&mut self, block: Vec<TypedAstNode>, is_stmt: bool) -> Result<(), ()> {
+    fn visit_block(&mut self, block: Vec<TypedAstNode>, block_is_stmt: bool) -> Result<(), ()> {
         self.hoist_fn_defs(&block)?;
 
         let block_len = block.len();
@@ -700,7 +706,7 @@ impl<'a> Compiler<'a> {
             let line = node.get_token().get_position().line;
             let is_last_line = idx == block_len - 1;
 
-            let should_pop = should_pop_after_node(&node);
+            let node_is_expr = is_expression(&node);
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
@@ -709,7 +715,7 @@ impl<'a> Compiler<'a> {
 
             // If we're in a statement and we should pop, then pop
             // If we're in an expression and we should pop AND IT'S NOT THE LAST LINE, then pop
-            if (is_stmt && should_pop) || (!is_stmt && !is_last_line && should_pop) {
+            if (block_is_stmt && node_is_expr) || (!block_is_stmt && !is_last_line && node_is_expr) {
                 self.write_opcode(Opcode::Pop(1), line);
             }
 
@@ -726,7 +732,7 @@ impl<'a> Compiler<'a> {
             if is_last_line {
                 let mut pops = self.pop_scope_locals();
 
-                if !is_stmt {
+                if !block_is_stmt {
                     let first_local_idx = self.current_scope().first_local_idx;
                     if let Some(idx) = first_local_idx {
                         // Push an empty string into metadata since this isn't a "real" store
@@ -1285,7 +1291,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                                 Opcode::LStore(0),
                                 Opcode::Pop(num_args - 1),
                                 Opcode::Return,
-                            ]
+                            ],
                         ].concat());
                         Ok((variant_name, Value::Fn(fn_value)))
                     }
@@ -2199,7 +2205,7 @@ mod tests {
     fn test_compile(input: &str) -> Module {
         let mock_reader = MockModuleReader::default();
         let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
 
@@ -2209,7 +2215,7 @@ mod tests {
     fn test_compile_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Module {
         let mock_reader = MockModuleReader::new(modules);
         let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
 
@@ -2262,12 +2268,12 @@ mod tests {
                 Opcode::T,
                 Opcode::Pop(1),
                 Opcode::F,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Float(2.3),
                 Value::Float(5.6),
-                new_string_obj("hello")
+                new_string_obj("hello"),
             ],
         };
         assert_eq!(expected, chunk);
@@ -2283,7 +2289,7 @@ mod tests {
             code: vec![
                 Opcode::Constant(1, 0),
                 Opcode::Invert,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5)],
         };
@@ -2297,7 +2303,7 @@ mod tests {
             code: vec![
                 Opcode::Constant(1, 0),
                 Opcode::Invert,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Float(2.3)],
         };
@@ -2311,7 +2317,7 @@ mod tests {
             code: vec![
                 Opcode::F,
                 Opcode::Negate,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2329,7 +2335,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::Constant(1, 1),
                 Opcode::IAdd,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5), Value::Int(6)],
         };
@@ -2353,7 +2359,7 @@ mod tests {
                 Opcode::I2F,
                 Opcode::FDiv,
                 Opcode::FSub,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5), Value::Float(3.4)],
         };
@@ -2372,7 +2378,7 @@ mod tests {
                 Opcode::Constant(1, 2),
                 Opcode::I2F,
                 Opcode::FMod,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Float(3.4), Value::Float(2.4), Value::Int(5)],
         };
@@ -2388,7 +2394,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::Constant(1, 1),
                 Opcode::Pow,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Float(3.4), Value::Int(5)],
         };
@@ -2408,7 +2414,7 @@ mod tests {
                 Opcode::IAdd,
                 Opcode::IConst3,
                 Opcode::IMul,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2426,7 +2432,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::Constant(1, 1),
                 Opcode::StrConcat,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("abc"), new_string_obj("def")],
         };
@@ -2443,7 +2449,7 @@ mod tests {
                 Opcode::StrConcat,
                 Opcode::Constant(1, 1),
                 Opcode::StrConcat,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), Value::Float(3.4)],
         };
@@ -2467,7 +2473,7 @@ mod tests {
                 Opcode::T,
                 Opcode::Jump(1),
                 Opcode::F,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2483,7 +2489,7 @@ mod tests {
                 Opcode::T,
                 Opcode::F,
                 Opcode::Xor,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2505,7 +2511,7 @@ mod tests {
                 Opcode::Constant(1, 2),
                 Opcode::GTE,
                 Opcode::Eq,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5), Value::Float(3.4), Value::Float(5.6)],
         };
@@ -2522,7 +2528,7 @@ mod tests {
                 Opcode::LT,
                 Opcode::IConst4,
                 Opcode::Neq,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), new_string_obj("b")],
         };
@@ -2552,7 +2558,7 @@ mod tests {
                 Opcode::Jump(2),
                 Opcode::Pop(1),
                 Opcode::Constant(1, 2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), new_string_obj("b"), new_string_obj("c")],
         };
@@ -2570,7 +2576,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::IConst2,
                 Opcode::ArrMk(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2586,7 +2592,7 @@ mod tests {
                 Opcode::Constant(1, 1),
                 Opcode::Constant(1, 2),
                 Opcode::ArrMk(3),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), new_string_obj("b"), new_string_obj("c")],
         };
@@ -2609,7 +2615,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::ArrMk(3),
                 Opcode::ArrMk(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5)],
         };
@@ -2627,7 +2633,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::IConst2,
                 Opcode::SetMk(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2643,7 +2649,7 @@ mod tests {
                 Opcode::Constant(1, 1),
                 Opcode::Constant(1, 2),
                 Opcode::SetMk(3),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), new_string_obj("b"), new_string_obj("c")],
         };
@@ -2665,7 +2671,7 @@ mod tests {
                 Opcode::Constant(1, 3),
                 Opcode::T,
                 Opcode::MapMk(3),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("a"),
@@ -2687,7 +2693,7 @@ mod tests {
             code: vec![
                 Opcode::Constant(1, 0),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123)],
         };
@@ -2703,7 +2709,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::T,
                 Opcode::GStore(global_idx(1)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2721,7 +2727,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 2),
                 Opcode::GStore(global_idx(1)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("a"),
@@ -2750,7 +2756,7 @@ mod tests {
                 Opcode::Constant(1, 1),
                 Opcode::New(global_idx(0), 1),
                 Opcode::GStore(global_idx(1)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Type(TypeValue {
@@ -2789,7 +2795,7 @@ mod tests {
                 Opcode::Constant(1, 3),
                 Opcode::New(global_idx(0), 2),
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Type(TypeValue {
@@ -2828,7 +2834,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::TupleLoad,
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2870,7 +2876,7 @@ mod tests {
                         Opcode::LStore(0),
                         Opcode::Pop(1),
                         Opcode::Pop(1),
-                        Opcode::Return
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2900,7 +2906,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::ArrLoad,
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -2942,7 +2948,7 @@ mod tests {
                         Opcode::LStore(0),
                         Opcode::Pop(1),
                         Opcode::Pop(1),
-                        Opcode::Return
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -2970,7 +2976,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::ArrLoad,
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("hello")],
         };
@@ -2988,7 +2994,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::GStore(global_idx(0)),
                 Opcode::GLoad(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123)],
         };
@@ -3159,7 +3165,7 @@ mod tests {
                 Opcode::GLoad(global_idx(1)),
                 //  c = <b = <a = 3>>
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -3182,7 +3188,7 @@ mod tests {
                 // val b = 3
                 Opcode::IConst3,
                 Opcode::GStore(global_idx(1)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -3212,7 +3218,7 @@ mod tests {
                         Opcode::IConst3,
                         Opcode::GStore(global_idx(1)),
                         Opcode::GLoad(global_idx(1)),
-                        Opcode::Return
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3243,7 +3249,7 @@ mod tests {
                         Opcode::IConst3,
                         Opcode::UStore(0),
                         Opcode::ULoad(0),
-                        Opcode::Return
+                        Opcode::Return,
                     ],
                     upvalues: vec![
                         Upvalue {
@@ -3269,7 +3275,7 @@ mod tests {
                         Opcode::LStore(0),
                         Opcode::Pop(1),
                         Opcode::CloseUpvalueAndPop,
-                        Opcode::Return
+                        Opcode::Return,
                     ],
                     upvalues: vec![],
                     receiver: None,
@@ -3399,7 +3405,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::IAdd,
                 Opcode::ArrLoad,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(5)],
         };
@@ -3417,7 +3423,7 @@ mod tests {
                 Opcode::IAdd,
                 Opcode::Nil,
                 Opcode::ArrSlc,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("some string")],
         };
@@ -3434,7 +3440,7 @@ mod tests {
                 Opcode::Invert,
                 Opcode::IConst4,
                 Opcode::ArrSlc,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("some string")],
         };
@@ -3452,7 +3458,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::IAdd,
                 Opcode::ArrSlc,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("some string")],
         };
@@ -3471,7 +3477,7 @@ mod tests {
                 Opcode::MapMk(2),
                 Opcode::Constant(1, 0),
                 Opcode::MapLoad,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("a"), new_string_obj("b")],
         };
@@ -3489,7 +3495,7 @@ mod tests {
                 Opcode::TupleMk(3),
                 Opcode::IConst2,
                 Opcode::TupleLoad,
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -3513,7 +3519,7 @@ mod tests {
                 Opcode::Jump(2),
                 Opcode::Constant(1, 1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123), Value::Int(456)],
         };
@@ -3531,7 +3537,7 @@ mod tests {
                 Opcode::JumpIfF(2),
                 Opcode::Constant(1, 0),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123)],
         };
@@ -3550,7 +3556,7 @@ mod tests {
                 Opcode::Jump(2),
                 Opcode::Constant(1, 0),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(456)],
         };
@@ -3578,7 +3584,7 @@ mod tests {
                 Opcode::Jump(2),
                 Opcode::Constant(1, 2),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123), Value::Int(456), Value::Int(789)],
         };
@@ -3607,7 +3613,7 @@ mod tests {
                 Opcode::IAdd,
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Int(123),
@@ -3638,7 +3644,7 @@ mod tests {
                 Opcode::Jump(2),
                 Opcode::Constant(1, 1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123), Value::Int(456)],
         };
@@ -3670,7 +3676,7 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::Constant(1, 0),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(456)],
         };
@@ -3704,7 +3710,7 @@ mod tests {
                 Opcode::GStore(global_idx(3)),
                 Opcode::Constant(1, 0),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Fn(FnValue {
@@ -3747,7 +3753,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 1),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("hello"),
@@ -3794,7 +3800,7 @@ mod tests {
                 Opcode::IConst1,
                 Opcode::IConst2,
                 Opcode::Invoke(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Fn(FnValue {
@@ -3841,7 +3847,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 1),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Fn(FnValue {
@@ -3880,7 +3886,7 @@ mod tests {
                     ],
                     upvalues: vec![],
                     receiver: None,
-                })
+                }),
             ],
         };
         assert_eq!(expected, chunk);
@@ -3904,7 +3910,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 0),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Type(TypeValue {
@@ -3920,7 +3926,7 @@ mod tests {
                                 Opcode::LLoad(0),
                                 Opcode::GetField(0),
                                 Opcode::LStore(0),
-                                Opcode::Return
+                                Opcode::Return,
                             ],
                             upvalues: vec![],
                             receiver: None,
@@ -3932,7 +3938,7 @@ mod tests {
                                 Opcode::GetMethod(1),
                                 Opcode::Invoke(0),
                                 Opcode::LStore(0),
-                                Opcode::Return
+                                Opcode::Return,
                             ],
                             upvalues: vec![],
                             receiver: None,
@@ -3957,7 +3963,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 0),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Enum(EnumValue {
@@ -3973,7 +3979,7 @@ mod tests {
                         (
                             "Off".to_string(),
                             Value::new_enum_instance_obj(EnumInstanceObj { type_id: global_idx(0), idx: 1, values: None })
-                        )
+                        ),
                     ],
                 }),
             ],
@@ -4005,7 +4011,7 @@ mod tests {
                 Opcode::GLoad(global_idx(1)),
                 Opcode::Invoke(1),
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Fn(FnValue {
@@ -4051,7 +4057,7 @@ mod tests {
                 Opcode::GLoad(global_idx(0)),
                 Opcode::Pop(1),
                 Opcode::JumpB(11),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4074,7 +4080,7 @@ mod tests {
                 Opcode::Constant(1, 0),
                 Opcode::Pop(1),
                 Opcode::JumpB(11),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Int(123)],
         };
@@ -4106,7 +4112,7 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::JumpB(16),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4143,7 +4149,7 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::Pop(1),
                 Opcode::JumpB(14),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4170,7 +4176,7 @@ mod tests {
                 Opcode::Pop(1),      // <
                 Opcode::Jump(1),     // < These 3 instrs are generated by the break
                 Opcode::JumpB(7),    // These 2 get falsely attributed to the break, because of #32
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4199,7 +4205,7 @@ mod tests {
                 Opcode::Jump(2),     // < These 3 instrs are generated by the break
                 Opcode::JumpB(11),   // These 2 get falsely attributed to the break, because of #32
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4233,7 +4239,7 @@ mod tests {
                 Opcode::Jump(2),  // < These 3 instrs are generated by the break
                 Opcode::Pop(1),         // This instr is where the if jumps to if false (we still need to clean up locals in the loop)
                 Opcode::JumpB(14),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4267,7 +4273,7 @@ mod tests {
                 Opcode::Pop(2),      // << These two are actually unreachable, but everything is still popped properly
                 Opcode::JumpB(13),   // This is the end of the loop body
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -4351,7 +4357,7 @@ mod tests {
 
                 // Cleanup/end
                 Opcode::Pop(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("Row: ")],
         };
@@ -4445,7 +4451,7 @@ mod tests {
 
                 // Cleanup/end
                 Opcode::Pop(2),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("Row: ")],
         };
@@ -4479,7 +4485,7 @@ mod tests {
             is_native: false,
             num_globals: 0,
             constants: vec![
-                Value::Int(5), Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9), Value::Int(10), Value::Int(11)
+                Value::Int(5), Value::Int(6), Value::Int(7), Value::Int(8), Value::Int(9), Value::Int(10), Value::Int(11),
             ],
             code: vec![
                 Opcode::IConst0,
@@ -4815,10 +4821,10 @@ mod tests {
                 (0..150).into_iter()
                     .flat_map(|i| vec![
                         Opcode::Constant(1, i),
-                        Opcode::GStore(global_idx(i))
+                        Opcode::GStore(global_idx(i)),
                     ])
                     .collect(),
-                vec![Opcode::Return]
+                vec![Opcode::Return],
             ].concat(),
         };
         assert_eq!(expected, chunk);
@@ -4846,7 +4852,7 @@ mod tests {
                 Opcode::GStore(global_idx(1)),
                 Opcode::GLoad(global_idx(1)),
                 Opcode::GetField(0),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Type(TypeValue {
@@ -4871,7 +4877,7 @@ mod tests {
             code: vec![
                 Opcode::Constant(1, 0),
                 Opcode::GetField(0),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("hello")],
         };
@@ -4890,7 +4896,7 @@ mod tests {
             code: vec![
                 Opcode::Constant(1, 1),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("hello"),
@@ -4949,7 +4955,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("woo")],
         };
@@ -4989,7 +4995,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("woo")],
         };
@@ -5041,7 +5047,7 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::Pop(1),
                 Opcode::Jump(0),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Type(TypeValue {
@@ -5097,7 +5103,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Enum(EnumValue {
@@ -5111,12 +5117,12 @@ mod tests {
                         (
                             "Right".to_string(),
                             Value::new_enum_instance_obj(EnumInstanceObj { type_id: global_idx(0), idx: 1, values: None })
-                        )
+                        ),
                     ],
                     methods: vec![to_string_method()],
                     static_fields: vec![],
                 }),
-                new_string_obj("Left")
+                new_string_obj("Left"),
             ],
         };
         assert_eq!(expected, chunk);
@@ -5158,7 +5164,7 @@ mod tests {
                 Opcode::Pop(1),
                 Opcode::Pop(2),
                 Opcode::Jump(0),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Enum(EnumValue {
@@ -5175,7 +5181,7 @@ mod tests {
                                     Opcode::New(global_idx(0), 1),
                                     Opcode::LStore(0),
                                     Opcode::Pop(0),
-                                    Opcode::Return
+                                    Opcode::Return,
                                 ],
                                 upvalues: vec![],
                                 receiver: None,
@@ -5240,7 +5246,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("hello"),
@@ -5287,7 +5293,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 new_string_obj("hello"),
@@ -5383,7 +5389,7 @@ mod tests {
                 Opcode::Invoke(1),
                 Opcode::Pop(1),
                 Opcode::Pop(1),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Enum(EnumValue {
@@ -5401,7 +5407,7 @@ mod tests {
                                     Opcode::New(global_idx(0), 2),
                                     Opcode::LStore(0),
                                     Opcode::Pop(1),
-                                    Opcode::Return
+                                    Opcode::Return,
                                 ],
                                 upvalues: vec![],
                                 receiver: None,
@@ -5437,7 +5443,7 @@ mod tests {
                 Opcode::GStore(global_idx(0)),
                 Opcode::Constant(1, 2),
                 Opcode::GStore(global_idx(0)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![
                 Value::Int(24),
@@ -5483,7 +5489,7 @@ mod tests {
                 Opcode::Constant(2, 0),
                 Opcode::New(global_idx(1), 1),
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![new_string_obj("Ken")],
         };
@@ -5508,7 +5514,7 @@ mod tests {
                 Opcode::GLoad(global_idx(1)),
                 Opcode::GetField(0),
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -5534,7 +5540,7 @@ mod tests {
                 Opcode::IConst4,
                 Opcode::IAdd,
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![],
         };
@@ -5562,7 +5568,7 @@ mod tests {
                 Opcode::IConst4,
                 Opcode::IAdd,
                 Opcode::GStore(global_idx(2)),
-                Opcode::Return
+                Opcode::Return,
             ],
             constants: vec![Value::Module(ModuleId::from_name(".constants"))],
         };

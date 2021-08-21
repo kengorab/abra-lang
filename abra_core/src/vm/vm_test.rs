@@ -17,7 +17,7 @@ mod tests {
     fn interpret(input: &str) -> Value {
         let mock_reader = MockModuleReader::default();
         let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
 
         let ctx = VMContext::default();
         let mut vm = VM::new(ctx);
@@ -31,7 +31,7 @@ mod tests {
     fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Value {
         let mock_reader = MockModuleReader::new(modules);
         let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
 
         let ctx = VMContext::default();
         let mut vm = VM::new(ctx);
@@ -1840,30 +1840,30 @@ mod tests {
     #[test]
     fn interpret_linked_list_kinda() {
         // Verify self-referential types, as well as the usage of static methods in default field values
-        let input = "\
-          type Node {\n\
-            value: String\n\
-            next: Node? = Node.empty()\n\
+        let input = r#"
+          type Node {
+            value: String
+            next: Node? = Node.empty()
 
-            func empty(): Node? = None\n\
+            func empty(): Node? = None
 
-            func toString(self): String {\n\
-              var str = self.value + \", \"\n\
-              var next = self.next\n\
+            func toString(self): String {
+              var str = self.value + ", "
+              var next = self.next
 
-              while next {\n\
-                str = str + (next?.value ?: \"\") + \", \"\n\
+              while next {
+                str = str + (next?.value ?: "") + ", "
 
-                next = next?.next\n\
-              }\n\
+                next = next?.next
+              }
 
-              str[:-2]\n\
-            }\n\
-          }\n\
+              str[:-2]
+            }
+          }
 
-          val node = Node(value: \"a\", next: Node(value: \"b\", next: Node(value: \"c\")))\n\
-          node.toString()\
-        ";
+          val node = Node(value: "a", next: Node(value: "b", next: Node(value: "c")))
+          node.toString()
+        "#;
         let result = interpret(input);
         let expected = new_string_obj("a, b, c");
         assert_eq!(expected, result);

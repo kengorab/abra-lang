@@ -16,7 +16,7 @@ pub struct LspModuleReader {
 }
 
 impl ModuleReader for LspModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
         match &self.project_root {
             None => None,
             Some(project_root) => {
@@ -61,7 +61,7 @@ impl Backend {
         let project_root = self.project_root.lock().await;
         let project_root_path = project_root.as_ref().map(|root| PathBuf::from(root));
         let module_reader = LspModuleReader { project_root: project_root_path };
-        let mut loader = ModuleLoader::new(module_reader);
+        let mut loader = ModuleLoader::new(&module_reader);
 
         match typecheck(module_id, &text, &mut loader) {
             Ok(_) => PublishDiagnosticsParams { uri, version, diagnostics: vec![] },

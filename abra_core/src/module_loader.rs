@@ -9,7 +9,7 @@ use crate::builtins::native::load_native_module_contents;
 use crate::builtins::native_module_builder::ModuleSpec;
 
 pub trait ModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String>;
+    fn read_module(&self, module_id: &ModuleId) -> Option<String>;
 }
 
 pub enum ModuleLoaderError {
@@ -19,16 +19,16 @@ pub enum ModuleLoaderError {
 }
 
 #[derive(Debug)]
-pub struct ModuleLoader<R: ModuleReader> {
-    module_reader: R,
+pub struct ModuleLoader<'a, R: ModuleReader> {
+    module_reader: &'a R,
     native_module_cache: HashMap<String, ModuleSpec>,
     typed_module_cache: HashMap<String, Option<TypedModule>>,
     pub(crate) compiled_modules: Vec<(Module, Option<Metadata>)>,
     pub(crate) ordering: Vec<ModuleId>,
 }
 
-impl<R: ModuleReader> ModuleLoader<R> {
-    pub fn new(module_reader: R) -> Self {
+impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
+    pub fn new(module_reader: &'a R) -> Self {
         let typed_module_cache = HashMap::new();
         let compiled_modules = Vec::new();
         let native_module_cache = HashMap::new();

@@ -15,7 +15,7 @@ impl FsModuleReader {
 }
 
 impl ModuleReader for FsModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
         let file_path = module_id.get_path(Some(&self.project_root));
         match std::fs::read_to_string(file_path) {
             Ok(contents) => Some(contents),
