@@ -84,7 +84,7 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
     }
 }
 
-pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<Vec<Module>, Error>
+pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: &R) -> Result<Vec<Module>, Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);
@@ -99,7 +99,7 @@ pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: R) -> Resu
     Ok(modules)
 }
 
-pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: R) -> Result<String, Error>
+pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: &R) -> Result<String, Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);

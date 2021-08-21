@@ -15,7 +15,7 @@ impl MockModuleReader {
 }
 
 impl ModuleReader for MockModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
         let module_name = module_id.get_name();
         self.modules_raw.get(&module_name).map(|s| s.to_string())
     }

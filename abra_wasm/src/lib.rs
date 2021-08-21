@@ -186,7 +186,7 @@ impl Serialize for DisassembleResult {
 struct UnimplementedModuleReader;
 
 impl ModuleReader for UnimplementedModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
         let msg = format!("Could not load module '{}'; please provide a valid ModuleReader instance", module_id.get_name());
         wasm_bindgen::throw_str(msg.as_str());
     }
@@ -209,7 +209,7 @@ extern "C" {
 }
 
 impl ModuleReader for JsModuleReader {
-    fn read_module(&mut self, module_id: &ModuleId) -> Option<String> {
+    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
         let module_name = module_id.get_name();
         self._read_module(&module_name)
     }
@@ -219,7 +219,7 @@ impl ModuleReader for JsModuleReader {
 pub fn disassemble(input: &str) -> JsValue {
     let module_reader = UnimplementedModuleReader;
     let module_id = ModuleId::from_name(".repl");
-    let result = compile_and_disassemble(module_id, &input.to_string(), module_reader);
+    let result = compile_and_disassemble(module_id, &input.to_string(), &module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -233,7 +233,7 @@ pub fn disassemble_module(module_name: &str, module_reader: JsModuleReader) -> J
     };
 
     let module_id = ModuleId::from_name(module_name);
-    let result = compile_and_disassemble(module_id, &input.to_string(), module_reader);
+    let result = compile_and_disassemble(module_id, &input.to_string(), &module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -243,7 +243,7 @@ pub fn disassemble_module(module_name: &str, module_reader: JsModuleReader) -> J
 pub fn typecheck_input(input: &str) -> JsValue {
     let module_reader = UnimplementedModuleReader;
     let module_id = ModuleId::from_name(".repl");
-    let mut module_loader = ModuleLoader::new(module_reader);
+    let mut module_loader = ModuleLoader::new(&module_reader);
     let result = typecheck(module_id, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
@@ -258,14 +258,14 @@ pub fn typecheck_module(module_name: &str, module_reader: JsModuleReader) -> JsV
     };
 
     let module_id = ModuleId::from_name(module_name);
-    let mut module_loader = ModuleLoader::new(module_reader);
+    let mut module_loader = ModuleLoader::new(&module_reader);
     let result = typecheck(module_id, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
 }
 
-fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: R) -> Result<(Value, String), Error>
+fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: &R) -> Result<(Value, String), Error>
     where R: ModuleReader
 {
     let module_id = ModuleId::from_name(module_name);
@@ -302,7 +302,7 @@ pub fn run(input: &str, js_bridge: Option<AbraContext>) -> JsValue {
     };
 
     let module_reader = UnimplementedModuleReader;
-    let result = compile_and_run(".repl", input.to_string(), ctx, module_reader);
+    let result = compile_and_run(".repl", input.to_string(), ctx, &module_reader);
     let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)
@@ -331,7 +331,7 @@ pub fn run_module(module_name: &str, module_reader: JsModuleReader, js_bridge: O
         Some(input) => input
     };
 
-    let result = compile_and_run(module_name, input.to_string(), ctx, module_reader);
+    let result = compile_and_run(module_name, input.to_string(), ctx, &module_reader);
     let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)

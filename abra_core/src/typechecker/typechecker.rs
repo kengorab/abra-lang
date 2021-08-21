@@ -127,7 +127,7 @@ pub struct Typechecker<'a, R: ModuleReader> {
     referencable_types: HashMap<String, Type>,
     returns: Vec<TypedAstNode>,
     exports: HashMap<String, ExportedValue>,
-    module_loader: &'a ModuleLoader<R>,
+    module_loader: &'a ModuleLoader<'a, R>,
 }
 
 impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
@@ -3274,7 +3274,7 @@ mod tests {
 
     fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerErrorKind> {
         let mock_reader = MockModuleReader::new(modules);
-        let mut mock_loader = ModuleLoader::new(mock_reader);
+        let mut mock_loader = ModuleLoader::new(&mock_reader);
         let module_id = ModuleId::from_name("_test");
         let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
             .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!() })?;
@@ -9135,7 +9135,8 @@ mod tests {
                 "
             ),
         ];
-        let mut loader = ModuleLoader::new(MockModuleReader::new(modules));
+        let reader = MockModuleReader::new(modules);
+        let mut loader = ModuleLoader::new(&reader);
         crate::typecheck(ModuleId::from_name("_test"), &mod1.to_string(), &mut loader).unwrap();
         let expected = vec![
             ModuleId::from_name("prelude"),

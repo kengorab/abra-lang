@@ -1,9 +1,14 @@
+extern crate ansi_term;
 #[macro_use]
 extern crate clap;
+extern crate itertools;
+extern crate rustyline;
 
+mod cmd_repl;
 mod fs_module_reader;
 
 use crate::fs_module_reader::FsModuleReader;
+use crate::cmd_repl::cmd_repl;
 use abra_core::builtins::common::to_string;
 use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
@@ -25,6 +30,7 @@ enum SubCommand {
     Run(RunOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
+    Repl,
 }
 
 #[derive(Clap)]
@@ -64,6 +70,7 @@ fn main() -> Result<(), ()> {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
+        SubCommand::Repl => cmd_repl(),
     }
 }
 
@@ -89,9 +96,9 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_reader = FsModuleReader::new(current_path.clone());
+    let module_reader = FsModuleReader::new(current_path);
     let module_id = ModuleId::from_path(&opts.file_path);
-    match compile_and_disassemble(module_id, &contents, module_reader) {
+    match compile_and_disassemble(module_id, &contents, &module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),
@@ -99,7 +106,6 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
             }
         }
         Err(error) => {
-            let mut module_reader = FsModuleReader::new(current_path);
             let module_id = error.module_id();
             let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
             let file_name = module_id.get_path(Some(&module_reader.project_root));
@@ -181,11 +187,10 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 }
 
 fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm: &mut VM) -> Result<Value, ()> {
-    let module_reader = FsModuleReader::new(root_dir.clone());
-    let modules = match compile(module_id, &contents, module_reader) {
+    let module_reader = FsModuleReader::new(root_dir);
+    let modules = match compile(module_id, &contents, &module_reader) {
         Ok(modules) => modules,
         Err(error) => {
-            let mut module_reader = FsModuleReader::new(root_dir);
             let module_id = error.module_id();
             let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
             let file_name = module_id.get_path(Some(&module_reader.project_root));
