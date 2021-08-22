@@ -12,7 +12,7 @@ use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ScopeBinding(/*token:*/ Token, /*type:*/ Type, /*is_mutable:*/ bool);
+pub struct ScopeBinding(pub /*token:*/ Token, pub /*type:*/ Type, pub /*is_mutable:*/ bool);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScopeKind {

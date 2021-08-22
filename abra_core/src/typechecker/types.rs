@@ -1,6 +1,7 @@
 use crate::parser::ast::{TypeIdentifier, ModuleId};
 use crate::lexer::tokens::Token;
 use std::collections::{HashMap, HashSet};
+use itertools::Itertools;
 
 #[derive(Debug, Clone, Eq, Hash)]
 pub enum Type {
@@ -26,6 +27,75 @@ pub enum Type {
     Placeholder,
     Generic(/* name: */ String),
     Reference(/* name: */ String, /* type_args: */ Vec<Type>),
+}
+
+impl Type {
+    pub fn repr(&self) -> String {
+        #[inline]
+        fn wrap_type_repr(t: &Type) -> String {
+            let wrap = if let Type::Fn(_) = t { true } else { false };
+            if wrap {
+                format!("({})", t.repr())
+            } else {
+                t.repr()
+            }
+        }
+
+        match self {
+            Type::Unit => "Unit".to_string(),
+            Type::Any => "Any".to_string(),
+            Type::Int => "Int".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::String => "String".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::Union(options) => {
+                let type_opts: Vec<String> = options.iter()
+                    .map(|t| wrap_type_repr(t))
+                    .collect();
+                format!("{}", type_opts.join(" | "))
+            }
+            Type::Array(typ) => format!("{}[]", wrap_type_repr(&typ)),
+            Type::Tuple(types) => {
+                let types = types.iter().map(|t| t.repr()).join(", ");
+                format!("({})", types)
+            }
+            Type::Set(typ) => {
+                format!("Set<{}>", typ.repr())
+            }
+            Type::Map(key_type, value_type) => {
+                format!("Map<{}, {}>", key_type.repr(), value_type.repr())
+            }
+            Type::Option(typ) => format!("{}?", wrap_type_repr(&typ)),
+            Type::Fn(FnType { arg_types, ret_type, .. }) => {
+                let args = arg_types.iter().map(|(_, arg_type, _)| arg_type.repr()).collect::<Vec<String>>().join(", ");
+                format!("({}) => {}", args, ret_type.repr())
+            }
+            Type::Type(name, _, _) => name.to_string(),
+            Type::Unknown => "Unknown".to_string(),
+            Type::Struct(StructType { name, type_args, .. }) => {
+                if type_args.is_empty() { return name.clone(); }
+
+                let type_args_repr = type_args.iter()
+                    .map(|(_, typ)| typ.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{}<{}>", name, type_args_repr)
+            }
+            Type::Enum(EnumType { name, .. }) => format!("{}", name),
+            Type::Module(_) => "Module".to_string(),
+            Type::Placeholder => "_".to_string(),
+            Type::Generic(name) => name.clone(),
+            Type::Reference(name, type_args) => {
+                if type_args.is_empty() { return name.clone(); }
+
+                let type_args_repr = type_args.iter()
+                    .map(|typ| typ.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{}<{}>", name, type_args_repr)
+            }
+        }
+    }
 }
 
 impl PartialEq for Type {
@@ -510,7 +580,7 @@ impl Type {
                 let value_generics = Self::try_fit_generics(value_type, target_value_type);
                 let generics = vec![
                     key_generics.unwrap_or(vec![]),
-                    value_generics.unwrap_or(vec![])
+                    value_generics.unwrap_or(vec![]),
                 ].concat();
                 if generics.is_empty() { None } else { Some(generics) }
             }

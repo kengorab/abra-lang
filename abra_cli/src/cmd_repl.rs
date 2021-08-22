@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use ansi_term::{Color, Style};
 use rustyline::Editor;
 use std::env::current_dir;
-use abra_core::compile;
+use abra_core::{compile, typecheck};
 use crate::fs_module_reader::FsModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::common::display_error::DisplayError;
@@ -13,11 +13,14 @@ use itertools::Itertools;
 use abra_core::vm::vm::{VM, VMContext};
 use abra_core::vm::value::Value;
 use abra_core::builtins::common::to_string;
+use abra_core::module_loader::ModuleLoader;
+use abra_core::typechecker::typechecker::{ScopeBinding, ExportedValue};
 
 #[derive(Helper, Completer, Hinter, Validator)]
 struct AbraHighlighter<'a> {
     keywords: HashSet<&'a str>,
     builtins: HashSet<&'a str>,
+    commands: HashSet<&'a str>,
 }
 
 impl<'a> Highlighter for AbraHighlighter<'a> {
@@ -28,6 +31,8 @@ impl<'a> Highlighter for AbraHighlighter<'a> {
                     TokenizeState::Ident if self.keywords.contains(&word.as_str()) => Color::Yellow.bold(),
                     TokenizeState::Ident if self.builtins.contains(&word.as_str()) => Color::Yellow.italic(),
                     TokenizeState::Ident if word.starts_with(|ch: char| ch.is_uppercase()) => Color::Purple.normal(),
+                    TokenizeState::ReplCmd if self.commands.contains(&word.as_str()) => Color::Green.italic(),
+                    TokenizeState::ReplCmd if !self.commands.contains(&word.as_str()) => Color::Red.italic(),
                     TokenizeState::Number => Color::Blue.normal(),
                     TokenizeState::String => Color::Green.normal(),
                     _ => Style::new()
@@ -53,6 +58,7 @@ enum TokenizeState {
     Number,
     String,
     Symbol,
+    ReplCmd,
 }
 
 fn tokenize(input: &str) -> Vec<(TokenizeState, String)> {
@@ -65,7 +71,7 @@ fn tokenize(input: &str) -> Vec<(TokenizeState, String)> {
         let is_boundary = match &state {
             TokenizeState::Init => true,
             TokenizeState::Whitespace => !ch.is_whitespace(),
-            TokenizeState::Ident => !ch.is_alphanumeric(),
+            TokenizeState::Ident | TokenizeState::ReplCmd => !ch.is_alphanumeric(),
             TokenizeState::Number => !ch.is_numeric(),
             TokenizeState::String => ch == '"',
             TokenizeState::Symbol => ch.is_alphanumeric() || ch.is_whitespace() || ch == '"'
@@ -92,6 +98,9 @@ fn tokenize(input: &str) -> Vec<(TokenizeState, String)> {
                 TokenizeState::Init
             } else if ch == '"' && !within_string {
                 TokenizeState::String
+            } else if ch == '.' && result.is_empty() {
+                // Only consider it a repl cmd if it's the first thing typed
+                TokenizeState::ReplCmd
             } else {
                 TokenizeState::Symbol
             };
@@ -118,9 +127,11 @@ pub fn cmd_repl() -> Result<(), ()> {
         "type", "enum", "return", "readonly", "import", "export", "from", "as",
     ];
     let builtins = vec!["println", "print", "None", "self", "range"];
+    let commands = vec![".exit", ".save", ".help", ".type"];
     let h = AbraHighlighter {
         keywords: keywords.into_iter().collect(),
         builtins: builtins.into_iter().collect(),
+        commands: commands.into_iter().collect(),
     };
     rl.set_helper(Some(h));
 
@@ -160,7 +171,45 @@ pub fn cmd_repl() -> Result<(), ()> {
                                 Err(_) => println!("Could not save buffer to file {}", filename),
                             }
                         } else {
-                            println!(".save requires a filename argument");
+                            println!(".save requires a filename argument (try .help for more details)");
+                        }
+                    }
+                    ".type" => {
+                        if let Some(binding_name) = input.next() {
+                            let file = code.iter().join("\n");
+                            let mut loader = ModuleLoader::new(&module_reader);
+                            match typecheck(module_id.clone(), &file, &mut loader) {
+                                Err(_) => println!("Could not determine type for name '{}'", binding_name),
+                                Ok(m) => {
+                                    let type_repr = match m.global_bindings.get(&binding_name.to_string()) {
+                                        None => {
+                                            loader.typed_module_cache.values()
+                                                .filter_map(|m| m.clone())
+                                                .filter_map(|m| {
+                                                    m.global_bindings.get(&binding_name.to_string())
+                                                        .map(|ScopeBinding(_, typ, _)| typ.repr())
+                                                        .or_else(|| {
+                                                            m.exports.get(&binding_name.to_string())
+                                                                .map(|e| match e {
+                                                                    ExportedValue::Binding(t) => t.repr(),
+                                                                    ExportedValue::Type { backing_type, .. } => backing_type.repr(),
+                                                                })
+                                                        })
+                                                })
+                                                .next()
+                                        }
+                                        Some(ScopeBinding(_, typ, _)) => Some(typ.repr()),
+                                    };
+
+                                    if let Some(type_repr) = type_repr {
+                                        println!("{}: {}", binding_name, type_repr)
+                                    } else {
+                                        println!("No such name '{}'", binding_name)
+                                    }
+                                }
+                            }
+                        } else {
+                            println!(".type requires a variable name (try .help for more details)");
                         }
                     }
                     ".help" => {
@@ -168,6 +217,7 @@ pub fn cmd_repl() -> Result<(), ()> {
                         println!("  .help                 Prints this help message");
                         println!("  .exit                 Exits the repl");
                         println!("  .save [filename]      Save repl contents to a file");
+                        println!("  .type [var_name]      Display the type information for a given name");
                     }
                     s => println!("Unrecognized special command {} (try .help to see a list of special commands)", s)
                 }
