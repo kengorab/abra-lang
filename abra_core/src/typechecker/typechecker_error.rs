@@ -1,8 +1,7 @@
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Token;
-use crate::typechecker::types::{Type, StructType, FnType, EnumType};
+use crate::typechecker::types::Type;
 use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingPattern, ModuleId};
-use itertools::Itertools;
 
 #[derive(Debug, PartialEq)]
 pub enum InvalidAssignmentTargetReason {
@@ -150,74 +149,6 @@ impl TypecheckerError {
     }
 }
 
-// TODO: Replace this when I do more work on Type representations
-fn type_repr(t: &Type) -> String {
-    #[inline]
-    fn wrap_type_repr(t: &Type) -> String {
-        let wrap = if let Type::Fn(_) = t { true } else { false };
-        if wrap {
-            format!("({})", type_repr(t))
-        } else {
-            type_repr(t)
-        }
-    }
-
-    match t {
-        Type::Unit => "Unit".to_string(),
-        Type::Any => "Any".to_string(),
-        Type::Int => "Int".to_string(),
-        Type::Float => "Float".to_string(),
-        Type::String => "String".to_string(),
-        Type::Bool => "Bool".to_string(),
-        Type::Union(options) => {
-            let type_opts: Vec<String> = options.iter()
-                .map(|t| wrap_type_repr(t))
-                .collect();
-            format!("{}", type_opts.join(" | "))
-        }
-        Type::Array(typ) => format!("{}[]", wrap_type_repr(typ)),
-        Type::Tuple(types) => {
-            let types = types.iter().map(|t| type_repr(t)).join(", ");
-            format!("({})", types)
-        }
-        Type::Set(typ) => {
-            format!("Set<{}>", type_repr(typ))
-        }
-        Type::Map(key_type, value_type) => {
-            format!("Map<{}, {}>", type_repr(key_type), type_repr(value_type))
-        }
-        Type::Option(typ) => format!("{}?", wrap_type_repr(typ)),
-        Type::Fn(FnType { arg_types, ret_type, .. }) => {
-            let args = arg_types.iter().map(|(_, arg_type, _)| type_repr(arg_type)).collect::<Vec<String>>().join(", ");
-            format!("({}) => {}", args, type_repr(ret_type))
-        }
-        Type::Type(name, _, _) => name.to_string(),
-        Type::Unknown => "Unknown".to_string(),
-        Type::Struct(StructType { name, type_args, .. }) => {
-            if type_args.is_empty() { return name.clone(); }
-
-            let type_args_repr = type_args.iter()
-                .map(|(_, typ)| type_repr(typ))
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!("{}<{}>", name, type_args_repr)
-        }
-        Type::Enum(EnumType { name, .. }) => format!("{}", name),
-        Type::Module(_) => "Module".to_string(),
-        Type::Placeholder => "_".to_string(),
-        Type::Generic(name) => name.clone(),
-        Type::Reference(name, type_args) => {
-            if type_args.is_empty() { return name.clone(); }
-
-            let type_args_repr = type_args.iter()
-                .map(|typ| type_repr(typ))
-                .collect::<Vec<String>>()
-                .join(", ");
-            format!("{}<{}>", name, type_args_repr)
-        }
-    }
-}
-
 fn op_repr(op: &BinaryOp) -> String {
     match op {
         BinaryOp::Add => "+",
@@ -264,21 +195,21 @@ impl DisplayError for TypecheckerError {
                     "Type mismatch\n{}\n\
                     Expected {}, got {}",
                     cursor_line,
-                    type_repr(expected), type_repr(actual)
+                    expected.repr(), actual.repr()
                 )
             }
             TypecheckerErrorKind::InvalidIfConditionType { actual, .. } => {
                 format!(
                     "Invalid type for condition\n{}\n\
                     Conditions must be an Option or Bool, got {}",
-                    cursor_line, type_repr(actual)
+                    cursor_line, actual.repr()
                 )
             }
             TypecheckerErrorKind::InvalidLoopTarget { target_type: actual, .. } => {
                 format!(
                     "Invalid type for for-loop target\n{}\n\
                     Type {} is not iterable",
-                    cursor_line, type_repr(actual)
+                    cursor_line, actual.repr()
                 )
             }
             TypecheckerErrorKind::InvalidOperator { op, ltype, rtype, .. } => {
@@ -286,7 +217,7 @@ impl DisplayError for TypecheckerError {
                     "Invalid operator\n{}\n\
                     No operator exists to satisfy {} {} {}",
                     cursor_line,
-                    type_repr(ltype), op_repr(op), type_repr(rtype)
+                    ltype.repr(), op_repr(op), rtype.repr()
                 )
             }
             TypecheckerErrorKind::MissingRequiredAssignment { ident } => {
@@ -388,7 +319,7 @@ impl DisplayError for TypecheckerError {
                     InvalidAssignmentTargetReason::StringTarget => "Cannot assign to sub-range of target".to_string(),
                     InvalidAssignmentTargetReason::OptionalTarget => format!(
                         "Cannot assign by indexing into type {}, which is potentially None",
-                        type_repr(typ.as_ref().unwrap())
+                        typ.as_ref().unwrap().repr()
                     ),
                     InvalidAssignmentTargetReason::MethodTarget => "Methods cannot be reassigned to".to_string(),
                 };
@@ -439,14 +370,14 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Type mismatch between the if-else expression branches\n{}\n\
                     The if-branch had type {}, but the else-branch had type {}",
-                    cursor_line, type_repr(if_type), type_repr(else_type)
+                    cursor_line, if_type.repr(), else_type.repr()
                 )
             }
             TypecheckerErrorKind::InvalidInvocationTarget { target_type, .. } => {
                 format!(
                     "Cannot call target as function\n{}\n\
                     Type {} is not invokeable",
-                    cursor_line, type_repr(target_type)
+                    cursor_line, target_type.repr()
                 )
             }
             TypecheckerErrorKind::IncorrectArity { expected, actual, .. } => {
@@ -511,14 +442,14 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Unsupported indexing operation\n{}\n\
                     Type {} is not indexable{}",
-                    cursor_line, type_repr(target_type), context
+                    cursor_line, target_type.repr(), context
                 )
             }
             TypecheckerErrorKind::InvalidIndexingSelector { target_type, selector_type, .. } => {
                 format!(
                     "Invalid type for indexing operator argument\n{}\n\
                     Cannot index into a target of type {}, using a selector of type {}",
-                    cursor_line, type_repr(target_type), type_repr(selector_type)
+                    cursor_line, target_type.repr(), selector_type.repr()
                 )
             }
             TypecheckerErrorKind::InvalidTupleIndexingSelector { types, non_constant, index, .. } => {
@@ -527,7 +458,7 @@ impl DisplayError for TypecheckerError {
                 } else if *index != -1 {
                     format!(
                         "\nNo value at index {} for tuple {}",
-                        index, type_repr(&Type::Tuple(types.clone()))
+                        index, Type::Tuple(types.clone()).repr(),
                     )
                 } else { "".to_string() };
 
@@ -551,7 +482,7 @@ impl DisplayError for TypecheckerError {
                         "Unknown member '{}'\n{}\n\
                         Type {} does not have a member with name '{}'",
                         field_name, cursor_line,
-                        type_repr(target_type), field_name
+                        target_type.repr(), field_name
                     )
                 }
             }
@@ -616,7 +547,7 @@ impl DisplayError for TypecheckerError {
                     Type::Unit => format!(
                         "Forbidden type for variable\n{}\n\
                         Variables cannot be of type {}",
-                        cursor_line, type_repr(&Type::Unit)
+                        cursor_line, Type::Unit.repr(),
                     ),
                     _ => unreachable!()
                 }
@@ -624,7 +555,7 @@ impl DisplayError for TypecheckerError {
             TypecheckerErrorKind::InvalidInstantiation { typ, .. } => {
                 format!(
                     "Cannot create an instance of type {}\n{}",
-                    type_repr(typ), cursor_line
+                    typ.repr(), cursor_line
                 )
             }
             TypecheckerErrorKind::InvalidTypeArgumentArity { actual_type, actual, expected, .. } => {
@@ -634,7 +565,7 @@ impl DisplayError for TypecheckerError {
                     if *expected > 0 {
                         format!(
                             "\nProvide {} type argument{} to match type {}",
-                            expected, if *expected == 1 { "" } else { "s" }, type_repr(actual_type)
+                            expected, if *expected == 1 { "" } else { "s" }, actual_type.repr()
                         )
                     } else { "".to_string() }
                 )
@@ -651,7 +582,7 @@ impl DisplayError for TypecheckerError {
 
                         format!("This condition has already been handled by a previous case ({}:{})\n{}", pos.line, pos.col, cursor_line)
                     } else if let Some(typ) = typ {
-                        format!("Value cannot possibly be of type {} at this point", type_repr(typ))
+                        format!("Value cannot possibly be of type {} at this point", typ.repr())
                     } else {
                         "All possible cases have already been handled".to_string()
                     }
@@ -678,7 +609,7 @@ impl DisplayError for TypecheckerError {
                 format!(
                     "Type mismatch among the match-expression branches\n{}\n\
                     The type {} does not match with the type {} of the other branches",
-                    cursor_line, type_repr(actual), type_repr(expected)
+                    cursor_line, actual.repr(), expected.repr()
                 )
             }
             TypecheckerErrorKind::InvalidUninitializedEnumVariant { .. } => {
@@ -691,8 +622,8 @@ impl DisplayError for TypecheckerError {
             TypecheckerErrorKind::InvalidMatchCaseDestructuring { typ, enum_variant, .. } => {
                 let msg = match typ {
                     Some(typ) => match enum_variant {
-                        Some(variant_name) => format!("Cannot destructure variant {} of enum {}", variant_name, type_repr(typ)),
-                        None => format!("Cannot destructure an instance of type {}", type_repr(typ))
+                        Some(variant_name) => format!("Cannot destructure variant {} of enum {}", variant_name, typ.repr()),
+                        None => format!("Cannot destructure an instance of type {}", typ.repr())
                     },
                     None => "Cannot destructure instance of None".to_string(),
                 };
@@ -703,8 +634,8 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerErrorKind::InvalidMatchCaseDestructuringArity { typ, enum_variant, expected, actual, .. } => {
                 let type_displ = match enum_variant {
-                    Some(variant_name) => format!("{}.{}", type_repr(typ), variant_name),
-                    None => format!("type {}", type_repr(typ))
+                    Some(variant_name) => format!("{}.{}", typ.repr(), variant_name),
+                    None => format!("type {}", typ.repr())
                 };
                 format!(
                     "Invalid destructuring pattern for match\n{}\n\
@@ -719,7 +650,7 @@ impl DisplayError for TypecheckerError {
                         format!("Cannot destructure a tuple of {} elements into {} values", type_opts.len(), dest_args.len())
                     }
                     (BindingPattern::Tuple(_, _), typ) => {
-                        format!("Cannot destructure a value of type {} as a tuple", type_repr(typ))
+                        format!("Cannot destructure a value of type {} as a tuple", typ.repr())
                     }
                     // TODO: Proper error message here, this is totally a reachable case!
                     _ => unreachable!()
@@ -754,16 +685,16 @@ impl DisplayError for TypecheckerError {
                 let msg = if *bare_return {
                     format!(
                         "Function '{}' has return type {}, but no expression was returned",
-                        fn_name, type_repr(expected)
+                        fn_name, expected.repr()
                     )
                 } else {
                     format!(
                         "Function '{}' has return type {}, but this is of type {}",
-                        fn_name, type_repr(expected), type_repr(&actual),
+                        fn_name, expected.repr(), actual.repr(),
                     )
                 };
                 let hint = if actual == Type::Option(Box::new(Type::Unit)) {
-                    format!("\n(Note: Values of type {} are redundant and can probably just be removed)", type_repr(&actual))
+                    format!("\n(Note: Values of type {} are redundant and can probably just be removed)", actual.repr())
                 } else if expected == &Type::Unit && *fn_missing_ret_ann {
                     "\n(Note: A function without a return type annotation is assumed to return Unit.\n       Try adding a return type annotation to the function.)".to_string()
                 } else { "".to_string() };
@@ -779,14 +710,14 @@ impl DisplayError for TypecheckerError {
                     "Invalid type for method\n{}\n\
                     Expected method {} to be of type {}, but instead got {}",
                     cursor_line,
-                    fn_name, type_repr(expected), type_repr(actual)
+                    fn_name, expected.repr(), actual.repr()
                 )
             }
             TypecheckerErrorKind::VarargMismatch { typ, .. } => {
                 format!(
                     "Invalid type for vararg parameter\n{}\n\
                     Vararg parameters must be an Array type, but got {}",
-                    cursor_line, type_repr(typ)
+                    cursor_line, typ.repr()
                 )
             }
             TypecheckerErrorKind::InvalidAccess { token, is_field, is_get, .. } => {

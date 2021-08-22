@@ -22,7 +22,7 @@ pub enum ModuleLoaderError {
 pub struct ModuleLoader<'a, R: ModuleReader> {
     module_reader: &'a R,
     native_module_cache: HashMap<String, ModuleSpec>,
-    typed_module_cache: HashMap<String, Option<TypedModule>>,
+    pub typed_module_cache: HashMap<String, Option<TypedModule>>,
     pub(crate) compiled_modules: Vec<(Module, Option<Metadata>)>,
     pub(crate) ordering: Vec<ModuleId>,
 }
