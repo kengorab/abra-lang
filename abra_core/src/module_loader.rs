@@ -1,5 +1,5 @@
 use crate::parser::ast::ModuleId;
-use crate::typechecker::typechecker::TypedModule;
+use crate::typechecker::typechecker::{TypedModule, ScopeBinding, ExportedValue};
 use crate::{Error, typecheck};
 use crate::builtins::{load_native_module};
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ pub enum ModuleLoaderError {
 pub struct ModuleLoader<'a, R: ModuleReader> {
     module_reader: &'a R,
     native_module_cache: HashMap<String, ModuleSpec>,
-    pub typed_module_cache: HashMap<String, Option<TypedModule>>,
+    typed_module_cache: HashMap<String, Option<TypedModule>>,
     pub(crate) compiled_modules: Vec<(Module, Option<Metadata>)>,
     pub(crate) ordering: Vec<ModuleId>,
 }
@@ -99,6 +99,25 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
             .expect("It should have completed loading")
     }
 
+    pub fn resolve_binding_type(&self, name: &String) -> Option<&Type> {
+        self.typed_module_cache.values()
+            .filter_map(|m| {
+                if let Some(m) = m {
+                    m.global_bindings.get(name)
+                        .map(|ScopeBinding(_, typ, _)| typ)
+                        .or_else(|| {
+                            m.exports.get(name).map(|e| match e {
+                                ExportedValue::Binding(t) => t,
+                                ExportedValue::Type { backing_type, .. } => backing_type,
+                            })
+                        })
+                } else {
+                    None
+                }
+            })
+            .next()
+    }
+
     pub fn resolve_type(&self, type_name: &String) -> Option<&Type> {
         let module_name = type_name.split("/").next()
             .expect("Type name should be properly namespaced");
@@ -129,7 +148,7 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
                     let map = mod_spec.constant_names.iter().enumerate()
                         .map(|(idx, g)| (g.clone(), num_globals + idx))
                         .collect();
-                    globals.insert( module_id.clone(), map);
+                    globals.insert(module_id.clone(), map);
                 }
 
                 continue;

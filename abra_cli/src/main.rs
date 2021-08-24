@@ -1,22 +1,23 @@
 extern crate ansi_term;
 #[macro_use]
 extern crate clap;
+extern crate dirs;
 extern crate itertools;
 extern crate rustyline;
 
-mod cmd_repl;
-mod fs_module_reader;
-
 use crate::fs_module_reader::FsModuleReader;
-use crate::cmd_repl::cmd_repl;
+use crate::repl::Repl;
+use abra_core::{compile, compile_and_disassemble, Error};
 use abra_core::builtins::common::to_string;
-use abra_core::{Error, compile_and_disassemble, compile};
 use abra_core::common::display_error::DisplayError;
+use abra_core::module_loader::ModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
-use abra_core::vm::vm::{VMContext, VM};
+use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
-use abra_core::module_loader::ModuleReader;
+
+mod fs_module_reader;
+mod repl;
 
 #[derive(Clap)]
 #[clap(name = "abra", version = crate_version ! ())]
@@ -70,7 +71,7 @@ fn main() -> Result<(), ()> {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
-        SubCommand::Repl => cmd_repl(),
+        SubCommand::Repl => Ok(Repl::run()),
     }
 }
 

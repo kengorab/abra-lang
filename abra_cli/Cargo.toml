@@ -8,6 +8,7 @@ edition = "2018"
 abra_core = { path = "../abra_core" }
 ansi_term = "0.12.1"
 clap = { git = "https://github.com/clap-rs/clap" }
+dirs = "3.0.2"
 glob = "0.3.0"
 itertools = "0.9.0"
 rustyline = "9.0.0"
