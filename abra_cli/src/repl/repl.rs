@@ -213,7 +213,7 @@ impl<'a> Repl<'a> {
 
                     if self.indentations.is_empty() {
                         self.continuation_buf.push_str(&input);
-                        input = self.continuation_buf.drain(..).as_str().to_string();
+                        input = self.continuation_buf.drain(..).collect();
                     }
                 }
             }
