@@ -1533,7 +1533,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 .nth(0)
                 .expect("We know the size is 1")
         } else if !item_types.is_empty() {
-            Type::Union(item_types.into_iter().collect())
+            Type::flatten(item_types.into_iter().collect())
         } else {
             Type::Unknown
         };
@@ -3016,17 +3016,17 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         });
                     Ok((field_data, generics))
                 }
-                Type::String => Ok((NativeString::get_type().get_field_or_method(&field_name), HashMap::new())),
-                Type::Float => Ok((NativeFloat::get_type().get_field_or_method(&field_name), HashMap::new())),
-                Type::Int => Ok((NativeInt::get_type().get_field_or_method(&field_name), HashMap::new())),
+                Type::String => Ok((NativeString::get_struct_type().get_field_or_method(&field_name), HashMap::new())),
+                Type::Float => Ok((NativeFloat::get_struct_type().get_field_or_method(&field_name), HashMap::new())),
+                Type::Int => Ok((NativeInt::get_struct_type().get_field_or_method(&field_name), HashMap::new())),
                 Type::Array(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeArray::get_type().get_field_or_method(field_name);
+                    let field_data = NativeArray::get_struct_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Set(inner_type) => {
                     let generics = vec![("T".to_string(), *inner_type.clone())].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeSet::get_type().get_field_or_method(field_name);
+                    let field_data = NativeSet::get_struct_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Map(key_type, value_type) => {
@@ -3034,7 +3034,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         ("K".to_string(), *key_type.clone()),
                         ("V".to_string(), *value_type.clone()),
                     ].into_iter().collect::<HashMap<String, Type>>();
-                    let field_data = NativeMap::get_type().get_field_or_method(field_name);
+                    let field_data = NativeMap::get_struct_type().get_field_or_method(field_name);
                     Ok((field_data, generics))
                 }
                 Type::Type(_, typ, _) => match zelf.resolve_ref_type(&*typ) {
@@ -3062,11 +3062,11 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Array(_) => {
-                        let field_data = NativeArray::get_type().get_static_field_or_method(field_name);
+                        let field_data = NativeArray::get_struct_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     Type::Map(_, _) => {
-                        let field_data = NativeMap::get_type().get_static_field_or_method(field_name);
+                        let field_data = NativeMap::get_struct_type().get_static_field_or_method(field_name);
                         Ok((field_data, HashMap::new()))
                     }
                     _ => unimplemented!()

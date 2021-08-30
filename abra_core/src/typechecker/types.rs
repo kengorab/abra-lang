@@ -96,6 +96,42 @@ impl Type {
             }
         }
     }
+
+    pub fn flatten(types: Vec<Type>) -> Type {
+        let mut all_same_ref = true;
+        let mut type_ref_name = &"".to_string();
+        let iter = types.iter()
+            .filter_map(|t| if let Type::Reference(r, g) = t {
+                if type_ref_name == "" { type_ref_name = r }
+                else if r != type_ref_name { all_same_ref = false }
+                Some((r, g))
+            } else { all_same_ref = false; None } )
+            .collect::<Vec<_>>();
+
+        if all_same_ref && !iter.is_empty() {
+            let mut iter = iter.into_iter();
+            let (type_ref_name, type_ref_args) = iter.next().expect("iter is non-empty");
+            let mut type_ref_args = type_ref_args.clone();
+            for (_, type_args) in iter {
+                if type_ref_args.len() != type_args.len() { break; }
+
+                // Merge typeargs vecs together, overwriting placeholders with real values. If neither
+                // slot has a placeholder, then this cannot be flattened, so return a Union of everything.
+                for i in 0..type_ref_args.len() {
+                    if type_ref_args[i] != Type::Placeholder && type_args[i] != Type::Placeholder {
+                        return Type::Union(types);
+                    }
+
+                    if type_ref_args[i] == Type::Placeholder {
+                        type_ref_args[i] = type_args[i].clone();
+                    }
+                }
+            }
+            Type::Reference(type_ref_name.clone(), type_ref_args)
+        } else {
+            Type::Union(types)
+        }
+    }
 }
 
 impl PartialEq for Type {
@@ -1101,5 +1137,29 @@ mod test {
         let (name, typ) = result.unwrap().into_iter().next().unwrap();
         assert_eq!("T".to_string(), name);
         assert_union_eq(vec![Int, Float], typ);
+    }
+
+    #[test]
+    fn flatten_tests() {
+        let types = vec![
+            Reference("Result".to_string(), vec![Placeholder, Int]),
+            Reference("Result".to_string(), vec![Int, Placeholder]),
+        ];
+        let res = crate::typechecker::types::Type::flatten(types);
+        let expected = Reference("Result".to_string(), vec![Int, Int]);
+        assert_eq!(expected, res);
+
+        let types = vec![
+            Reference("Result".to_string(), vec![Placeholder, Int]),
+            Reference("Result".to_string(), vec![Int, Placeholder]),
+            Reference("Result".to_string(), vec![Int, String]),
+        ];
+        let res = crate::typechecker::types::Type::flatten(types);
+        let expected = Union(vec![
+            Reference("Result".to_string(), vec![Placeholder, Int]),
+            Reference("Result".to_string(), vec![Int, Placeholder]),
+            Reference("Result".to_string(), vec![Int, String]),
+        ]);
+        assert_eq!(expected, res);
     }
 }
