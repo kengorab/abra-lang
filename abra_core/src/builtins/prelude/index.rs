@@ -7,6 +7,7 @@ use crate::vm::value::Value;
 use crate::builtins::arguments::Arguments;
 use crate::vm::vm::VM;
 use itertools::Itertools;
+use crate::builtins::prelude::native_result::NativeResult;
 
 #[abra_function(signature = "println(*items: Any[])")]
 fn println(args: Arguments, vm: &mut VM) {
@@ -50,7 +51,7 @@ pub static PRELUDE_RANGE_INDEX: usize = 2;
 #[cfg(test)]
 pub static PRELUDE_STRING_INDEX: usize = 8;
 #[cfg(test)]
-pub static NUM_PRELUDE_BINDINGS: usize = 15;
+pub static NUM_PRELUDE_BINDINGS: usize = 16;
 
 pub static PRELUDE_PROCESS_INDEX: usize = 4;
 
@@ -92,6 +93,7 @@ pub fn load_module() -> ModuleSpec {
                 .with_native_value::<NativeSet>()
         )
         .add_type_impl::<Process>()
+        .add_type_impl::<NativeResult>()
         .build()
 }
 
@@ -102,7 +104,7 @@ mod test {
 
     #[test]
     fn test_importing_module_explicitly_fails() {
-        let imports = &["println", "print", "range", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set", "Process", "process"];
+        let imports = &["println", "print", "range", "Int", "Float", "Bool", "String", "Unit", "Any", "Array", "Map", "Set", "Process", "process", "Result"];
         for import in imports {
             let result = interpret_get_result(format!("import {} from prelude", import));
             assert!(result.is_err());

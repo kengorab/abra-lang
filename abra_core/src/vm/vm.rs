@@ -388,6 +388,7 @@ impl VM {
             (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(b as f64)),
             (Value::Type(TypeValue { name: name1, .. }), Value::Type(TypeValue { name: name2, .. })) => name1.partial_cmp(&name2),
             (Value::EnumInstanceObj(o), Value::Int(b)) => o.borrow().idx.partial_cmp(&(b as usize)),
+            (Value::NativeEnumInstanceObj(o), Value::Int(b)) => o.borrow().idx.partial_cmp(&(b as usize)),
             (Value::StringObj(s1), Value::StringObj(s2)) => {
                 s1.borrow()._inner.partial_cmp(&s2.borrow()._inner)
             }
@@ -641,6 +642,10 @@ impl VM {
                                 values[idx].clone()
                             } else { unreachable!() }
                         }
+                        Value::NativeEnumInstanceObj(o) => {
+                            let i = &*o.borrow();
+                            i.inst.get_field_value(idx)
+                        }
                         Value::Enum(EnumValue { variants, .. }) => {
                             let (_, variant_value) = variants[idx].clone();
                             variant_value
@@ -672,6 +677,7 @@ impl VM {
                                 Value::InstanceObj(o) => o.borrow().type_id,
                                 Value::EnumInstanceObj(o) => o.borrow().type_id,
                                 Value::NativeInstanceObj(o) => o.borrow().type_id,
+                                Value::NativeEnumInstanceObj(o) => o.borrow().type_id,
                                 _ => unreachable!("Remaining value kinds should have been handled above")
                             };
                             let (_, method) = self.load_type_methods(type_id)[idx].clone();
@@ -987,6 +993,11 @@ impl VM {
                             self.push(Value::Type(type_value))
                         }
                         Value::EnumInstanceObj(o) => {
+                            let i = &*o.borrow();
+                            let enum_value = self.load_enum(i.type_id).clone();
+                            self.push(Value::Enum(enum_value))
+                        }
+                        Value::NativeEnumInstanceObj(o) => {
                             let i = &*o.borrow();
                             let enum_value = self.load_enum(i.type_id).clone();
                             self.push(Value::Enum(enum_value))

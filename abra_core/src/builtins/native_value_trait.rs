@@ -1,17 +1,19 @@
-use crate::vm::value::{Value, TypeValue};
-use crate::typechecker::types::StructType;
+use crate::vm::value::Value;
+use crate::typechecker::types::{StructType, EnumType};
 use std::fmt::Debug;
 use downcast_rs::Downcast;
 use std::hash::{Hash, Hasher};
 use crate::vm::vm::VM;
 
 pub trait NativeTyp {
-    fn get_type() -> StructType where Self: Sized;
+    fn is_struct() -> bool where Self: Sized;
+    fn get_struct_type() -> StructType where Self: Sized;
+    fn get_enum_type() -> EnumType where Self: Sized;
 }
 
 pub trait NativeValue: NativeTyp + DynHash + Debug + Downcast {
     fn construct(type_id: usize, args: Vec<Value>) -> Value where Self: Sized;
-    fn get_type_value() -> TypeValue where Self: Sized;
+    fn get_type_value() -> Value where Self: Sized;
 
     fn is_equal(&self, other: &Box<dyn NativeValue>) -> bool;
     fn method_to_string(&self, vm: &mut VM) -> Value;

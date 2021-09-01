@@ -119,6 +119,12 @@ pub fn to_string(value: &Value, vm: &mut VM) -> String {
             let ret = &*ret.as_string().borrow();
             ret._inner.clone()
         }
+        Value::NativeEnumInstanceObj(o) => {
+            let i = &*o.borrow();
+            let v = i.inst.method_to_string(vm);
+            let v = &*v.as_string().borrow();
+            v._inner.clone()
+        }
         Value::Fn(FnValue { name, .. }) |
         Value::Closure(ClosureValue { name, .. }) => format!("<func {}>", name),
         Value::NativeFn(NativeFn { name, .. }) => format!("<func {}>", name),

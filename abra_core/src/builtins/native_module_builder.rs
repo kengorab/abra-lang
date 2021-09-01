@@ -71,20 +71,25 @@ impl ModuleSpecBuilder {
     }
 
     pub fn add_type_impl<V: NativeValue>(mut self) -> Self {
-        let t = V::get_type();
+        let (type_name, type_args, t) = if V::is_struct() {
+            let t = V::get_struct_type();
+            (t.name.clone(), t.type_args.clone(), Type::Struct(t))
+        } else {
+            let t = V::get_enum_type();
+            (t.name.clone(), t.type_args.clone(), Type::Enum(t))
+        };
 
-        let type_name = &t.name;
         self.constant_names.push(type_name.clone());
-        self.constants.push(Value::Type(V::get_type_value()));
+        self.constants.push(V::get_type_value());
 
-        self.referencable_types.insert(format!("{}/{}", &self.name, type_name), Type::Struct(t.clone()));
+        self.referencable_types.insert(format!("{}/{}", &self.name, type_name), t.clone());
         let reference = Type::Reference(
             type_name.clone(),
-            t.type_args.iter().map(|(_, t)| t.clone()).collect(),
+            type_args.into_iter().map(|(_, t)| t).collect(),
         );
         self.exports.insert(
             type_name.clone(),
-            ExportedValue::Type { reference: Some(reference), backing_type: Type::Struct(t), node: None },
+            ExportedValue::Type { reference: Some(reference), backing_type: t, node: None },
         );
 
         self
@@ -115,7 +120,7 @@ impl TypeSpec {
     }
 
     pub fn with_native_value<V: NativeValue>(mut self) -> Self {
-        self.native_value = Some(Value::Type(V::get_type_value()));
+        self.native_value = Some(V::get_type_value());
         self
     }
 }

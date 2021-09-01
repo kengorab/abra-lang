@@ -120,6 +120,7 @@ pub enum Value {
     InstanceObj(Arc<RefCell<InstanceObj>>),
     NativeInstanceObj(Arc<RefCell<NativeInstanceObj>>),
     EnumInstanceObj(Arc<RefCell<EnumInstanceObj>>),
+    NativeEnumInstanceObj(Arc<RefCell<NativeEnumInstanceObj>>),
     Fn(FnValue),
     Closure(ClosureValue),
     NativeFn(NativeFn),
@@ -162,6 +163,11 @@ impl Value {
 
     pub fn new_enum_instance_obj(o: EnumInstanceObj) -> Value {
         Value::EnumInstanceObj(Arc::new(RefCell::new(o)))
+    }
+
+    pub fn new_native_enum_instance_obj(type_id: usize, idx: usize, inst: Box<dyn NativeValue>) -> Value {
+        let inst = NativeEnumInstanceObj { type_id, idx, inst };
+        Value::NativeEnumInstanceObj(Arc::new(RefCell::new(inst)))
     }
 
     pub fn bind_fn_value(&mut self, instance: Value) {
@@ -256,6 +262,10 @@ impl Display for Value {
                 let inst = &*o.borrow();
                 write!(f, "<enum type_id={:?}>", &inst.type_id)
             }
+            Value::NativeEnumInstanceObj(o) => {
+                let inst = &*o.borrow();
+                write!(f, "<enum type_id={:?}>", &inst.type_id)
+            }
             Value::Fn(FnValue { name, .. }) |
             Value::Closure(ClosureValue { name, .. }) => write!(f, "<func {}>", name),
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
@@ -281,6 +291,7 @@ impl Hash for Value {
             Value::InstanceObj(o) => (&*o.borrow()).hash(hasher),
             Value::NativeInstanceObj(o) => (&*o.borrow()).inst.hash(hasher),
             Value::EnumInstanceObj(o) => (&*o.borrow()).hash(hasher),
+            Value::NativeEnumInstanceObj(o) => (&*o.borrow()).inst.hash(hasher),
             Value::Fn(f) => f.hash(hasher),
             Value::Closure(c) => c.hash(hasher),
             Value::NativeFn(NativeFn { name, receiver, .. }) => {
@@ -339,6 +350,19 @@ pub struct NativeInstanceObj {
 }
 
 impl PartialEq for NativeInstanceObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.inst.is_equal(&other.inst)
+    }
+}
+
+#[derive(Debug)]
+pub struct NativeEnumInstanceObj {
+    pub type_id: usize,
+    pub idx: usize,
+    pub inst: Box<dyn NativeValue>,
+}
+
+impl PartialEq for NativeEnumInstanceObj {
     fn eq(&self, other: &Self) -> bool {
         self.inst.is_equal(&other.inst)
     }

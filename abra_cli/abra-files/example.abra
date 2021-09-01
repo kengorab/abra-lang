@@ -1,6 +1,46 @@
-val x: Int? = 0
-val i = match x {
-  None(z) => 0
-  _ => 1
+func foo(): Result<Int, String> {
+  Result.Err("123")
 }
-println(i)
+
+val results = [
+  Result.Ok("a"),
+  Result.Err(1),
+  Result.Ok("1"),
+]
+
+println(Result.all(results))
+
+val f = foo()
+  .map(v => v * 2)
+  .mapErr(e => e + "!!!")
+
+if f.getValue() |f| println(f)
+else println("no value :(")
+
+/*
+
+func bar(): Result<Int, Int> {
+  //val f = foo()!
+
+  val r: Result<Int, Int>? = a?.foo()
+  match r {
+    Ok(v) => {}
+    Err(e) => {}
+    None => {}
+  }
+
+  val r: Result<Int, String> = a.foo()
+  val r: Result<Int, Int> = a.foo().mapErr(str => str.length)
+  match r {
+    Ok(v) => {}
+    Err(e) => {}
+  }
+
+  val r: Int = try a.foo().mapErr(str => str.length)
+    val r = match a.foo().mapErr(str => str.length) {
+      Ok(v) => v
+      Err e => return e
+    }
+  }
+}
+*/

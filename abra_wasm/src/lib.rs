@@ -91,6 +91,7 @@ impl Serialize for RunResultValue {
                 arr.end()
             }
             Value::EnumInstanceObj(o) => serializer.serialize_u32((&*o.borrow()).idx as u32),
+            Value::NativeEnumInstanceObj(o) => serializer.serialize_u32((&*o.borrow()).idx as u32),
             Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),
             Value::Closure(ClosureValue { name, .. }) => serializer.serialize_str(name),
             Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),

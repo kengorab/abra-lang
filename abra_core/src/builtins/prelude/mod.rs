@@ -15,6 +15,7 @@ mod native_array;
 mod native_float;
 mod native_int;
 mod native_map;
+mod native_result;
 mod native_set;
 mod native_string;
 mod process;
