@@ -51,7 +51,7 @@ dependencies = [
 
 [[package]]
 name = "abra_wasm"
-version = "0.6.13"
+version = "0.7.0"
 dependencies = [
  "abra_core",
  "js-sys",

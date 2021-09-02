@@ -1,7 +1,5 @@
 /* tslint:disable */
 
-import { Error } from './types/error'
-
 export interface Context {
     println(value: string): void;
 }
@@ -16,7 +14,6 @@ export interface TypecheckSuccess {
 
 export interface TypecheckFailure {
     success: false,
-    error: Error,
     errorMessage: string
 }
 
@@ -35,13 +32,11 @@ export function typecheckModule(moduleName: string, moduleReader: ModuleReader):
 
 export interface RunSuccess {
     success: true,
-    data: any,
     dataToString: string
 }
 
 export interface RunFailure {
     success: false,
-    error: Error,
     errorMessage: string
 }
 
@@ -68,7 +63,6 @@ export interface DisassembleSuccess {
 
 export interface DisassembleFailure {
     success: false,
-    error: Error,
     errorMessage: string
 }
 
