@@ -4,103 +4,16 @@ extern crate serde_json;
 extern crate js_sys;
 extern crate wasm_bindgen;
 
-mod js_value;
-
-use crate::js_value::error::JsWrappedError;
-use serde::ser::{Serializer, SerializeSeq};
+use serde::ser::Serializer;
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use abra_core::{Error, typecheck, compile, compile_and_disassemble};
-use abra_core::vm::value::{Value, FnValue, ClosureValue, NativeFn, TypeValue, EnumValue, NativeInstanceObj};
+use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::ModuleId;
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
 use abra_core::builtins::common::to_string;
-
-pub struct RunResultValue(Value);
-
-impl Serialize for RunResultValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        use serde::ser::SerializeMap;
-
-        match &self.0 {
-            Value::Nil => serializer.serialize_none(),
-            Value::Int(val) => serializer.serialize_i64(*val),
-            Value::Float(val) => serializer.serialize_f64(*val),
-            Value::Bool(val) => serializer.serialize_bool(*val),
-            Value::StringObj(o) => {
-                serializer.serialize_str(&*o.borrow()._inner)
-            }
-            Value::ArrayObj(o) => {
-                let arr = &*o.borrow();
-                let array = &arr._inner;
-                let mut arr = serializer.serialize_seq(Some((*array).len()))?;
-                array.iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
-                });
-                arr.end()
-            }
-            Value::TupleObj(o) => {
-                let tup = &*o.borrow();
-                let mut arr = serializer.serialize_seq(Some((*tup).len()))?;
-                tup.iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
-                });
-                arr.end()
-            }
-            Value::SetObj(o) => {
-                let set = &*o.borrow();
-                let items = &set._inner;
-                let mut set = serializer.serialize_seq(Some((*items).len()))?;
-                items.iter().for_each(|val| {
-                    set.serialize_element(&RunResultValue((*val).clone())).unwrap();
-                });
-                set.end()
-            }
-            Value::MapObj(o) => {
-                let map = &*o.borrow();
-                let map = &map._inner;
-                let mut obj = serializer.serialize_map(Some((*map).len()))?;
-                map.into_iter().for_each(|(key, val)| {
-                    obj.serialize_entry(&RunResultValue(key.clone()), &RunResultValue(val.clone())).unwrap();
-                });
-                obj.end()
-            }
-            Value::InstanceObj(o) => {
-                let inst = &*o.borrow();
-
-                let fields = &inst.fields;
-                let mut arr = serializer.serialize_seq(Some(fields.len()))?;
-                fields.into_iter().for_each(|val| {
-                    arr.serialize_element(&RunResultValue((*val).clone())).unwrap();
-                });
-                arr.end()
-            }
-            Value::NativeInstanceObj(o) => {
-                let NativeInstanceObj { inst, .. } = &*o.borrow();
-
-                let fields = &inst.get_field_values();
-                let mut arr = serializer.serialize_seq(Some(fields.len()))?;
-                for field_value in inst.get_field_values() {
-                    arr.serialize_element(&RunResultValue(field_value))?;
-                }
-
-                arr.end()
-            }
-            Value::EnumInstanceObj(o) => serializer.serialize_u32((&*o.borrow()).idx as u32),
-            Value::NativeEnumInstanceObj(o) => serializer.serialize_u32((&*o.borrow()).idx as u32),
-            Value::Fn(FnValue { name, .. }) => serializer.serialize_str(name),
-            Value::Closure(ClosureValue { name, .. }) => serializer.serialize_str(name),
-            Value::NativeFn(NativeFn { name, .. }) => serializer.serialize_str(name),
-            Value::Type(TypeValue { name, .. }) => serializer.serialize_str(name),
-            Value::Enum(EnumValue { name, .. }) => serializer.serialize_str(name),
-            Value::Module(module_id) => serializer.serialize_str(&module_id.get_name()),
-        }
-    }
-}
 
 pub struct RunResult(Result<(Value, String), Error>, String);
 
@@ -113,14 +26,12 @@ impl Serialize for RunResult {
         let mut obj = serializer.serialize_map(Some(2))?;
 
         match &self.0 {
-            Ok((value, to_str_value)) => {
+            Ok((_, to_str_value)) => {
                 obj.serialize_entry("success", &true)?;
-                obj.serialize_entry("data", &RunResultValue((*value).clone()))?;
                 obj.serialize_entry("dataToString", to_str_value)?;
             }
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("error", &JsWrappedError(&error, &self.1))?;
                 obj.serialize_entry("errorMessage", &error.get_message(&error.module_id().get_path::<&str>(None), &self.1))?;
             }
         };
@@ -146,7 +57,6 @@ impl Serialize for TypecheckedResult {
             Err(error) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
 
                 let file_name = error.module_id().get_path::<&str>(None);
                 obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
@@ -174,7 +84,6 @@ impl Serialize for DisassembleResult {
             Err(error) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("error", &JsWrappedError(error, &self.1))?;
 
                 let file_name = error.module_id().get_path::<&str>(None);
                 obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
