@@ -66,7 +66,7 @@ pub enum TypecheckerErrorKind {
     InvalidAssignmentDestructuring { binding: BindingPattern, typ: Type },
     DuplicateSplatDestructuring { token: Token },
     UnreachableCode { token: Token },
-    ReturnTypeMismatch { token: Token, fn_name: String, fn_missing_ret_ann: bool, bare_return: bool, expected: Type, actual: Type },
+    ReturnTypeMismatch { token: Token, fn_name: String, bare_return: bool, expected: Type, actual: Type },
     InvalidProtocolMethod { token: Token, fn_name: String, expected: Type, actual: Type },
     VarargMismatch { token: Token, typ: Type },
     InvalidAccess { token: Token, is_field: bool, is_get: bool },
@@ -675,7 +675,7 @@ impl DisplayError for TypecheckerError {
                     cursor_line
                 )
             }
-            TypecheckerErrorKind::ReturnTypeMismatch { fn_name, fn_missing_ret_ann, bare_return, expected, actual, .. } => {
+            TypecheckerErrorKind::ReturnTypeMismatch { fn_name, bare_return, expected, actual, .. } => {
                 let actual = match &actual {
                     Type::Option(i) if **i == Type::Placeholder => {
                         Type::Option(Box::new(expected.clone()))
@@ -695,7 +695,7 @@ impl DisplayError for TypecheckerError {
                 };
                 let hint = if actual == Type::Option(Box::new(Type::Unit)) {
                     format!("\n(Note: Values of type {} are redundant and can probably just be removed)", actual.repr())
-                } else if expected == &Type::Unit && *fn_missing_ret_ann {
+                } else if expected == &Type::Unit {
                     "\n(Note: A function without a return type annotation is assumed to return Unit.\n       Try adding a return type annotation to the function.)".to_string()
                 } else { "".to_string() };
 
