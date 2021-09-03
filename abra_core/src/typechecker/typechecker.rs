@@ -15,10 +15,18 @@ use std::iter::FromIterator;
 pub struct ScopeBinding(pub /*token:*/ Token, pub /*type:*/ Type, pub /*is_mutable:*/ bool);
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct FnScopeKind {
+    token: Token,
+    name: String,
+    is_recursive: bool,
+    return_type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ScopeKind {
     Root,
     Block,
-    Function(/*token: */ Token, /*name: */ String, /*is_recursive: */ bool),
+    Function(FnScopeKind),
     Lambda(/*token: */ Token),
     TypeDef,
     Loop,
@@ -61,7 +69,6 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
         cur_typedef: None,
         scopes: vec![Scope::new(ScopeKind::Root)],
         referencable_types: HashMap::new(),
-        returns: vec![],
         exports: HashMap::new(),
         module_loader: loader,
     };
@@ -125,7 +132,6 @@ pub struct Typechecker<'a, R: ModuleReader> {
     cur_typedef: Option<Type>,
     scopes: Vec<Scope>,
     referencable_types: HashMap<String, Type>,
-    returns: Vec<TypedAstNode>,
     exports: HashMap<String, ExportedValue>,
     module_loader: &'a ModuleLoader<'a, R>,
 }
@@ -136,7 +142,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         let mut fn_depth = 0;
         for scope in self.scopes.iter().rev() {
             match &scope.kind {
-                ScopeKind::Function(_, _, _) | ScopeKind::Root => fn_depth += 1,
+                ScopeKind::Function(_) | ScopeKind::Root => fn_depth += 1,
                 _ => {}
             }
             match scope.bindings.get(name) {
@@ -345,10 +351,10 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     //   }
                     std::mem::swap(&mut self.scopes, &mut scopes);
                     for Scope { kind, .. } in scopes {
-                        if let ScopeKind::Function(tok, _, is_rec) = kind {
+                        if let ScopeKind::Function(FnScopeKind { token: tok, is_recursive: is_rec, .. }) = kind {
                             for s in &mut self.scopes {
                                 match &mut s.kind {
-                                    ScopeKind::Function(tok_real, _, ref mut is_rec_real) if *tok_real == tok => {
+                                    ScopeKind::Function(FnScopeKind { token: tok_real, is_recursive: ref mut is_rec_real, .. }) if *tok_real == tok => {
                                         *is_rec_real = is_rec;
                                         break;
                                     }
@@ -1708,7 +1714,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             true
         } else { false };
 
-        let mut scope = Scope::new(ScopeKind::Function(name.clone(), func_name.clone(), false));
+        let mut scope = Scope::new(ScopeKind::Function(FnScopeKind {
+            token: name.clone(),
+            name: func_name.clone(),
+            is_recursive: false,
+            // Use Unknown temporarily; return type might be dependent on arguments if there are generics that need to be resolved
+            return_type: Type::Unknown,
+        }));
         let mut seen = HashMap::<String, Token>::new();
         for type_arg in &type_args {
             let name = Token::get_ident_name(type_arg);
@@ -1746,9 +1758,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 }
             })
             .collect::<Vec<_>>();
-        let initial_ret_type = ret_ann_type.as_ref()
+        let ret_type = ret_ann_type.as_ref()
             .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
-        if initial_ret_type.has_unbound_generic() {
+        if ret_type.has_unbound_generic() {
             // The valid type args for a return type are all of the generics available in scope, minus
             // the fn type args that aren't referenced in the arguments (and are thus unbound).
             let arg_type_args = args.iter()
@@ -1761,10 +1773,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             let generics_in_scope = self.get_generics_in_scope();
             let valid_return_type_args = generics_in_scope.difference(&unresolvable_type_arg_names).collect::<HashSet<_>>();
 
-            let ret_generics = initial_ret_type.extract_unbound_generics();
+            let ret_generics = ret_type.extract_unbound_generics();
             for name in ret_generics {
                 if !valid_return_type_args.contains(&&name) {
-                    let ret_type = ret_ann_type.expect("Should be Some if initial_ret_type is anything but Unknown");
+                    let ret_type = ret_ann_type.expect("Should be Some if ret_type is anything but Unknown");
                     let ident_token = ret_type.get_ident();
                     let ret_type_name = Token::get_ident_name(&ident_token);
                     return Err(TypecheckerErrorKind::UnboundGeneric(ident_token, ret_type_name));
@@ -1772,73 +1784,39 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             }
         }
 
-        // ...we pop off the scope, add the function there, and then push the scope back on.
+        // ...we pop off the scope, add the function there, and then push the scope back on. We also add the
+        // return type to the fn's scope (this is used when visiting returns later on).
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
-        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(initial_ret_type.clone()), is_variadic, is_enum_constructor: false });
-        let scope = self.scopes.pop().unwrap();
+        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false });
+        let mut scope = self.scopes.pop().unwrap();
         self.add_binding(&func_name, &name, &func_type, false);
+        if let ScopeKind::Function(fn_scope_kind) = &mut scope.kind {
+            fn_scope_kind.return_type = ret_type.clone();
+        } else { unreachable!(); }
         self.scopes.push(scope);
 
-        let mut old_returns = vec![];
-        std::mem::swap(&mut self.returns, &mut old_returns);
         let mut body = self.visit_fn_body(body)?;
-        std::mem::swap(&mut old_returns, &mut self.returns);
-        let returns = old_returns;
 
-        let ret_type = match &ret_ann_type {
-            None => {
-                body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0))));
-                Type::Unit
-            }
-            Some(ret_type) => {
-                let typ = self.type_from_type_ident(ret_type, false)?;
-                match body.last_mut() {
-                    None => Type::Unit,
-                    Some(mut node) => {
-                        if Self::all_branches_terminate(node).is_some() {
-                            typ
-                        } else {
-                            let node_type = node.get_type();
+        match &ret_type {
+            Type::Unit => body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0)))),
+            typ => {
+                if let Some(mut node) = body.last_mut() {
+                    if Self::all_branches_terminate(node).is_none() {
+                        let node_type = node.get_type();
 
-                            if !self.are_types_equivalent(&mut node, &typ)? {
-                                let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
-                                return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: false, expected: typ, actual: node_type });
-                            } else {
-                                typ
-                            }
+                        if !self.are_types_equivalent(&mut node, &typ)? {
+                            let token = body.last().map_or(name.clone(), |node| node.get_token().clone());
+                            return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name: func_name.clone(), bare_return: false, expected: typ.clone(), actual: node_type });
                         }
                     }
                 }
             }
-        };
-
-        let returns_iter = returns.into_iter()
-            .map(|n| if let TypedAstNode::ReturnStatement(tok, node) = n { (tok, node) } else { unreachable!() });
-        for (return_tok, node) in returns_iter {
-            if let Some(ret_node) = node.target {
-                let ret_node_typ = ret_node.get_type();
-                let token = ret_node.get_token().clone();
-                let mut ret_node = ret_node;
-                if !self.are_types_equivalent(&mut *ret_node, &ret_type)? {
-                    return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name: func_name.clone(), fn_missing_ret_ann: ret_ann_type.is_none(), bare_return: false, expected: ret_type, actual: ret_node_typ });
-                }
-            } else if ret_type != Type::Unit {
-                let ret_ann_type = ret_ann_type.as_ref()
-                    .map_or(Ok(Type::Unit), |t| self.type_from_type_ident(&t, false))?;
-                return Err(TypecheckerErrorKind::ReturnTypeMismatch { token: return_tok, fn_name: func_name.clone(), fn_missing_ret_ann: false, bare_return: true, expected: ret_ann_type, actual: Type::Unit });
-            }
         }
 
         let fn_scope = self.scopes.pop().unwrap();
-        let is_recursive = if let ScopeKind::Function(_, _, is_recursive) = fn_scope.kind {
+        let is_recursive = if let ScopeKind::Function(FnScopeKind { is_recursive, .. }) = fn_scope.kind {
             is_recursive
         } else { unreachable!("A function's scope should always be of ScopeKind::Function") };
-
-        // Rewrite the return type of the previously-inserted func_type stub
-        let ScopeBinding(_, func_type, _) = self.get_binding_mut(&func_name).unwrap();
-        if let Type::Fn(FnType { ret_type: return_type, .. }) = func_type {
-            *return_type = Box::new(ret_type.clone());
-        }
         let scope_depth = self.scopes.len() - 1;
 
         if is_exported {
@@ -2150,7 +2128,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
                 if let Type::Fn(_) = typ {
                     for scope in self.scopes.iter_mut().rev() {
-                        if let ScopeKind::Function(_, func_name, ref mut is_recursive) = &mut scope.kind {
+                        if let ScopeKind::Function(FnScopeKind { name: func_name, ref mut is_recursive, .. }) = &mut scope.kind {
                             if &name == func_name {
                                 *is_recursive = true;
                             }
@@ -2871,25 +2849,29 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
     fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let mut iter = self.scopes.iter_mut().rev();
-        let has_fn_parent = loop {
+        let parent_fn_scope = loop {
             match iter.next().map(|s| &s.kind) {
-                Some(ScopeKind::Function(_, _, _)) | Some(ScopeKind::Lambda(_)) => break true,
-                Some(ScopeKind::Root) => break false,
+                Some(ScopeKind::Function(s)) => break Some((s.name.clone(), s.return_type.clone())),
+                Some(ScopeKind::Lambda(_)) => unimplemented!("See #336"),
+                Some(ScopeKind::Root) => break None,
                 _ => continue
             }
         };
 
-        if has_fn_parent {
-            let target = match node {
-                None => None,
-                Some(target) => {
-                    let target = self.visit(*target)?;
-                    Some(Box::new(target))
+        if let Some((fn_name, ret_type)) = parent_fn_scope {
+            let target = if let Some(target) = node {
+                let mut ret_node = self.visit(*target)?;
+                let ret_node_typ = ret_node.get_type();
+                if !self.are_types_equivalent(&mut ret_node, &ret_type)? {
+                    let token = ret_node.get_token().clone();
+                    return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name, bare_return: false, expected: ret_type.clone(), actual: ret_node_typ });
                 }
-            };
-            let node = TypedAstNode::ReturnStatement(token, TypedReturnNode { typ: Type::Unit, target });
-            self.returns.push(node.clone());
-            Ok(node)
+                Some(Box::new(ret_node))
+            } else if ret_type != Type::Unit {
+                return Err(TypecheckerErrorKind::ReturnTypeMismatch { token, fn_name, bare_return: true, expected: ret_type.clone(), actual: Type::Unit });
+            } else { None };
+
+            Ok(TypedAstNode::ReturnStatement(token, TypedReturnNode { typ: Type::Unit, target }))
         } else {
             Err(TypecheckerErrorKind::InvalidTerminator(token))
         }
@@ -4822,7 +4804,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 26), 123),
             fn_name: "abc".to_string(),
-            fn_missing_ret_ann: false,
             bare_return: false,
             expected: Type::Bool,
             actual: Type::Int,
@@ -8763,7 +8744,7 @@ mod tests {
     #[test]
     fn typecheck_return_statements_unreachable_code_errors() {
         let err = test_typecheck("\
-          func f() {\n\
+          func f(): Int {\n\
             return 3\n\
             return 6\n\
           }\
@@ -8774,7 +8755,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
-          func f() {\n\
+          func f(): Int {\n\
             if true { return 1 } else { return 2 }\n\
             return 3\n\
           }\
@@ -8785,7 +8766,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
-          func f() {\n\
+          func f(): Int {\n\
             if true {\
               return 1\n\
               val x = 5 + 4\n\
@@ -8798,7 +8779,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
-          func f() {\n\
+          func f(): Int {\n\
             while true {\
               return 1\n\
               val x = 5 + 4\n\
@@ -8811,7 +8792,7 @@ mod tests {
         assert_eq!(expected, err);
 
         let err = test_typecheck("\
-          func f() {\n\
+          func f(): Int {\n\
             for _ in [1, 2] {\
               return 1\n\
               val x = 5 + 4\n\
@@ -8830,7 +8811,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(1, 27), 5),
             fn_name: "f".to_string(),
-            fn_missing_ret_ann: false,
             bare_return: false,
             actual: Type::Int,
             expected: Type::String,
@@ -8846,7 +8826,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Int(Position::new(3, 8), 5),
             fn_name: "f".to_string(),
-            fn_missing_ret_ann: false,
             bare_return: false,
             actual: Type::Int,
             expected: Type::String,
@@ -8862,7 +8841,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::LBrack(Position::new(2, 18), false),
             fn_name: "f".to_string(),
-            fn_missing_ret_ann: true,
             bare_return: false,
             actual: Type::Array(Box::new(Type::Unknown)),
             expected: Type::Unit,
@@ -8878,7 +8856,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::LBrack(Position::new(2, 18), false),
             fn_name: "f".to_string(),
-            fn_missing_ret_ann: false,
             bare_return: false,
             actual: Type::Array(Box::new(Type::Unknown)),
             expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
@@ -8893,7 +8870,6 @@ mod tests {
         let expected = TypecheckerErrorKind::ReturnTypeMismatch {
             token: Token::Return(Position::new(2, 1), true),
             fn_name: "f".to_string(),
-            fn_missing_ret_ann: false,
             bare_return: true,
             actual: Type::Unit,
             expected: Type::Map(Box::new(Type::String), Box::new(Type::Int)),
