@@ -2210,6 +2210,61 @@ mod tests {
         let result = interpret(input);
         let expected = Value::Bool(true);
         assert_eq!(expected, result);
+
+        let input = r#"
+          func f(): Int {
+            if true {
+              val x = 12
+              return 24
+            }
+            return 6
+          }
+          f()
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func f(): Int {
+            while true {
+              val x = 12
+              return 24
+            }
+          }
+          f()
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func f(): Int {
+            for _ in [1, 2, 3] {
+              val x = 12
+              return 24
+            }
+          }
+          f()
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
+
+        let input = r#"
+          func f(): Int {
+            match "a" {
+              _ => {
+                val x = 12
+                return 24
+              }
+            }
+          }
+          f()
+        "#;
+        let result = interpret(input);
+        let expected = Value::Int(24);
+        assert_eq!(expected, result);
     }
 
     #[test]
