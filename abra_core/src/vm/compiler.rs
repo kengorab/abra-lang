@@ -2139,15 +2139,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let mut locals_to_pop = self.locals.split_off(split_idx as usize);
         let mut opt_first_local = None;
-        // Find the first local declared in the nearest function scope, and store the value on
-        // top of stack into that slot. If there are no locals in the function's scope, we need
-        // to leave this value on top of the stack so it will persist once the function's call frame
-        // ends. So we temporarily remove it from the `locals_to_pop`, since we don't want to emit a pop
-        // instruction for it.
-        let current_fn_scope = self.scopes.iter().rev().find(|s| s.kind == ScopeKind::Func).expect("If we're returning, then we must be in a fn scope");
-        if let Some(idx) = current_fn_scope.first_local_idx {
-            self.write_store_local_instr("<ret>", idx, line);
-        }
+        // Store the return value into slot 0 (the return slot). Then, we need to make sure we don't
+        // emit a pop instruction for this local, so we temporarily remove it from the locals_to_pop
+        // vec, then re-push it afterwards.
+        self.write_store_local_instr("<ret>", 0, line);
         if locals_to_pop.len() != 0 {
             opt_first_local = Some(locals_to_pop.remove(0));
         }
@@ -5452,11 +5447,13 @@ mod tests {
                     name: "f".to_string(),
                     code: vec![
                         Opcode::T,
-                        Opcode::JumpIfF(3),
+                        Opcode::JumpIfF(4),
                         Opcode::Constant(1, 0),
-                        Opcode::Jump(3),
+                        Opcode::LStore(0),
+                        Opcode::Jump(4),
                         Opcode::Pop(1),
                         Opcode::Constant(1, 1),
+                        Opcode::LStore(0),
                         Opcode::Jump(0),
                         Opcode::Return,
                     ],
