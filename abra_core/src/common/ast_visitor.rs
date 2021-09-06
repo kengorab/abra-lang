@@ -1,4 +1,4 @@
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, SetNode, ImportNode};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, SetNode, ImportNode, TryNode};
 use crate::parser::ast::AstNode::*;
 use crate::lexer::tokens::Token;
 use crate::typechecker::types::Type;
@@ -33,6 +33,7 @@ pub trait AstVisitor<V, E> {
             ImportStatement(tok, node) => self.visit_import(tok, node),
             ForLoop(tok, node) => self.visit_for_loop(tok, node),
             Accessor(tok, node) => self.visit_accessor(tok, node),
+            Try(tok, node) => self.visit_try(tok, node),
             Lambda(tok, node) => self.visit_lambda(tok, node, None),
             Tuple(tok, nodes) => self.visit_tuple(tok, nodes),
         }
@@ -64,6 +65,7 @@ pub trait AstVisitor<V, E> {
     fn visit_return(&mut self, token: Token, node: Option<Box<AstNode>>) -> Result<V, E>;
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<V, E>;
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<V, E>;
+    fn visit_try(&mut self, token: Token, node: TryNode) -> Result<V, E>;
     fn visit_lambda(&mut self, token: Token, node: LambdaNode, args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>) -> Result<V, E>;
     fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<V, E>;
 }

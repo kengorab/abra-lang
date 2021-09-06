@@ -1,46 +1,42 @@
-func foo(): Result<Int, String> {
-  Result.Err("123")
-}
+func f(): Int {
+  //if true {
+  //  val x = 12
+  //  return 24
+  //}
+  //return 6
 
-val results = [
-  Result.Ok("a"),
-  Result.Err(1),
-  Result.Ok("1"),
-]
+  //while true {
+  //  val x = 12
+  //  return 24
+  //}
 
-println(Result.all(results))
+  //for _ in [1, 2, 3] {
+  //  val x = 12
+  //  return 24
+  //}
 
-val f = foo()
-  .map(v => v * 2)
-  .mapErr(e => e + "!!!")
-
-if f.getValue() |f| println(f)
-else println("no value :(")
-
-/*
-
-func bar(): Result<Int, Int> {
-  //val f = foo()!
-
-  val r: Result<Int, Int>? = a?.foo()
-  match r {
-    Ok(v) => {}
-    Err(e) => {}
-    None => {}
-  }
-
-  val r: Result<Int, String> = a.foo()
-  val r: Result<Int, Int> = a.foo().mapErr(str => str.length)
-  match r {
-    Ok(v) => {}
-    Err(e) => {}
-  }
-
-  val r: Int = try a.foo().mapErr(str => str.length)
-    val r = match a.foo().mapErr(str => str.length) {
-      Ok(v) => v
-      Err e => return e
+  match "a" {
+    _ => {
+      val x = 12
+      return 24
     }
   }
 }
-*/
+//println(f())
+
+//type List<T> { items: T[] }
+
+func doSomething(): Result<Int, String> =
+  Result.Ok(123)
+  //Result.Err("asdf")
+
+func foo(): Result<Int, String> {
+  val i = try doSomething()
+  //val i = match doSomething() {
+  //  Result.Ok(v) => v
+  //  Result.Err e => return e
+  //}
+  Result.Ok(i + 1)
+}
+
+println(foo())

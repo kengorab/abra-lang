@@ -37,7 +37,7 @@ pub enum TypecheckerErrorKind {
     IncorrectArity { token: Token, expected: usize, actual: usize },
     UnexpectedParamName { token: Token },
     DuplicateParamName { token: Token },
-    InvalidTerminator(Token),
+    InvalidTerminatorPlacement(Token),
     InvalidRequiredArgPosition(Token),
     InvalidVarargPosition(Token),
     InvalidVarargUsage(Token),
@@ -74,6 +74,9 @@ pub enum TypecheckerErrorKind {
     InvalidModuleImport { token: Token, module_name: String },
     InvalidImportValue { ident: Token },
     ForbiddenImportAliasing { import_token: Token, module_id: ModuleId },
+    InvalidTryPlacement { try_token: Token, fn_ctx: Option<(Token, Type)>  },
+    InvalidTryType { try_token: Token, typ: Type },
+    TryMismatch { try_token: Token, try_type: Type, return_type: Type },
 }
 
 #[derive(Debug, PartialEq)]
@@ -108,7 +111,7 @@ impl TypecheckerError {
             TypecheckerErrorKind::IncorrectArity { token, .. } => token,
             TypecheckerErrorKind::UnexpectedParamName { token } => token,
             TypecheckerErrorKind::DuplicateParamName { token } => token,
-            TypecheckerErrorKind::InvalidTerminator(token) => token,
+            TypecheckerErrorKind::InvalidTerminatorPlacement(token) => token,
             TypecheckerErrorKind::InvalidRequiredArgPosition(token) => token,
             TypecheckerErrorKind::InvalidVarargPosition(token) => token,
             TypecheckerErrorKind::InvalidVarargUsage(token) => token,
@@ -145,6 +148,9 @@ impl TypecheckerError {
             TypecheckerErrorKind::InvalidModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidImportValue { ident: token } => token,
             TypecheckerErrorKind::ForbiddenImportAliasing { import_token, .. } => import_token,
+            TypecheckerErrorKind::InvalidTryPlacement { try_token, .. } => try_token,
+            TypecheckerErrorKind::InvalidTryType { try_token, .. } => try_token,
+            TypecheckerErrorKind::TryMismatch { try_token, .. } => try_token,
         }
     }
 }
@@ -403,7 +409,7 @@ impl DisplayError for TypecheckerError {
                     cursor_line,
                 )
             }
-            TypecheckerErrorKind::InvalidTerminator(token) => {
+            TypecheckerErrorKind::InvalidTerminatorPlacement(token) => {
                 let (keyword, msg) = match token {
                     Token::Break(_) => ("break", "A break keyword cannot appear outside of a loop"),
                     Token::Continue(_) => ("continue", "A continue keyword cannot appear outside of a loop"),
@@ -768,6 +774,36 @@ impl DisplayError for TypecheckerError {
                         cursor_line, module_id.get_name(), suggestion
                     )
                 }
+            }
+            TypecheckerErrorKind::InvalidTryPlacement { fn_ctx,.. } => {
+                if let Some((fn_token, fn_return_type)) = fn_ctx {
+                    let cursor_line2 = Self::get_underlined_line(lines, fn_token);
+
+                    format!(
+                        "Invalid enclosing function for try expression\n{}\n\
+                        The enclosing function has return type {}, which is not Tryable\n{}\n\
+                        Cannot bubble up failed try values from a function with this return type",
+                        cursor_line, fn_return_type.repr(), cursor_line2
+                    )
+                } else {
+                    format!(
+                        "Invalid try expression\n{}\nA try expression cannot appear outside of a function",
+                        cursor_line,
+                    )
+                }
+            }
+            TypecheckerErrorKind::InvalidTryType { typ, .. } => {
+                format!(
+                    "Invalid try expression\n{}\nThe type {} is not Tryable",
+                    cursor_line, typ.repr(),
+                )
+            }
+            TypecheckerErrorKind::TryMismatch { try_type, return_type, .. } => {
+                format!(
+                    "Invalid type for try expression\n{}\n\
+                    The expression would result in a value of type {}, but the function has a return type of {}",
+                    cursor_line, try_type.repr(), return_type.repr(),
+                )
             }
         };
 
@@ -1199,7 +1235,7 @@ Expected 1 required argument, but 3 were passed"
     fn test_invalid_terminator() {
         let module_id = ModuleId::from_name("test");
         let src = "func abc() { break }".to_string();
-        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminator(Token::Break(Position::new(1, 14))) };
+        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Break(Position::new(1, 14))) };
 
         let expected = format!("\
 Error at /tests/test.abra:1:14
@@ -1212,7 +1248,7 @@ A break keyword cannot appear outside of a loop"
 
         let module_id = ModuleId::from_name("test");
         let src = "func abc() { continue }".to_string();
-        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminator(Token::Continue(Position::new(1, 14))) };
+        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Continue(Position::new(1, 14))) };
 
         let expected = format!("\
 Error at /tests/test.abra:1:14
@@ -1225,7 +1261,7 @@ A continue keyword cannot appear outside of a loop"
 
         let module_id = ModuleId::from_name("test");
         let src = "while true { return }".to_string();
-        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminator(Token::Return(Position::new(1, 14), false)) };
+        let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Return(Position::new(1, 14), false)) };
 
         let expected = format!("\
 Error at /tests/test.abra:1:14

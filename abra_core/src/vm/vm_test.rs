@@ -2570,4 +2570,31 @@ mod tests {
         let expected = Value::Int(2);
         assert_eq!(expected, chunk);
     }
+
+    #[test]
+    fn interpret_try_expression() {
+        // Test with Ok value
+        let chunk = interpret(r#"
+          func foo(): Result<Int, String> = Result.Ok(23)
+          func bar(): Result<Int, String> {
+            val i = try foo()
+            Result.Ok(i + 1)
+          }
+          bar().getValue()
+        "#);
+        let expected = Value::Int(24);
+        assert_eq!(expected, chunk);
+
+        // Test with Err value
+        let chunk = interpret(r#"
+          func foo(): Result<Int, String> = Result.Err("asdf")
+          func bar(): Result<Int, String> {
+            val i = try foo()
+            Result.Ok(i + 1)
+          }
+          bar().getError()
+        "#);
+        let expected = new_string_obj("asdf");
+        assert_eq!(expected, chunk);
+    }
 }

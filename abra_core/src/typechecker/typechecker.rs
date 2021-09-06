@@ -2,7 +2,7 @@ use crate::builtins::native_value_trait::NativeTyp;
 use crate::builtins::prelude::{NativeArray, NativeMap, NativeSet, NativeFloat, NativeInt, NativeString};
 use crate::common::ast_visitor::AstVisitor;
 use crate::lexer::tokens::{Token, Position};
-use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind};
+use crate::parser::ast::{AstNode, AstLiteralNode, UnaryNode, BinaryNode, BinaryOp, UnaryOp, ArrayNode, BindingDeclNode, AssignmentNode, IndexingNode, IndexingMode, GroupedNode, IfNode, FunctionDeclNode, InvocationNode, WhileLoopNode, ForLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, TypeIdentifier, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode};
 use crate::typechecker::types::{Type, StructType, FnType, EnumType, StructTypeField, FieldSpec};
 use crate::typechecker::typed_ast::{TypedAstNode, TypedLiteralNode, TypedUnaryNode, TypedBinaryNode, TypedArrayNode, TypedBindingDeclNode, TypedAssignmentNode, TypedIndexingNode, TypedGroupedNode, TypedIfNode, TypedFunctionDeclNode, TypedIdentifierNode, TypedInvocationNode, TypedWhileLoopNode, TypedForLoopNode, TypedTypeDeclNode, TypedMapNode, TypedAccessorNode, TypedInstantiationNode, AssignmentTargetKind, TypedLambdaNode, TypedEnumDeclNode, TypedMatchNode, TypedReturnNode, TypedTupleNode, TypedSetNode, TypedTypeDeclField, TypedImportNode, TypedMatchKind, TypedMatchCaseArgument};
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, InvalidAssignmentTargetReason, TypecheckerError};
@@ -2826,7 +2826,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         if has_loop_parent {
             Ok(TypedAstNode::Break(token))
         } else {
-            Err(TypecheckerErrorKind::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminatorPlacement(token))
         }
     }
 
@@ -2843,7 +2843,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         if has_loop_parent {
             Ok(TypedAstNode::Continue(token))
         } else {
-            Err(TypecheckerErrorKind::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminatorPlacement(token))
         }
     }
 
@@ -2873,7 +2873,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
             Ok(TypedAstNode::ReturnStatement(token, TypedReturnNode { typ: Type::Unit, target }))
         } else {
-            Err(TypecheckerErrorKind::InvalidTerminator(token))
+            Err(TypecheckerErrorKind::InvalidTerminatorPlacement(token))
         }
     }
 
@@ -3173,6 +3173,93 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         } else { (token, is_opt_safe) };
 
         Ok(TypedAstNode::Accessor(token, TypedAccessorNode { typ, target: Box::new(target), field_ident, field_idx, is_opt_safe, is_method, is_readonly }))
+    }
+
+    fn visit_try(&mut self, token: Token, node: TryNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
+        let mut iter = self.scopes.iter_mut().rev();
+        let parent_fn_ctx = loop {
+            match iter.next().map(|s| &s.kind) {
+                Some(ScopeKind::Function(s)) => break Some((s.token.clone(), s.return_type.clone())),
+                Some(ScopeKind::Lambda(_)) => unimplemented!("See #336"),
+                Some(ScopeKind::Root) => break None,
+                _ => continue
+            }
+        };
+        let parent_fn_return_type = match parent_fn_ctx {
+            None => return Err(TypecheckerErrorKind::InvalidTryPlacement { try_token: token, fn_ctx: None }),
+            Some((fn_token, return_type)) => if return_type.unwrapped_tryable_type().is_none() {
+                return Err(TypecheckerErrorKind::InvalidTryPlacement { try_token: token, fn_ctx: Some((fn_token, return_type)) });
+            } else {
+                return_type
+            }
+        };
+
+        let typed_expr = self.visit(*node.expr)?;
+        let expr_type = typed_expr.get_type();
+        let unwrapped_type = match expr_type.unwrapped_tryable_type() {
+            None => return Err(TypecheckerErrorKind::InvalidTryType { try_token: token, typ: expr_type }),
+            Some(unwrapped_type) => {
+                // TODO: This is very one-off; clean this up once there's a proper `Try` "interface"
+                match (&expr_type, &parent_fn_return_type) {
+                    (Type::Reference(name1, args1), Type::Reference(name2, args2)) if name1 == name2 && name1 == "Result" => {
+                        debug_assert!(args1.len() == 2 && args2.len() == 2);
+                        match (args1.get(1), args2.get(1)) {
+                            (Some(t1), Some(t2)) => {
+                                if !t1.is_equivalent_to(t2, &|typ_name| self.resolve_type(typ_name)) {
+                                    return Err(TypecheckerErrorKind::TryMismatch { try_token: token, try_type: expr_type, return_type: parent_fn_return_type });
+                                }
+                            }
+                            _ => unreachable!("Result<V, E> should always have 2 type arguments")
+                        }
+                    }
+                    _ => unimplemented!("Only the Result<V, E> type is tryable")
+                }
+
+                unwrapped_type
+            }
+        };
+
+        let res = TypedAstNode::MatchExpression(
+            token.clone(),
+            TypedMatchNode {
+                typ: unwrapped_type.clone(),
+                target: Box::new(typed_expr),
+                branches: vec![
+                    (
+                        TypedMatchKind::EnumVariant {
+                            variant_idx: 0,
+                            args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))])
+                        },
+                        None,
+                        vec![
+                            TypedAstNode::Identifier(
+                                token.clone(),
+                                TypedIdentifierNode { typ: unwrapped_type.clone(), name: "v".to_string(), is_mutable: false, scope_depth: 1 }
+                            )
+                        ]
+                    ),
+                    (
+                        TypedMatchKind::EnumVariant { variant_idx: 1, args: None },
+                        Some("e".to_string()),
+                        vec![
+                            TypedAstNode::ReturnStatement(
+                                token.clone(),
+                                TypedReturnNode {
+                                    typ: Type::Unit,
+                                    target: Some(Box::new(
+                                        TypedAstNode::Identifier(
+                                            token.clone(),
+                                            TypedIdentifierNode { typ: expr_type.clone(), name: "e".to_string(), is_mutable: false, scope_depth: 1 }
+                                        )
+                                    ))
+                                }
+                            )
+                        ]
+                    )
+                ]
+            }
+        );
+        Ok(res)
     }
 
     fn visit_lambda(
@@ -7334,22 +7421,22 @@ mod tests {
     #[test]
     fn typecheck_break_statement_error() {
         let error = test_typecheck("if true { break }").unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Break(Position::new(1, 11)));
+        let expected = TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Break(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc() { break }").unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Break(Position::new(1, 14)));
+        let expected = TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Break(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 
     #[test]
     fn typecheck_continue_statement_error() {
         let error = test_typecheck("if true { continue }").unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Continue(Position::new(1, 11)));
+        let expected = TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Continue(Position::new(1, 11)));
         assert_eq!(expected, error);
 
         let error = test_typecheck("func abc() { continue }").unwrap_err();
-        let expected = TypecheckerErrorKind::InvalidTerminator(Token::Continue(Position::new(1, 14)));
+        let expected = TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Continue(Position::new(1, 14)));
         assert_eq!(expected, error)
     }
 
@@ -9193,6 +9280,77 @@ mod tests {
             token: ident_token!((2, 14), "z"),
             target_type: Type::Module(ModuleId::from_name(".mod2")),
             module_id: Some(ModuleId::from_name(".mod2")),
+        };
+        assert_eq!(expected, res.unwrap_err());
+    }
+
+    #[test]
+    fn typecheck_try_expression() {
+        let res = test_typecheck("\
+          func a(): Result<Int, String> {\n\
+            val a = try Result.Ok(123)\n\
+            Result.Ok(a + 1)\n\
+          }\
+        ");
+        assert!(res.is_ok());
+
+        let res = test_typecheck("\
+          func r(): Result<Int, String> = Result.Err(\"asdf\")\n\
+          func a(): Result<Float, String> {\n\
+            val a = try r()\n\
+            Result.Ok(a + 0.1)\n\
+          }\
+        ");
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn typecheck_try_expression_errors() {
+        // Try outside of a function
+        let res = test_typecheck("val a = try Result.Ok(123)");
+        let expected = TypecheckerErrorKind::InvalidTryPlacement {
+            try_token: Token::Try(Position::new(1, 9)),
+            fn_ctx: None
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        // Try within non-Tryable-returning function
+        let res = test_typecheck("\
+          func a(): Int {\n\
+            val a = try Result.Ok(123)\n\
+            Result.Ok(a + 1)\n\
+          }\
+        ");
+        let expected = TypecheckerErrorKind::InvalidTryPlacement {
+            try_token: Token::Try(Position::new(2, 9)),
+            fn_ctx: Some((ident_token!((1, 6), "a"), Type::Int))
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        // Try on non-tryable type
+        let res = test_typecheck("\
+          func a(): Result<Int, Int> {\n\
+            val a = try [1, 2, 3]\n\
+            Result.Ok(a + 1)\n\
+          }\
+        ");
+        let expected = TypecheckerErrorKind::InvalidTryType {
+            try_token: Token::Try(Position::new(2, 9)),
+            typ: Type::Array(Box::new(Type::Int)),
+        };
+        assert_eq!(expected, res.unwrap_err());
+
+        // Try expression's error type does not match function's return type
+        let res = test_typecheck("\
+          func a(): Result<Int, Int> {\n\
+            val a = try Result.Err(\"asdf\")
+            Result.Ok(a + 1)\n\
+          }\
+        ");
+        let expected = TypecheckerErrorKind::TryMismatch {
+            try_token: Token::Try(Position::new(2, 9)),
+            try_type: Type::Reference("Result".to_string(), vec![Type::Placeholder, Type::String]),
+            return_type: Type::Reference("Result".to_string(), vec![Type::Int, Type::Int]),
         };
         assert_eq!(expected, res.unwrap_err());
     }

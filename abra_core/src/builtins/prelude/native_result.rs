@@ -62,6 +62,15 @@ impl NativeResult {
         self.value.clone()
     }
 
+    #[abra_method(signature = "getError(): E?")]
+    fn get_error(&self) -> Value {
+        if self.is_ok {
+            return Value::Nil;
+        }
+
+        self.value.clone()
+    }
+
     #[abra_method(signature = "map<T>(fn: (V) => T): Result<T, E>")]
     fn map(&self, mut args: Arguments, vm: &mut VM) -> Self {
         let callback = args.next_value();
@@ -165,6 +174,15 @@ mod test {
 
         let result = interpret("Result.Err(\"asdf\").getValue()");
         assert_eq!(Value::Nil, result);
+    }
+
+    #[test]
+    fn test_result_get_error() {
+        let result = interpret("Result.Ok(\"asdf\").getError()");
+        assert_eq!(Value::Nil, result);
+
+        let result = interpret("Result.Err(\"asdf\").getError()");
+        assert_eq!(new_string_obj("asdf"), result);
     }
 
     #[test]
