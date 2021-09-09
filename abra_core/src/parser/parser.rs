@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -143,7 +143,7 @@ impl Parser {
                 let prec: u8 = prec.into();
                 loop {
                     if let Some(infix_token) = self.peek() {
-                        let next_prec = Parser::get_precedence_for_token(&infix_token);
+                        let next_prec = Parser::precedence_for_token(&infix_token);
                         let next_prec: u8 = next_prec.into();
                         if prec < next_prec {
                             let infix_token = self.expect_next()?;
@@ -181,6 +181,7 @@ impl Parser {
             Token::None(_) => Some(Box::new(Parser::parse_ident)),
             Token::If(_) => Some(Box::new(Parser::parse_if_expr)),
             Token::Match(_) => Some(Box::new(Parser::parse_match_expr)),
+            Token::Try(_) => Some(Box::new(Parser::parse_try_expr)),
             _ => None,
         }
     }
@@ -206,7 +207,7 @@ impl Parser {
         }
     }
 
-    fn get_precedence_for_token(tok: &Token) -> Precedence {
+    fn precedence_for_token(tok: &Token) -> Precedence {
         match tok {
             Token::Plus(_) | Token::PlusEq(_) | Token::Minus(_) | Token::MinusEq(_) => Precedence::Addition,
             Token::Star(_) | Token::StarEq(_) | Token::Slash(_) | Token::SlashEq(_) | Token::Percent(_) | Token::PercentEq(_) => Precedence::Multiplication,
@@ -223,6 +224,7 @@ impl Parser {
             Token::LBrack(_, is_preceded_by_newline) => {
                 if *is_preceded_by_newline { Precedence::None } else { Precedence::Call }
             }
+            Token::Try(_) => Precedence::Unary,
             _ => Precedence::None,
         }
     }
@@ -1113,6 +1115,11 @@ impl Parser {
         Ok(AstNode::MatchExpression(token, match_node))
     }
 
+    fn parse_try_expr(&mut self, token: Token) -> Result<AstNode, ParseErrorKind> {
+        let expr = self.parse_precedence(Precedence::Unary)?;
+        Ok(AstNode::Try(token, TryNode { expr: Box::new(expr) }))
+    }
+
     fn parse_expr(&mut self) -> Result<AstNode, ParseErrorKind> {
         self.enter_context(Context::ParsingExpr);
         let result = self.parse_precedence(Precedence::None);
@@ -1273,7 +1280,7 @@ impl Parser {
     }
 
     fn parse_binary(&mut self, token: Token, left: AstNode) -> Result<AstNode, ParseErrorKind> {
-        let prec = Parser::get_precedence_for_token(&token);
+        let prec = Parser::precedence_for_token(&token);
         let right = self.parse_precedence(prec)?;
         let op = match token {
             Token::Plus(_) => BinaryOp::Add,
@@ -5153,5 +5160,73 @@ mod tests {
         ").unwrap_err();
         let expected = ParseErrorKind::UnexpectedToken(Token::Import(Position::new(2, 1)));
         assert_eq!(expected, err);
+    }
+
+    #[test]
+    fn parse_try_expr() -> TestResult {
+        let ast = parse("try foo")?;
+        let expected = AstNode::Try(
+            Token::Try(Position::new(1, 1)),
+            TryNode { expr: Box::new(identifier!((1, 5), "foo")) },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("try foo + try bar")?;
+        let expected = AstNode::Binary(
+            Token::Plus(Position::new(1, 9)),
+            BinaryNode {
+                left: Box::new(AstNode::Try(Token::Try(Position::new(1, 1)), TryNode { expr: Box::new(identifier!((1, 5), "foo")) })),
+                op: BinaryOp::Add,
+                right: Box::new(AstNode::Try(Token::Try(Position::new(1, 11)), TryNode { expr: Box::new(identifier!((1, 15), "bar")) })),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("try foo && try bar")?;
+        let expected = AstNode::Binary(
+            Token::And(Position::new(1, 9)),
+            BinaryNode {
+                left: Box::new(AstNode::Try(Token::Try(Position::new(1, 1)), TryNode { expr: Box::new(identifier!((1, 5), "foo")) })),
+                op: BinaryOp::And,
+                right: Box::new(AstNode::Try(Token::Try(Position::new(1, 12)), TryNode { expr: Box::new(identifier!((1, 16), "bar")) })),
+            },
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("try foo()")?;
+        let expected = AstNode::Try(
+            Token::Try(Position::new(1, 1)),
+            TryNode {
+                expr: Box::new(AstNode::Invocation(
+                    Token::LParen(Position::new(1, 8), false),
+                    InvocationNode { target: Box::new(identifier!((1, 5), "foo")), args: vec![] }
+                ))
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        let ast = parse("try foo.bar()")?;
+        let expected = AstNode::Try(
+            Token::Try(Position::new(1, 1)),
+            TryNode {
+                expr: Box::new(AstNode::Invocation(
+                    Token::LParen(Position::new(1, 12), false),
+                    InvocationNode {
+                        target: Box::new(AstNode::Accessor(
+                            Token::Dot(Position::new(1, 8)),
+                            AccessorNode {
+                                target: Box::new(identifier!((1, 5), "foo")),
+                                field: Box::new(identifier!((1, 9), "bar")),
+                                is_opt_safe: false
+                            }
+                        )),
+                        args: vec![]
+                    }
+                ))
+            }
+        );
+        assert_eq!(expected, ast[0]);
+
+        Ok(())
     }
 }

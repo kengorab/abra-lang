@@ -294,6 +294,7 @@ impl<'a> Lexer<'a> {
                 "export" => Token::Export(pos),
                 "from" => Token::From(pos),
                 "as" => Token::As(pos),
+                "try" => Token::Try(pos),
                 "None" => Token::None(pos),
                 s => Token::Ident(pos, s.to_string())
             };
@@ -788,7 +789,7 @@ mod tests {
     #[test]
     fn test_tokenize_keywords() {
         let input = "true false val var if else func while break for in \
-        type enum self match readonly import export from as continue";
+        type enum self match readonly import export from as try continue";
         let tokens = tokenize(input).unwrap();
         let expected = vec![
             Token::Bool(Position::new(1, 1), true),
@@ -811,7 +812,8 @@ mod tests {
             Token::Export(Position::new(1, 89)),
             Token::From(Position::new(1, 96)),
             Token::As(Position::new(1, 101)),
-            Token::Continue(Position::new(1, 104)),
+            Token::Try(Position::new(1, 104)),
+            Token::Continue(Position::new(1, 108)),
         ];
         assert_eq!(expected, tokens);
     }

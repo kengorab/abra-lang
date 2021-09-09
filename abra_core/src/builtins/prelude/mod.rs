@@ -6,6 +6,7 @@ pub use native_array::NativeArray;
 pub use native_float::NativeFloat;
 pub use native_int::NativeInt;
 pub use native_map::NativeMap;
+pub use native_result::NativeResult;
 pub use native_set::NativeSet;
 pub use native_string::NativeString;
 pub use process::Process;

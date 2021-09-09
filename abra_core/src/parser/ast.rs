@@ -28,6 +28,7 @@ pub enum AstNode {
     Break(Token),
     Continue(Token),
     Accessor(Token, AccessorNode),
+    Try(Token, TryNode),
     Lambda(Token, LambdaNode),
     MatchStatement(Token, MatchNode),
     MatchExpression(Token, MatchNode),
@@ -65,6 +66,7 @@ impl AstNode {
             AstNode::ReturnStatement(token, _) |
             AstNode::ImportStatement(token, _) |
             AstNode::Accessor(token, _) |
+            AstNode::Try(token, _) |
             AstNode::MatchStatement(token, _) |
             AstNode::MatchExpression(token, _) => token,
         }
@@ -288,6 +290,11 @@ pub struct AccessorNode {
     // Must be an AstNode::Identifier
     pub field: Box<AstNode>,
     pub is_opt_safe: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TryNode {
+    pub expr: Box<AstNode>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

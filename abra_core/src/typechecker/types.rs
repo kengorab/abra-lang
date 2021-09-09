@@ -29,111 +29,6 @@ pub enum Type {
     Reference(/* name: */ String, /* type_args: */ Vec<Type>),
 }
 
-impl Type {
-    pub fn repr(&self) -> String {
-        #[inline]
-        fn wrap_type_repr(t: &Type) -> String {
-            let wrap = if let Type::Fn(_) = t { true } else { false };
-            if wrap {
-                format!("({})", t.repr())
-            } else {
-                t.repr()
-            }
-        }
-
-        match self {
-            Type::Unit => "Unit".to_string(),
-            Type::Any => "Any".to_string(),
-            Type::Int => "Int".to_string(),
-            Type::Float => "Float".to_string(),
-            Type::String => "String".to_string(),
-            Type::Bool => "Bool".to_string(),
-            Type::Union(options) => {
-                let type_opts: Vec<String> = options.iter()
-                    .map(|t| wrap_type_repr(t))
-                    .collect();
-                format!("{}", type_opts.join(" | "))
-            }
-            Type::Array(typ) => format!("{}[]", wrap_type_repr(&typ)),
-            Type::Tuple(types) => {
-                let types = types.iter().map(|t| t.repr()).join(", ");
-                format!("({})", types)
-            }
-            Type::Set(typ) => {
-                format!("Set<{}>", typ.repr())
-            }
-            Type::Map(key_type, value_type) => {
-                format!("Map<{}, {}>", key_type.repr(), value_type.repr())
-            }
-            Type::Option(typ) => format!("{}?", wrap_type_repr(&typ)),
-            Type::Fn(FnType { arg_types, ret_type, .. }) => {
-                let args = arg_types.iter().map(|(_, arg_type, _)| arg_type.repr()).collect::<Vec<String>>().join(", ");
-                format!("({}) => {}", args, ret_type.repr())
-            }
-            Type::Type(name, _, _) => name.to_string(),
-            Type::Unknown => "Unknown".to_string(),
-            Type::Struct(StructType { name, type_args, .. }) => {
-                if type_args.is_empty() { return name.clone(); }
-
-                let type_args_repr = type_args.iter()
-                    .map(|(_, typ)| typ.repr())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("{}<{}>", name, type_args_repr)
-            }
-            Type::Enum(EnumType { name, .. }) => format!("{}", name),
-            Type::Module(_) => "Module".to_string(),
-            Type::Placeholder => "_".to_string(),
-            Type::Generic(name) => name.clone(),
-            Type::Reference(name, type_args) => {
-                if type_args.is_empty() { return name.clone(); }
-
-                let type_args_repr = type_args.iter()
-                    .map(|typ| typ.repr())
-                    .collect::<Vec<String>>()
-                    .join(", ");
-                format!("{}<{}>", name, type_args_repr)
-            }
-        }
-    }
-
-    pub fn flatten(types: Vec<Type>) -> Type {
-        let mut all_same_ref = true;
-        let mut type_ref_name = &"".to_string();
-        let iter = types.iter()
-            .filter_map(|t| if let Type::Reference(r, g) = t {
-                if type_ref_name == "" { type_ref_name = r }
-                else if r != type_ref_name { all_same_ref = false }
-                Some((r, g))
-            } else { all_same_ref = false; None } )
-            .collect::<Vec<_>>();
-
-        if all_same_ref && !iter.is_empty() {
-            let mut iter = iter.into_iter();
-            let (type_ref_name, type_ref_args) = iter.next().expect("iter is non-empty");
-            let mut type_ref_args = type_ref_args.clone();
-            for (_, type_args) in iter {
-                if type_ref_args.len() != type_args.len() { break; }
-
-                // Merge typeargs vecs together, overwriting placeholders with real values. If neither
-                // slot has a placeholder, then this cannot be flattened, so return a Union of everything.
-                for i in 0..type_ref_args.len() {
-                    if type_ref_args[i] != Type::Placeholder && type_args[i] != Type::Placeholder {
-                        return Type::Union(types);
-                    }
-
-                    if type_ref_args[i] == Type::Placeholder {
-                        type_ref_args[i] = type_args[i].clone();
-                    }
-                }
-            }
-            Type::Reference(type_ref_name.clone(), type_ref_args)
-        } else {
-            Type::Union(types)
-        }
-    }
-}
-
 impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         match (&self, &other) {
@@ -260,6 +155,118 @@ pub struct EnumType {
 }
 
 impl Type {
+    pub fn repr(&self) -> String {
+        #[inline]
+        fn wrap_type_repr(t: &Type) -> String {
+            let wrap = if let Type::Fn(_) = t { true } else { false };
+            if wrap {
+                format!("({})", t.repr())
+            } else {
+                t.repr()
+            }
+        }
+
+        match self {
+            Type::Unit => "Unit".to_string(),
+            Type::Any => "Any".to_string(),
+            Type::Int => "Int".to_string(),
+            Type::Float => "Float".to_string(),
+            Type::String => "String".to_string(),
+            Type::Bool => "Bool".to_string(),
+            Type::Union(options) => {
+                let type_opts: Vec<String> = options.iter()
+                    .map(|t| wrap_type_repr(t))
+                    .collect();
+                format!("{}", type_opts.join(" | "))
+            }
+            Type::Array(typ) => format!("{}[]", wrap_type_repr(&typ)),
+            Type::Tuple(types) => {
+                let types = types.iter().map(|t| t.repr()).join(", ");
+                format!("({})", types)
+            }
+            Type::Set(typ) => {
+                format!("Set<{}>", typ.repr())
+            }
+            Type::Map(key_type, value_type) => {
+                format!("Map<{}, {}>", key_type.repr(), value_type.repr())
+            }
+            Type::Option(typ) => format!("{}?", wrap_type_repr(&typ)),
+            Type::Fn(FnType { arg_types, ret_type, .. }) => {
+                let args = arg_types.iter().map(|(_, arg_type, _)| arg_type.repr()).collect::<Vec<String>>().join(", ");
+                format!("({}) => {}", args, ret_type.repr())
+            }
+            Type::Type(name, _, _) => name.to_string(),
+            Type::Unknown => "Unknown".to_string(),
+            Type::Struct(StructType { name, type_args, .. }) => {
+                if type_args.is_empty() { return name.clone(); }
+
+                let type_args_repr = type_args.iter()
+                    .map(|(_, typ)| typ.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{}<{}>", name, type_args_repr)
+            }
+            Type::Enum(EnumType { name, .. }) => format!("{}", name),
+            Type::Module(_) => "Module".to_string(),
+            Type::Placeholder => "_".to_string(),
+            Type::Generic(name) => name.clone(),
+            Type::Reference(name, type_args) => {
+                if type_args.is_empty() { return name.clone(); }
+
+                let type_args_repr = type_args.iter()
+                    .map(|typ| typ.repr())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                format!("{}<{}>", name, type_args_repr)
+            }
+        }
+    }
+
+    pub fn flatten(types: Vec<Type>) -> Type {
+        let mut all_same_ref = true;
+        let mut type_ref_name = &"".to_string();
+        let iter = types.iter()
+            .filter_map(|t| if let Type::Reference(r, g) = t {
+                if type_ref_name == "" { type_ref_name = r }
+                else if r != type_ref_name { all_same_ref = false }
+                Some((r, g))
+            } else { all_same_ref = false; None } )
+            .collect::<Vec<_>>();
+
+        if all_same_ref && !iter.is_empty() {
+            let mut iter = iter.into_iter();
+            let (type_ref_name, type_ref_args) = iter.next().expect("iter is non-empty");
+            let mut type_ref_args = type_ref_args.clone();
+            for (_, type_args) in iter {
+                if type_ref_args.len() != type_args.len() { break; }
+
+                // Merge typeargs vecs together, overwriting placeholders with real values. If neither
+                // slot has a placeholder, then this cannot be flattened, so return a Union of everything.
+                for i in 0..type_ref_args.len() {
+                    if type_ref_args[i] != Type::Placeholder && type_args[i] != Type::Placeholder {
+                        return Type::Union(types);
+                    }
+
+                    if type_ref_args[i] == Type::Placeholder {
+                        type_ref_args[i] = type_args[i].clone();
+                    }
+                }
+            }
+            Type::Reference(type_ref_name.clone(), type_ref_args)
+        } else {
+            Type::Union(types)
+        }
+    }
+
+    pub fn unwrapped_tryable_type(&self) -> Option<&Type> {
+        match self {
+            Type::Reference(ref_name, type_args) if ref_name == "Result" => {
+                type_args.get(0)
+            }
+            _ => None
+        }
+    }
+
     pub fn is_equivalent_to<'a, F>(&self, target_type: &Type, resolve_type: &'a F) -> bool
         where F: Fn(&String) -> Option<&'a Type>
     {
