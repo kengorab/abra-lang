@@ -2852,7 +2852,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let parent_fn_scope = loop {
             match iter.next().map(|s| &s.kind) {
                 Some(ScopeKind::Function(s)) => break Some((s.name.clone(), s.return_type.clone())),
-                Some(ScopeKind::Lambda(_)) => unimplemented!("See #336"),
+                Some(ScopeKind::Lambda(_)) => {
+                    // TODO: Fix this when we do #336
+                    break Some(("lambda".to_string(), Type::Unknown))
+                }
                 Some(ScopeKind::Root) => break None,
                 _ => continue
             }
