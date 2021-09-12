@@ -1,0 +1,466 @@
+import io
+import Value, Error, AtomInner from .types
+import doMath, Op from .math_util
+import prStr from .printer 
+import Reader from .reader
+
+export val ns: Map<String, Value> = {}
+ns["+"] = Value.BuiltinFn(args => Result.Ok(doMath(args, Op.Add)))
+ns["-"] = Value.BuiltinFn(args => Result.Ok(doMath(args, Op.Sub)))
+ns["*"] = Value.BuiltinFn(args => Result.Ok(doMath(args, Op.Mul)))
+ns["/"] = Value.BuiltinFn(args => Result.Ok(doMath(args, Op.Div)))
+
+func eq(value1: Value?, value2: Value?): Bool {
+  val (v1, v2) = match value1 {
+    Value.List(v1) => match value2 {
+      Value.List(v2) => (v1, v2)
+      Value.Vector(v2) => (v1, v2)
+      _ => return false
+    }
+    Value.Vector(v1) => match value2 {
+      Value.List(v2) => (v1, v2)
+      Value.Vector(v2) => (v1, v2)
+      _ => return false
+    }
+    Value.Hash(m1) => match value2 {
+      Value.Hash(m2) => {
+        val keys = m1.keys()
+        if keys != m2.keys() return false
+
+        for k in keys {
+          if !eq(m1[k], m2[k]) return false
+        }
+        return true
+      }
+      _ => return false
+    }
+    _ => return value1 == value2 
+  }
+  if v1.length != v2.length return false 
+  for i in range(0, v1.length) {
+    if !eq(v1[i], v2[i]) return false 
+  }
+  true
+}
+ns["="] = Value.BuiltinFn(args => {
+  val [arg1, arg2] = args
+  Result.Ok(Value.Bool(eq(arg1, arg2)))
+})
+ns["<"] = Value.BuiltinFn(args => {
+  val [arg1, arg2] = args
+  val a = match arg1 {
+    Value.Int(a) => a
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  val b = match arg2 {
+    Value.Int(b) => b
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  Result.Ok(Value.Bool(a < b))
+})
+ns["<="] = Value.BuiltinFn(args => {
+  val [arg1, arg2] = args
+  val a = match arg1 {
+    Value.Int(a) => a
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  val b = match arg2 {
+    Value.Int(b) => b
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  Result.Ok(Value.Bool(a <= b))
+})
+ns[">"] = Value.BuiltinFn(args => {
+  val [arg1, arg2] = args
+  val a = match arg1 {
+    Value.Int(a) => a
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  val b = match arg2 {
+    Value.Int(b) => b
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  Result.Ok(Value.Bool(a > b))
+})
+ns[">="] = Value.BuiltinFn(args => {
+  val [arg1, arg2] = args
+  val a = match arg1 {
+    Value.Int(a) => a
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  val b = match arg2 {
+    Value.Int(b) => b
+    _ => return Result.Err(Error(error: "Expected integer"))
+  }
+  Result.Ok(Value.Bool(a >= b))
+})
+
+ns["list"] = Value.BuiltinFn(args => Result.Ok(Value.List(args)))
+ns["list?"] = Value.BuiltinFn(args => {
+  val isList = match args[0] {
+    Value.List => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(isList))
+})
+ns["vector"] = Value.BuiltinFn(args => Result.Ok(Value.Vector(args)))
+ns["vector?"] = Value.BuiltinFn(args => {
+  val isVec = match args[0] {
+    Value.Vector => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(isVec))
+})
+ns["vec"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.List(items) => Result.Ok(Value.Vector(items))
+    Value.Vector v => Result.Ok(v)
+    _ => Result.Err(Error(error: "vec expects a list or vector as its argument"))
+  }
+})
+ns["empty?"] = Value.BuiltinFn(args => {
+  val isEmpty = match args[0] {
+    Value.List(values) => values.isEmpty()
+    Value.Vector(values) => values.isEmpty()
+    _ => false
+  }
+  Result.Ok(Value.Bool(isEmpty))
+})
+ns["sequential?"] = Value.BuiltinFn(args => {
+  val isSeq = match args[0] {
+    Value.Vector => true
+    Value.List => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(isSeq))
+})
+ns["count"] = Value.BuiltinFn(args => {
+  val count = match args[0] {
+    Value.List(values) => values.length
+    Value.Vector(values) => values.length
+    _ => 0
+  }
+  Result.Ok(Value.Int(count))
+})
+ns["nth"] = Value.BuiltinFn(args => {
+  val items = match args[0] {
+    Value.List(items) => items
+    Value.Vector(items) => items
+    _ => return Result.Err(Error(error: "nth expects a list or vector as its first argument"))
+  }
+  val idx = match args[1] {
+    Value.Int(i) => i
+    _ => return Result.Err(Error(error: "nth expects a number as its second argument"))
+  }
+  if items[idx] |item| {
+    Result.Ok(item)
+  } else {
+    Result.Err(Error(error: "index $idx out of bounds"))
+  }
+})
+ns["first"] = Value.BuiltinFn(args => {
+  val items = match args[0] {
+    Value.List(items) => items
+    Value.Vector(items) => items
+    Value.Nil => return Result.Ok(Value.Nil)
+    _ => return Result.Err(Error(error: "first expects a list or vector as its argument"))
+  }
+  if items[0] |item| {
+    Result.Ok(item)
+  } else {
+    Result.Ok(Value.Nil)
+  }
+})
+ns["rest"] = Value.BuiltinFn(args => {
+  val [_, *rest] = match args[0] {
+    Value.List(items) => items
+    Value.Vector(items) => items
+    Value.Nil => return Result.Ok(Value.List([]))
+    _ => return Result.Err(Error(error: "rest expects a list or vector as its argument"))
+  }
+  Result.Ok(Value.List(rest))
+})
+
+ns["prn"] = Value.BuiltinFn(args => {
+  val strs = args.map(arg => prStr(arg, true)).join(" ")
+  println(strs)
+
+  Result.Ok(Value.Nil)
+})
+ns["pr-str"] = Value.BuiltinFn(args => {
+  val strs = args.map(arg => prStr(arg, true)).join(" ")
+  Result.Ok(Value.Str(strs))
+})
+ns["str"] = Value.BuiltinFn(args => {
+  val strs = args.map(prStr).map(s => s.toString())
+  val s = strs.join("")
+  Result.Ok(Value.Str(s))
+})
+ns["println"] = Value.BuiltinFn(args => {
+  val strs = args.map(prStr).join(" ")
+  println(strs)
+  Result.Ok(Value.Nil)
+})
+
+ns["read-string"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Str(str) => Result.Ok(Reader.readStr(str))
+    None => Result.Ok(Value.Nil)
+    _ => Result.Err(Error(error: "Expected string"))
+  }
+})
+ns["slurp"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Str(fileName) => {
+      match io.readFile(fileName) {
+        String contents => Result.Ok(Value.Str(contents))
+        None => Result.Err(Error(error: "Could not read file $fileName"))
+      }
+    }
+    None => Result.Ok(Value.Nil)
+    _ => Result.Err(Error(error: "Expected string"))
+  }
+})
+
+ns["atom"] = Value.BuiltinFn(args => {
+  val inner = match args[0] {
+    None => AtomInner(_inner: Value.Nil)
+    _ v => AtomInner(_inner: v)
+  }
+  Result.Ok(Value.Atom(inner))
+})
+ns["atom?"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Atom => Result.Ok(Value.Bool(true))
+    _ => Result.Ok(Value.Bool(false))
+  }
+})
+ns["deref"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Atom(v) => Result.Ok(v._inner)
+    _ => Result.Ok(Value.Nil)
+  }
+})
+ns["reset!"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Atom(inner) => {
+      val newValue = args[1] ?: Value.Nil
+      inner._inner = newValue
+      Result.Ok(newValue)
+    }
+    _ => Result.Ok(Value.Nil)
+  }
+})
+ns["swap!"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Atom(inner) => {
+      val newValueFn = match args[1] {
+        Value.BuiltinFn(fn) => fn
+        Value.Fn(fnVal) => fnVal.fn
+        _ => return Result.Err(Error(error: "swap! requires fn"))
+      }
+
+      val args = [inner._inner].concat(args[2:])
+      val newValue = match newValueFn(args) {
+        Result.Ok(v) => v
+        Result.Err e => return e
+      }
+      inner._inner = newValue
+      Result.Ok(newValue)
+    }
+    _ => Result.Ok(Value.Nil)
+  }
+})
+
+ns["cons"] = Value.BuiltinFn(args => {
+  val items = match args[1] {
+    Value.List(items) => items
+    Value.Vector(items) => items
+    None => return Result.Err(Error(error: "cons expects 2 arguments"))
+    _ => return Result.Err(Error(error: "cons expects a list as second argument"))
+  }
+
+  if args[0] |arg| {
+    val newItems = [arg].concat(items)
+    Result.Ok(Value.List(newItems))
+  } else {
+    Result.Err(Error(error: "cons expects 2 arguments"))
+  }
+})
+ns["concat"] = Value.BuiltinFn(args => {
+  val allItems: Value[] = []
+  for arg in args {
+    val items = match arg {
+      Value.List(items) => items
+      Value.Vector(items) => items
+      _ => return Result.Err(Error(error: "concat expects lists as arguments"))
+    }
+
+    for item in items {
+      allItems.push(item)
+    }
+  }
+  Result.Ok(Value.List(allItems))
+})
+
+ns["throw"] = Value.BuiltinFn(args => {
+  val v = args[0] ?: Value.Nil
+  Result.Err(Error(error: "", value: v))
+})
+
+ns["apply"] = Value.BuiltinFn(args => {
+  val [first, *mid, last] = args
+  val fn = match first {
+    Value.Fn(fnVal) => fnVal.fn
+    Value.BuiltinFn(fn) => fn
+    _ => return Result.Err(Error(error: "apply expects function as first argument"))
+  }
+
+  var fnArgs = mid 
+  match last {
+    Value.List(items) => fnArgs = fnArgs.concat(items)
+    Value.Vector(items) => fnArgs = fnArgs.concat(items)
+    _ => {}
+  }
+
+  fn(fnArgs)
+})
+ns["map"] = Value.BuiltinFn(args => {
+  val [first, second] = args
+  val fn = match first {
+    Value.Fn(fnVal) => fnVal.fn
+    Value.BuiltinFn(fn) => fn
+    _ => return Result.Err(Error(error: "map expects function as first argument"))
+  }
+
+  val items = match second {
+    Value.List(items) => items
+    Value.Vector(items) => items
+    _ => return Result.Err(error: Error(error: "map expects list or vector as second argument"))
+  }
+
+  val newItems: Value[] = []
+  for item in items {
+    match fn([item]) {
+      Result.Err e => return e
+      Result.Ok(v) => newItems.push(v)
+    }
+  }
+  Result.Ok(Value.List(newItems))
+})
+
+ns["nil?"] = Value.BuiltinFn(args => Result.Ok(Value.Bool(args[0] == Value.Nil)))
+ns["true?"] = Value.BuiltinFn(args => Result.Ok(Value.Bool(args[0] == Value.Bool(true))))
+ns["false?"] = Value.BuiltinFn(args => Result.Ok(Value.Bool(args[0] == Value.Bool(false))))
+ns["symbol"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Str(s) => Result.Ok(Value.Symbol(s))
+    _ => Result.Err(Error(error: "symbol expects string as first argument"))
+  }
+})
+ns["symbol?"] = Value.BuiltinFn(args => {
+  val res = match args[0] {
+    Value.Symbol => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(res))
+})
+ns["keyword"] = Value.BuiltinFn(args => {
+  match args[0] {
+    Value.Str(s) => Result.Ok(Value.Keyword(":$s"))
+    Value.Keyword k => Result.Ok(k)
+    _ => Result.Err(Error(error: "keyword expects string as first argument"))
+  }
+})
+ns["keyword?"] = Value.BuiltinFn(args => {
+  val res = match args[0] {
+    Value.Keyword => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(res))
+})
+ns["hash-map"] = Value.BuiltinFn(args => {
+  val map: Map<Value, Value> = {}
+
+  for i in range(0, args.length, 2) {
+    val k = if args[i] |k| k else return Result.Err(Error(error: "hash-map expects even number of arguments"))
+    val v = if args[i + 1] |v| v else return Result.Err(Error(error: "hash-map expects even number of arguments"))
+    map[k] = v
+  }
+
+  Result.Ok(Value.Hash(map))
+})
+ns["map?"] = Value.BuiltinFn(args => {
+  val res = match args[0] {
+    Value.Hash => true
+    _ => false
+  }
+  Result.Ok(Value.Bool(res))
+})
+ns["assoc"] = Value.BuiltinFn(args => {
+  val orig = match args[0] {
+    Value.Hash(h) => h
+    _ => return Result.Err(Error(error: "assoc expects hash as first argument"))
+  }
+
+  val newMap = Map.fromPairs(orig.enumerate())
+  for i in range(1, args.length, 2) {
+    val k = if args[i] |k| k else return Result.Err(Error(error: "assoc expects even number of arguments"))
+    val v = if args[i + 1] |v| v else return Result.Err(Error(error: "assoc expects even number of arguments"))
+    newMap[k] = v
+  }
+
+  Result.Ok(Value.Hash(newMap))
+})
+ns["dissoc"] = Value.BuiltinFn(args => {
+  val orig = match args[0] {
+    Value.Hash(h) => h
+    _ => return Result.Err(Error(error: "dissoc expects hash as first argument"))
+  }
+
+  val newMap = Map.fromPairs(orig.enumerate())
+  for key in args[1:] {
+    newMap.remove(key)
+  }
+
+  Result.Ok(Value.Hash(newMap))
+})
+ns["get"] = Value.BuiltinFn(args => {
+  val hash = match args[0] {
+    Value.Hash(h) => h
+    Value.Nil => return Result.Ok(Value.Nil)
+    _ => return Result.Err(Error(error: "get expects hash as first argument"))
+  }
+
+  if args[1] |key| {
+    Result.Ok(hash.getOrDefault(key, Value.Nil))
+  } else {
+    Result.Err(Error(error: "get expects two arguments"))
+  }
+})
+ns["contains?"] = Value.BuiltinFn(args => {
+  val hash = match args[0] {
+    Value.Hash(h) => h
+    _ => return Result.Err(Error(error: "contains? expects hash as first argument"))
+  }
+
+  if args[1] |key| {
+    Result.Ok(Value.Bool(hash.containsKey(key)))
+  } else {
+    Result.Err(Error(error: "contains? expects two arguments"))
+  }
+})
+ns["keys"] = Value.BuiltinFn(args => {
+  val hash = match args[0] {
+    Value.Hash(h) => h
+    _ => return Result.Err(Error(error: "keys expects hash as first argument"))
+  }
+  Result.Ok(Value.List(hash.keys().asArray()))
+})
+ns["vals"] = Value.BuiltinFn(args => {
+  val hash = match args[0] {
+    Value.Hash(h) => h
+    _ => return Result.Err(Error(error: "vals expects hash as first argument"))
+  }
+  Result.Ok(Value.List(hash.values().asArray()))
+})
