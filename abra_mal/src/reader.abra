@@ -1,0 +1,176 @@
+import Value from .types
+
+val whitespaceTokens = [" ", "\n", "\t", ","]
+val specialTokens = ["[", "]", "{", "}", "(", ")", "'", "`", "~", "^", "@"]
+val nonsymbolTokens = whitespaceTokens.concat(specialTokens).concat(["\"", ";"])
+
+type Tokenizer {
+  pos: Int = 0
+  input: String
+
+  func tokenize(self): String[] {
+    val tokens: String[] = []
+    while self.nextToken() |tok| tokens.push(tok)
+    tokens
+  }
+
+  func nextToken(self): String? {
+    // Skip whitespace
+    while whitespaceTokens.contains(self.input[self.pos]) { self.pos += 1 }
+
+    if self.pos >= self.input.length {
+      return None
+    }
+
+    var ch = self.input[self.pos]
+    if ch == "~" {
+      return if self.input[self.pos + 1] == "@" {
+        self.pos += 2
+        "~@"
+      } else {
+        self.pos += 1
+        "~"
+      }
+    } else if specialTokens.contains(ch) {
+      self.pos += 1
+      return ch
+    } else if ch == "\"" {
+      val start = self.pos
+      var str = "\""
+      while self.pos < self.input.length {
+        self.pos += 1
+        val ch = self.input[self.pos]
+        if ch == "\"" {
+          self.pos += 1 // Consume remaining " before returning
+          return str + ch 
+        } else if ch == "\\" { // Handle a select few escaped chars
+          self.pos += 1
+          val ch = self.input[self.pos]
+          if ch == "n" {
+            str += "\n"
+          } else {
+            str += ch
+          }
+        } else {
+          str += ch
+        }
+      }
+      return "EOF"
+    } else if ch == ";" {
+      val start = self.pos
+      while self.input[self.pos] != None && self.input[self.pos] != "\n" {
+        self.pos += 1
+      }
+      self.pos += 1
+      return self.nextToken() 
+    } else {
+      val start = self.pos
+      while self.pos < self.input.length && !nonsymbolTokens.contains(self.input[self.pos]) {
+        self.pos += 1
+      }
+      return self.input[start:self.pos]
+    }
+  }
+}
+
+export type Reader {
+  pos: Int = 0
+  tokens: String[]
+
+  func readStr(input: String): Value {
+    val tokenizer = Tokenizer(input: input)
+    val tokens = tokenizer.tokenize()
+    val reader = Reader(tokens: tokens)
+    reader.readForm()
+  }
+
+  func peek(self): String? = self.tokens[self.pos]
+
+  func next(self): String {
+    val token = self.tokens[self.pos]
+    self.pos += 1
+    token ?: ""
+  }
+
+  func readForm(self): Value {
+    val tok = self.peek()
+
+    if tok == "(" {
+      self.readList()
+    } else if tok == "[" {
+      self.readVector()
+    } else if tok == "{" {
+      self.readHash()
+    } else if tok == "'" {
+      self.next()
+      Value.List(values: [Value.Symbol(value: "quote"), self.readForm()])
+    } else if tok == "`" {
+      self.next()
+      Value.List(values: [Value.Symbol(value: "quasiquote"), self.readForm()])
+    } else if tok == "~" {
+      self.next()
+      Value.List(values: [Value.Symbol(value: "unquote"), self.readForm()])
+    } else if tok == "~@" {
+      self.next()
+      Value.List(values: [Value.Symbol(value: "splice-unquote"), self.readForm()])
+    } else if tok == "@" {
+      self.next()
+      Value.List(values: [Value.Symbol(value: "deref"), self.readForm()])
+    } else if tok == "^" {
+      self.next()
+      val meta = self.readForm()
+      val value = self.readForm()
+      Value.List(values: [Value.Symbol(value: "with-meta"), value, meta])
+    } else {
+      self.readAtom()
+    }
+  }
+
+  func readWithin<T>(self, closingToken: String, do: () => T): T[] {
+    self.next() // Consume starting token
+    val items: T[] = []
+
+    while self.peek() |tok| {
+      if tok == closingToken break
+      items.push(do())
+    }
+    if self.peek() != closingToken {
+      println("EOF")
+    } else {
+      self.next() // Consume closing token
+    }
+    items
+  }
+
+  func readList(self): Value = Value.List(values: self.readWithin(")", self.readForm))
+
+  func readVector(self): Value = Value.Vector(values: self.readWithin("]", self.readForm))
+
+  func readHash(self): Value {
+    val pairs = self.readWithin("}", () => {
+      val key = self.readForm()
+      val value = self.readForm()
+      (key, value)
+    })
+    Value.Hash(values: Map.fromPairs(pairs))
+  }
+
+  func readAtom(self): Value {
+    val token = self.next()
+    if token.parseInt() |int| {
+      Value.Int(value: int)
+    } else if token[0] == "\"" {
+      Value.Str(value: token[1:-1]) // Trim leading/trailing " character
+    } else if token == "true" {
+      Value.Bool(value: true)
+    } else if token == "false" {
+      Value.Bool(value: false)
+    } else if token == "nil" {
+      Value.Nil
+    } else if token[0] == ":" {
+      Value.Keyword(value: token)
+    } else {
+      Value.Symbol(value: token)
+    }
+  }
+}
