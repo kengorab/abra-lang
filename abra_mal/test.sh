@@ -1,4 +1,8 @@
 declare -a testFiles=(
+#  'step0_repl'
+#  'step1_read_print'
+#  ^ These 2 tests are not runnable because their assertions are meant to be run against
+#    earlier stages of the mal implementation, prior to the implementation of evaluation.
   'step2_eval'
   'step3_env'
   'step4_if_fn_do'
