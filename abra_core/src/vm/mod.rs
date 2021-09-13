@@ -5,4 +5,4 @@ pub mod value;
 pub mod vm;
 
 #[cfg(test)]
-mod vm_test;
+mod vm_tests;
