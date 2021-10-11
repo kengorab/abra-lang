@@ -1,4 +1,30 @@
 val six = 6
 val twentyFour = 24
 
-println(six + twentyFour + six)
+val sixPointOne = 6.1
+val twentyFourPointTwo = 24.2
+
+println(six + 24)
+println(sixPointOne + twentyFourPointTwo)
+println(sixPointOne + twentyFour)
+println(six + twentyFourPointTwo)
+
+println(six - 24)
+println(sixPointOne - twentyFourPointTwo)
+println(sixPointOne - twentyFour)
+println(six - twentyFourPointTwo)
+
+println(six * 24)
+println(sixPointOne * twentyFourPointTwo)
+println(sixPointOne * twentyFour)
+println(six * twentyFourPointTwo)
+
+println(six / 24)
+println(sixPointOne / twentyFourPointTwo)
+println(sixPointOne / twentyFour)
+println(six / twentyFourPointTwo)
+
+println(six ** 24)
+println(sixPointOne ** twentyFourPointTwo)
+println(sixPointOne ** twentyFour)
+println(six ** twentyFourPointTwo)

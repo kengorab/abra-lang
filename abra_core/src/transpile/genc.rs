@@ -20,8 +20,9 @@ impl CCompiler {
     pub fn gen_c(ast: Vec<TypedAstNode>) -> Result<String, ()> {
         let mut compiler = CCompiler::new();
 
-        compiler.emit("#include \"abra_std.h\"\n\n");
-        compiler.emit("int main(int argc, char** argv) {\n");
+        compiler.emit_line("#include \"abra_std.h\"\n");
+
+        compiler.emit_line("int main(int argc, char** argv) {");
 
         let ast_len = ast.len();
         for (idx, node) in ast.into_iter().enumerate() {
@@ -32,10 +33,10 @@ impl CCompiler {
             compiler.visit(node)?;
 
             if should_print { compiler.emit(")"); }
-            compiler.emit(";\n");
+            compiler.emit_line(";");
         }
 
-        compiler.emit("\n  return 0;\n}\n");
+        compiler.emit_line("  return 0;\n}");
 
         Ok(compiler.buf)
     }
@@ -44,27 +45,36 @@ impl CCompiler {
         self.buf.push_str(code.as_ref())
     }
 
+    fn emit_line<S: AsRef<str>>(&mut self, code: S) {
+        self.buf.push_str(code.as_ref());
+        self.buf.push('\n');
+    }
+
     fn indent(&mut self, level: usize) {
         self.buf.push_str(&"  ".repeat(level))
     }
 
-    fn c_type_name(&self, typ: &Type) -> String {
-        match typ {
-            Type::Int => "int64_t".to_string(),
-            _ => todo!()
-        }
-    }
-
     fn c_ident_name<S: AsRef<str>>(&self, name: S) -> String {
         format!("{}__{}", self.module_name, name.as_ref())
+    }
+
+    fn wrap_in_conversion(&mut self, node: TypedAstNode) -> Result<(), ()> {
+        match node.get_type() {
+            Type::Int => self.emit("AS_INT("),
+            Type::Float => self.emit("AS_FLOAT("),
+            _ => todo!()
+        }
+        self.visit(node)?;
+        self.emit(")");
+        Ok(())
     }
 }
 
 impl TypedAstVisitor<(), ()> for CCompiler {
     fn visit_literal(&mut self, _token: Token, node: TypedLiteralNode) -> Result<(), ()> {
         match node {
-            TypedLiteralNode::IntLiteral(i) => self.emit(format!("{}", i)),
-            TypedLiteralNode::FloatLiteral(_) |
+            TypedLiteralNode::IntLiteral(i) => self.emit(format!("NEW_INT({})", i)),
+            TypedLiteralNode::FloatLiteral(f) => self.emit(format!("NEW_FLOAT({})", f)),
             TypedLiteralNode::StringLiteral(_) |
             TypedLiteralNode::BoolLiteral(_) => todo!()
         }
@@ -76,14 +86,70 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_binary(&mut self, _token: Token, node: TypedBinaryNode) -> Result<(), ()> {
-        match node.op {
-            BinaryOp::Add => {
-                self.visit(*node.left)?;
-                self.emit(" + ");
-                self.visit(*node.right)?;
-            }
+        match &node.typ {
+            Type::Int => self.emit("NEW_INT("),
+            Type::Float => self.emit("NEW_FLOAT("),
             _ => todo!()
         }
+
+        match node.op {
+            BinaryOp::Add => {
+                self.wrap_in_conversion(*node.left)?;
+                self.emit("+");
+                self.wrap_in_conversion(*node.right)?;
+            }
+            BinaryOp::AddEq => {}
+            BinaryOp::Sub => {
+                self.wrap_in_conversion(*node.left)?;
+                self.emit("-");
+                self.wrap_in_conversion(*node.right)?;
+            }
+            BinaryOp::SubEq => {}
+            BinaryOp::Mul => {
+                self.wrap_in_conversion(*node.left)?;
+                self.emit("*");
+                self.wrap_in_conversion(*node.right)?;
+            }
+            BinaryOp::MulEq => {}
+            BinaryOp::Div => {
+                let needs_cast = node.left.get_type() == Type::Int && node.right.get_type() == Type::Int;
+                if needs_cast { self.emit("((double) "); }
+                self.wrap_in_conversion(*node.left)?;
+                if needs_cast { self.emit(")"); }
+
+                self.emit("/");
+                self.wrap_in_conversion(*node.right)?;
+            }
+            BinaryOp::DivEq => {}
+            BinaryOp::Mod => {
+                self.wrap_in_conversion(*node.left)?;
+                self.emit("%");
+                self.wrap_in_conversion(*node.right)?;
+            }
+            BinaryOp::ModEq => {}
+            BinaryOp::And => {}
+            BinaryOp::AndEq => {}
+            BinaryOp::Or => {}
+            BinaryOp::OrEq => {}
+            BinaryOp::Xor => {}
+            BinaryOp::Coalesce => {}
+            BinaryOp::CoalesceEq => {}
+            BinaryOp::Lt => {}
+            BinaryOp::Lte => {}
+            BinaryOp::Gt => {}
+            BinaryOp::Gte => {}
+            BinaryOp::Neq => {}
+            BinaryOp::Eq => {}
+            BinaryOp::Pow => {
+                self.emit("pow(");
+                self.wrap_in_conversion(*node.left)?;
+                self.emit(", ");
+                self.wrap_in_conversion(*node.right)?;
+                self.emit(")");
+            }
+        }
+
+        self.emit(")");
 
         Ok(())
     }
@@ -120,13 +186,10 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         match binding {
             BindingPattern::Variable(tok) => {
                 if let Some(expr) = expr {
-                    let typ = expr.get_type();
-                    let c_typ = self.c_type_name(&typ);
-
                     let name = Token::get_ident_name(&tok);
                     let c_name = self.c_ident_name(name);
 
-                    self.emit(format!("{} {} = ", c_typ, c_name));
+                    self.emit(format!("AbraValue {} = ", c_name));
                     self.visit(*expr)?;
                 } else {
                     todo!()
