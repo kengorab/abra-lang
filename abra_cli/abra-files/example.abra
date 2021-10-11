@@ -81,3 +81,18 @@ println(!(true && false))
 println(-1)
 println(1 + -1)
 println(-(1 + 2 + 3))
+
+
+println(
+  (if true {
+    if true 12 else 1
+  } else {
+    3
+  })
+  -
+  (if true {
+    1
+  } else {
+    4
+  })
+)
