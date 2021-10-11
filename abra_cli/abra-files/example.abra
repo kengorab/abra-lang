@@ -1,42 +1,4 @@
-func f(): Int {
-  //if true {
-  //  val x = 12
-  //  return 24
-  //}
-  //return 6
+val six = 6
+val twentyFour = 24
 
-  //while true {
-  //  val x = 12
-  //  return 24
-  //}
-
-  //for _ in [1, 2, 3] {
-  //  val x = 12
-  //  return 24
-  //}
-
-  match "a" {
-    _ => {
-      val x = 12
-      return 24
-    }
-  }
-}
-//println(f())
-
-//type List<T> { items: T[] }
-
-func doSomething(): Result<Int, String> =
-  Result.Ok(123)
-  //Result.Err("asdf")
-
-func foo(): Result<Int, String> {
-  val i = try doSomething()
-  //val i = match doSomething() {
-  //  Result.Ok(v) => v
-  //  Result.Err e => return e
-  //}
-  Result.Ok(i + 1)
-}
-
-println(foo())
+println(six + twentyFour + six)

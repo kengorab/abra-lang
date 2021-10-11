@@ -6,8 +6,8 @@ use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
 pub struct ParseResult {
-    pub(crate) imports: Vec<(Token, ModuleId)>,
-    pub(crate) nodes: Vec<AstNode>,
+    pub imports: Vec<(Token, ModuleId)>,
+    pub nodes: Vec<AstNode>,
 }
 
 pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {

@@ -17,6 +17,7 @@ pub mod common;
 pub mod lexer;
 pub mod module_loader;
 pub mod parser;
+pub mod transpile;
 pub mod typechecker;
 pub mod vm;
 

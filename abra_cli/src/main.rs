@@ -15,6 +15,7 @@ use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
+use std::process::Command;
 
 mod fs_module_reader;
 mod repl;
@@ -29,6 +30,7 @@ struct Opts {
 #[derive(Clap)]
 enum SubCommand {
     Run(RunOpts),
+    Compile(CompileOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
     Repl,
@@ -41,6 +43,12 @@ struct RunOpts {
 
     #[clap(last = true, help = "Arguments to pass to the abra program")]
     args: Vec<String>,
+}
+
+#[derive(Clap)]
+struct CompileOpts {
+    #[clap(help = "Path to an abra file to compile")]
+    file_path: String,
 }
 
 #[derive(Clap)]
@@ -69,6 +77,7 @@ fn main() -> Result<(), ()> {
 
     match opts.sub_cmd {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
+        SubCommand::Compile(opts) => cmd_compile(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
         SubCommand::Repl => Ok(Repl::run()),
@@ -87,6 +96,82 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let result = compile_and_run(module_id, contents, current_path, &mut vm)?;
     if result != Value::Nil {
         println!("{}", to_string(&result, &mut vm));
+    }
+
+    Ok(())
+}
+
+fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+    let working_dir = file_path.parent().unwrap();
+
+    let dotabra_dir = working_dir.join(".abra");
+    if !dotabra_dir.exists() {
+        std::fs::create_dir(&dotabra_dir).unwrap();
+    }
+
+    let contents = read_file(&file_path)?;
+
+    let module_id = ModuleId::from_path(&opts.file_path);
+
+    let module_reader = fs_module_reader::FsModuleReader::new(file_path.clone());
+    let loader = abra_core::module_loader::ModuleLoader::new(&module_reader);
+
+    let result = match abra_core::lexer::lexer::tokenize(&module_id, &contents) {
+        Err(e) => Err(Error::LexerError(e)),
+        Ok(tokens) => match abra_core::parser::parser::parse(module_id.clone(), tokens) {
+            Err(e) => Err(Error::ParseError(e)),
+            Ok(abra_core::parser::parser::ParseResult { nodes, .. }) => {
+                match abra_core::typechecker::typechecker::typecheck(module_id, nodes, &loader) {
+                    Err(e) => Err(Error::TypecheckerError(e)),
+                    Ok(module) => Ok(module.typed_nodes)
+                }
+            }
+        }
+    };
+    let ast = match result {
+        Ok(ast) => ast,
+        Err(e) => {
+            let module_id = e.module_id();
+            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
+            let file_name = module_id.get_path(Some(&module_reader.project_root));
+
+            match e {
+                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+                Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
+            }
+            std::process::exit(1);
+        }
+    };
+
+    let c_code = abra_core::transpile::genc::CCompiler::gen_c(ast)?;
+    std::fs::write(dotabra_dir.join("example.c"), c_code).unwrap();
+
+    let output = Command::new("gcc")
+        .arg(working_dir.join(".abra/example.c").as_path().to_str().unwrap())
+        .arg("-o")
+        .arg(working_dir.join(".abra/example").as_path().to_str().unwrap())
+        .arg("-Iabra_core/src/transpile/include/c")
+        .output()
+        .unwrap();
+    if !output.status.success() {
+        eprintln!("Command executed with failing error code");
+        eprintln!("{}", String::from_utf8(output.stderr).unwrap());
+    }
+    if !output.stdout.is_empty() {
+        println!("{}", String::from_utf8(output.stdout).unwrap());
+    }
+
+    let output = Command::new(working_dir.join(".abra/example").as_path().to_str().unwrap()).output().unwrap();
+    if !output.status.success() {
+        eprintln!("Command executed with failing error code");
+        eprintln!("{}", String::from_utf8(output.stderr).unwrap());
+    }
+    if !output.stdout.is_empty() {
+        print!("{}", String::from_utf8(output.stdout).unwrap());
     }
 
     Ok(())
