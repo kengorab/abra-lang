@@ -134,7 +134,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         Ok(ast) => ast,
         Err(e) => {
             let module_id = e.module_id();
-            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
+            let contents = module_reader.read_module(module_id).unwrap_or(contents);
             let file_name = module_id.get_path(Some(&module_reader.project_root));
 
             match e {

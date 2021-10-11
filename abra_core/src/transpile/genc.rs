@@ -1,7 +1,7 @@
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{BinaryOp, BindingPattern};
-use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
+use crate::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
 pub struct CCompiler {
@@ -58,10 +58,11 @@ impl CCompiler {
         format!("{}__{}", self.module_name, name.as_ref())
     }
 
-    fn wrap_in_conversion(&mut self, node: TypedAstNode) -> Result<(), ()> {
+    fn visit_and_convert(&mut self, node: TypedAstNode) -> Result<(), ()> {
         match node.get_type() {
             Type::Int => self.emit("AS_INT("),
             Type::Float => self.emit("AS_FLOAT("),
+            Type::Bool => self.emit("AS_BOOL("),
             _ => todo!()
         }
         self.visit(node)?;
@@ -75,77 +76,29 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         match node {
             TypedLiteralNode::IntLiteral(i) => self.emit(format!("NEW_INT({})", i)),
             TypedLiteralNode::FloatLiteral(f) => self.emit(format!("NEW_FLOAT({})", f)),
-            TypedLiteralNode::StringLiteral(_) |
-            TypedLiteralNode::BoolLiteral(_) => todo!()
+            TypedLiteralNode::BoolLiteral(b) => self.emit(format!("NEW_BOOL({})", b)),
+            TypedLiteralNode::StringLiteral(_) => todo!(),
         }
+
         Ok(())
     }
 
-    fn visit_unary(&mut self, _token: Token, _node: TypedUnaryNode) -> Result<(), ()> {
-        todo!()
-    }
-
-    fn visit_binary(&mut self, _token: Token, node: TypedBinaryNode) -> Result<(), ()> {
+    fn visit_unary(&mut self, _token: Token, node: TypedUnaryNode) -> Result<(), ()> {
         match &node.typ {
             Type::Int => self.emit("NEW_INT("),
             Type::Float => self.emit("NEW_FLOAT("),
+            Type::Bool => self.emit("NEW_BOOL("),
             _ => todo!()
         }
 
         match node.op {
-            BinaryOp::Add => {
-                self.wrap_in_conversion(*node.left)?;
-                self.emit("+");
-                self.wrap_in_conversion(*node.right)?;
-            }
-            BinaryOp::AddEq => {}
-            BinaryOp::Sub => {
-                self.wrap_in_conversion(*node.left)?;
+            UnaryOp::Minus => {
                 self.emit("-");
-                self.wrap_in_conversion(*node.right)?;
+                self.visit_and_convert(*node.expr)?;
             }
-            BinaryOp::SubEq => {}
-            BinaryOp::Mul => {
-                self.wrap_in_conversion(*node.left)?;
-                self.emit("*");
-                self.wrap_in_conversion(*node.right)?;
-            }
-            BinaryOp::MulEq => {}
-            BinaryOp::Div => {
-                let needs_cast = node.left.get_type() == Type::Int && node.right.get_type() == Type::Int;
-                if needs_cast { self.emit("((double) "); }
-                self.wrap_in_conversion(*node.left)?;
-                if needs_cast { self.emit(")"); }
-
-                self.emit("/");
-                self.wrap_in_conversion(*node.right)?;
-            }
-            BinaryOp::DivEq => {}
-            BinaryOp::Mod => {
-                self.wrap_in_conversion(*node.left)?;
-                self.emit("%");
-                self.wrap_in_conversion(*node.right)?;
-            }
-            BinaryOp::ModEq => {}
-            BinaryOp::And => {}
-            BinaryOp::AndEq => {}
-            BinaryOp::Or => {}
-            BinaryOp::OrEq => {}
-            BinaryOp::Xor => {}
-            BinaryOp::Coalesce => {}
-            BinaryOp::CoalesceEq => {}
-            BinaryOp::Lt => {}
-            BinaryOp::Lte => {}
-            BinaryOp::Gt => {}
-            BinaryOp::Gte => {}
-            BinaryOp::Neq => {}
-            BinaryOp::Eq => {}
-            BinaryOp::Pow => {
-                self.emit("pow(");
-                self.wrap_in_conversion(*node.left)?;
-                self.emit(", ");
-                self.wrap_in_conversion(*node.right)?;
-                self.emit(")");
+            UnaryOp::Negate => {
+                self.emit("!");
+                self.visit_and_convert(*node.expr)?;
             }
         }
 
@@ -154,8 +107,105 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_grouped(&mut self, _token: Token, _node: TypedGroupedNode) -> Result<(), ()> {
-        todo!()
+    fn visit_binary(&mut self, _token: Token, node: TypedBinaryNode) -> Result<(), ()> {
+        match &node.typ {
+            Type::Int => self.emit("NEW_INT("),
+            Type::Float => self.emit("NEW_FLOAT("),
+            Type::Bool => self.emit("NEW_BOOL("),
+            _ => todo!()
+        }
+
+        match node.op {
+            BinaryOp::Add => {
+                self.visit_and_convert(*node.left)?;
+                self.emit("+");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Sub => {
+                self.visit_and_convert(*node.left)?;
+                self.emit("-");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Mul => {
+                self.visit_and_convert(*node.left)?;
+                self.emit("*");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Div => {
+                let needs_cast = node.left.get_type() == Type::Int && node.right.get_type() == Type::Int;
+                if needs_cast { self.emit("((double)"); }
+                self.visit_and_convert(*node.left)?;
+                if needs_cast { self.emit(")"); }
+
+                self.emit("/");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Mod => {
+                if node.left.get_type() == Type::Float || node.right.get_type() == Type::Float {
+                    self.emit("fmod(");
+                    self.visit_and_convert(*node.left)?;
+                    self.emit(",");
+                    self.visit_and_convert(*node.right)?;
+                    self.emit(")");
+                } else {
+                    self.visit_and_convert(*node.left)?;
+                    self.emit("%");
+                    self.visit_and_convert(*node.right)?;
+                }
+            }
+            BinaryOp::And | BinaryOp::Or => unreachable!("&& and || get transformed to if-exprs"),
+            BinaryOp::Xor => {
+                self.emit("!");
+                self.visit_and_convert(*node.left)?;
+                self.emit("!=");
+                self.emit("!");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Coalesce => {}
+            BinaryOp::Lt => {
+                self.visit_and_convert(*node.left)?;
+                self.emit("<");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Lte => {
+                self.visit_and_convert(*node.left)?;
+                self.emit("<=");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Gt => {
+                self.visit_and_convert(*node.left)?;
+                self.emit(">");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Gte => {
+                self.visit_and_convert(*node.left)?;
+                self.emit(">=");
+                self.visit_and_convert(*node.right)?;
+            }
+            BinaryOp::Neq => {}
+            BinaryOp::Eq => {}
+            BinaryOp::Pow => {
+                self.emit("pow(");
+                self.visit_and_convert(*node.left)?;
+                self.emit(",");
+                self.visit_and_convert(*node.right)?;
+                self.emit(")");
+            }
+            BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq |
+            BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assignment operators get transformed into Assignment nodes")
+        }
+
+        self.emit(")");
+
+        Ok(())
+    }
+
+    fn visit_grouped(&mut self, _token: Token, node: TypedGroupedNode) -> Result<(), ()> {
+        self.emit("(");
+        self.visit(*node.expr)?;
+        self.emit(")");
+
+        Ok(())
     }
 
     fn visit_array(&mut self, _token: Token, node: TypedArrayNode) -> Result<(), ()> {
@@ -224,8 +274,17 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_assignment(&mut self, _token: Token, _node: TypedAssignmentNode) -> Result<(), ()> {
-        todo!()
+    fn visit_assignment(&mut self, _token: Token, node: TypedAssignmentNode) -> Result<(), ()> {
+        match node.kind {
+            AssignmentTargetKind::Identifier => {
+                self.visit(*node.target)?;
+                self.emit("=");
+                self.visit(*node.expr)?;
+            }
+            _ => todo!()
+        }
+
+        Ok(())
     }
 
     fn visit_indexing(&mut self, _token: Token, _node: TypedIndexingNode) -> Result<(), ()> {
@@ -236,8 +295,19 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         todo!()
     }
 
-    fn visit_if_expression(&mut self, _token: Token, _node: TypedIfNode) -> Result<(), ()> {
-        todo!()
+    fn visit_if_expression(&mut self, _token: Token, node: TypedIfNode) -> Result<(), ()> {
+        // TODO: Properly handling if-exprs will require them to be lifted to the top-level
+        self.visit_and_convert(*node.condition)?;
+        self.emit("?");
+
+        let if_block = node.if_block.into_iter().next().unwrap();
+        self.visit(if_block)?;
+        self.emit(":");
+
+        let else_block = node.else_block.unwrap().into_iter().next().unwrap();
+        self.visit(else_block)?;
+
+        Ok(())
     }
 
     fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<(), ()> {
