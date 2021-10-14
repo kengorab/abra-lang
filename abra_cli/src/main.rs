@@ -16,6 +16,7 @@ use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
 use std::process::Command;
+use abra_core::transpile::gcc::gcc;
 
 mod fs_module_reader;
 mod repl;
@@ -104,13 +105,6 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
 fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let current_path = std::env::current_dir().unwrap();
     let file_path = current_path.join(&opts.file_path);
-    let working_dir = file_path.parent().unwrap();
-
-    let dotabra_dir = working_dir.join(".abra");
-    if !dotabra_dir.exists() {
-        std::fs::create_dir(&dotabra_dir).unwrap();
-    }
-
     let contents = read_file(&file_path)?;
 
     let module_id = ModuleId::from_path(&opts.file_path);
@@ -147,31 +141,32 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         }
     };
 
+    let working_dir = file_path.parent().unwrap();
+    let dotabra_dir = working_dir.join(".abra");
+    if !dotabra_dir.exists() {
+        if std::fs::create_dir(&dotabra_dir).is_err() {
+            eprintln!("{}", format!("Could not create .abra directory at {}", dotabra_dir.to_str().unwrap()));
+            std::process::exit(1);
+        }
+    }
+
+    let src_file = "example.c";
+    let out_file = "example";
     let c_code = abra_core::transpile::genc::CCompiler::gen_c(ast)?;
-    std::fs::write(dotabra_dir.join("example.c"), c_code).unwrap();
+    std::fs::write(dotabra_dir.join(&src_file), c_code).unwrap();
 
-    let output = Command::new("gcc")
-        .arg(working_dir.join(".abra/example.c").as_path().to_str().unwrap())
-        .arg("-o")
-        .arg(working_dir.join(".abra/example").as_path().to_str().unwrap())
-        .arg("-Iabra_core/src/transpile/include/c")
-        .output()
-        .unwrap();
-    if !output.status.success() {
-        eprintln!("Command executed with failing error code");
-        eprintln!("{}", String::from_utf8(output.stderr).unwrap());
-    }
-    if !output.stdout.is_empty() {
-        println!("{}", String::from_utf8(output.stdout).unwrap());
+    if let Err(e) = gcc(&dotabra_dir, &src_file, &out_file) {
+        eprintln!("{}", e);
+        std::process::exit(1);
     }
 
-    let output = Command::new(working_dir.join(".abra/example").as_path().to_str().unwrap()).output().unwrap();
-    if !output.status.success() {
-        eprintln!("Command executed with failing error code");
-        eprintln!("{}", String::from_utf8(output.stderr).unwrap());
+    let mut run_cmd = Command::new(dotabra_dir.join(out_file).to_str().unwrap());
+    let run_output = run_cmd.output().unwrap();
+    if !run_output.status.success() {
+        eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
     }
-    if !output.stdout.is_empty() {
-        print!("{}", String::from_utf8(output.stdout).unwrap());
+    if !run_output.stdout.is_empty() {
+        print!("{}", String::from_utf8(run_output.stdout).unwrap());
     }
 
     Ok(())
