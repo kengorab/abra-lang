@@ -10,6 +10,11 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
     let abra_base_path = target_path(&project_root, "abra");
     let libgc_base_path = target_path(&project_root, "libgc");
 
+    println!("lib path: {}", join_path(&libgc_base_path, "lib"));
+    for f in libgc_base_path.join("lib").read_dir().unwrap() {
+        println!("lib path file: {}", f.unwrap().path().display());
+    }
+
     let output = Command::new("gcc")
         .arg(src_file)
         .arg("-o").arg(out_file)
