@@ -49,6 +49,10 @@ if [ -d "$C_TARGET_ROOT/libgc/lib" ]; then
   rm -rf "$C_TARGET_ROOT/libgc/lib"
 fi
 mkdir "$C_TARGET_ROOT/libgc/lib"
-cp -R "$EXT_DIR/bdwgc/gc.a" "$C_TARGET_ROOT/libgc/lib/."
+cp "$EXT_DIR/bdwgc/gc.a" "$C_TARGET_ROOT/libgc/lib/."
+
+ls "$C_TARGET_ROOT/abra/include"
+ls "$C_TARGET_ROOT/libgc/include"
+ls "$C_TARGET_ROOT/libgc/lib"
 
 echo "All done!"
