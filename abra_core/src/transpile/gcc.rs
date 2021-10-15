@@ -20,7 +20,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg("-o").arg(out_file)
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
-        .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
+        .arg("-L").arg(join_path(&libgc_base_path, "lib"))
         .arg("-lgc")
         .arg("-v")
         .output()
