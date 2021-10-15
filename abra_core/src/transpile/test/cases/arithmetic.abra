@@ -1,0 +1,58 @@
+val six = 6
+val twentyFour = 24
+
+val sixPointOne = 6.1
+val twentyFourPointTwo = 24.2
+
+// Test binary operators
+println(six + twentyFour)
+println(sixPointOne + twentyFourPointTwo)
+println(sixPointOne + twentyFour)
+println(six + twentyFourPointTwo)
+
+println(six - twentyFour)
+println(sixPointOne - twentyFourPointTwo)
+println(sixPointOne - twentyFour)
+println(six - twentyFourPointTwo)
+
+println(six * twentyFour)
+println(sixPointOne * twentyFourPointTwo)
+println(sixPointOne * twentyFour)
+println(six * twentyFourPointTwo)
+
+println(six / twentyFour)
+println(sixPointOne / twentyFourPointTwo)
+println(sixPointOne / twentyFour)
+println(six / twentyFourPointTwo)
+
+println(six ** twentyFour)
+println(sixPointOne ** twentyFourPointTwo)
+println(sixPointOne ** twentyFour)
+println(six ** twentyFourPointTwo)
+
+// Test unary operator
+println(-(-six + -twentyFourPointTwo))
+
+/* assert(stdout):
+30
+30.300000
+30.100000
+30.200000
+-18
+-18.100000
+-17.900000
+-18.200000
+144
+147.620000
+146.400000
+145.200000
+0.250000
+0.252066
+0.254167
+0.247934
+4738381338321616896.000000
+10115375455797929984.000000
+7045568477354638336.000000
+6780477189624366080.000000
+30.200000
+*/

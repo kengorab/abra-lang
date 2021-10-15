@@ -1,0 +1,21 @@
+// Basic expression
+val seven = if true { 6 + 1 } else { 14 }
+println(seven)
+
+// Mid-expression
+println((if true 12 else 3) - (if true 1 else 4))
+
+// Nested mid-expression
+println(
+  (if true {
+    if true 12 else 1
+  } else 3)
+  -
+  (if true 1 else 4)
+)
+
+/* assert(stdout):
+7
+11
+11
+*/

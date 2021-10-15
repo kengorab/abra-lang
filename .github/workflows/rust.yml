@@ -29,6 +29,8 @@ jobs:
         python-version: '3.x'
     - name: Build rust
       run: cargo build
+    - name: Install ext dependencies (for C compilation)
+      run: ./configure-libgc.sh
     - name: Run rust tests
       run: cargo test --verbose
     - name: Build rust (release mode)
