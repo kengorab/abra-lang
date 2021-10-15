@@ -22,6 +22,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
         .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
         .arg("-lgc")
+        .arg("-v")
         .output()
         .unwrap();
     if !output.status.success() {
