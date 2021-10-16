@@ -23,7 +23,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
     println!("{}", String::from_utf8(output.stdout).unwrap());
 
     println!(
-        "gcc {} -o {} -I{} -I{} -L{} -lgc",
+        "gcc {} -o {} -I{} -I{} -L{} -l:gc.a",
         src_file,
         out_file,
         join_path(&abra_base_path, "include"),
@@ -36,8 +36,8 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg("-o").arg(out_file)
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
-        .arg(format!("-L{}/", join_path(&libgc_base_path, "lib")))
-        .arg("-lgc")
+        .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
+        .arg("-l:gc.a")
         .output()
         .unwrap();
     if !output.status.success() {
