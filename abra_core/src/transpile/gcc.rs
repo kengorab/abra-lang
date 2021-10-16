@@ -19,7 +19,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
     //     join_path(&libgc_base_path, "lib"),
     // );
 
-    let output = Command::new("/usr/local/bin/clang")
+    let output = Command::new("clang")
         .arg(src_file)
         .arg(format!("{}/gc.a", join_path(&libgc_base_path, "lib")))
         .arg("-o").arg(out_file)
