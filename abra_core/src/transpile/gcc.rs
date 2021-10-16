@@ -22,13 +22,20 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .unwrap();
     println!("{}", String::from_utf8(output.stdout).unwrap());
 
+    println!("/usr/bin/clang -v");
+    let output = Command::new("/usr/bin/clang")
+        .arg("-v")
+        .output()
+        .unwrap();
+    println!("{}", String::from_utf8(output.stdout).unwrap());
+
     let output = Command::new("/usr/bin/clang")
         .arg(src_file)
         .arg("-o").arg(out_file)
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
         .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
-        .arg("-lgc")
+        .arg("-l:gc.a")
         .output()
         .unwrap();
     if !output.status.success() {
