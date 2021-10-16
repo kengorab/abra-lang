@@ -15,6 +15,22 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         println!("lib path file: {}", f.unwrap().path().display());
     }
 
+    println!("ls {}", join_path(&libgc_base_path, "lib"));
+    let output = Command::new("ls")
+        .arg(join_path(&libgc_base_path, "lib"))
+        .output()
+        .unwrap();
+    println!("{}", String::from_utf8(output.stdout).unwrap());
+
+    println!(
+        "gcc {} -o {} -I{} -I{} -L{} -lgc",
+        src_file,
+        out_file,
+        join_path(&abra_base_path, "include"),
+        join_path(&libgc_base_path, "include"),
+        join_path(&libgc_base_path, "lib")
+    );
+
     let output = Command::new("gcc")
         .arg(src_file)
         .arg("-o").arg(out_file)
@@ -22,7 +38,6 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
         .arg("-L").arg(join_path(&libgc_base_path, "lib"))
         .arg("-lgc")
-        .arg("-v")
         .output()
         .unwrap();
     if !output.status.success() {
