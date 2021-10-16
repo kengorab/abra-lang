@@ -2,22 +2,13 @@ use std::path::PathBuf;
 use std::process::Command;
 use crate::transpile::get_project_root::get_project_root;
 
-pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Result<(), String> {
-    let src_file = join_path(dotabra_dir, src_file.as_ref());
-    let out_file = join_path(dotabra_dir, out_file.as_ref());
+pub fn clang<S: AsRef<str>>(working_dir: &PathBuf, src_file: S, out_file: S) -> Result<(), String> {
+    let src_file = join_path(working_dir, src_file.as_ref());
+    let out_file = join_path(working_dir, out_file.as_ref());
 
     let project_root = get_project_root().map_err(|_| "Could not determine project root; could not locate include files".to_string())?;
     let abra_base_path = target_path(&project_root, "abra");
     let libgc_base_path = target_path(&project_root, "libgc");
-
-    // println!(
-    //     "/usr/local/bin/clang {} -o {} -I{} -I{} -L{} -lgc -v",
-    //     src_file,
-    //     out_file,
-    //     join_path(&abra_base_path, "include"),
-    //     join_path(&libgc_base_path, "include"),
-    //     join_path(&libgc_base_path, "lib"),
-    // );
 
     let output = Command::new("clang")
         .arg(src_file)
@@ -26,12 +17,8 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
         .arg("-lm")
-        // .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
-        // .arg("-lgc")
-        // .arg("-v")
         .output()
         .unwrap();
-    println!("{}", String::from_utf8(output.stdout).unwrap());
     if !output.status.success() {
         return Err(String::from_utf8(output.stderr).unwrap());
     }

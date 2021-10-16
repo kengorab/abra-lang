@@ -29,10 +29,6 @@ jobs:
         python-version: '3.x'
     - name: Build rust
       run: cargo build
-    - name: Set up Clang
-      uses: egor-tensin/setup-clang@v1
-      with:
-        version: 12
     - name: Install ext dependencies (for C compilation)
       run: ./configure-libgc.sh
     - name: Run rust tests

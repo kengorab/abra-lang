@@ -6,7 +6,7 @@ use crate::common::test_utils::MockModuleReader;
 use crate::common::util::random_string;
 use crate::module_loader::ModuleLoader;
 use crate::parser::ast::ModuleId;
-use crate::transpile::gcc::gcc;
+use crate::transpile::clang::clang;
 use crate::transpile::genc::CCompiler;
 use crate::transpile::get_project_root::get_project_root;
 
@@ -93,7 +93,7 @@ fn compile_and_run(case: &TestCase, input: &String) -> Result<String, String> {
         println!("Wrote {}", working_dir.join(&src_file).display());
     }
 
-    if let Err(e) = gcc(&working_dir, &src_file, &out_file) {
+    if let Err(e) = clang(&working_dir, &src_file, &out_file) {
         return Err(e);
     }
 

@@ -16,7 +16,7 @@ use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
 use std::process::Command;
-use abra_core::transpile::gcc::gcc;
+use abra_core::transpile::clang::clang;
 
 mod fs_module_reader;
 mod repl;
@@ -155,7 +155,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let c_code = abra_core::transpile::genc::CCompiler::gen_c(ast)?;
     std::fs::write(dotabra_dir.join(&src_file), c_code).unwrap();
 
-    if let Err(e) = gcc(&dotabra_dir, &src_file, &out_file) {
+    if let Err(e) = clang(&dotabra_dir, &src_file, &out_file) {
         eprintln!("{}", e);
         std::process::exit(1);
     }
