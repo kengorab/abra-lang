@@ -10,17 +10,6 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
     let abra_base_path = target_path(&project_root, "abra");
     let libgc_base_path = target_path(&project_root, "libgc");
 
-    println!("lib path: {}", join_path(&libgc_base_path, "lib"));
-    for f in libgc_base_path.join("lib").read_dir().unwrap() {
-        println!("lib path file: {}", f.unwrap().path().display());
-    }
-
-    println!("ls {}", join_path(&libgc_base_path, "lib"));
-    let output = Command::new("ls")
-        .arg(join_path(&libgc_base_path, "lib"))
-        .output()
-        .unwrap();
-    println!("{}", String::from_utf8(output.stdout).unwrap());
 
     println!("/usr/bin/clang -v");
     let output = Command::new("/usr/bin/clang")
@@ -28,6 +17,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .output()
         .unwrap();
     println!("{}", String::from_utf8(output.stdout).unwrap());
+    println!("{}", String::from_utf8(output.stderr).unwrap());
 
     let output = Command::new("/usr/bin/clang")
         .arg(src_file)
@@ -35,7 +25,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
         .arg(format!("-L{}", join_path(&libgc_base_path, "lib")))
-        .arg("-l:gc.a")
+        .arg("-lgc")
         .output()
         .unwrap();
     if !output.status.success() {
