@@ -10,16 +10,7 @@ pub fn gcc<S: AsRef<str>>(dotabra_dir: &PathBuf, src_file: S, out_file: S) -> Re
     let abra_base_path = target_path(&project_root, "abra");
     let libgc_base_path = target_path(&project_root, "libgc");
 
-
-    println!("/usr/bin/clang -v");
-    let output = Command::new("/usr/bin/clang")
-        .arg("-v")
-        .output()
-        .unwrap();
-    println!("{}", String::from_utf8(output.stdout).unwrap());
-    println!("{}", String::from_utf8(output.stderr).unwrap());
-
-    let output = Command::new("/usr/bin/clang")
+    let output = Command::new("/usr/local/bin/clang")
         .arg(src_file)
         .arg("-o").arg(out_file)
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
