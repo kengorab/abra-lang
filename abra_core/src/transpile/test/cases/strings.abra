@@ -5,7 +5,13 @@ println(hello, world)
 
 println(hello + " " + world + "!")
 
+// Test equality operators
+println("hello" == "hello", "hello" == "world")
+println("hello" != "hello", "hello" != "world")
+
 /* assert(stdout):
 hello world
 hello world!
+true false
+false true
 */

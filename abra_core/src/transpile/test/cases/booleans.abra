@@ -19,6 +19,10 @@ println(!true)
 println(!false)
 println(!(true && false))
 
+// Test equality operators
+println(true == true, true == false)
+println(true != true, true != false)
+
 /* assert(stdout):
 true
 false
@@ -35,4 +39,6 @@ false
 false
 true
 true
+true false
+false true
 */

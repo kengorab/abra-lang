@@ -25,7 +25,7 @@
   } while (0);
 
 typedef enum {
-  OBJ_STR,
+  OBJ_STR = 0,
   OBJ_ARRAY,
 } ObjectType;
 typedef struct Obj {
@@ -33,7 +33,7 @@ typedef struct Obj {
 } Obj;
 
 typedef enum {
-  ABRA_TYPE_NONE,
+  ABRA_TYPE_NONE = 0,
   ABRA_TYPE_INT,
   ABRA_TYPE_FLOAT,
   ABRA_TYPE_BOOL,
@@ -207,6 +207,46 @@ void std__println(AbraValue val) {
     }
   }
   printf("\n");
+}
+
+bool std__eq(AbraValue v1, AbraValue v2) {
+    if (v1.type != v2.type) return false;
+    switch (v1.type) {
+        case ABRA_TYPE_NONE: return true;
+        case ABRA_TYPE_INT: return v1.as.abra_int == v2.as.abra_int;
+        case ABRA_TYPE_FLOAT: return v1.as.abra_float == v2.as.abra_float;
+        case ABRA_TYPE_BOOL: return v1.as.abra_bool == v2.as.abra_bool;
+        case ABRA_TYPE_OBJ: {
+            Obj* o1 = v1.as.obj;
+            Obj* o2 = v2.as.obj;
+            if (o1->type != o2->type) return false;
+
+            switch (o1->type) {
+                case OBJ_STR: {
+                    AbraString* s1 = (AbraString*) o1;
+                    AbraString* s2 = (AbraString*) o2;
+                    if (s1->size != s2->size) return false;
+
+                    for (int i = 0; i < s1->size; ++i) {
+                        if (s1->data[i] != s2->data[i]) return false;
+                    }
+                    return true;
+                }
+                case OBJ_ARRAY: {
+                    AbraArray* a1 = (AbraArray*) o1;
+                    AbraArray* a2 = (AbraArray*) o2;
+                    if (a1->size != a2->size) return false;
+
+                    for (int i = 0; i < a1->size; ++i) {
+                        if (!std__eq(a1->items[i], a2->items[i])) return false;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    return true;
 }
 
 #endif

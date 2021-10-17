@@ -10,7 +10,7 @@ pub struct CCompiler {
     buf: String,
     module_name: String,
     if_result_var_names_stack: Vec<VecDeque<String>>,
-    array_literal_var_names_stack: VecDeque<String>,
+    array_literal_var_names_stack: Vec<VecDeque<String>>,
 }
 
 impl CCompiler {
@@ -19,7 +19,7 @@ impl CCompiler {
             buf: "".to_string(),
             module_name: "example".to_string(),
             if_result_var_names_stack: vec![VecDeque::new()],
-            array_literal_var_names_stack: VecDeque::new(),
+            array_literal_var_names_stack: vec![VecDeque::new()],
         }
     }
 
@@ -82,15 +82,17 @@ impl CCompiler {
                 let items_ident = format!("items_{}", &ident);
                 self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
                 for (idx, item) in node.items.into_iter().enumerate() {
+                    self.array_literal_var_names_stack.push(VecDeque::new());
                     self.lift(&item)?;
                     self.emit(format!("{}[{}] = ", items_ident, idx));
                     self.visit(item)?;
+                    self.array_literal_var_names_stack.pop();
                     self.emit_line(";");
                 }
 
                 let arr_ident = format!("arr_{}", ident);
+                self.array_literal_var_names_stack.last_mut().unwrap().push_back(arr_ident.clone());
                 self.emit_line(format!("AbraValue {} = alloc_array({}, {});", &arr_ident, items_ident, size));
-                self.array_literal_var_names_stack.push_back(arr_ident);
             }
             TypedAstNode::Map(_, _) |
             TypedAstNode::Set(_, _) |
@@ -319,8 +321,14 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 self.emit(">=");
                 self.visit_and_convert(*node.right)?;
             }
-            BinaryOp::Neq => {}
-            BinaryOp::Eq => {}
+            op @ BinaryOp::Neq | op @ BinaryOp::Eq => {
+                if op == BinaryOp::Neq { self.emit("!"); }
+                self.emit("std__eq(");
+                self.visit(*node.left)?;
+                self.emit(", ");
+                self.visit(*node.right)?;
+                self.emit(")");
+            }
             BinaryOp::Pow => {
                 self.emit("pow(");
                 self.visit_and_convert(*node.left)?;
@@ -346,7 +354,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<(), ()> {
-        let ident_name = self.array_literal_var_names_stack.pop_front().expect("We shouldn't reach an array literal without having visited it previously");
+        let ident_name = self.array_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an array literal without having visited it previously");
         self.emit(ident_name);
 
         Ok(())
