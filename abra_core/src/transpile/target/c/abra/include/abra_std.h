@@ -62,6 +62,9 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 #define NEW_BOOL(b) (b ? ABRA_TRUE : ABRA_FALSE)
 #define AS_BOOL(v) v.as.abra_bool
 
+bool std__eq(AbraValue v1, AbraValue v2);
+char const* std__to_string(AbraValue val);
+
 typedef struct AbraString {
   Obj _header;
   uint32_t size;
@@ -97,6 +100,21 @@ AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
   return new_string;
 }
 
+bool std_string__eq(Obj* o1, Obj* o2) {
+    AbraString* s1 = (AbraString*) o1;
+    AbraString* s2 = (AbraString*) o2;
+    if (s1->size != s2->size) return false;
+
+    for (int i = 0; i < s1->size; ++i) {
+        if (s1->data[i] != s2->data[i]) return false;
+    }
+    return true;
+}
+
+char const* std_string__to_string(Obj* obj) {
+    return ((AbraString*) obj)->data;
+}
+
 typedef struct AbraArray {
   Obj _header;
   uint32_t size;
@@ -114,6 +132,85 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 
   return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)arr)}});
 }
+
+bool std_array__eq(Obj* o1, Obj* o2) {
+    AbraArray* a1 = (AbraArray*) o1;
+    AbraArray* a2 = (AbraArray*) o2;
+    if (a1->size != a2->size) return false;
+
+    for (int i = 0; i < a1->size; ++i) {
+        if (!std__eq(a1->items[i], a2->items[i])) return false;
+    }
+    return true;
+}
+
+char const* std_array__to_string(Obj* obj) {
+    AbraArray* arr = (AbraArray*) obj;
+
+    if (arr->size == 0) return "[]";
+
+    // Convert each element to string and compute total size
+    char const** items = malloc(sizeof(char*) * arr->size);
+    size_t size = 2 + (2 * (arr->size - 1));  // Account for "[" and "]", plus ", " for all but last item
+    for (int i = 0; i < arr->size; ++i) {
+        AbraValue item = arr->items[i];
+        char const* item_str = std__to_string(item);
+        items[i] = item_str;
+        size += strlen(item_str);
+    }
+
+    // Allocate necessary string and copy items' strings into place
+    char* array_str = GC_MALLOC(sizeof(char) * size);
+    array_str[0] = '[';
+    char* ptr = array_str + 1;
+    for (int i = 0; i < arr->size; ++i) {
+        char const* item_str = items[i];
+        size_t len = strlen(item_str);
+        memcpy(ptr, item_str, len);
+        ptr += len;
+        if (i < arr->size - 1) {
+            memcpy(ptr, ", ", 2);
+            ptr += 2;
+        }
+    }
+    array_str[size - 1] = ']';
+    array_str[size] = 0;
+
+    free(items);
+
+    return array_str;
+}
+
+#define OBJ_LIMIT 100
+
+typedef bool (*EqFn)(Obj*, Obj*);
+static EqFn eq_fns[OBJ_LIMIT];
+
+bool std__eq(AbraValue v1, AbraValue v2) {
+    if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
+        return ((double) v1.as.abra_int) == v2.as.abra_float;
+    if (v1.type == ABRA_TYPE_FLOAT && v2.type == ABRA_TYPE_INT)
+        return v1.as.abra_float == ((double) v2.as.abra_int);
+
+    if (v1.type != v2.type) return false;
+    switch (v1.type) {
+        case ABRA_TYPE_NONE: return true;
+        case ABRA_TYPE_INT: return v1.as.abra_int == v2.as.abra_int;
+        case ABRA_TYPE_FLOAT: return v1.as.abra_float == v2.as.abra_float;
+        case ABRA_TYPE_BOOL: return v1.as.abra_bool == v2.as.abra_bool;
+        case ABRA_TYPE_OBJ: {
+            Obj* o1 = v1.as.obj;
+            Obj* o2 = v2.as.obj;
+            if (o1->type != o2->type) return false;
+            return eq_fns[o1->type](o1, o2);
+        }
+    }
+
+    return true;
+}
+
+typedef char const* (*ToStringFn)(Obj*);
+static ToStringFn to_string_fns[OBJ_LIMIT];
 
 char const* std__to_string(AbraValue val) {
   switch (val.type) {
@@ -144,50 +241,7 @@ char const* std__to_string(AbraValue val) {
       return val.as.abra_bool ? "true" : "false";
     case ABRA_TYPE_OBJ: {
       Obj* o = val.as.obj;
-      switch (o->type) {
-        case OBJ_STR:
-          return ((AbraString*)o)->data;
-        case OBJ_ARRAY: {
-          AbraArray* arr = (AbraArray*)o;
-
-          if (arr->size == 0) {
-              return "[]";
-          }
-
-          // Convert each element to string and compute total size
-          char const** items = malloc(sizeof(char*) * arr->size);
-          size_t size = 2 + (2 * (arr->size - 1));  // Account for "[" and "]", plus ", " for all but last item
-          for (int i = 0; i < arr->size; ++i) {
-            AbraValue item = arr->items[i];
-            char const* item_str = std__to_string(item);
-            items[i] = item_str;
-            size += strlen(item_str);
-          }
-
-          // Allocate necessary string and copy items' strings into place
-          char* array_str = GC_MALLOC(sizeof(char) * size);
-          array_str[0] = '[';
-          char* ptr = array_str + 1;
-          for (int i = 0; i < arr->size; ++i) {
-            char const* item_str = items[i];
-            size_t len = strlen(item_str);
-            memcpy(ptr, item_str, len);
-            ptr += len;
-            if (i < arr->size - 1) {
-              memcpy(ptr, ", ", 2);
-              ptr += 2;
-            }
-          }
-          array_str[size - 1] = ']';
-          array_str[size] = 0;
-
-          free(items);
-
-          return array_str;
-        }
-        default:
-          TODO("Implement other Obj println cases")
-      }
+      return to_string_fns[o->type](o);
     } break;
     default:
       UNREACHABLE // All the primitive types have been handled
@@ -210,49 +264,14 @@ void std__println(AbraValue val) {
   printf("\n");
 }
 
-bool std__eq(AbraValue v1, AbraValue v2) {
-    if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
-        return ((double) v1.as.abra_int) == v2.as.abra_float;
-    if (v1.type == ABRA_TYPE_FLOAT && v2.type == ABRA_TYPE_INT)
-        return v1.as.abra_float == ((double) v2.as.abra_int);
+void abra_init() {
+    GC_INIT();
 
-    if (v1.type != v2.type) return false;
-    switch (v1.type) {
-        case ABRA_TYPE_NONE: return true;
-        case ABRA_TYPE_INT: return v1.as.abra_int == v2.as.abra_int;
-        case ABRA_TYPE_FLOAT: return v1.as.abra_float == v2.as.abra_float;
-        case ABRA_TYPE_BOOL: return v1.as.abra_bool == v2.as.abra_bool;
-        case ABRA_TYPE_OBJ: {
-            Obj* o1 = v1.as.obj;
-            Obj* o2 = v2.as.obj;
-            if (o1->type != o2->type) return false;
+    eq_fns[OBJ_STR] = &std_string__eq;
+    eq_fns[OBJ_ARRAY] = &std_array__eq;
 
-            switch (o1->type) {
-                case OBJ_STR: {
-                    AbraString* s1 = (AbraString*) o1;
-                    AbraString* s2 = (AbraString*) o2;
-                    if (s1->size != s2->size) return false;
-
-                    for (int i = 0; i < s1->size; ++i) {
-                        if (s1->data[i] != s2->data[i]) return false;
-                    }
-                    return true;
-                }
-                case OBJ_ARRAY: {
-                    AbraArray* a1 = (AbraArray*) o1;
-                    AbraArray* a2 = (AbraArray*) o2;
-                    if (a1->size != a2->size) return false;
-
-                    for (int i = 0; i < a1->size; ++i) {
-                        if (!std__eq(a1->items[i], a2->items[i])) return false;
-                    }
-                    return true;
-                }
-            }
-        }
-    }
-
-    return true;
+    to_string_fns[OBJ_STR] = &std_string__to_string;
+    to_string_fns[OBJ_ARRAY] = &std_array__to_string;
 }
 
 #endif

@@ -29,7 +29,7 @@ impl CCompiler {
         compiler.emit_line("#include \"abra_std.h\"\n");
 
         compiler.emit_line("int main(int argc, char** argv) {");
-        compiler.emit_line("GC_INIT();");
+        compiler.emit_line("abra_init();");
 
         let ast_len = ast.len();
         for (idx, node) in ast.into_iter().enumerate() {
