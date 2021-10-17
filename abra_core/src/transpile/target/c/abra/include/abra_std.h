@@ -117,6 +117,7 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 
 char const* std__to_string(AbraValue val) {
   switch (val.type) {
+    case ABRA_TYPE_NONE: return "None";
     case ABRA_TYPE_INT: {
       int64_t i = val.as.abra_int;
       int len = snprintf(NULL, 0, "%" PRId64, i);
@@ -210,6 +211,11 @@ void std__println(AbraValue val) {
 }
 
 bool std__eq(AbraValue v1, AbraValue v2) {
+    if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
+        return ((double) v1.as.abra_int) == v2.as.abra_float;
+    if (v1.type == ABRA_TYPE_FLOAT && v2.type == ABRA_TYPE_INT)
+        return v1.as.abra_float == ((double) v2.as.abra_int);
+
     if (v1.type != v2.type) return false;
     switch (v1.type) {
         case ABRA_TYPE_NONE: return true;

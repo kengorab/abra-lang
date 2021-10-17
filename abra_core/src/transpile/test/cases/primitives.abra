@@ -1,11 +1,17 @@
-println(24, 3.1415, true, false)
+println(None, 24, 3.1415, true, false)
 
 // Test equality operators
 println(1 == 1, -1 == 2)
 println(1 != 1, -1 != 2)
+println(1 == 1.0, 1.0 == 1)
+println(1.0 == 1.00, -1.0 == 2.0)
+println(1.0 != 1.00, -1.0 != 2.0)
 
 /* assert(stdout):
-24 3.1415 true false
+None 24 3.1415 true false
+true false
+false true
+true true
 true false
 false true
 */

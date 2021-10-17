@@ -413,6 +413,8 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<(), ()> {
         if &node.name == "println" {
             self.emit("std__println");
+        } else if &node.name == "None" {
+            self.emit("ABRA_NONE");
         } else {
             self.emit(self.c_ident_name(node.name));
         }
