@@ -1,13 +1,5 @@
-println(24)
-
-println(3.14)
-
-println(true)
-println(false)
+println(24, 3.1415, true, false)
 
 /* assert(stdout):
-24
-3.140000
-true
-false
+24 3.1415 true false
 */

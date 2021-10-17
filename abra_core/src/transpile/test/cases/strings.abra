@@ -1,0 +1,11 @@
+val hello = "hello"
+val world = "world"
+
+println(hello, world)
+
+println(hello + " " + world + "!")
+
+/* assert(stdout):
+hello world
+hello world!
+*/

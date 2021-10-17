@@ -10,6 +10,7 @@ pub struct CCompiler {
     buf: String,
     module_name: String,
     if_result_var_names_stack: Vec<VecDeque<String>>,
+    array_literal_var_names_stack: VecDeque<String>,
 }
 
 impl CCompiler {
@@ -18,6 +19,7 @@ impl CCompiler {
             buf: "".to_string(),
             module_name: "example".to_string(),
             if_result_var_names_stack: vec![VecDeque::new()],
+            array_literal_var_names_stack: VecDeque::new(),
         }
     }
 
@@ -27,10 +29,11 @@ impl CCompiler {
         compiler.emit_line("#include \"abra_std.h\"\n");
 
         compiler.emit_line("int main(int argc, char** argv) {");
+        compiler.emit_line("GC_INIT();");
 
         let ast_len = ast.len();
         for (idx, node) in ast.into_iter().enumerate() {
-            compiler.lift_if_exprs(&node)?;
+            compiler.lift(&node)?;
 
             let should_print = idx == ast_len - 1 && node.get_type() != Type::Unit;
             if should_print { compiler.emit("  std__println("); }
@@ -59,33 +62,47 @@ impl CCompiler {
         format!("{}__{}", self.module_name, name.as_ref())
     }
 
-    fn lift_if_exprs(&mut self, node: &TypedAstNode) -> Result<(), ()> {
+    fn lift(&mut self, node: &TypedAstNode) -> Result<(), ()> {
         match node {
-            TypedAstNode::Unary(_, node) => self.lift_if_exprs(&node.expr),
+            TypedAstNode::Unary(_, node) => {
+                self.lift(&node.expr)?;
+            },
             TypedAstNode::Binary(_, node) => {
-                self.lift_if_exprs(&node.left)?;
-                self.lift_if_exprs(&node.right)
+                self.lift(&node.left)?;
+                self.lift(&node.right)?;
             }
-            TypedAstNode::Grouped(_, node) => self.lift_if_exprs(&node.expr),
+            TypedAstNode::Grouped(_, node) => {
+                self.lift(&node.expr)?;
+            },
             TypedAstNode::Array(_, node) => {
-                for item in &node.items {
-                    self.lift_if_exprs(&item)?;
+                let node = node.clone(); // :/
+                let size = node.items.len();
+
+                let ident = random_string(10);
+                let items_ident = format!("items_{}", &ident);
+                self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
+                for (idx, item) in node.items.into_iter().enumerate() {
+                    self.lift(&item)?;
+                    self.emit(format!("{}[{}] = ", items_ident, idx));
+                    self.visit(item)?;
+                    self.emit_line(";");
                 }
 
-                Ok(())
+                let arr_ident = format!("arr_{}", ident);
+                self.emit_line(format!("AbraValue {} = alloc_array({}, {});", &arr_ident, items_ident, size));
+                self.array_literal_var_names_stack.push_back(arr_ident);
             }
             TypedAstNode::Map(_, _) |
             TypedAstNode::Set(_, _) |
-            TypedAstNode::Tuple(_, _) |
-            TypedAstNode::Lambda(_, _) => todo!(),
+            TypedAstNode::Tuple(_, _) => todo!("These will need to be lifted"),
             TypedAstNode::BindingDecl(_, node) => {
                 if let Some(expr) = &node.expr {
-                    self.lift_if_exprs(expr)
-                } else {
-                    Ok(())
+                    self.lift(expr)?;
                 }
             }
-            TypedAstNode::Assignment(_, node) => self.lift_if_exprs(&node.expr),
+            TypedAstNode::Assignment(_, node) => {
+                self.lift(&node.expr)?;
+            },
             TypedAstNode::Indexing(_, _) => todo!(),
             TypedAstNode::IfExpression(_, node) => {
                 let node = node.clone(); // :/
@@ -93,14 +110,17 @@ impl CCompiler {
                 self.if_result_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
 
                 self.emit_line(format!("AbraValue {};", ident_name));
+                self.if_result_var_names_stack.push(VecDeque::new());
+                self.lift(&node.condition)?;
                 self.emit("if (");
                 self.visit_and_convert(*node.condition)?;
+                self.if_result_var_names_stack.pop();
                 self.emit_line(") {");
 
                 self.if_result_var_names_stack.push(VecDeque::new());
                 let len = node.if_block.len();
                 for (idx, node) in node.if_block.into_iter().enumerate() {
-                    self.lift_if_exprs(&node)?;
+                    self.lift(&node)?;
                     if idx == len - 1 {
                         self.emit(format!("{} = ", ident_name));
                     }
@@ -114,7 +134,7 @@ impl CCompiler {
                 let else_block = node.else_block.unwrap();
                 let len = else_block.len();
                 for (idx, node) in else_block.into_iter().enumerate() {
-                    self.lift_if_exprs(&node)?;
+                    self.lift(&node)?;
                     if idx == len - 1 {
                         self.emit(format!("{} = ", ident_name));
                     }
@@ -123,22 +143,29 @@ impl CCompiler {
                 }
                 self.emit_line("}");
                 self.if_result_var_names_stack.pop();
-
-                Ok(())
             }
             TypedAstNode::Invocation(_, node) => {
-                self.lift_if_exprs(&node.target)?;
+                self.lift(&node.target)?;
                 for arg in &node.args {
                     if let Some(arg) = arg {
-                        self.lift_if_exprs(&arg)?;
+                        self.lift(&arg)?;
                     }
                 }
-
-                Ok(())
             }
-            TypedAstNode::Instantiation(_, _) |
-            TypedAstNode::ReturnStatement(_, _) => todo!(),
+            TypedAstNode::Instantiation(_, node) => {
+                for (_, field) in &node.fields {
+                    self.lift(&field)?;
+                }
+            }
+            TypedAstNode::ReturnStatement(_, node) => {
+                if let Some(target) = &node.target {
+                    self.lift(&target)?;
+                }
+            }
+            TypedAstNode::MatchExpression(_, _) => todo!("This will also need to be lifted"),
+            // The following node types cannot contain expressions that need lifting
             TypedAstNode::Literal(_, _) |
+            TypedAstNode::Lambda(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
             TypedAstNode::TypeDecl(_, _) |
             TypedAstNode::EnumDecl(_, _) |
@@ -150,10 +177,11 @@ impl CCompiler {
             TypedAstNode::Accessor(_, _) |
             TypedAstNode::IfStatement(_, _) |
             TypedAstNode::MatchStatement(_, _) |
-            TypedAstNode::MatchExpression(_, _) |
             TypedAstNode::ImportStatement(_, _) |
-            TypedAstNode::_Nil(_) => Ok(())
-        }
+            TypedAstNode::_Nil(_) => {}
+        };
+
+        Ok(())
     }
 
     fn visit_and_convert(&mut self, node: TypedAstNode) -> Result<(), ()> {
@@ -175,7 +203,10 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             TypedLiteralNode::IntLiteral(i) => self.emit(format!("NEW_INT({})", i)),
             TypedLiteralNode::FloatLiteral(f) => self.emit(format!("NEW_FLOAT({})", f)),
             TypedLiteralNode::BoolLiteral(b) => self.emit(format!("NEW_BOOL({})", b)),
-            TypedLiteralNode::StringLiteral(_) => todo!(),
+            TypedLiteralNode::StringLiteral(s) => {
+                let len = s.len();
+                self.emit(format!("alloc_string(\"{}\", {})", s, len));
+            }
         }
 
         Ok(())
@@ -186,7 +217,8 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             Type::Int => self.emit("NEW_INT("),
             Type::Float => self.emit("NEW_FLOAT("),
             Type::Bool => self.emit("NEW_BOOL("),
-            _ => todo!()
+            Type::Option(_) => todo!(),
+            _ => unreachable!("No other types currently have unary operators")
         }
 
         match node.op {
@@ -210,11 +242,22 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             Type::Int => self.emit("NEW_INT("),
             Type::Float => self.emit("NEW_FLOAT("),
             Type::Bool => self.emit("NEW_BOOL("),
+            Type::String => {} // Do nothing, it's handled below
             _ => todo!()
         }
 
         match node.op {
             BinaryOp::Add => {
+                if node.typ == Type::String {
+                    self.emit("std_string__concat(");
+                    self.visit(*node.left)?;
+                    self.emit(", ");
+                    self.visit(*node.right)?;
+                    self.emit(")");
+
+                    return Ok(())
+                }
+
                 self.visit_and_convert(*node.left)?;
                 self.emit("+");
                 self.visit_and_convert(*node.right)?;
@@ -306,9 +349,10 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_array(&mut self, _token: Token, node: TypedArrayNode) -> Result<(), ()> {
-        let first = node.items.into_iter().next().unwrap();
-        self.visit(first)?;
+    fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<(), ()> {
+        let ident_name = self.array_literal_var_names_stack.pop_front().expect("We shouldn't reach an array literal without having visited it previously");
+        self.emit(ident_name);
+
         Ok(())
     }
 
@@ -394,16 +438,6 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_if_expression(&mut self, _token: Token, _node: TypedIfNode) -> Result<(), ()> {
-        // // TODO: Properly handling if-exprs will require them to be lifted to the top-level
-        // self.visit_and_convert(*node.condition)?;
-        // self.emit("?");
-        //
-        // let if_block = node.if_block.into_iter().next().unwrap();
-        // self.visit(if_block)?;
-        // self.emit(":");
-        //
-        // let else_block = node.else_block.unwrap().into_iter().next().unwrap();
-        // self.visit(else_block)?;
         let ident_name = self.if_result_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an if-expr without having visited it previously");
         self.emit(ident_name);
 

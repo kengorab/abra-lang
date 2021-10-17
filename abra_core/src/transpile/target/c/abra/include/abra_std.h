@@ -1,37 +1,45 @@
 #ifndef __ABRA_H
 #define __ABRA_H
 
+// To print debug information, run binary with GC_PRINT_STATS=1 env var
 #define GC_DEBUG
 
+#include "gc.h"
+#include "inttypes.h"
 #include "math.h"
 #include "stdbool.h"
 #include "stdint.h"
-#include "inttypes.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
-#include "gc.h"
 
 #define TODO(m)                                         \
   do {                                                  \
     printf("%s:%d: TODO: " m "\n", __FILE__, __LINE__); \
     exit(1);                                            \
   } while (0);
+#define UNREACHABLE                                                  \
+  do {                                                               \
+    printf("%s:%d: Entered unreachable code\n", __FILE__, __LINE__); \
+    exit(1);                                                         \
+  } while (0);
 
 typedef enum {
   OBJ_STR,
+  OBJ_ARRAY,
 } ObjectType;
-
 typedef struct Obj {
   ObjectType type;
 } Obj;
 
-#define ABRA_TYPE_INT 0
-#define ABRA_TYPE_FLOAT 1
-#define ABRA_TYPE_BOOL 2
-#define ABRA_TYPE_OBJ 3
+typedef enum {
+  ABRA_TYPE_INT,
+  ABRA_TYPE_FLOAT,
+  ABRA_TYPE_BOOL,
+  ABRA_TYPE_OBJ,
+} AbraType;
 typedef struct AbraValue {
-  int8_t type_id;
+  AbraType type;
   union {
     int64_t abra_int;
     double abra_float;
@@ -40,47 +48,153 @@ typedef struct AbraValue {
   } as;
 } AbraValue;
 
-#define NEW_INT(i) ((AbraValue){.type_id = ABRA_TYPE_INT, .as = {.abra_int = i}})
+#define NEW_INT(i) ((AbraValue){.type = ABRA_TYPE_INT, .as = {.abra_int = i}})
 #define AS_INT(v) v.as.abra_int
-#define NEW_FLOAT(f) ((AbraValue){.type_id = ABRA_TYPE_FLOAT, .as = {.abra_float = f}})
+#define NEW_FLOAT(f) ((AbraValue){.type = ABRA_TYPE_FLOAT, .as = {.abra_float = f}})
 #define AS_FLOAT(v) v.as.abra_float
-#define NEW_BOOL(b) ((AbraValue){.type_id = ABRA_TYPE_BOOL, .as = {.abra_bool = b}})
+#define NEW_BOOL(b) ((AbraValue){.type = ABRA_TYPE_BOOL, .as = {.abra_bool = b}})
 #define AS_BOOL(v) v.as.abra_bool
 
 typedef struct AbraString {
   Obj _header;
   uint32_t size;
-  char data[];
+  char* data;
 } AbraString;
 
-AbraString* alloc_string(char* data, size_t size) {
-    AbraString* str = GC_MALLOC(sizeof(AbraString));
+AbraValue alloc_string(char* data, size_t size) {
+  AbraString* str = GC_MALLOC(sizeof(AbraString));
 
-    str->_header.type = OBJ_STR;
-    str->size = size;
-    if (size != 0 && data != NULL) memcpy(str->data, data, size);
+  str->_header.type = OBJ_STR;
+  str->size = size;
+  if (size != 0 && data != NULL) {
+    str->data = strdup(data);
+  }
+  str->data[size] = 0;
 
-    return str;
+  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)str)}});
+}
+
+AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
+  AbraString* s1 = (AbraString*)str1.as.obj;
+  AbraString* s2 = (AbraString*)str2.as.obj;
+
+  size_t new_str_len = s1->size + s2->size + 1;
+  char* tmp = malloc(new_str_len);
+  memcpy(tmp, s1->data, s1->size);
+  memcpy(tmp + s1->size, s2->data, s2->size);
+  tmp[new_str_len] = 0;
+
+  size_t size = s1->size + s2->size;
+  AbraValue new_string = alloc_string(tmp, size);
+  free(tmp);
+  return new_string;
+}
+
+typedef struct AbraArray {
+  Obj _header;
+  uint32_t size;
+  uint32_t capacity;
+  AbraValue* items;
+} AbraArray;
+
+AbraValue alloc_array(AbraValue* values, size_t size) {
+  AbraArray* arr = GC_MALLOC(sizeof(AbraArray));
+
+  arr->_header.type = OBJ_ARRAY;
+  arr->size = size;
+  arr->capacity = size;
+  arr->items = values;
+
+  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)arr)}});
+}
+
+char const* std__to_string(AbraValue val) {
+  switch (val.type) {
+    case ABRA_TYPE_INT: {
+      int64_t i = val.as.abra_int;
+      int len = snprintf(NULL, 0, "%" PRId64, i);
+      char* str = GC_MALLOC(len + 1);
+      snprintf(str, len + 1, "%" PRId64, i);
+      return str;
+    }
+    case ABRA_TYPE_FLOAT: {
+      double d = val.as.abra_float;
+      int len = snprintf(NULL, 0, "%f", d);
+      char* str = GC_MALLOC(len + 1);
+      snprintf(str, len + 1, "%f", d);
+      // Trim trailing zeroes
+      for (int i = len - 1; i >= 1; --i) {
+        if (str[i] == '0' && str[i - 1] != '.') {
+          str[i] = 0;
+        } else {
+          break;
+        }
+      }
+      return str;
+    }
+    case ABRA_TYPE_BOOL:
+      return val.as.abra_bool ? "true" : "false";
+    case ABRA_TYPE_OBJ: {
+      Obj* o = val.as.obj;
+      switch (o->type) {
+        case OBJ_STR:
+          return ((AbraString*)o)->data;
+        case OBJ_ARRAY: {
+          AbraArray* arr = (AbraArray*)o;
+
+          if (arr->size == 0) {
+              return "[]";
+          }
+
+          // Convert each element to string and compute total size
+          char const** items = malloc(sizeof(char*) * arr->size);
+          size_t size = 2 + (2 * (arr->size - 1));  // Account for "[" and "]", plus ", " for all but last item
+          for (int i = 0; i < arr->size; ++i) {
+            AbraValue item = arr->items[i];
+            char const* item_str = std__to_string(item);
+            items[i] = item_str;
+            size += strlen(item_str);
+          }
+
+          // Allocate necessary string and copy items' strings into place
+          char* array_str = GC_MALLOC(sizeof(char) * size);
+          array_str[0] = '[';
+          char* ptr = array_str + 1;
+          for (int i = 0; i < arr->size; ++i) {
+            char const* item_str = items[i];
+            size_t len = strlen(item_str);
+            memcpy(ptr, item_str, len);
+            ptr += len;
+            if (i < arr->size - 1) {
+              memcpy(ptr, ", ", 2);
+              ptr += 2;
+            }
+          }
+          array_str[size - 1] = ']';
+          array_str[size] = 0;
+
+          free(items);
+
+          return array_str;
+        }
+        default:
+          TODO("Implement other Obj println cases")
+      }
+    } break;
+    default:
+      UNREACHABLE // All the primitive types have been handled
+  }
 }
 
 void std__println(AbraValue val) {
-  switch (val.type_id) {
-    case ABRA_TYPE_INT:
-      printf("%" PRId64 "\n", val.as.abra_int);
-      break;
-    case ABRA_TYPE_FLOAT:
-      printf("%f\n", val.as.abra_float);
-      break;
-    case ABRA_TYPE_BOOL:
-      if (val.as.abra_bool) {
-        printf("true\n");
-      } else {
-        printf("false\n");
-      }
-      break;
-    default:
-      TODO("Other println cases")
+  AbraArray* varargs = (AbraArray*)val.as.obj;
+  for (int i = 0; i < varargs->size; ++i) {
+    printf("%s", std__to_string(varargs->items[i]));
+    if (i < varargs->size - 1) {
+      printf(" ");
+    }
   }
+  printf("\n");
 }
 
 #endif

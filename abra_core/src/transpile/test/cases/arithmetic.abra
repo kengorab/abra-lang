@@ -5,54 +5,51 @@ val sixPointOne = 6.1
 val twentyFourPointTwo = 24.2
 
 // Test binary operators
-println(six + twentyFour)
-println(sixPointOne + twentyFourPointTwo)
-println(sixPointOne + twentyFour)
-println(six + twentyFourPointTwo)
+println(
+  six + twentyFour,
+  sixPointOne + twentyFourPointTwo,
+  sixPointOne + twentyFour,
+  six + twentyFourPointTwo
+)
 
-println(six - twentyFour)
-println(sixPointOne - twentyFourPointTwo)
-println(sixPointOne - twentyFour)
-println(six - twentyFourPointTwo)
+println(
+  six - twentyFour,
+  sixPointOne - twentyFourPointTwo,
+  sixPointOne - twentyFour,
+  six - twentyFourPointTwo
+)
 
-println(six * twentyFour)
-println(sixPointOne * twentyFourPointTwo)
-println(sixPointOne * twentyFour)
-println(six * twentyFourPointTwo)
+println(
+  six * twentyFour,
+  sixPointOne * twentyFourPointTwo,
+  sixPointOne * twentyFour,
+  six * twentyFourPointTwo
+)
 
-println(six / twentyFour)
-println(sixPointOne / twentyFourPointTwo)
-println(sixPointOne / twentyFour)
-println(six / twentyFourPointTwo)
+println(
+  six / twentyFour,
+  sixPointOne / twentyFourPointTwo,
+  sixPointOne / twentyFour,
+  six / twentyFourPointTwo
+)
 
-println(six ** twentyFour)
-println(sixPointOne ** twentyFourPointTwo)
-println(sixPointOne ** twentyFour)
-println(six ** twentyFourPointTwo)
+println(
+  six ** twentyFour,
+  sixPointOne ** twentyFourPointTwo,
+  sixPointOne ** twentyFour,
+  six ** twentyFourPointTwo
+)
 
 // Test unary operator
-println(-(-six + -twentyFourPointTwo))
+println(
+  -(-six + -twentyFourPointTwo)
+)
 
 /* assert(stdout):
-30
-30.300000
-30.100000
-30.200000
--18
--18.100000
--17.900000
--18.200000
-144
-147.620000
-146.400000
-145.200000
-0.250000
-0.252066
-0.254167
-0.247934
-4738381338321616896.000000
-10115375455797929984.000000
-7045568477354638336.000000
-6780477189624366080.000000
-30.200000
+30 30.3 30.1 30.2
+-18 -18.1 -17.9 -18.2
+144 147.62 146.4 145.2
+0.25 0.252066 0.254167 0.247934
+4738381338321616896.0 10115375455797929984.0 7045568477354638336.0 6780477189624366080.0
+30.2
 */

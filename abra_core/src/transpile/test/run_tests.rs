@@ -58,7 +58,7 @@ fn run_test(case: &TestCase) -> Option<String> {
             match compile_and_run(&case, &contents) {
                 Ok(output) => {
                     if output != assertions {
-                        let err = format!("Expected:\n{}%%\n    Got:\n{}%%", assertions, output);
+                        let err = format!("Expected:\n{}\n    Got:\n{}", assertions, output);
                         Some(err)
                     } else { None }
                 }

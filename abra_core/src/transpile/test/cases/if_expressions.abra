@@ -14,8 +14,20 @@ println(
   (if true 1 else 4)
 )
 
+// "Lifted" expression in condition
+println(
+  if (if true true else false) 7 else 8
+)
+
+// Nesting "lifted" expressions
+println(
+  if true { [1, 2, 3, if true 4 else 5] } else [4, 5]
+)
+
 /* assert(stdout):
 7
 11
 11
+7
+[1, 2, 3, 4]
 */
