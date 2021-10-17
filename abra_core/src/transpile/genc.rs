@@ -221,16 +221,12 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             _ => unreachable!("No other types currently have unary operators")
         }
 
-        match node.op {
-            UnaryOp::Minus => {
-                self.emit("-");
-                self.visit_and_convert(*node.expr)?;
-            }
-            UnaryOp::Negate => {
-                self.emit("!");
-                self.visit_and_convert(*node.expr)?;
-            }
-        }
+        let op = match node.op {
+            UnaryOp::Minus => "-",
+            UnaryOp::Negate => "!",
+        };
+        self.emit(op);
+        self.visit_and_convert(*node.expr)?;
 
         self.emit(")");
 
@@ -452,12 +448,12 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         for (idx, arg) in node.args.into_iter().enumerate() {
             if let Some(arg) = arg {
                 self.visit(arg)?;
-
-                if idx < num_args - 1 {
-                    self.emit(", ");
-                }
             } else {
-                todo!("Implement default-valued arguments")
+                self.emit("ABRA_NONE");
+            }
+
+            if idx < num_args - 1 {
+                self.emit(", ");
             }
         }
 
@@ -506,6 +502,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<(), ()> {
-        todo!()
+        self.emit("ABRA_NONE");
+        Ok(())
     }
 }

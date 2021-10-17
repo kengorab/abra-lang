@@ -33,6 +33,7 @@ typedef struct Obj {
 } Obj;
 
 typedef enum {
+  ABRA_TYPE_NONE,
   ABRA_TYPE_INT,
   ABRA_TYPE_FLOAT,
   ABRA_TYPE_BOOL,
@@ -48,11 +49,17 @@ typedef struct AbraValue {
   } as;
 } AbraValue;
 
+static AbraValue ABRA_NONE = {.type = ABRA_TYPE_NONE };
+#define IS_NONE(v) (v.type == ABRA_TYPE_NONE)
+
+static AbraValue ABRA_TRUE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = true } };
+static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false } };
+
 #define NEW_INT(i) ((AbraValue){.type = ABRA_TYPE_INT, .as = {.abra_int = i}})
 #define AS_INT(v) v.as.abra_int
 #define NEW_FLOAT(f) ((AbraValue){.type = ABRA_TYPE_FLOAT, .as = {.abra_float = f}})
 #define AS_FLOAT(v) v.as.abra_float
-#define NEW_BOOL(b) ((AbraValue){.type = ABRA_TYPE_BOOL, .as = {.abra_bool = b}})
+#define NEW_BOOL(b) (b ? ABRA_TRUE : ABRA_FALSE)
 #define AS_BOOL(v) v.as.abra_bool
 
 typedef struct AbraString {
@@ -187,6 +194,11 @@ char const* std__to_string(AbraValue val) {
 }
 
 void std__println(AbraValue val) {
+  if (IS_NONE(val)) {
+    printf("\n");
+    return;
+  }
+
   AbraArray* varargs = (AbraArray*)val.as.obj;
   for (int i = 0; i < varargs->size; ++i) {
     printf("%s", std__to_string(varargs->items[i]));
