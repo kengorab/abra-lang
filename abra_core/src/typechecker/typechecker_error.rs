@@ -460,7 +460,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerErrorKind::InvalidTupleIndexingSelector { types, non_constant, index, .. } => {
                 let message = if *non_constant {
-                    "\nIndex values for tuples must be constant integers".to_string()
+                    "\nIndex values for tuples must be constant non-negative integers".to_string()
                 } else if *index != -1 {
                     format!(
                         "\nNo value at index {} for tuple {}",

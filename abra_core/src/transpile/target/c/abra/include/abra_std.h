@@ -62,6 +62,7 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 #define AS_FLOAT(v) v.as.abra_float
 #define NEW_BOOL(b) (b ? ABRA_TRUE : ABRA_FALSE)
 #define AS_BOOL(v) v.as.abra_bool
+#define AS_OBJ(v) v.as.obj
 
 bool std__eq(AbraValue v1, AbraValue v2);
 char const* std__to_string(AbraValue val);
@@ -104,6 +105,22 @@ char const* array_to_string(AbraValue* items, size_t count, size_t* out_str_len)
   free(item_strs);
 
   return res_str;
+}
+
+void range_endpoints(int64_t len, int64_t* start, int64_t* end) {
+    if (*start < 0) {
+        *start += len;
+    } else if (len == 0) {
+        *start = 0;
+    }
+
+    if (*end < 0) {
+        *end += len;
+    } else if (*end < *start) {
+        *end = *start;
+    } else if (*end >= len) {
+        *end = len;
+    }
 }
 
 typedef struct AbraString {
@@ -156,6 +173,39 @@ char const* std_string__to_string(Obj* obj) {
   return ((AbraString*)obj)->data;
 }
 
+AbraValue std_string__index(Obj* obj, int64_t index) {
+    AbraString* self = (AbraString*)obj;
+    int64_t len = (int64_t)self->size;
+    if (index < -len || index >= len) return ABRA_NONE;
+
+    if (index < 0) index += len;
+    return alloc_string(self->data + index, 1);
+}
+
+AbraValue std_string__range(Obj* obj, int64_t start, int64_t end) {
+    AbraString* self = (AbraString*)obj;
+    int64_t len = self->size;
+    range_endpoints(len, &start, &end);
+
+    int64_t slice_size = end - start;
+    char* tmp = malloc(slice_size);
+    memcpy(tmp, self->data+start, slice_size);
+    tmp[slice_size] = 0;
+
+    AbraValue new_string = alloc_string(tmp, slice_size);
+    free(tmp);
+    return new_string;
+}
+
+AbraValue std_string__range_from_start(Obj* obj, int64_t end) {
+    return std_string__range(obj, 0, end);
+}
+
+AbraValue std_string__range_to_end(Obj* obj, int64_t start) {
+    AbraString* self = (AbraString*)obj;
+    return std_string__range(obj, start, self->size);
+}
+
 typedef struct AbraArray {
   Obj _header;
   uint32_t size;
@@ -175,19 +225,50 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 }
 
 bool std_array__eq(Obj* o1, Obj* o2) {
-  AbraArray* a1 = (AbraArray*)o1;
-  AbraArray* a2 = (AbraArray*)o2;
-  if (a1->size != a2->size) return false;
+  AbraArray* self = (AbraArray*)o1;
+  AbraArray* other = (AbraArray*)o2;
+  if (self->size != other->size) return false;
 
-  for (int i = 0; i < a1->size; ++i) {
-    if (!std__eq(a1->items[i], a2->items[i])) return false;
+  for (int i = 0; i < self->size; ++i) {
+    if (!std__eq(self->items[i], other->items[i])) return false;
   }
   return true;
 }
 
 char const* std_array__to_string(Obj* obj) {
-  AbraArray* arr = (AbraArray*)obj;
-  return array_to_string(arr->items, arr->size, NULL);
+  AbraArray* self = (AbraArray*)obj;
+  return array_to_string(self->items, self->size, NULL);
+}
+
+AbraValue std_array__index(Obj* obj, int64_t index) {
+    AbraArray* self = (AbraArray*)obj;
+    int64_t len = (int64_t) self->size;
+    if (index < -len || index >= len) return ABRA_NONE;
+
+    if (index < 0) index += len;
+    return self->items[index];
+}
+
+AbraValue std_array__range(Obj* obj, int64_t start, int64_t end) {
+  AbraArray* self = (AbraArray*)obj;
+  int64_t len = (int64_t) self->size;
+  range_endpoints(len, &start, &end);
+
+  int64_t slice_size = end - start;
+  AbraValue* items = GC_MALLOC(sizeof(AbraValue) * slice_size);
+  for (int i = start; i < end; ++i) {
+    items[i - start] = self->items[i];
+  }
+  return alloc_array(items, slice_size);
+}
+
+AbraValue std_array__range_from_start(Obj* obj, int64_t end) {
+  return std_array__range(obj, 0, end);
+}
+
+AbraValue std_array__range_to_end(Obj* obj, int64_t start) {
+  AbraArray* self = (AbraArray*)obj;
+  return std_array__range(obj, start, self->size);
 }
 
 typedef struct AbraTuple {
@@ -207,23 +288,28 @@ AbraValue alloc_tuple(AbraValue* values, size_t size) {
 }
 
 bool std_tuple__eq(Obj* o1, Obj* o2) {
-  AbraTuple* t1 = (AbraTuple*)o1;
-  AbraTuple* t2 = (AbraTuple*)o2;
-  if (t1->size != t2->size) return false;
+  AbraTuple* self = (AbraTuple*)o1;
+  AbraTuple* other = (AbraTuple*)o2;
+  if (self->size != other->size) return false;
 
-  for (int i = 0; i < t1->size; ++i) {
-    if (!std__eq(t1->items[i], t2->items[i])) return false;
+  for (int i = 0; i < self->size; ++i) {
+    if (!std__eq(self->items[i], other->items[i])) return false;
   }
   return true;
 }
 
 char const* std_tuple__to_string(Obj* obj) {
-  AbraTuple* tuple = (AbraTuple*)obj;
+  AbraTuple* self = (AbraTuple*)obj;
   size_t s;
-  char* str = (char*) array_to_string(tuple->items, tuple->size, &s);
+  char* str = (char*) array_to_string(self->items, self->size, &s);
   str[0] = '(';
   str[s - 1] = ')';
   return str;
+}
+
+AbraValue std_tuple__index(Obj* obj, int64_t index) {
+    AbraTuple* self = (AbraTuple*)obj;
+    return self->items[index];
 }
 
 #define OBJ_LIMIT 100

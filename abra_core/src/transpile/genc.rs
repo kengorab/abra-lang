@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
-use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
+use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
@@ -68,14 +68,14 @@ impl CCompiler {
         match node {
             TypedAstNode::Unary(_, node) => {
                 self.lift(&node.expr)?;
-            },
+            }
             TypedAstNode::Binary(_, node) => {
                 self.lift(&node.left)?;
                 self.lift(&node.right)?;
             }
             TypedAstNode::Grouped(_, node) => {
                 self.lift(&node.expr)?;
-            },
+            }
             TypedAstNode::Array(_, node) => {
                 let node = node.clone(); // :/
                 let size = node.items.len();
@@ -125,8 +125,21 @@ impl CCompiler {
             }
             TypedAstNode::Assignment(_, node) => {
                 self.lift(&node.expr)?;
-            },
-            TypedAstNode::Indexing(_, _) => todo!(),
+            }
+            TypedAstNode::Indexing(_, node) => {
+                self.lift(&node.target)?;
+                match &node.index {
+                    IndexingMode::Index(i) => self.lift(i)?,
+                    IndexingMode::Range(start, end) => {
+                        if let Some(start) = start {
+                            self.lift(start)?;
+                        }
+                        if let Some(end) = end {
+                            self.lift(end)?;
+                        }
+                    }
+                }
+            }
             TypedAstNode::IfExpression(_, node) => {
                 let node = node.clone(); // :/
                 let ident_name = format!("r_ifexp__{}", random_string(10));
@@ -212,7 +225,7 @@ impl CCompiler {
             Type::Int => self.emit("AS_INT("),
             Type::Float => self.emit("AS_FLOAT("),
             Type::Bool => self.emit("AS_BOOL("),
-            _ => todo!()
+            _ => self.emit("AS_OBJ("),
         }
         self.visit(node)?;
         self.emit(")");
@@ -274,7 +287,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                     self.visit(*node.right)?;
                     self.emit(")");
 
-                    return Ok(())
+                    return Ok(());
                 }
 
                 self.visit_and_convert(*node.left)?;
@@ -454,14 +467,59 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 self.emit("=");
                 self.visit(*node.expr)?;
             }
-            _ => todo!()
+            AssignmentTargetKind::ArrayIndex |
+            AssignmentTargetKind::MapIndex |
+            AssignmentTargetKind::Field => todo!()
         }
 
         Ok(())
     }
 
-    fn visit_indexing(&mut self, _token: Token, _node: TypedIndexingNode) -> Result<(), ()> {
-        todo!()
+    fn visit_indexing(&mut self, _token: Token, node: TypedIndexingNode) -> Result<(), ()> {
+        match (node.target.get_type(), &node.index) {
+            (Type::String, IndexingMode::Index(_)) => self.emit("std_string__index("),
+            (Type::String, IndexingMode::Range(start, end)) => {
+                match (&start, &end) {
+                    (Some(_), Some(_)) => self.emit("std_string__range("),
+                    (None, Some(_)) => self.emit("std_string__range_from_start("),
+                    (Some(_), None) => self.emit("std_string__range_to_end("),
+                    (None, None) => unreachable!("Forbidden"),
+                }
+            }
+            (Type::Array(_), IndexingMode::Index(_)) => self.emit("std_array__index("),
+            (Type::Array(_), IndexingMode::Range(start, end)) => {
+                match (&start, &end) {
+                    (Some(_), Some(_)) => self.emit("std_array__range("),
+                    (None, Some(_)) => self.emit("std_array__range_from_start("),
+                    (Some(_), None) => self.emit("std_array__range_to_end("),
+                    (None, None) => unreachable!("Forbidden"),
+                }
+            }
+            (Type::Tuple(_), IndexingMode::Index(_)) => self.emit("std_tuple__index("),
+            (Type::Map(_, _), IndexingMode::Index(_)) => todo!(),
+            _ => unreachable!("No other indexing modes")
+        }
+
+        self.visit_and_convert(*node.target)?;
+        self.emit(", ");
+
+        match node.index {
+            IndexingMode::Index(i) => self.visit_and_convert(*i)?,
+            IndexingMode::Range(start, end) => {
+                if let Some(start) = start {
+                    self.visit_and_convert(*start)?;
+                    if end.is_some() {
+                        self.emit(", ");
+                    }
+                }
+                if let Some(end) = end {
+                    self.visit_and_convert(*end)?;
+                }
+            }
+        }
+
+        self.emit(")");
+        Ok(())
     }
 
     fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedIfNode) -> Result<(), ()> {

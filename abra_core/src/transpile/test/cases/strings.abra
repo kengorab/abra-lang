@@ -9,9 +9,18 @@ println(hello + " " + world + "!")
 println("hello" == "hello", "hello" == "world")
 println("hello" != "hello", "hello" != "world")
 
+// Indexing
+val str = "hello"
+println(str[0], str[-4], str[-8], str[8])
+println(str[1:4], str[-4:4])
+println(str[1:], str[:1])
+
 /* assert(stdout):
 hello world
 hello world!
 true false
 false true
+h e None None
+ell ell
+ello h
 */
