@@ -28,6 +28,9 @@ println(
   [[1, 2], [3, 4]] == [[1, 2, 3], [4]],
 )
 
+// Array of tuples
+println([(1, 2, 3), (4, 5, 6), (7, 8, 9)])
+
 /* assert(stdout):
 []
 [[[]]]
@@ -36,4 +39,5 @@ println(
 true false
 false true
 true false
+[(1, 2, 3), (4, 5, 6), (7, 8, 9)]
 */

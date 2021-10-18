@@ -1,0 +1,35 @@
+val nums = (1, 2, 3, 4)
+val nested = ((1, 2), (3, 4))
+val ifs = (if true 1 else 2, if true 2 else 3, if false 3 else 4)
+println(nums, nested, ifs)
+
+// Nested within expression
+println(
+  (if true 1 else 2, if true 2 else 3, if false 3 else 4)
+)
+
+// Test equality operators
+println(
+  (1, 2, 3) == (1, 2, 3),
+  (1, 2) == (1, 2, 3)
+)
+println(
+  (1, "2", 3) != (1, "2", 3),
+  (1, 2, "3") != (1, "2", 3)
+)
+println(
+  ((1, 2), (3, 4)) == ((1, 2), (3, 4)),
+  ((1, 2), (3, 4)) == ((1, 2, 3), (4)),
+)
+
+// Tuple of arrays
+println(([1, 2, 3], [4, 5, 6], [7, 8, 9]))
+
+/* assert(stdout):
+(1, 2, 3, 4) ((1, 2), (3, 4)) (1, 2, 4)
+(1, 2, 4)
+true false
+false true
+true false
+([1, 2, 3], [4, 5, 6], [7, 8, 9])
+*/

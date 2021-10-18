@@ -11,6 +11,7 @@ pub struct CCompiler {
     module_name: String,
     if_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
+    tuple_literal_var_names_stack: Vec<VecDeque<String>>,
 }
 
 impl CCompiler {
@@ -20,6 +21,7 @@ impl CCompiler {
             module_name: "example".to_string(),
             if_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
+            tuple_literal_var_names_stack: vec![VecDeque::new()],
         }
     }
 
@@ -79,7 +81,7 @@ impl CCompiler {
                 let size = node.items.len();
 
                 let ident = random_string(10);
-                let items_ident = format!("items_{}", &ident);
+                let items_ident = format!("arr_items_{}", &ident);
                 self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
                 for (idx, item) in node.items.into_iter().enumerate() {
                     self.array_literal_var_names_stack.push(VecDeque::new());
@@ -94,9 +96,28 @@ impl CCompiler {
                 self.array_literal_var_names_stack.last_mut().unwrap().push_back(arr_ident.clone());
                 self.emit_line(format!("AbraValue {} = alloc_array({}, {});", &arr_ident, items_ident, size));
             }
+            TypedAstNode::Tuple(_, node) => {
+                let node = node.clone(); // :/
+                let size = node.items.len();
+
+                let ident = random_string(10);
+                let items_ident = format!("tuple_items_{}", &ident);
+                self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
+                for (idx, item) in node.items.into_iter().enumerate() {
+                    self.tuple_literal_var_names_stack.push(VecDeque::new());
+                    self.lift(&item)?;
+                    self.emit(format!("{}[{}] = ", items_ident, idx));
+                    self.visit(item)?;
+                    self.tuple_literal_var_names_stack.pop();
+                    self.emit_line(";");
+                }
+
+                let tuple_ident = format!("tuple_{}", ident);
+                self.tuple_literal_var_names_stack.last_mut().unwrap().push_back(tuple_ident.clone());
+                self.emit_line(format!("AbraValue {} = alloc_tuple({}, {});", &tuple_ident, items_ident, size));
+            }
             TypedAstNode::Map(_, _) |
-            TypedAstNode::Set(_, _) |
-            TypedAstNode::Tuple(_, _) => todo!("These will need to be lifted"),
+            TypedAstNode::Set(_, _) => todo!("These will need to be lifted"),
             TypedAstNode::BindingDecl(_, node) => {
                 if let Some(expr) = &node.expr {
                     self.lift(expr)?;
@@ -361,7 +382,10 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_tuple(&mut self, _token: Token, _node: TypedTupleNode) -> Result<(), ()> {
-        todo!()
+        let ident_name = self.tuple_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an array literal without having visited it previously");
+        self.emit(ident_name);
+
+        Ok(())
     }
 
     fn visit_map(&mut self, _token: Token, _node: TypedMapNode) -> Result<(), ()> {
@@ -381,17 +405,18 @@ impl TypedAstVisitor<(), ()> for CCompiler {
 
         match binding {
             BindingPattern::Variable(tok) => {
-                if let Some(expr) = expr {
-                    let name = Token::get_ident_name(&tok);
-                    let c_name = self.c_ident_name(name);
+                let name = Token::get_ident_name(&tok);
+                let c_name = self.c_ident_name(name);
 
-                    self.emit(format!("AbraValue {} = ", c_name));
+                self.emit(format!("AbraValue {} = ", c_name));
+
+                if let Some(expr) = expr {
                     self.visit(*expr)?;
                 } else {
-                    todo!()
+                    self.emit("ABRA_NONE");
                 }
             }
-            BindingPattern::Tuple(_, _) |
+            BindingPattern::Tuple(_, _) => todo!(),
             BindingPattern::Array(_, _, _) => todo!()
         }
 

@@ -27,6 +27,7 @@
 typedef enum {
   OBJ_STR = 0,
   OBJ_ARRAY,
+  OBJ_TUPLE,
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
@@ -49,11 +50,11 @@ typedef struct AbraValue {
   } as;
 } AbraValue;
 
-static AbraValue ABRA_NONE = {.type = ABRA_TYPE_NONE };
+static AbraValue ABRA_NONE = {.type = ABRA_TYPE_NONE};
 #define IS_NONE(v) (v.type == ABRA_TYPE_NONE)
 
-static AbraValue ABRA_TRUE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = true } };
-static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false } };
+static AbraValue ABRA_TRUE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = true}};
+static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false}};
 
 #define NEW_INT(i) ((AbraValue){.type = ABRA_TYPE_INT, .as = {.abra_int = i}})
 #define AS_INT(v) v.as.abra_int
@@ -64,6 +65,46 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 
 bool std__eq(AbraValue v1, AbraValue v2);
 char const* std__to_string(AbraValue val);
+
+// Common utility function shared among array/tuple to_string impls
+char const* array_to_string(AbraValue* items, size_t count, size_t* out_str_len) {
+  if (count == 0) {
+    if (out_str_len != NULL) *out_str_len = 2;
+    return "[]";
+  }
+
+  // Convert each element to string and compute total size
+  char const** item_strs = malloc(sizeof(char*) * count);
+  size_t size = 2 + (2 * (count - 1));  // Account for "[" and "]", plus ", " for all but last item
+  for (int i = 0; i < count; ++i) {
+    AbraValue item = items[i];
+    char const* item_str = std__to_string(item);
+    item_strs[i] = item_str;
+    size += strlen(item_str);
+  }
+
+  // Allocate necessary string and copy items' strings into place
+  if (out_str_len != NULL) *out_str_len = size;
+  char* res_str = GC_MALLOC(sizeof(char) * size);
+  res_str[0] = '[';
+  char* ptr = res_str + 1;
+  for (int i = 0; i < count; ++i) {
+    char const* item_str = item_strs[i];
+    size_t len = strlen(item_str);
+    memcpy(ptr, item_str, len);
+    ptr += len;
+    if (i < count - 1) {
+      memcpy(ptr, ", ", 2);
+      ptr += 2;
+    }
+  }
+  res_str[size - 1] = ']';
+  res_str[size] = 0;
+
+  free(item_strs);
+
+  return res_str;
+}
 
 typedef struct AbraString {
   Obj _header;
@@ -101,18 +142,18 @@ AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
 }
 
 bool std_string__eq(Obj* o1, Obj* o2) {
-    AbraString* s1 = (AbraString*) o1;
-    AbraString* s2 = (AbraString*) o2;
-    if (s1->size != s2->size) return false;
+  AbraString* s1 = (AbraString*)o1;
+  AbraString* s2 = (AbraString*)o2;
+  if (s1->size != s2->size) return false;
 
-    for (int i = 0; i < s1->size; ++i) {
-        if (s1->data[i] != s2->data[i]) return false;
-    }
-    return true;
+  for (int i = 0; i < s1->size; ++i) {
+    if (s1->data[i] != s2->data[i]) return false;
+  }
+  return true;
 }
 
 char const* std_string__to_string(Obj* obj) {
-    return ((AbraString*) obj)->data;
+  return ((AbraString*)obj)->data;
 }
 
 typedef struct AbraArray {
@@ -134,51 +175,55 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 }
 
 bool std_array__eq(Obj* o1, Obj* o2) {
-    AbraArray* a1 = (AbraArray*) o1;
-    AbraArray* a2 = (AbraArray*) o2;
-    if (a1->size != a2->size) return false;
+  AbraArray* a1 = (AbraArray*)o1;
+  AbraArray* a2 = (AbraArray*)o2;
+  if (a1->size != a2->size) return false;
 
-    for (int i = 0; i < a1->size; ++i) {
-        if (!std__eq(a1->items[i], a2->items[i])) return false;
-    }
-    return true;
+  for (int i = 0; i < a1->size; ++i) {
+    if (!std__eq(a1->items[i], a2->items[i])) return false;
+  }
+  return true;
 }
 
 char const* std_array__to_string(Obj* obj) {
-    AbraArray* arr = (AbraArray*) obj;
+  AbraArray* arr = (AbraArray*)obj;
+  return array_to_string(arr->items, arr->size, NULL);
+}
 
-    if (arr->size == 0) return "[]";
+typedef struct AbraTuple {
+  Obj _header;
+  uint32_t size;
+  AbraValue* items;
+} AbraTuple;
 
-    // Convert each element to string and compute total size
-    char const** items = malloc(sizeof(char*) * arr->size);
-    size_t size = 2 + (2 * (arr->size - 1));  // Account for "[" and "]", plus ", " for all but last item
-    for (int i = 0; i < arr->size; ++i) {
-        AbraValue item = arr->items[i];
-        char const* item_str = std__to_string(item);
-        items[i] = item_str;
-        size += strlen(item_str);
-    }
+AbraValue alloc_tuple(AbraValue* values, size_t size) {
+  AbraTuple* tuple = GC_MALLOC(sizeof(AbraTuple));
 
-    // Allocate necessary string and copy items' strings into place
-    char* array_str = GC_MALLOC(sizeof(char) * size);
-    array_str[0] = '[';
-    char* ptr = array_str + 1;
-    for (int i = 0; i < arr->size; ++i) {
-        char const* item_str = items[i];
-        size_t len = strlen(item_str);
-        memcpy(ptr, item_str, len);
-        ptr += len;
-        if (i < arr->size - 1) {
-            memcpy(ptr, ", ", 2);
-            ptr += 2;
-        }
-    }
-    array_str[size - 1] = ']';
-    array_str[size] = 0;
+  tuple->_header.type = OBJ_TUPLE;
+  tuple->size = size;
+  tuple->items = values;
 
-    free(items);
+  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)tuple)}});
+}
 
-    return array_str;
+bool std_tuple__eq(Obj* o1, Obj* o2) {
+  AbraTuple* t1 = (AbraTuple*)o1;
+  AbraTuple* t2 = (AbraTuple*)o2;
+  if (t1->size != t2->size) return false;
+
+  for (int i = 0; i < t1->size; ++i) {
+    if (!std__eq(t1->items[i], t2->items[i])) return false;
+  }
+  return true;
+}
+
+char const* std_tuple__to_string(Obj* obj) {
+  AbraTuple* tuple = (AbraTuple*)obj;
+  size_t s;
+  char* str = (char*) array_to_string(tuple->items, tuple->size, &s);
+  str[0] = '(';
+  str[s - 1] = ')';
+  return str;
 }
 
 #define OBJ_LIMIT 100
@@ -187,26 +232,30 @@ typedef bool (*EqFn)(Obj*, Obj*);
 static EqFn eq_fns[OBJ_LIMIT];
 
 bool std__eq(AbraValue v1, AbraValue v2) {
-    if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
-        return ((double) v1.as.abra_int) == v2.as.abra_float;
-    if (v1.type == ABRA_TYPE_FLOAT && v2.type == ABRA_TYPE_INT)
-        return v1.as.abra_float == ((double) v2.as.abra_int);
+  if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
+    return ((double)v1.as.abra_int) == v2.as.abra_float;
+  if (v1.type == ABRA_TYPE_FLOAT && v2.type == ABRA_TYPE_INT)
+    return v1.as.abra_float == ((double)v2.as.abra_int);
 
-    if (v1.type != v2.type) return false;
-    switch (v1.type) {
-        case ABRA_TYPE_NONE: return true;
-        case ABRA_TYPE_INT: return v1.as.abra_int == v2.as.abra_int;
-        case ABRA_TYPE_FLOAT: return v1.as.abra_float == v2.as.abra_float;
-        case ABRA_TYPE_BOOL: return v1.as.abra_bool == v2.as.abra_bool;
-        case ABRA_TYPE_OBJ: {
-            Obj* o1 = v1.as.obj;
-            Obj* o2 = v2.as.obj;
-            if (o1->type != o2->type) return false;
-            return eq_fns[o1->type](o1, o2);
-        }
+  if (v1.type != v2.type) return false;
+  switch (v1.type) {
+    case ABRA_TYPE_NONE:
+      return true;
+    case ABRA_TYPE_INT:
+      return v1.as.abra_int == v2.as.abra_int;
+    case ABRA_TYPE_FLOAT:
+      return v1.as.abra_float == v2.as.abra_float;
+    case ABRA_TYPE_BOOL:
+      return v1.as.abra_bool == v2.as.abra_bool;
+    case ABRA_TYPE_OBJ: {
+      Obj* o1 = v1.as.obj;
+      Obj* o2 = v2.as.obj;
+      if (o1->type != o2->type) return false;
+      return eq_fns[o1->type](o1, o2);
     }
+  }
 
-    return true;
+  return true;
 }
 
 typedef char const* (*ToStringFn)(Obj*);
@@ -214,7 +263,8 @@ static ToStringFn to_string_fns[OBJ_LIMIT];
 
 char const* std__to_string(AbraValue val) {
   switch (val.type) {
-    case ABRA_TYPE_NONE: return "None";
+    case ABRA_TYPE_NONE:
+      return "None";
     case ABRA_TYPE_INT: {
       int64_t i = val.as.abra_int;
       int len = snprintf(NULL, 0, "%" PRId64, i);
@@ -265,13 +315,15 @@ void std__println(AbraValue val) {
 }
 
 void abra_init() {
-    GC_INIT();
+  GC_INIT();
 
-    eq_fns[OBJ_STR] = &std_string__eq;
-    eq_fns[OBJ_ARRAY] = &std_array__eq;
+  eq_fns[OBJ_STR] = &std_string__eq;
+  eq_fns[OBJ_ARRAY] = &std_array__eq;
+  eq_fns[OBJ_TUPLE] = &std_tuple__eq;
 
-    to_string_fns[OBJ_STR] = &std_string__to_string;
-    to_string_fns[OBJ_ARRAY] = &std_array__to_string;
+  to_string_fns[OBJ_STR] = &std_string__to_string;
+  to_string_fns[OBJ_ARRAY] = &std_array__to_string;
+  to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
 }
 
 #endif
