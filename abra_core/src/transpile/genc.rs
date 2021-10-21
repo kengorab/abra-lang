@@ -12,6 +12,7 @@ pub struct CCompiler {
     if_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
+    map_literal_var_names_stack: Vec<VecDeque<String>>,
 }
 
 impl CCompiler {
@@ -22,6 +23,7 @@ impl CCompiler {
             if_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
             tuple_literal_var_names_stack: vec![VecDeque::new()],
+            map_literal_var_names_stack: vec![VecDeque::new()],
         }
     }
 
@@ -116,7 +118,36 @@ impl CCompiler {
                 self.tuple_literal_var_names_stack.last_mut().unwrap().push_back(tuple_ident.clone());
                 self.emit_line(format!("AbraValue {} = alloc_tuple({}, {});", &tuple_ident, items_ident, size));
             }
-            TypedAstNode::Map(_, _) |
+            TypedAstNode::Map(_, node) => {
+                let node = node.clone(); // :/
+                let ident = random_string(10);
+                let map_ident = format!("map_{}", ident);
+                self.emit_line(format!("AbraValue {} = alloc_map();", map_ident));
+
+                for (idx, (key, val)) in node.items.into_iter().enumerate() {
+                    let key_ident = format!("{}_k{}", map_ident, idx);
+                    self.map_literal_var_names_stack.push(VecDeque::new());
+                    self.lift(&key)?;
+                    self.emit(format!("AbraValue {} = ", &key_ident));
+                    self.visit(key)?;
+                    self.emit_line(";");
+                    self.map_literal_var_names_stack.pop();
+
+                    let val_ident = format!("{}_v{}", map_ident, idx);
+                    self.map_literal_var_names_stack.push(VecDeque::new());
+                    self.lift(&val)?;
+                    self.emit(format!("AbraValue {} = ", &val_ident));
+                    self.visit(val)?;
+                    self.emit_line(";");
+                    self.map_literal_var_names_stack.pop();
+
+                    self.emit_line(format!(
+                        "std_map__insert(AS_OBJ({}), {}, {});",
+                        map_ident, key_ident, val_ident
+                    ));
+                }
+                self.map_literal_var_names_stack.last_mut().unwrap().push_back(map_ident.clone());
+            }
             TypedAstNode::Set(_, _) => todo!("These will need to be lifted"),
             TypedAstNode::BindingDecl(_, node) => {
                 if let Some(expr) = &node.expr {
@@ -395,14 +426,17 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_tuple(&mut self, _token: Token, _node: TypedTupleNode) -> Result<(), ()> {
-        let ident_name = self.tuple_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an array literal without having visited it previously");
+        let ident_name = self.tuple_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach a tuple literal without having visited it previously");
         self.emit(ident_name);
 
         Ok(())
     }
 
     fn visit_map(&mut self, _token: Token, _node: TypedMapNode) -> Result<(), ()> {
-        todo!()
+        let ident_name = self.map_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach a map literal without having visited it previously");
+        self.emit(ident_name);
+
+        Ok(())
     }
 
     fn visit_set(&mut self, _token: Token, _node: TypedSetNode) -> Result<(), ()> {
@@ -476,7 +510,8 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_indexing(&mut self, _token: Token, node: TypedIndexingNode) -> Result<(), ()> {
-        match (node.target.get_type(), &node.index) {
+        let target_type = node.target.get_type();
+        match (&target_type, &node.index) {
             (Type::String, IndexingMode::Index(_)) => self.emit("std_string__index("),
             (Type::String, IndexingMode::Range(start, end)) => {
                 match (&start, &end) {
@@ -496,7 +531,8 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 }
             }
             (Type::Tuple(_), IndexingMode::Index(_)) => self.emit("std_tuple__index("),
-            (Type::Map(_, _), IndexingMode::Index(_)) => todo!(),
+            (Type::Map(_, _), IndexingMode::Index(_)) => self.emit("std_map__index("),
+            (Type::Option(_), _) => todo!("Indexing should be chainable for optional types"),
             _ => unreachable!("No other indexing modes")
         }
 
@@ -504,7 +540,13 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         self.emit(", ");
 
         match node.index {
-            IndexingMode::Index(i) => self.visit_and_convert(*i)?,
+            IndexingMode::Index(i) => {
+                if let Type::Map(_, _) = target_type {
+                    self.visit(*i)?;
+                } else {
+                    self.visit_and_convert(*i)?
+                }
+            },
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
                     self.visit_and_convert(*start)?;

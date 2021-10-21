@@ -28,6 +28,7 @@ typedef enum {
   OBJ_STR = 0,
   OBJ_ARRAY,
   OBJ_TUPLE,
+  OBJ_MAP,
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
@@ -66,6 +67,7 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 
 bool std__eq(AbraValue v1, AbraValue v2);
 char const* std__to_string(AbraValue val);
+size_t std__hash(AbraValue val);
 
 // Common utility function shared among array/tuple to_string impls
 char const* array_to_string(AbraValue* items, size_t count, size_t* out_str_len) {
@@ -123,6 +125,117 @@ void range_endpoints(int64_t len, int64_t* start, int64_t* end) {
     }
 }
 
+typedef struct hash_entry_t {
+  AbraValue key;
+  AbraValue value;
+  struct hash_entry_t* next;
+} hash_entry_t;
+
+hash_entry_t* new_hash_entry(AbraValue key, AbraValue value) {
+    hash_entry_t* new_entry = GC_MALLOC(sizeof(hash_entry_t));
+    new_entry->key = key;
+    new_entry->value = value;
+    new_entry->next = NULL;
+    return new_entry;
+}
+
+typedef struct hashmap_t {
+  size_t size;
+  size_t capacity;
+  hash_entry_t** buckets;
+  size_t (*hash_fn)(AbraValue);
+  bool (*eq_fn)(AbraValue, AbraValue);
+} hashmap_t;
+
+hashmap_t new_hashmap(
+  size_t (*hash_fn)(AbraValue),
+  bool (*eq_fn)(AbraValue, AbraValue)
+) {
+  hashmap_t h;
+  h.size = 0;
+  h.capacity = 24;
+  h.buckets = GC_MALLOC(sizeof(hash_entry_t) * h.capacity);
+  h.hash_fn = hash_fn;
+  h.eq_fn = eq_fn;
+  return h;
+}
+
+void _hashmap_resize(hashmap_t* h);
+void hashmap_insert(hashmap_t* h, AbraValue key, AbraValue value) {
+    if (h->size > h->capacity * 0.75) {
+        _hashmap_resize(h);
+    }
+
+    size_t hash = h->hash_fn(key);
+    size_t idx = hash % h->capacity;
+
+    if (h->buckets[idx] == NULL) {
+        h->buckets[idx] = new_hash_entry(key, value);
+    } else {
+        hash_entry_t* node;
+        for (node = h->buckets[idx]; node; ) {
+            if (h->eq_fn(node->key, key)) {
+                node->value = value;
+                return;
+            }
+            if (node->next) {
+                node = node->next;
+            } else {
+                break;
+            }
+        }
+        node->next = new_hash_entry(key, value);
+    }
+
+    h->size++;
+}
+
+AbraValue hashmap_get(hashmap_t* h, AbraValue key) {
+    size_t hash = h->hash_fn(key);
+    size_t idx = hash % h->capacity;
+
+    if (h->buckets[idx] == NULL) return ABRA_NONE;
+
+    hash_entry_t* node;
+    for (node = h->buckets[idx]; node; node = node->next) {
+        if (h->eq_fn(node->key, key)) {
+            return node->value;
+        }
+    }
+    return ABRA_NONE;
+}
+
+AbraValue* hashmap_keys(hashmap_t* h) {
+    AbraValue* keys = GC_MALLOC(sizeof(AbraValue) * h->size);
+    size_t idx = 0;
+    for (int i = 0; i < h->capacity; ++i) {
+        if (h->buckets[i] == NULL) continue;
+
+        hash_entry_t* node;
+        for (node = h->buckets[i]; node; node = node->next) {
+            keys[idx++] = node->key;
+        }
+    }
+    return keys;
+}
+
+void _hashmap_resize(hashmap_t* h) {
+    size_t new_capacity = h->capacity * 2;
+    size_t old_capacity = h->capacity;
+    h->capacity = new_capacity;
+
+    hash_entry_t** old_buckets = h->buckets;
+    h->buckets = GC_MALLOC(sizeof(hash_entry_t) * h->capacity);
+    h->size = 0;
+
+    for (int i = 0; i < old_capacity; ++i) {
+        hash_entry_t* node;
+        for (node = old_buckets[i]; node; node = node->next) {
+            hashmap_insert(h, node->key, node->value);
+        }
+    }
+}
+
 typedef struct AbraString {
   Obj _header;
   uint32_t size;
@@ -171,6 +284,17 @@ bool std_string__eq(Obj* o1, Obj* o2) {
 
 char const* std_string__to_string(Obj* obj) {
   return ((AbraString*)obj)->data;
+}
+
+size_t std_string__hash(Obj* obj) {
+  AbraString* self = (AbraString*)obj;
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 5381;
+  for (size_t i = 0; i < self->size; ++i) {
+    hash = ((hash << 5) + hash) ^ self->data[i];
+  }
+  return hash;
 }
 
 AbraValue std_string__index(Obj* obj, int64_t index) {
@@ -240,6 +364,17 @@ char const* std_array__to_string(Obj* obj) {
   return array_to_string(self->items, self->size, NULL);
 }
 
+size_t std_array__hash(Obj* obj) {
+  AbraArray* arr = (AbraArray*)obj;
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 5381;
+  for (int i = 0; i < arr->size; ++i) {
+    hash = ((hash << 5) + hash) ^ std__hash(arr->items[i]);
+  }
+  return hash;
+}
+
 AbraValue std_array__index(Obj* obj, int64_t index) {
     AbraArray* self = (AbraArray*)obj;
     int64_t len = (int64_t) self->size;
@@ -307,9 +442,115 @@ char const* std_tuple__to_string(Obj* obj) {
   return str;
 }
 
+size_t std_tuple__hash(Obj* obj) {
+  AbraTuple* tuple = (AbraTuple*)obj;
+
+  // Adapted from djb2 hashing algorithm
+  size_t hash = 4253;
+  for (int i = 0; i < tuple->size; ++i) {
+    hash = ((hash << 5) + hash) ^ std__hash(tuple->items[i]);
+  }
+  return hash;
+}
+
 AbraValue std_tuple__index(Obj* obj, int64_t index) {
     AbraTuple* self = (AbraTuple*)obj;
     return self->items[index];
+}
+
+typedef struct AbraMap {
+    Obj _header;
+    hashmap_t hash;
+} AbraMap;
+
+AbraValue alloc_map() {
+    AbraMap* map = GC_MALLOC(sizeof(AbraMap));
+
+    map->_header.type = OBJ_MAP;
+    map->hash = new_hashmap(&std__hash, &std__eq);
+
+    return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)map)}});
+}
+
+void std_map__insert(Obj* o, AbraValue key, AbraValue value) {
+    AbraMap* self = (AbraMap*)o;
+    hashmap_insert(&self->hash, key, value);
+}
+
+bool std_map__eq(Obj* o1, Obj* o2) {
+    AbraMap* self = (AbraMap*)o1;
+    AbraMap* other = (AbraMap*)o2;
+    if (self->hash.size != other->hash.size) return false;
+
+    AbraValue* keys = hashmap_keys(&self->hash);
+    for (int i = 0; i < self->hash.size; ++i) {
+        AbraValue key = keys[i];
+        AbraValue self_val = hashmap_get(&self->hash, key);
+        AbraValue other_val = hashmap_get(&other->hash, key);
+        if (!std__eq(self_val, other_val)) return false;
+    }
+    return true;
+}
+
+char const* std_map__to_string(Obj* obj) {
+    AbraMap* self = (AbraMap*)obj;
+
+    if (self->hash.size == 0) return "{}";
+
+    char* str = GC_MALLOC(sizeof(char) * 1000);
+    memcpy(str, "{ ", 2);
+    char* ptr = str + 2;
+
+    size_t cur_item = 0;
+    for (int i = 0; i < self->hash.capacity; ++i) {
+        if (self->hash.buckets[i] == NULL) continue;
+
+        hash_entry_t* node;
+        for (node = self->hash.buckets[i]; node; node = node->next) {
+            const char* key_str = std__to_string(node->key);
+            size_t key_len = strlen(key_str);
+            memcpy(ptr, key_str, key_len);
+            ptr += key_len;
+
+            memcpy(ptr, ": ", 2);
+            ptr += 2;
+
+            const char* val_str = std__to_string(node->value);
+            size_t val_len = strlen(val_str);
+            memcpy(ptr, val_str, val_len);
+            ptr += val_len;
+
+            if (cur_item < self->hash.size - 1) {
+                memcpy(ptr, ", ", 2);
+                ptr += 2;
+            }
+
+            cur_item++;
+        }
+    }
+
+    memcpy(ptr, " }", 2);
+    return str;
+}
+
+size_t std_map__hash(Obj* obj) {
+    AbraMap* self = (AbraMap*)obj;
+
+    // Adapted from djb2 hashing algorithm
+    size_t hash = 4253;
+    AbraValue* keys = hashmap_keys(&self->hash);
+    for (int i = 0; i < self->hash.size; ++i) {
+        AbraValue key = keys[i];
+        AbraValue val = hashmap_get(&self->hash, key);
+        hash = ((hash << 5) + hash) ^ std__hash(key);
+        hash = ((hash << 5) + hash) ^ std__hash(val);
+    }
+    return hash;
+}
+
+AbraValue std_map__index(Obj* obj, AbraValue key) {
+    AbraMap* self = (AbraMap*)obj;
+    return hashmap_get(&self->hash, key);
 }
 
 #define OBJ_LIMIT 100
@@ -384,6 +625,22 @@ char const* std__to_string(AbraValue val) {
   }
 }
 
+typedef size_t (*HashFn)(Obj*);
+static HashFn hash_fns[OBJ_LIMIT];
+
+size_t std__hash(AbraValue val) {
+  switch (val.type) {
+    case ABRA_TYPE_NONE: return 0;
+    case ABRA_TYPE_INT: return val.as.abra_int * 719;
+    case ABRA_TYPE_FLOAT: return (size_t) (val.as.abra_float * 1000000000000 * 839);
+    case ABRA_TYPE_BOOL: return val.as.abra_bool ? 42643801 : 43112609;
+    case ABRA_TYPE_OBJ: {
+      Obj* o = val.as.obj;
+      return hash_fns[o->type](o);
+    }
+  }
+}
+
 void std__println(AbraValue val) {
   if (IS_NONE(val)) {
     printf("\n");
@@ -406,10 +663,17 @@ void abra_init() {
   eq_fns[OBJ_STR] = &std_string__eq;
   eq_fns[OBJ_ARRAY] = &std_array__eq;
   eq_fns[OBJ_TUPLE] = &std_tuple__eq;
+  eq_fns[OBJ_MAP] = &std_map__eq;
 
   to_string_fns[OBJ_STR] = &std_string__to_string;
   to_string_fns[OBJ_ARRAY] = &std_array__to_string;
   to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
+  to_string_fns[OBJ_MAP] = &std_map__to_string;
+
+  hash_fns[OBJ_STR] = &std_string__hash;
+  hash_fns[OBJ_ARRAY] = &std_array__hash;
+  hash_fns[OBJ_TUPLE] = &std_tuple__hash;
+  hash_fns[OBJ_MAP] = &std_map__hash;
 }
 
 #endif

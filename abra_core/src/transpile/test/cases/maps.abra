@@ -1,0 +1,32 @@
+val empty: Map<String, Int> = {}
+println(empty)
+
+println({ a: 24 })
+
+// Different key types
+val m1 = { a: 1, "b": 2 }
+println(m1["a"], m1["b"])
+val m2 = { ("a" + "b"): 1, "hello world": 2 }
+println(m2["ab"], m2["hello world"])
+val m3 = { 1234: "1", (-12): "2" }
+println(m3[1234], m3[-12])
+val m4 = { ([1, 2, 3]): "1", ([4, 5]): "2" }
+println(m4[[1, 2, 3]], m4[[4, 5]])
+val m5 = { ({ a: 1 }): "1", ({ b: 2 }): "2" }
+println(m5[{a: 1}], m5[{b:2}])
+
+// Test equality operators
+println({ a: 1, b: 2 } == { "b": 2, "a": 1})
+println({ a: "1", b: "2" } != { b: 2, a: 1})
+
+/* assert(stdout):
+{}
+{ a: 24 }
+1 2
+1 2
+1 2
+1 2
+1 2
+true
+true
+*/
