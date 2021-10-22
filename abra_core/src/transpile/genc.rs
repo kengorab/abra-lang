@@ -40,12 +40,16 @@ impl CCompiler {
             compiler.lift(&node)?;
 
             let should_print = idx == ast_len - 1 && node.get_type() != Type::Unit;
-            if should_print { compiler.emit("  std__println("); }
-
-            compiler.visit(node)?;
-
-            if should_print { compiler.emit(")"); }
-            compiler.emit_line(";");
+            if should_print {
+                let ident = random_string(10);
+                compiler.emit(format!("const char* last_expr_{} = std__to_string(", ident));
+                compiler.visit(node)?;
+                compiler.emit_line(");");
+                compiler.emit_line(format!("printf(\"%s\\n\", last_expr_{});", ident));
+            } else {
+                compiler.visit(node)?;
+                compiler.emit_line(";");
+            }
         }
 
         compiler.emit_line("  return 0;\n}");
