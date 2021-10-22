@@ -247,7 +247,7 @@ AbraValue alloc_string(char* data, size_t size) {
 
   str->_header.type = OBJ_STR;
   str->size = size;
-  if (size != 0 && data != NULL) {
+  if (data != NULL) {
     str->data = strdup(data);
   }
   str->data[size] = 0;

@@ -1,0 +1,41 @@
+func helloWorld() {
+  println("hello world")
+}
+helloWorld()
+
+func returnOne(): Int {
+  if true { 1 } else { 2 }
+}
+println(returnOne())
+
+func defaultArgs(a: String, b = "!"): String = a + b
+println(defaultArgs("hello"), defaultArgs("hello", " world"))
+
+func makeMap<K, V>(key: K, value: V): Map<K, V> = { (key): value }
+println(makeMap("hello", { targets: ["world"] }))
+
+func withVarargs(a: Int, *b: Int[]) = println(a, b)
+withVarargs(1, 2, 3, 4, 5)
+
+func withNamedArguments(prefix: String, suffix = "!"): String = prefix + suffix
+println(withNamedArguments(prefix: "hello"), withNamedArguments(suffix: "!!", prefix: "Hello"))
+
+// Test recursion
+func fib(n: Int): Int = if n < 2 1 else fib(n - 2) + fib(n - 1)
+println(fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7))
+
+// Test (needlessly complex) mutual recursion
+func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
+func f2(n: Int): String = "." + f1(n)
+println(f1(5))
+
+/* assert(stdout):
+hello world
+1
+hello! hello world
+{ hello: { targets: [world] } }
+1 [2, 3, 4, 5]
+hello! Hello!!
+1 1 2 3 5 8 13 21
+.....
+*/

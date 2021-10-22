@@ -1,4 +1,3 @@
-val map1 = { a: 1, b: 2, c: 4 }
-val map2 = { a: 1, b: 2, c: 3 }
-
-println(map1, map2)
+func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
+func f2(n: Int): String = "." + f1(n)
+println(f1(5))

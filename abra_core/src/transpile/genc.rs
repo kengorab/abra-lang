@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use itertools::Itertools;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
@@ -6,8 +7,23 @@ use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
+enum BufferType {
+    MainFn,
+    FwdDecls,
+    Body,
+}
+
+enum Context {
+    TopLevel,
+    FuncDeclBody,
+}
+
 pub struct CCompiler {
-    buf: String,
+    main_fn_buf: String,
+    fwd_decls_buf: String,
+    body_buf: String,
+    buf_type: BufferType,
+    ctx: Context,
     module_name: String,
     if_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -18,7 +34,11 @@ pub struct CCompiler {
 impl CCompiler {
     fn new() -> Self {
         CCompiler {
-            buf: "".to_string(),
+            main_fn_buf: "".to_string(),
+            fwd_decls_buf: "".to_string(),
+            body_buf: "".to_string(),
+            buf_type: BufferType::MainFn,
+            ctx: Context::TopLevel,
             module_name: "example".to_string(),
             if_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
@@ -30,8 +50,10 @@ impl CCompiler {
     pub fn gen_c(ast: Vec<TypedAstNode>) -> Result<String, ()> {
         let mut compiler = CCompiler::new();
 
+        compiler.switch_buf(BufferType::FwdDecls);
         compiler.emit_line("#include \"abra_std.h\"\n");
 
+        compiler.switch_buf(BufferType::MainFn);
         compiler.emit_line("int main(int argc, char** argv) {");
         compiler.emit_line("abra_init();");
 
@@ -54,16 +76,34 @@ impl CCompiler {
 
         compiler.emit_line("  return 0;\n}");
 
-        Ok(compiler.buf)
+        let output = format!(
+            "{}\n{}\n{}",
+            compiler.fwd_decls_buf,
+            compiler.body_buf,
+            compiler.main_fn_buf,
+        );
+        Ok(output)
+    }
+
+    fn switch_buf(&mut self, buf_type: BufferType) {
+        self.buf_type = buf_type;
+    }
+
+    fn buf(&mut self) -> &mut String {
+        match self.buf_type {
+            BufferType::MainFn => &mut self.main_fn_buf,
+            BufferType::FwdDecls => &mut self.fwd_decls_buf,
+            BufferType::Body => &mut self.body_buf,
+        }
     }
 
     fn emit<S: AsRef<str>>(&mut self, code: S) {
-        self.buf.push_str(code.as_ref())
+        self.buf().push_str(code.as_ref())
     }
 
     fn emit_line<S: AsRef<str>>(&mut self, code: S) {
-        self.buf.push_str(code.as_ref());
-        self.buf.push('\n');
+        self.buf().push_str(code.as_ref());
+        self.buf().push('\n');
     }
 
     fn c_ident_name<S: AsRef<str>>(&self, name: S) -> String {
@@ -474,8 +514,48 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<(), ()> {
-        todo!()
+    fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
+        let fn_name = Token::get_ident_name(&node.name);
+        let args = node.args.iter()
+            .map(|(name, _, _, _)| Token::get_ident_name(name))
+            .map(|name| format!("AbraValue {}", name))
+            .join(", ");
+        let sig = format!("AbraValue {}({})", self.c_ident_name(&fn_name), args);
+        self.switch_buf(BufferType::FwdDecls);
+        self.emit_line(format!("{};", sig));
+
+        self.switch_buf(BufferType::Body);
+        self.ctx = Context::FuncDeclBody;
+        self.emit_line(format!("{} {{", sig));
+        for (name, _, _is_vararg, default_value) in node.args {
+            if let Some(default_value_node) = default_value {
+                let arg_name = Token::get_ident_name(&name);
+                self.emit_line(format!("if (IS_NONE({})) {{", &arg_name));
+                self.lift(&default_value_node)?;
+                self.emit(format!("{} = ", arg_name));
+                self.visit(default_value_node)?;
+                self.emit_line(";");
+                self.emit_line("}");
+            }
+        }
+
+        let len = node.body.len();
+        for (idx, node) in node.body.into_iter().enumerate() {
+            self.lift(&node)?;
+
+            if idx == len - 1 {
+                self.emit("return ");
+            }
+
+            self.visit(node)?;
+            self.emit_line(";");
+        }
+
+        self.emit_line("}");
+
+        self.ctx = Context::TopLevel;
+        self.switch_buf(BufferType::MainFn);
+        Ok(())
     }
 
     fn visit_type_decl(&mut self, _token: Token, _node: TypedTypeDeclNode) -> Result<(), ()> {
@@ -491,8 +571,12 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             self.emit("std__println");
         } else if &node.name == "None" {
             self.emit("ABRA_NONE");
-        } else {
+        } else if let Context::TopLevel = self.ctx {
             self.emit(self.c_ident_name(node.name));
+        } else if let Type::Fn(_) = node.typ {
+            self.emit(self.c_ident_name(node.name));
+        } else {
+            self.emit(node.name);
         }
 
         Ok(())
