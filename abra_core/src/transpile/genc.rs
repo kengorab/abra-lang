@@ -53,6 +53,9 @@ impl CCompiler {
         compiler.switch_buf(BufferType::FwdDecls);
         compiler.emit_line("#include \"abra_std.h\"\n");
 
+        compiler.switch_buf(BufferType::Body);
+        compiler.lift_fns(&ast)?;
+
         compiler.switch_buf(BufferType::MainFn);
         compiler.emit_line("int main(int argc, char** argv) {");
         compiler.emit_line("abra_init();");
@@ -108,6 +111,61 @@ impl CCompiler {
 
     fn c_ident_name<S: AsRef<str>>(&self, name: S) -> String {
         format!("{}__{}", self.module_name, name.as_ref())
+    }
+
+    fn lift_fns(&mut self, nodes: &Vec<TypedAstNode>) -> Result<(), ()> {
+        let fn_decl_nodes = nodes.iter().filter_map(|ast| if let TypedAstNode::FunctionDecl(_, node) = ast { Some(node) } else { None });
+        for node in fn_decl_nodes {
+            self.lift_fn(&node)?;
+        }
+        Ok(())
+    }
+
+    fn lift_fn(&mut self, node: &TypedFunctionDeclNode) -> Result<(), ()> {
+        let node = node.clone(); // :/
+        let fn_name = Token::get_ident_name(&node.name);
+        let args = node.args.iter()
+            .map(|(name, _, _, _)| Token::get_ident_name(name))
+            .map(|name| format!("AbraValue {}", name))
+            .join(", ");
+        let sig = format!("AbraValue {}({})", self.c_ident_name(&fn_name), args);
+        self.switch_buf(BufferType::FwdDecls);
+        self.emit_line(format!("{};", sig));
+
+        self.lift_fns(&node.body)?;
+
+        self.switch_buf(BufferType::Body);
+        self.ctx = Context::FuncDeclBody;
+        self.emit_line(format!("{} {{", sig));
+        for (name, _, _is_vararg, default_value) in node.args {
+            if let Some(default_value_node) = default_value {
+                let arg_name = Token::get_ident_name(&name);
+                self.emit_line(format!("if (IS_NONE({})) {{", &arg_name));
+                self.lift(&default_value_node)?;
+                self.emit(format!("{} = ", arg_name));
+                self.visit(default_value_node)?;
+                self.emit_line(";");
+                self.emit_line("}");
+            }
+        }
+
+        let len = node.body.len();
+        for (idx, node) in node.body.into_iter().enumerate() {
+            self.lift(&node)?;
+
+            if idx == len - 1 {
+                self.emit("return ");
+            }
+
+            self.visit(node)?;
+            self.emit_line(";");
+        }
+
+        self.emit_line("}");
+
+        self.ctx = Context::TopLevel;
+        self.switch_buf(BufferType::MainFn);
+        Ok(())
     }
 
     fn lift(&mut self, node: &TypedAstNode) -> Result<(), ()> {
@@ -514,47 +572,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
-        let fn_name = Token::get_ident_name(&node.name);
-        let args = node.args.iter()
-            .map(|(name, _, _, _)| Token::get_ident_name(name))
-            .map(|name| format!("AbraValue {}", name))
-            .join(", ");
-        let sig = format!("AbraValue {}({})", self.c_ident_name(&fn_name), args);
-        self.switch_buf(BufferType::FwdDecls);
-        self.emit_line(format!("{};", sig));
-
-        self.switch_buf(BufferType::Body);
-        self.ctx = Context::FuncDeclBody;
-        self.emit_line(format!("{} {{", sig));
-        for (name, _, _is_vararg, default_value) in node.args {
-            if let Some(default_value_node) = default_value {
-                let arg_name = Token::get_ident_name(&name);
-                self.emit_line(format!("if (IS_NONE({})) {{", &arg_name));
-                self.lift(&default_value_node)?;
-                self.emit(format!("{} = ", arg_name));
-                self.visit(default_value_node)?;
-                self.emit_line(";");
-                self.emit_line("}");
-            }
-        }
-
-        let len = node.body.len();
-        for (idx, node) in node.body.into_iter().enumerate() {
-            self.lift(&node)?;
-
-            if idx == len - 1 {
-                self.emit("return ");
-            }
-
-            self.visit(node)?;
-            self.emit_line(";");
-        }
-
-        self.emit_line("}");
-
-        self.ctx = Context::TopLevel;
-        self.switch_buf(BufferType::MainFn);
+    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<(), ()> {
         Ok(())
     }
 

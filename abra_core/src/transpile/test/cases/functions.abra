@@ -29,6 +29,18 @@ func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
 func f2(n: Int): String = "." + f1(n)
 println(f1(5))
 
+// Nested functions
+func outer() {
+  func inner() {
+    func inner2() = println("inner2")
+    inner2()
+    println("inner")
+  }
+  inner()
+  println("outer")
+}
+outer()
+
 /* assert(stdout):
 hello world
 1
@@ -38,4 +50,7 @@ hello! hello world
 hello! Hello!!
 1 1 2 3 5 8 13 21
 .....
+inner2
+inner
+outer
 */

@@ -1,3 +1,11 @@
-func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
-func f2(n: Int): String = "." + f1(n)
-println(f1(5))
+func outer() {
+  func inner() {
+    func inner2() {
+      println("inner2")
+    }
+    inner2()
+    println("inner")
+  }
+  inner()
+}
+outer()
