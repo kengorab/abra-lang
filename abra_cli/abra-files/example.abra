@@ -1,11 +1,8 @@
 func outer() {
-  func inner() {
-    func inner2() {
-      println("inner2")
-    }
-    inner2()
-    println("inner")
-  }
+  val a = 123
+
+  func inner(): Int = a + 456
+
   inner()
 }
 outer()

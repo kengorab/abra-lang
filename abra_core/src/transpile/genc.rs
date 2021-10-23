@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use itertools::Itertools;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
@@ -13,9 +13,10 @@ enum BufferType {
     Body,
 }
 
-enum Context {
-    TopLevel,
-    FuncDeclBody,
+#[derive(Debug)]
+struct Scope {
+    name: String,
+    bindings: HashMap<String, String>,
 }
 
 pub struct CCompiler {
@@ -23,8 +24,7 @@ pub struct CCompiler {
     fwd_decls_buf: String,
     body_buf: String,
     buf_type: BufferType,
-    ctx: Context,
-    module_name: String,
+    scopes: Vec<Scope>,
     if_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -33,13 +33,22 @@ pub struct CCompiler {
 
 impl CCompiler {
     fn new() -> Self {
+        let root_scope = Scope {
+            name: "example".to_string(),
+            bindings: {
+                let mut m = HashMap::new();
+                m.insert("println".to_string(), "std__println".to_string());
+                m.insert("None".to_string(), "ABRA_NONE".to_string());
+                m
+            },
+        };
+
         CCompiler {
             main_fn_buf: "".to_string(),
             fwd_decls_buf: "".to_string(),
             body_buf: "".to_string(),
             buf_type: BufferType::MainFn,
-            ctx: Context::TopLevel,
-            module_name: "example".to_string(),
+            scopes: vec![root_scope],
             if_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
             tuple_literal_var_names_stack: vec![VecDeque::new()],
@@ -88,6 +97,20 @@ impl CCompiler {
         Ok(output)
     }
 
+    fn find_c_var_name<S: AsRef<str>>(&self, name: S) -> Option<String> {
+        self.scopes.iter().rev().find_map(|s| s.bindings.get(name.as_ref()).map(|n| n.clone()))
+    }
+
+    fn add_c_var_name<S: AsRef<str>>(&mut self, name: S) -> String {
+        let prefix = self.scopes.iter().map(|Scope { name, .. }| name).join("_");
+
+        let c_name = format!("{}__{}", prefix, name.as_ref());
+        self.scopes.last_mut().expect("There's always at least 1 scope")
+            .bindings
+            .insert(name.as_ref().to_string(), c_name.clone());
+        c_name
+    }
+
     fn switch_buf(&mut self, buf_type: BufferType) {
         self.buf_type = buf_type;
     }
@@ -109,40 +132,51 @@ impl CCompiler {
         self.buf().push('\n');
     }
 
-    fn c_ident_name<S: AsRef<str>>(&self, name: S) -> String {
-        format!("{}__{}", self.module_name, name.as_ref())
-    }
-
     fn lift_fns(&mut self, nodes: &Vec<TypedAstNode>) -> Result<(), ()> {
-        let fn_decl_nodes = nodes.iter().filter_map(|ast| if let TypedAstNode::FunctionDecl(_, node) = ast { Some(node) } else { None });
-        for node in fn_decl_nodes {
-            self.lift_fn(&node)?;
+        let fn_decl_nodes = nodes.iter().filter_map(|ast| if let TypedAstNode::FunctionDecl(_, node) = ast { Some(node) } else { None }).collect::<Vec<_>>();
+
+        // Forward-declare all functions, emitting signatures
+        let mut sigs = Vec::new();
+        for node in &fn_decl_nodes {
+            let fn_name = Token::get_ident_name(&node.name);
+            let c_name = self.add_c_var_name(&fn_name);
+
+            self.scopes.push(Scope { name: fn_name, bindings: HashMap::new() });
+            // TODO: Visit fn body's nodes, looking for variables closed over from outer scope. These need to be built into a *_env_t struct and passed as a parameter to fn
+            let args = node.args.iter()
+                .map(|(name, _, _, _)| self.add_c_var_name(Token::get_ident_name(name)))
+                .map(|name| format!("AbraValue {}", name))
+                .join(", ");
+            let sig = format!("AbraValue {}({})", c_name, args);
+            self.switch_buf(BufferType::FwdDecls);
+            self.emit_line(format!("{};", &sig));
+            sigs.push(sig);
+            self.scopes.pop();
+        }
+
+        for (node, sig) in fn_decl_nodes.iter().zip(sigs) {
+            self.lift_fn(&node, sig)?;
         }
         Ok(())
     }
 
-    fn lift_fn(&mut self, node: &TypedFunctionDeclNode) -> Result<(), ()> {
+    fn lift_fn(&mut self, node: &TypedFunctionDeclNode, sig: String) -> Result<(), ()> {
         let node = node.clone(); // :/
         let fn_name = Token::get_ident_name(&node.name);
-        let args = node.args.iter()
-            .map(|(name, _, _, _)| Token::get_ident_name(name))
-            .map(|name| format!("AbraValue {}", name))
-            .join(", ");
-        let sig = format!("AbraValue {}({})", self.c_ident_name(&fn_name), args);
-        self.switch_buf(BufferType::FwdDecls);
-        self.emit_line(format!("{};", sig));
 
+        self.scopes.push(Scope { name: fn_name, bindings: HashMap::new() });
         self.lift_fns(&node.body)?;
 
         self.switch_buf(BufferType::Body);
-        self.ctx = Context::FuncDeclBody;
         self.emit_line(format!("{} {{", sig));
-        for (name, _, _is_vararg, default_value) in node.args {
+        for (name, _, _, default_value) in node.args {
+            let arg_name = Token::get_ident_name(&name);
+            let c_name = self.add_c_var_name(&arg_name);
+
             if let Some(default_value_node) = default_value {
-                let arg_name = Token::get_ident_name(&name);
-                self.emit_line(format!("if (IS_NONE({})) {{", &arg_name));
+                self.emit_line(format!("if (IS_NONE({})) {{", &c_name));
                 self.lift(&default_value_node)?;
-                self.emit(format!("{} = ", arg_name));
+                self.emit(format!("{} = ", c_name));
                 self.visit(default_value_node)?;
                 self.emit_line(";");
                 self.emit_line("}");
@@ -163,7 +197,7 @@ impl CCompiler {
 
         self.emit_line("}");
 
-        self.ctx = Context::TopLevel;
+        self.scopes.pop();
         self.switch_buf(BufferType::MainFn);
         Ok(())
     }
@@ -554,8 +588,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
 
         match binding {
             BindingPattern::Variable(tok) => {
-                let name = Token::get_ident_name(&tok);
-                let c_name = self.c_ident_name(name);
+                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
 
                 self.emit(format!("AbraValue {} = ", c_name));
 
@@ -585,18 +618,9 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<(), ()> {
-        if &node.name == "println" {
-            self.emit("std__println");
-        } else if &node.name == "None" {
-            self.emit("ABRA_NONE");
-        } else if let Context::TopLevel = self.ctx {
-            self.emit(self.c_ident_name(node.name));
-        } else if let Type::Fn(_) = node.typ {
-            self.emit(self.c_ident_name(node.name));
-        } else {
-            self.emit(node.name);
-        }
-
+        let c_var_name = self.find_c_var_name(&node.name)
+            .expect(&format!("Could not find c-variable name for binding {}", &node.name));
+        self.emit(c_var_name);
         Ok(())
     }
 
@@ -652,7 +676,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 } else {
                     self.visit_and_convert(*i)?
                 }
-            },
+            }
             IndexingMode::Range(start, end) => {
                 if let Some(start) = start {
                     self.visit_and_convert(*start)?;
