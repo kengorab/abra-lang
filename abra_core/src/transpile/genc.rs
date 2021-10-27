@@ -31,6 +31,146 @@ pub struct CCompiler {
     map_literal_var_names_stack: Vec<VecDeque<String>>,
 }
 
+fn extract_functions(
+    node: &TypedAstNode,
+    known_vars: &Vec<String>,
+    path: Vec<String>,
+    seen_fns: &mut Vec<(Vec<String>, TypedFunctionDeclNode, Vec<String>)>
+) {
+    #[inline]
+    fn walk_and_find_vars(node: &TypedAstNode, vars: &mut Vec<String>) {
+        match node {
+            TypedAstNode::Literal(_, _) => {}
+            TypedAstNode::Unary(_, n) => walk_and_find_vars(&n.expr, vars),
+            TypedAstNode::Binary(_, n) => {
+                walk_and_find_vars(&n.left, vars);
+                walk_and_find_vars(&n.right, vars);
+            }
+            TypedAstNode::Grouped(_, n) => walk_and_find_vars(&n.expr, vars),
+            TypedAstNode::Array(_, n) => {
+                for item in &n.items {
+                    walk_and_find_vars(&item, vars);
+                }
+            }
+            TypedAstNode::Map(_, n) => {
+                for (key, val) in &n.items {
+                    walk_and_find_vars(&key, vars);
+                    walk_and_find_vars(&val, vars);
+                }
+            }
+            TypedAstNode::Set(_, n) => {
+                for item in &n.items {
+                    walk_and_find_vars(&item, vars);
+                }
+            }
+            TypedAstNode::Tuple(_, n) => {
+                for item in &n.items {
+                    walk_and_find_vars(&item, vars);
+                }
+            }
+            TypedAstNode::Lambda(_, _) => todo!(),
+            TypedAstNode::BindingDecl(_, n) => {
+                if let Some(expr) = &n.expr {
+                    walk_and_find_vars(&expr, vars);
+                }
+            }
+            TypedAstNode::FunctionDecl(_, _) => {}
+            TypedAstNode::TypeDecl(_, _) => {}
+            TypedAstNode::EnumDecl(_, _) => {}
+            TypedAstNode::Identifier(_, n) => {
+                if let Type::Fn(_) = &n.typ {
+                    // Do nothing
+                } else {
+                    vars.push(n.name.clone())
+                }
+            },
+            TypedAstNode::Assignment(_, n) => {
+                walk_and_find_vars(&n.target, vars);
+                walk_and_find_vars(&n.expr, vars);
+            }
+            TypedAstNode::Indexing(_, n) => {
+                walk_and_find_vars(&n.target, vars);
+                match &n.index {
+                    IndexingMode::Index(i) => walk_and_find_vars(&i, vars),
+                    IndexingMode::Range(s, e) => {
+                        if let Some(s) = s {
+                            walk_and_find_vars(&s, vars);
+                        }
+                        if let Some(e) = e {
+                            walk_and_find_vars(&e, vars);
+                        }
+                    }
+                }
+            }
+            TypedAstNode::IfStatement(_, n) |
+            TypedAstNode::IfExpression(_, n) => {
+                walk_and_find_vars(&n.condition, vars);
+                for node in &n.if_block {
+                    walk_and_find_vars(&node, vars);
+                }
+                if let Some(else_block) = &n.else_block {
+                    for node in else_block {
+                        walk_and_find_vars(&node, vars);
+                    }
+                }
+            }
+            TypedAstNode::Invocation(_, n) => {
+                walk_and_find_vars(&n.target, vars);
+                for arg in &n.args {
+                    if let Some(arg) = arg {
+                        walk_and_find_vars(&arg, vars);
+                    }
+                }
+            }
+            TypedAstNode::Instantiation(_, _) |
+            TypedAstNode::ForLoop(_, _) |
+            TypedAstNode::WhileLoop(_, _) |
+            TypedAstNode::Break(_) |
+            TypedAstNode::Continue(_) |
+            TypedAstNode::ReturnStatement(_, _) |
+            TypedAstNode::Accessor(_, _) |
+            TypedAstNode::MatchStatement(_, _) |
+            TypedAstNode::MatchExpression(_, _) |
+            TypedAstNode::ImportStatement(_, _) |
+            TypedAstNode::_Nil(_) => {}
+        }
+    }
+
+    if let TypedAstNode::FunctionDecl(_, decl_node) = node {
+        let mut current_known_vars = known_vars.clone();
+        let fn_name = Token::get_ident_name(&decl_node.name);
+        current_known_vars.push(fn_name.clone());
+
+        let mut seen_vars = Vec::new();
+        for (name, _, _, default_value) in &decl_node.args {
+            current_known_vars.push(Token::get_ident_name(name));
+            if let Some(default_value_node) = default_value {
+                walk_and_find_vars(&default_value_node, &mut seen_vars);
+            }
+        }
+
+        for node in &decl_node.body {
+            if let TypedAstNode::FunctionDecl(_, _) = &node {
+                let mut sub_path = path.clone();
+                sub_path.push(fn_name.clone());
+                extract_functions(&node, &known_vars, sub_path, seen_fns);
+
+                let (_, _, seen_vars_in_fn) = seen_fns.last().unwrap();
+                let mut seen_vars_in_fn = seen_vars_in_fn.clone();
+                seen_vars.append(&mut seen_vars_in_fn);
+            } else {
+                walk_and_find_vars(&node, &mut seen_vars);
+            }
+        }
+
+        let closed_over_variables = seen_vars.iter()
+            .filter(|var| !current_known_vars.contains(var))
+            .map(|var| var.clone())
+            .collect();
+        seen_fns.push((path, decl_node.clone(), closed_over_variables))
+    }
+}
+
 impl CCompiler {
     fn new() -> Self {
         let root_scope = Scope {
@@ -63,6 +203,7 @@ impl CCompiler {
         compiler.emit_line("#include \"abra_std.h\"\n");
 
         compiler.switch_buf(BufferType::Body);
+
         compiler.lift_fns(&ast)?;
 
         compiler.switch_buf(BufferType::MainFn);
@@ -132,43 +273,89 @@ impl CCompiler {
         self.buf().push('\n');
     }
 
-    fn lift_fns(&mut self, nodes: &Vec<TypedAstNode>) -> Result<(), ()> {
-        let fn_decl_nodes = nodes.iter().filter_map(|ast| if let TypedAstNode::FunctionDecl(_, node) = ast { Some(node) } else { None }).collect::<Vec<_>>();
-
-        // Forward-declare all functions, emitting signatures
-        let mut sigs = Vec::new();
-        for node in &fn_decl_nodes {
-            let fn_name = Token::get_ident_name(&node.name);
-            let c_name = self.add_c_var_name(&fn_name);
-
-            self.scopes.push(Scope { name: fn_name, bindings: HashMap::new() });
-            // TODO: Visit fn body's nodes, looking for variables closed over from outer scope. These need to be built into a *_env_t struct and passed as a parameter to fn
-            let args = node.args.iter()
-                .map(|(name, _, _, _)| self.add_c_var_name(Token::get_ident_name(name)))
-                .map(|name| format!("AbraValue {}", name))
-                .join(", ");
-            let sig = format!("AbraValue {}({})", c_name, args);
-            self.switch_buf(BufferType::FwdDecls);
-            self.emit_line(format!("{};", &sig));
-            sigs.push(sig);
-            self.scopes.pop();
+    fn lift_fns(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
+        let mut seen_fns = Vec::new();
+        for node in ast {
+            let mut known_vars = self.scopes.first().unwrap().bindings.keys().map(|v| v.clone()).collect();
+            extract_functions(&node, &mut known_vars, vec![], &mut seen_fns);
         }
 
-        for (node, sig) in fn_decl_nodes.iter().zip(sigs) {
-            self.lift_fn(&node, sig)?;
+        let mut fns_at_path = HashMap::new();
+        for (path, f, _) in &seen_fns {
+            fns_at_path.entry(path.clone()).or_insert(vec![]).push(Token::get_ident_name(&f.name));
         }
+
+        // Add cvar name for all root-level fns
+        if let Some(fns_at_path) = fns_at_path.get(&vec![]) {
+            for name in fns_at_path {
+                self.add_c_var_name(name);
+            }
+        }
+
+        // Emit code for each fn, making sure to set the proper intermediate scopes, as well as
+        // pre-define a cvar for each other fn in that scope (to handle out-of-order references).
+        for (path, f, vars) in seen_fns {
+            for scope_name in &path {
+                self.scopes.push(Scope { name: scope_name.clone(), bindings: HashMap::new() });
+            }
+
+            if let Some(fns_at_path) = fns_at_path.get(&path) {
+                for name in fns_at_path {
+                    self.add_c_var_name(name);
+                }
+            }
+
+            self.lift_fn(&f, &vars)?;
+
+            for _ in 0..path.len() {
+                self.scopes.pop();
+            }
+        }
+
         Ok(())
     }
 
-    fn lift_fn(&mut self, node: &TypedFunctionDeclNode, sig: String) -> Result<(), ()> {
+    fn lift_fn(&mut self, node: &TypedFunctionDeclNode, closed_over_vars: &Vec<String>) -> Result<(), ()> {
         let node = node.clone(); // :/
         let fn_name = Token::get_ident_name(&node.name);
+        let c_name = self.find_c_var_name(&fn_name).expect(&format!("Could not find c-variable name for {}", fn_name));
 
         self.scopes.push(Scope { name: fn_name, bindings: HashMap::new() });
-        self.lift_fns(&node.body)?;
+
+        self.switch_buf(BufferType::FwdDecls);
+        let env_struct_name = if !closed_over_vars.is_empty() {
+            let env_struct_name = format!("{}_env_t", &c_name);
+            self.emit_line(format!("typedef struct {} {{", &env_struct_name));
+            for var in closed_over_vars {
+                self.emit_line(format!("  AbraValue {};", var));
+            }
+            self.emit_line(format!("}} {};", &env_struct_name));
+            Some(env_struct_name)
+        } else { None };
+
+        let args = node.args.iter()
+            .map(|(name, _, _, _)| self.add_c_var_name(Token::get_ident_name(name)))
+            .map(|name| format!("AbraValue {}", name))
+            .join(", ");
+        let sig = format!(
+            "AbraValue {}({}{})",
+            c_name,
+            if let Some(env_struct_name) = &env_struct_name {
+                format!("{}* env{}", env_struct_name, if !args.is_empty() { "," } else { "" })
+            } else { "".to_string() },
+            args
+        );
+        self.emit_line(format!("{};", &sig));
 
         self.switch_buf(BufferType::Body);
         self.emit_line(format!("{} {{", sig));
+
+        for var_name in closed_over_vars {
+            self.scopes.last_mut().expect("There's always at least 1 scope")
+                .bindings
+                .insert(var_name.clone(), format!("env->{}", var_name));
+        }
+
         for (name, _, _, default_value) in node.args {
             let arg_name = Token::get_ident_name(&name);
             let c_name = self.add_c_var_name(&arg_name);
@@ -191,14 +378,23 @@ impl CCompiler {
                 self.emit("return ");
             }
 
-            self.visit(node)?;
-            self.emit_line(";");
+            // If we see a nested fn, we add a cvar to handle references within this fn's body.
+            // TODO: Convert fn to closure if necessary
+            if let TypedAstNode::FunctionDecl(_, n) = &node {
+                self.add_c_var_name(Token::get_ident_name(&n.name));
+                self.visit(node)?;
+                self.emit_line("// todo: convert fn to closure");
+            } else {
+                self.visit(node)?;
+                self.emit_line(";");
+            };
         }
 
         self.emit_line("}");
 
         self.scopes.pop();
         self.switch_buf(BufferType::MainFn);
+
         Ok(())
     }
 
