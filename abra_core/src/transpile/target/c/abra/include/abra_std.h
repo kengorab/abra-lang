@@ -29,6 +29,7 @@ typedef enum {
   OBJ_ARRAY,
   OBJ_TUPLE,
   OBJ_MAP,
+  OBJ_CLOSURE,
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
@@ -552,6 +553,37 @@ AbraValue std_map__index(Obj* obj, AbraValue key) {
     AbraMap* self = (AbraMap*)obj;
     return hashmap_get(&self->hash, key);
 }
+
+struct abra_closure_env_t;
+typedef AbraValue (*abra_closure_fn_t)(struct abra_closure_env_t*);
+typedef struct abra_closure_env_t {
+    abra_closure_fn_t __fn;
+} abra_closure_env_t;
+
+typedef struct AbraClosure {
+    Obj _header;
+    char const* name;
+    abra_closure_env_t* env;
+} AbraClosure;
+
+AbraValue alloc_closure(char* name, abra_closure_env_t* env) {
+    AbraClosure* closure = GC_MALLOC(sizeof(AbraClosure));
+
+    closure->_header.type = OBJ_CLOSURE;
+    closure->name = strdup(name);
+    closure->env = env;
+
+    return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)closure)}});
+}
+
+AbraValue call_closure(AbraValue v) {
+    AbraClosure* fn = (AbraClosure*) AS_OBJ(v);
+    return fn->env->__fn(fn->env);
+}
+
+//AbraValue call(AbraValue v) {
+//    // TODO abstract over AbraClosure and future AbraFn type?
+//}
 
 #define OBJ_LIMIT 100
 
