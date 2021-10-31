@@ -24,10 +24,30 @@ println(
   if true { [1, 2, 3, if true 4 else 5] } else [4, 5]
 )
 
+// If-expression with no `else`
+println(if false 123)
+
+// If statements
+if true {
+  println("true")
+} else {
+  println("false")
+}
+if false {
+  println("false")
+} else if true {
+  println("true")
+} else {
+  println("false")
+}
+
 /* assert(stdout):
 7
 11
 11
 7
 [1, 2, 3, 4]
+None
+true
+true
 */

@@ -97,13 +97,11 @@ func newCountdown(n: Int): () => Unit {
   var count = n
   func rec() {
     print(count)
-    val _ = if count > 0 { // If-statements haven't been implemented yet, only if-expressions -__-
+    if count > 0 {
       count -= 1
       rec()
-      0
     } else {
       println()
-      0
     }
   }
   rec

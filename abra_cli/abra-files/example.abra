@@ -1,13 +1,1 @@
-func newGreeter(greeting: String): () => String {
-  func greet(): String = greeting
-  greet
-}
-
-func callAndPrint(fn: () => String) = println(fn())
-
-val sayHi = newGreeter("hi")
-callAndPrint(sayHi)
-val sayHello = newGreeter("hello")
-callAndPrint(sayHello)
-val sayBonjour = newGreeter("bonjour")
-callAndPrint(sayBonjour)
+println(if false 123)

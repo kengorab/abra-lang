@@ -899,6 +899,9 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
+        // For top-level functions, emit logic to convert into AbraFunction object. Nested functions
+        // will have already been properly converted, but in order to close over top-level bindings,
+        // this needs to happen inline.
         if self.scopes.len() == 1 {
             let arity = node.args.len();
             let fn_name = Token::get_ident_name(&node.name);
@@ -1012,8 +1015,30 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedIfNode) -> Result<(), ()> {
-        todo!()
+    fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedIfNode) -> Result<(), ()> {
+        self.lift(&node.condition)?;
+        self.emit("if (");
+        self.visit_and_convert(*node.condition)?;
+        self.emit_line(") {");
+
+        for node in node.if_block {
+            self.lift(&node)?;
+            self.visit(node)?;
+            self.emit_line(";");
+        }
+
+        if let Some(else_block) = node.else_block {
+            self.emit_line("} else {");
+            for node in else_block {
+                self.lift(&node)?;
+                self.visit(node)?;
+                self.emit_line(";");
+            }
+        }
+
+        self.emit_line("}");
+
+        Ok(())
     }
 
     fn visit_if_expression(&mut self, _token: Token, _node: TypedIfNode) -> Result<(), ()> {
