@@ -1,18 +1,13 @@
-func newCountdown(n: Int): () => Unit {
-  var count = n
-  func rec() {
-    print(count)
-    val _ = if count > 0 { // If-statements haven't been implemented yet, only if-expressions -__-
-      count -= 1
-      rec()
-      0
-    } else {
-      println()
-      0
-    }
-  }
-  rec
+func newGreeter(greeting: String): () => String {
+  func greet(): String = greeting
+  greet
 }
-val countdown1 = newCountdown(5)
-val countdown2 = newCountdown(6)
-countdown1 == countdown2
+
+func callAndPrint(fn: () => String) = println(fn())
+
+val sayHi = newGreeter("hi")
+callAndPrint(sayHi)
+val sayHello = newGreeter("hello")
+callAndPrint(sayHello)
+val sayBonjour = newGreeter("bonjour")
+callAndPrint(sayBonjour)

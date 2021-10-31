@@ -66,20 +66,20 @@ func hello3(): (String) => Unit {
 }
 hello3()("world")
 
-// The following 2 don't work yet
-//val H = "hello"
-//func hello4(h: String) {
-//  func sayHi(H: String) = println(H + " " + h)
-//  sayHi(H)
-//}
-//hello4("world")
+val H = "hello"
+func hello4(h: String) {
+  func sayHi(H: String) = println(H + " " + h)
+  sayHi(H)
+}
+hello4("world")
 
-//func hello5(h: String): () => Unit {
-//  func sayHi() = println(H + " " + h)
-//  sayHi
-//}
-//hello5("world")()
+func hello5(h: String): () => Unit {
+  func sayHi() = println(H + " " + h)
+  sayHi
+}
+hello5("world")()
 
+// Test persistence of closed-over values
 func newCounter(start: Int): () => Unit {
   var counter = start
   func inc() {
@@ -90,8 +90,9 @@ func newCounter(start: Int): () => Unit {
 }
 val count = newCounter(0)
 count() count() count()
-println() // Just a spacer for test readability
+println() // Spacer for test readability
 
+// Test persistence of closed-over values of recursive fns
 func newCountdown(n: Int): () => Unit {
   var count = n
   func rec() {
@@ -110,6 +111,26 @@ func newCountdown(n: Int): () => Unit {
 val countdown = newCountdown(5)
 countdown()
 
+// Test passing closures as arguments
+func newGreeter(greeting: String): () => String {
+  func greet(): String = greeting
+  greet
+}
+func callAndExclaim(fn: () => String): String = fn() + "!"
+val sayHi = newGreeter("hi")
+val sayHello = newGreeter("hello")
+val sayBonjour = newGreeter("bonjour")
+println(callAndExclaim(sayHi), callAndExclaim(sayHello), callAndExclaim(sayBonjour))
+
+// Test equality operators
+func func1() = println()
+func func2() = println()
+func func3(): () => Unit = func1
+println(func1 != func2, func3() == func1)
+
+// Test toString
+println(func1, func2, func3, func3())
+
 /* assert(stdout):
 hello world
 1
@@ -126,6 +147,11 @@ initial inner2
 hello world
 hello world
 hello world
+hello world
+hello world
 123
 543210
+hi! hello! bonjour!
+true true
+<func func1> <func func2> <func func3> <func func1>
 */

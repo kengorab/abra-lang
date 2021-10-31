@@ -30,6 +30,7 @@ pub struct CCompiler {
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
     map_literal_var_names_stack: Vec<VecDeque<String>>,
     invocation_var_names_stack: Vec<VecDeque<String>>,
+    upvalues_by_fn_cname: HashMap<String, HashSet<String>>,
 }
 
 fn extract_functions(
@@ -151,16 +152,25 @@ fn extract_functions(
         }
 
         for node in &decl_node.body {
-            if let TypedAstNode::FunctionDecl(_, _) = &node {
-                let mut sub_path = path.clone();
-                sub_path.push(fn_name.clone());
-                extract_functions(&node, &known_vars, sub_path, seen_fns);
+            match &node {
+                TypedAstNode::FunctionDecl(_, _) => {
+                    let mut sub_path = path.clone();
+                    sub_path.push(fn_name.clone());
+                    extract_functions(&node, &known_vars, sub_path, seen_fns);
 
-                let (_, _, seen_vars_in_fn) = seen_fns.last().unwrap();
-                let mut seen_vars_in_fn = seen_vars_in_fn.clone().into_iter().collect();
-                seen_vars.append(&mut seen_vars_in_fn);
-            } else {
-                walk_and_find_vars(&node, &mut seen_vars);
+                    let (_, _, seen_vars_in_fn) = seen_fns.last().unwrap();
+                    let mut seen_vars_in_fn = seen_vars_in_fn.clone().into_iter().collect();
+                    seen_vars.append(&mut seen_vars_in_fn);
+                }
+                TypedAstNode::BindingDecl(_, n) => {
+                    match &n.binding {
+                        BindingPattern::Variable(v) => {
+                            current_known_vars.push(Token::get_ident_name(v));
+                        }
+                        BindingPattern::Tuple(_, _) | BindingPattern::Array(_, _, _) => todo!()
+                    }
+                }
+                _ => walk_and_find_vars(&node, &mut seen_vars)
             }
         }
 
@@ -196,6 +206,7 @@ impl CCompiler {
             tuple_literal_var_names_stack: vec![VecDeque::new()],
             map_literal_var_names_stack: vec![VecDeque::new()],
             invocation_var_names_stack: vec![VecDeque::new()],
+            upvalues_by_fn_cname: HashMap::new(),
         }
     }
 
@@ -245,6 +256,17 @@ impl CCompiler {
         self.scopes.iter().rev().find_map(|s| s.bindings.get(name.as_ref()).map(|n| n.clone()))
     }
 
+    fn find_c_var_name_trim_suffix<S1: AsRef<str>, S2: AsRef<str>>(&self, name: S1, suffix: S2) -> Option<String> {
+        let c_name = self.scopes.iter().rev().find_map(|s| s.bindings.get(name.as_ref()).map(|n| n.clone()));
+        c_name.map(|mut c_name| {
+            debug_assert!(c_name.ends_with(suffix.as_ref()));
+            if c_name.ends_with(suffix.as_ref()) {
+                c_name.truncate(c_name.len() - suffix.as_ref().len());
+            }
+            c_name
+        })
+    }
+
     fn add_c_var_name<S: AsRef<str>>(&mut self, name: S) -> String {
         self.add_c_var_name_with_suffix(name, "")
     }
@@ -288,13 +310,13 @@ impl CCompiler {
         }
 
         let mut fns_at_path = HashMap::new();
-        let mut upvalues_at_path = HashMap::new();
         for (path, f, closed_over_vars) in &seen_fns {
             fns_at_path.entry(path.clone()).or_insert(vec![]).push(Token::get_ident_name(&f.name));
 
-            let mut path = path.clone();
-            path.push(Token::get_ident_name(&f.name));
-            upvalues_at_path.insert(path, closed_over_vars.clone());
+            let mut c_name = vec![vec![self.scopes.first().unwrap().name.clone()], path.clone()].concat().iter().join("_");
+            c_name.push_str("__");
+            c_name.push_str(&Token::get_ident_name(&f.name));
+            self.upvalues_by_fn_cname.insert(c_name, closed_over_vars.clone());
         }
 
         // Add cvar name for all root-level fns
@@ -317,7 +339,7 @@ impl CCompiler {
                 }
             }
 
-            self.lift_fn(&f, &vars, &upvalues_at_path)?;
+            self.lift_fn(&f, &vars)?;
 
             for _ in 0..path.len() {
                 self.scopes.pop();
@@ -327,15 +349,10 @@ impl CCompiler {
         Ok(())
     }
 
-    fn lift_fn(&mut self, node: &TypedFunctionDeclNode, closed_over_vars: &HashSet<String>, all_upvalues: &HashMap<Vec<String>, HashSet<String>>) -> Result<(), ()> {
+    fn lift_fn(&mut self, node: &TypedFunctionDeclNode, closed_over_vars: &HashSet<String>) -> Result<(), ()> {
         let node = node.clone(); // :/
         let fn_name = Token::get_ident_name(&node.name);
-        let mut c_name = self.find_c_var_name(&fn_name).expect(&format!("Could not find c-variable name for {}", fn_name));
-        debug_assert!(c_name.ends_with("_val"));
-        if c_name.ends_with("_val") {
-            c_name.truncate(c_name.len() - 4);
-        }
-        let c_name = c_name; // Remove temporary mutability
+        let c_name = self.find_c_var_name_trim_suffix(&fn_name, "_val").expect(&format!("Could not find c-variable name for {}", fn_name));
 
         self.scopes.push(Scope { name: fn_name.clone(), bindings: HashMap::new() });
 
@@ -354,7 +371,7 @@ impl CCompiler {
             .map(|(name, _, _, _)| self.add_c_var_name(Token::get_ident_name(name)))
             .map(|name| format!("AbraValue {}", name))
             .join(", ");
-        let sig = format!("AbraValue {}(void* _env{}{})", &c_name, if args.is_empty() { "" } else {","}, args);
+        let sig = format!("AbraValue {}(void* _env{}{})", &c_name, if args.is_empty() { "" } else { "," }, args);
         self.emit_line(format!("{};", &sig));
         self.emit_line(format!("AbraValue {}_val;", &c_name));
 
@@ -370,7 +387,6 @@ impl CCompiler {
                 .insert(var_name.clone(), format!("env->{}", var_name));
         }
 
-        let arity = node.args.len();
         for (name, _, _, default_value) in node.args {
             let arg_name = Token::get_ident_name(&name);
             let c_name = self.add_c_var_name(&arg_name);
@@ -405,12 +421,11 @@ impl CCompiler {
                 self.emit_line(format!("{}* {}_env_ctx = GC_MALLOC(sizeof({}));", &ctx_type_name, &c_name, &ctx_type_name));
                 self.emit_line(format!("{}_env_ctx->fn = &{};", &c_name, &c_name));
 
-                let mut path = self.scopes.iter().skip(1).map(|s| s.name.clone()).collect::<Vec<_>>();
-                path.push(nested_fn_name.clone());
-                match all_upvalues.get(&path) {
+                let upvalues = self.upvalues_by_fn_cname.get(&c_name).map(|uvs| uvs.clone());
+                match &upvalues {
                     Some(upvalues) if !upvalues.is_empty() => {
                         self.emit_line(format!("{}_env_t* {}_env = GC_MALLOC(sizeof({}_env_t));", &c_name, &c_name, &c_name));
-                        for upvalue_name in upvalues {
+                        for upvalue_name in upvalues.iter() {
                             self.emit_line(format!("{}_env->{} = {};", &c_name, upvalue_name, self.find_c_var_name(&upvalue_name).unwrap()));
                         }
                         self.emit_line(format!("{}_env_ctx->env = {}_env;", &c_name, &c_name));
@@ -419,7 +434,7 @@ impl CCompiler {
                         self.emit_line(format!("{}_env_ctx->env = NULL;", &c_name));
                     }
                 }
-                self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &nested_fn_name, &c_name, &c_name));
+                self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &fn_name, &c_name, &c_name));
             } else {
                 self.visit(node)?;
                 self.emit_line(";");
@@ -430,15 +445,6 @@ impl CCompiler {
 
         self.scopes.pop();
         self.switch_buf(BufferType::MainFn);
-
-        if self.scopes.len() == 1 {
-            let ctx_type_name = format!("callable_ctx__{}_t", arity);
-            self.emit_line(format!("{}* {}_env_ctx = GC_MALLOC(sizeof({}));", &ctx_type_name, &c_name, &ctx_type_name));
-            self.emit_line(format!("{}_env_ctx->fn = &{};", &c_name, &c_name));
-            // todo: store ->env
-            self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &c_name, &fn_name, &c_name));
-            self.scopes.last_mut().unwrap().bindings.insert(fn_name, format!("{}_val", c_name));
-        }
 
         Ok(())
     }
@@ -892,7 +898,32 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<(), ()> {
+    fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<(), ()> {
+        if self.scopes.len() == 1 {
+            let arity = node.args.len();
+            let fn_name = Token::get_ident_name(&node.name);
+            let c_name = self.find_c_var_name_trim_suffix(&fn_name, "_val").expect(&format!("Could not find c-variable name for {}", fn_name));
+
+            let ctx_type_name = format!("callable_ctx__{}_t", arity);
+            self.emit_line(format!("{}* {}_env_ctx = GC_MALLOC(sizeof({}));", &ctx_type_name, &c_name, &ctx_type_name));
+            self.emit_line(format!("{}_env_ctx->fn = &{};", &c_name, &c_name));
+            let upvalues = self.upvalues_by_fn_cname.get(&c_name).map(|uvs| uvs.clone());
+            match &upvalues {
+                Some(upvalues) if !upvalues.is_empty() => {
+                    self.emit_line(format!("{}_env_t* {}_env = GC_MALLOC(sizeof({}_env_t));", &c_name, &c_name, &c_name));
+                    for upvalue_name in upvalues.iter() {
+                        self.emit_line(format!("{}_env->{} = {};", &c_name, upvalue_name, self.find_c_var_name(&upvalue_name).unwrap()));
+                    }
+                    self.emit_line(format!("{}_env_ctx->env = {}_env;", &c_name, &c_name));
+                }
+                _ => {
+                    self.emit_line(format!("{}_env_ctx->env = NULL;", &c_name));
+                }
+            }
+            self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &fn_name, &c_name, &c_name));
+            self.scopes.last_mut().unwrap().bindings.insert(fn_name, format!("{}_val", c_name));
+        }
+
         Ok(())
     }
 
@@ -992,9 +1023,13 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_invocation(&mut self, _token: Token, _node: TypedInvocationNode) -> Result<(), ()> {
+    fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<(), ()> {
         let ident_name = self.invocation_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an invocation without having visited it previously");
-        self.emit(ident_name);
+
+        // No need to emit invocation result var, since nothing will access it (verified by typechecker).
+        if node.typ != Type::Unit {
+            self.emit(ident_name);
+        }
 
         Ok(())
     }
