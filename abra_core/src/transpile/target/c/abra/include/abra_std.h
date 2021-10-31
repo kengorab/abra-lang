@@ -29,7 +29,7 @@ typedef enum {
   OBJ_ARRAY,
   OBJ_TUPLE,
   OBJ_MAP,
-  OBJ_CLOSURE,
+  OBJ_FUNCTION,
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
@@ -64,7 +64,7 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 #define AS_FLOAT(v) v.as.abra_float
 #define NEW_BOOL(b) (b ? ABRA_TRUE : ABRA_FALSE)
 #define AS_BOOL(v) v.as.abra_bool
-#define AS_OBJ(v) v.as.obj
+#define AS_OBJ(v) (v.as.obj)
 
 bool std__eq(AbraValue v1, AbraValue v2);
 char const* std__to_string(AbraValue val);
@@ -273,6 +273,7 @@ AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
 }
 
 bool std_string__eq(Obj* o1, Obj* o2) {
+  // TODO: check o1.type == o2.type
   AbraString* s1 = (AbraString*)o1;
   AbraString* s2 = (AbraString*)o2;
   if (s1->size != s2->size) return false;
@@ -350,6 +351,7 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 }
 
 bool std_array__eq(Obj* o1, Obj* o2) {
+  // TODO: check o1.type == o2.type
   AbraArray* self = (AbraArray*)o1;
   AbraArray* other = (AbraArray*)o2;
   if (self->size != other->size) return false;
@@ -424,6 +426,7 @@ AbraValue alloc_tuple(AbraValue* values, size_t size) {
 }
 
 bool std_tuple__eq(Obj* o1, Obj* o2) {
+  // TODO: check o1.type == o2.type
   AbraTuple* self = (AbraTuple*)o1;
   AbraTuple* other = (AbraTuple*)o2;
   if (self->size != other->size) return false;
@@ -479,6 +482,7 @@ void std_map__insert(Obj* o, AbraValue key, AbraValue value) {
 }
 
 bool std_map__eq(Obj* o1, Obj* o2) {
+    // TODO: check o1.type == o2.type
     AbraMap* self = (AbraMap*)o1;
     AbraMap* other = (AbraMap*)o2;
     if (self->hash.size != other->hash.size) return false;
@@ -554,36 +558,69 @@ AbraValue std_map__index(Obj* obj, AbraValue key) {
     return hashmap_get(&self->hash, key);
 }
 
-struct abra_closure_env_t;
-typedef AbraValue (*abra_closure_fn_t)(struct abra_closure_env_t*);
-typedef struct abra_closure_env_t {
-    abra_closure_fn_t __fn;
-} abra_closure_env_t;
+typedef struct callable_ctx__0_t { // Callable context, arity 0
+    AbraValue (*fn)(void*);
+    void* env;
+} callable_ctx__0_t;
+typedef struct callable_ctx__1_t { // Callable context, arity 1
+    AbraValue (*fn)(void*, AbraValue);
+    void* env;
+} callable_ctx__1_t;
+typedef struct callable_ctx__2_t { // Callable context, arity 2
+    AbraValue (*fn)(void*, AbraValue, AbraValue);
+    void* env;
+} callable_ctx__2_t;
 
-typedef struct AbraClosure {
+typedef struct AbraFunction {
     Obj _header;
     char const* name;
-    abra_closure_env_t* env;
-} AbraClosure;
+    char const* c_name;
+    void* ctx; // This will be some flavor of callable_ctx__<arity>_t
+} AbraFunction;
 
-AbraValue alloc_closure(char* name, abra_closure_env_t* env) {
-    AbraClosure* closure = GC_MALLOC(sizeof(AbraClosure));
+AbraValue alloc_function(char* name, char* c_name, void* ctx) {
+    AbraFunction* fn = GC_MALLOC(sizeof(AbraFunction));
 
-    closure->_header.type = OBJ_CLOSURE;
-    closure->name = strdup(name);
-    closure->env = env;
+    fn->_header.type = OBJ_FUNCTION;
+    fn->name = strdup(name);
+    fn->c_name = strdup(c_name);
+    fn->ctx = ctx;
 
-    return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)closure)}});
+    return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)fn)}});
 }
 
-AbraValue call_closure(AbraValue v) {
-    AbraClosure* fn = (AbraClosure*) AS_OBJ(v);
-    return fn->env->__fn(fn->env);
+bool std_function__eq(Obj* o1, Obj* o2) {
+    // TODO: check o1.type == o2.type
+    AbraFunction* self = (AbraFunction*) o1;
+    AbraFunction* other = (AbraFunction*) o2;
+
+    // TODO: comparing envs as well?
+    return strcmp(self->c_name, other->c_name) == 0;
 }
 
-//AbraValue call(AbraValue v) {
-//    // TODO abstract over AbraClosure and future AbraFn type?
-//}
+char const* std_function__to_string(Obj* obj) {
+    AbraFunction* self = (AbraFunction*) obj;
+
+    size_t name_len = strlen(self->name);
+    char* str = GC_MALLOC(sizeof(char) * 8 + name_len); // <func {name}>
+    memcpy(str, "<func ", 6);
+    memcpy(str + 6, self->name, name_len);
+    memcpy(str + 6 + name_len, ">", 1);
+    return str;
+}
+
+size_t std_function__hash(Obj* obj) {
+    AbraFunction* self = (AbraFunction*) obj;
+
+    size_t name_len = strlen(self->name);
+
+    // Adapted from djb2 hashing algorithm
+    size_t hash = 5381;
+    for (size_t i = 0; i < name_len; ++i) {
+        hash = ((hash << 5) + hash) ^ self->name[i];
+    }
+    return hash;
+}
 
 #define OBJ_LIMIT 100
 
@@ -673,19 +710,22 @@ size_t std__hash(AbraValue val) {
   }
 }
 
-void std__println(AbraValue val) {
-  if (IS_NONE(val)) {
-    printf("\n");
-    return;
-  }
-
-  AbraArray* varargs = (AbraArray*)val.as.obj;
-  for (int i = 0; i < varargs->size; ++i) {
-    printf("%s", std__to_string(varargs->items[i]));
-    if (i < varargs->size - 1) {
-      printf(" ");
+void std__print(AbraValue val) {
+    if (IS_NONE(val)) {
+        return;
     }
-  }
+
+    AbraArray* varargs = (AbraArray*)val.as.obj;
+    for (int i = 0; i < varargs->size; ++i) {
+        printf("%s", std__to_string(varargs->items[i]));
+        if (i < varargs->size - 1) {
+            printf(" ");
+        }
+    }
+}
+
+void std__println(AbraValue val) {
+  std__print(val);
   printf("\n");
 }
 
@@ -696,16 +736,19 @@ void abra_init() {
   eq_fns[OBJ_ARRAY] = &std_array__eq;
   eq_fns[OBJ_TUPLE] = &std_tuple__eq;
   eq_fns[OBJ_MAP] = &std_map__eq;
+  eq_fns[OBJ_FUNCTION] = &std_function__eq;
 
   to_string_fns[OBJ_STR] = &std_string__to_string;
   to_string_fns[OBJ_ARRAY] = &std_array__to_string;
   to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
   to_string_fns[OBJ_MAP] = &std_map__to_string;
+  to_string_fns[OBJ_FUNCTION] = &std_function__to_string;
 
   hash_fns[OBJ_STR] = &std_string__hash;
   hash_fns[OBJ_ARRAY] = &std_array__hash;
   hash_fns[OBJ_TUPLE] = &std_tuple__hash;
   hash_fns[OBJ_MAP] = &std_map__hash;
+  hash_fns[OBJ_FUNCTION] = &std_function__hash;
 }
 
 #endif

@@ -45,6 +45,71 @@ func outer() {
 outer()
 inner2()
 
+// Closures
+func hello1(h: String) {
+  func sayHi() = println("hello " + h)
+  sayHi()
+}
+hello1("world")
+
+func hello2(h: String): () => Unit {
+  func sayHi() = println("hello " + h)
+  sayHi
+}
+hello2("world")()
+
+func hello3(): (String) => Unit {
+  func sayHi(h: String) {
+    println("hello " + h)
+  }
+  sayHi
+}
+hello3()("world")
+
+// The following 2 don't work yet
+//val H = "hello"
+//func hello4(h: String) {
+//  func sayHi(H: String) = println(H + " " + h)
+//  sayHi(H)
+//}
+//hello4("world")
+
+//func hello5(h: String): () => Unit {
+//  func sayHi() = println(H + " " + h)
+//  sayHi
+//}
+//hello5("world")()
+
+func newCounter(start: Int): () => Unit {
+  var counter = start
+  func inc() {
+    counter += 1
+    print(counter)
+  }
+  inc
+}
+val count = newCounter(0)
+count() count() count()
+println() // Just a spacer for test readability
+
+func newCountdown(n: Int): () => Unit {
+  var count = n
+  func rec() {
+    print(count)
+    val _ = if count > 0 { // If-statements haven't been implemented yet, only if-expressions -__-
+      count -= 1
+      rec()
+      0
+    } else {
+      println()
+      0
+    }
+  }
+  rec
+}
+val countdown = newCountdown(5)
+countdown()
+
 /* assert(stdout):
 hello world
 1
@@ -58,4 +123,9 @@ inner2
 inner
 outer
 initial inner2
+hello world
+hello world
+hello world
+123
+543210
 */

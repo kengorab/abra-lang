@@ -1,22 +1,18 @@
-//func hello(h: String) {
-//  func sayHi() {
-//    println("hello " + h)
-//  }
-//  sayHi()
-//}
-//hello("world")
-
-//func inner2() = println("initial inner2")
-func outer() {
-  func inner() {
-    func inner2() = println("inner2")
-    inner2()
-//    foo() // Make sure function is pre-defined for access here
-    println("inner")
+func newCountdown(n: Int): () => Unit {
+  var count = n
+  func rec() {
+    print(count)
+    val _ = if count > 0 { // If-statements haven't been implemented yet, only if-expressions -__-
+      count -= 1
+      rec()
+      0
+    } else {
+      println()
+      0
+    }
   }
-//  func foo() {}
-  inner()
-  println("outer")
+  rec
 }
-outer()
-//inner2()
+val countdown1 = newCountdown(5)
+val countdown2 = newCountdown(6)
+countdown1 == countdown2
