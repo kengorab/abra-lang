@@ -273,7 +273,6 @@ AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
 }
 
 bool std_string__eq(Obj* o1, Obj* o2) {
-  // TODO: check o1.type == o2.type
   AbraString* s1 = (AbraString*)o1;
   AbraString* s2 = (AbraString*)o2;
   if (s1->size != s2->size) return false;
@@ -351,7 +350,6 @@ AbraValue alloc_array(AbraValue* values, size_t size) {
 }
 
 bool std_array__eq(Obj* o1, Obj* o2) {
-  // TODO: check o1.type == o2.type
   AbraArray* self = (AbraArray*)o1;
   AbraArray* other = (AbraArray*)o2;
   if (self->size != other->size) return false;
@@ -426,7 +424,6 @@ AbraValue alloc_tuple(AbraValue* values, size_t size) {
 }
 
 bool std_tuple__eq(Obj* o1, Obj* o2) {
-  // TODO: check o1.type == o2.type
   AbraTuple* self = (AbraTuple*)o1;
   AbraTuple* other = (AbraTuple*)o2;
   if (self->size != other->size) return false;
@@ -482,7 +479,6 @@ void std_map__insert(Obj* o, AbraValue key, AbraValue value) {
 }
 
 bool std_map__eq(Obj* o1, Obj* o2) {
-    // TODO: check o1.type == o2.type
     AbraMap* self = (AbraMap*)o1;
     AbraMap* other = (AbraMap*)o2;
     if (self->hash.size != other->hash.size) return false;
@@ -590,7 +586,6 @@ AbraValue alloc_function(char* name, char* c_name, void* ctx) {
 }
 
 bool std_function__eq(Obj* o1, Obj* o2) {
-    // TODO: check o1.type == o2.type
     AbraFunction* self = (AbraFunction*) o1;
     AbraFunction* other = (AbraFunction*) o2;
 
