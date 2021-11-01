@@ -1,1 +1,6 @@
-[1, 2, 3] == "asdf"
+println("asdf".length)
+println([].length, [1, 2, 3].length)
+println({}.size, {a: 1, b:2}.size)
+
+val s = #{"asdf", "zxcv", "asdf"}
+println(s)

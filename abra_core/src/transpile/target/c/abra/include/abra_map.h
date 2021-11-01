@@ -96,4 +96,9 @@ AbraValue std_map__index(Obj* obj, AbraValue key) {
   return hashmap_get(&self->hash, key);
 }
 
+AbraValue std_map__field_size(AbraValue _self) {
+    AbraMap* self = (AbraMap*)AS_OBJ(_self);
+    return NEW_INT(self->hash.size);
+}
+
 #endif

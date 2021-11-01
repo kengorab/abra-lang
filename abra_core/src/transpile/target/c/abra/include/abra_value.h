@@ -6,6 +6,7 @@ typedef enum {
   OBJ_ARRAY,
   OBJ_TUPLE,
   OBJ_MAP,
+  OBJ_SET,
   OBJ_FUNCTION,
 } ObjectType;
 typedef struct Obj {

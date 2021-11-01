@@ -1,0 +1,15 @@
+println(#{}, #{24}, #{1, 1, 1, 1})
+
+// Test equality operators
+println(#{} == #{})
+println(#{1, 2, 4} != #{1, 2, 3})
+
+// Fields
+println(#{}.size, #{1}.size, #{1, 2, 2, 3, 3, 1}.size)
+
+/* assert(stdout):
+#{} #{24} #{1}
+true
+true
+0 1 3
+*/

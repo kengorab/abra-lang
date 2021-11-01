@@ -27,6 +27,7 @@ size_t std__hash(AbraValue val);
 #include "abra_array.h"
 #include "abra_tuple.h"
 #include "abra_map.h"
+#include "abra_set.h"
 #include "abra_function.h"
 
 // Arbitrary limit for number of unique object types. This will need tuning
@@ -119,8 +120,8 @@ size_t std__hash(AbraValue val) {
 }
 
 // print(*items: Any[])
-void std__print(void* _env, AbraValue val) {
-  if (IS_NONE(val)) return;
+AbraValue std__print(void* _env, AbraValue val) {
+  if (IS_NONE(val)) return ABRA_NONE;
 
   AbraArray* varargs = (AbraArray*)AS_OBJ(val);
   for (int i = 0; i < varargs->size; ++i) {
@@ -129,13 +130,15 @@ void std__print(void* _env, AbraValue val) {
       printf(" ");
     }
   }
+  return ABRA_NONE;
 }
 AbraValue std__print_val;
 
 // println(*items: Any[])
-void std__println(void* _env, AbraValue val) {
+AbraValue std__println(void* _env, AbraValue val) {
   std__print(NULL, val);
   printf("\n");
+  return ABRA_NONE;
 }
 AbraValue std__println_val;
 
@@ -185,6 +188,7 @@ void abra_init() {
   eq_fns[OBJ_ARRAY] = &std_array__eq;
   eq_fns[OBJ_TUPLE] = &std_tuple__eq;
   eq_fns[OBJ_MAP] = &std_map__eq;
+  eq_fns[OBJ_SET] = &std_set__eq;
   eq_fns[OBJ_FUNCTION] = &std_function__eq;
 
   // Bind toString functions for primitive types
@@ -192,6 +196,7 @@ void abra_init() {
   to_string_fns[OBJ_ARRAY] = &std_array__to_string;
   to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
   to_string_fns[OBJ_MAP] = &std_map__to_string;
+  to_string_fns[OBJ_SET] = &std_set__to_string;
   to_string_fns[OBJ_FUNCTION] = &std_function__to_string;
 
   // Bind hash functions for primitive types
@@ -199,6 +204,7 @@ void abra_init() {
   hash_fns[OBJ_ARRAY] = &std_array__hash;
   hash_fns[OBJ_TUPLE] = &std_tuple__hash;
   hash_fns[OBJ_MAP] = &std_map__hash;
+  hash_fns[OBJ_SET] = &std_set__hash;
   hash_fns[OBJ_FUNCTION] = &std_function__hash;
 }
 

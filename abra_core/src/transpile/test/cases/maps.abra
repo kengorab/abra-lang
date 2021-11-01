@@ -19,6 +19,9 @@ println(m5[{a: 1}], m5[{b:2}])
 println({ a: 1, b: 2 } == { "b": 2, "a": 1})
 println({ a: "1", b: "2" } != { b: 2, a: 1})
 
+// Fields
+println({}.size, { a: 1 }.size, { a: 1, b: 2 }.size)
+
 /* assert(stdout):
 {}
 { a: 24 }
@@ -29,4 +32,5 @@ println({ a: "1", b: "2" } != { b: 2, a: 1})
 1 2
 true
 true
+0 1 2
 */

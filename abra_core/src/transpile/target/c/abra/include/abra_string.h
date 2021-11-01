@@ -97,4 +97,9 @@ AbraValue std_string__range_to_end(Obj* obj, int64_t start) {
   return std_string__range(obj, start, self->size);
 }
 
+AbraValue std_string__field_length(AbraValue _self) {
+    AbraString* self = (AbraString*)AS_OBJ(_self);
+    return NEW_INT(self->size);
+}
+
 #endif

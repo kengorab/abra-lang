@@ -48,6 +48,9 @@ println(range(0, -4))
 println(range(0, 10, 2))
 println(range(1, 10, 3))
 
+// Fields
+println([].length, [1, 2].length, [[1], [2], [3]].length)
+
 /* assert(stdout):
 []
 [[[]]]
@@ -66,4 +69,5 @@ false
 []
 [0, 2, 4, 6, 8]
 [1, 4, 7]
+0 2 3
 */

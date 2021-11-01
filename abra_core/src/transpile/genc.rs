@@ -29,6 +29,7 @@ pub struct CCompiler {
     array_literal_var_names_stack: Vec<VecDeque<String>>,
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
     map_literal_var_names_stack: Vec<VecDeque<String>>,
+    set_literal_var_names_stack: Vec<VecDeque<String>>,
     invocation_var_names_stack: Vec<VecDeque<String>>,
     upvalues_by_fn_cname: HashMap<String, HashSet<String>>,
 }
@@ -206,6 +207,7 @@ impl CCompiler {
             array_literal_var_names_stack: vec![VecDeque::new()],
             tuple_literal_var_names_stack: vec![VecDeque::new()],
             map_literal_var_names_stack: vec![VecDeque::new()],
+            set_literal_var_names_stack: vec![VecDeque::new()],
             invocation_var_names_stack: vec![VecDeque::new()],
             upvalues_by_fn_cname: HashMap::new(),
         }
@@ -532,7 +534,34 @@ impl CCompiler {
                 }
                 self.map_literal_var_names_stack.last_mut().unwrap().push_back(map_ident.clone());
             }
-            TypedAstNode::Set(_, _) => todo!("These will need to be lifted"),
+            TypedAstNode::Set(_, node) => {
+                let node = node.clone(); // :/
+                let ident = random_string(10);
+                let set_ident = format!("set_{}", ident);
+                self.emit_line(format!("AbraValue {} = alloc_set();", set_ident));
+
+                for val in node.items {
+                    // let key_ident = format!("{}_k{}", set_ident, idx);
+                    // self.set_literal_var_names_stack.push(VecDeque::new());
+                    // self.lift(&key)?;
+                    // self.emit(format!("AbraValue {} = ", &key_ident));
+                    // self.visit(key)?;
+                    // self.emit_line(";");
+                    // self.map_literal_var_names_stack.pop();
+
+                    self.set_literal_var_names_stack.push(VecDeque::new());
+                    self.lift(&val)?;
+                    self.set_literal_var_names_stack.pop();
+
+                    self.emit(format!(
+                        "std_set__insert(AS_OBJ({}), ",//{}, {});",
+                        set_ident, //key_ident, val_ident
+                    ));
+                    self.visit(val)?;
+                    self.emit_line(");");
+                }
+                self.set_literal_var_names_stack.last_mut().unwrap().push_back(set_ident.clone());
+            },
             TypedAstNode::BindingDecl(_, node) => {
                 if let Some(expr) = &node.expr {
                     self.lift(expr)?;
@@ -642,6 +671,9 @@ impl CCompiler {
                     self.lift(&target)?;
                 }
             }
+            TypedAstNode::Accessor(_, node) => {
+                self.lift(&node.target)?;
+            }
             TypedAstNode::MatchExpression(_, _) => todo!("This will also need to be lifted"),
             // The following node types cannot contain expressions that need lifting
             TypedAstNode::Literal(_, _) |
@@ -654,7 +686,6 @@ impl CCompiler {
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
             TypedAstNode::Continue(_) |
-            TypedAstNode::Accessor(_, _) |
             TypedAstNode::IfStatement(_, _) |
             TypedAstNode::MatchStatement(_, _) |
             TypedAstNode::ImportStatement(_, _) |
@@ -778,7 +809,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 self.emit("!");
                 self.visit_and_convert(*node.right)?;
             }
-            BinaryOp::Coalesce => {}
+            BinaryOp::Coalesce => todo!(),
             BinaryOp::Lt => {
                 self.visit_and_convert(*node.left)?;
                 self.emit("<");
@@ -853,7 +884,10 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_set(&mut self, _token: Token, _node: TypedSetNode) -> Result<(), ()> {
-        todo!()
+        let ident_name = self.set_literal_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach a set literal without having visited it previously");
+        self.emit(ident_name);
+
+        Ok(())
     }
 
     fn visit_lambda(&mut self, _token: Token, _node: TypedLambdaNode) -> Result<(), ()> {
@@ -1047,8 +1081,23 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         todo!()
     }
 
-    fn visit_accessor(&mut self, _token: Token, _node: TypedAccessorNode) -> Result<(), ()> {
-        todo!()
+    fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<(), ()> {
+        if node.is_opt_safe { todo!() }
+        if node.is_method { todo!() }
+
+        let prefix = match node.target.get_type() {
+            Type::String => "std_string",
+            Type::Array(_) => "std_array",
+            Type::Map(_, _) => "std_map",
+            Type::Set(_) => "std_set",
+            _ => todo!(),
+        };
+        let fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
+        self.emit(format!("{}(", fn_name));
+        self.visit(*node.target)?;
+        self.emit(")");
+
+        Ok(())
     }
 
     fn visit_for_loop(&mut self, _token: Token, _node: TypedForLoopNode) -> Result<(), ()> {

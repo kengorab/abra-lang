@@ -80,4 +80,9 @@ AbraValue std_array__range_to_end(Obj* obj, int64_t start) {
   return std_array__range(obj, start, self->size);
 }
 
+AbraValue std_array__field_length(AbraValue _self) {
+    AbraArray* self = (AbraArray*)AS_OBJ(_self);
+    return NEW_INT(self->size);
+}
+
 #endif
