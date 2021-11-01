@@ -214,7 +214,7 @@ impl CCompiler {
         let mut compiler = CCompiler::new();
 
         compiler.switch_buf(BufferType::FwdDecls);
-        compiler.emit_line("#include \"abra_std.h\"\n");
+        compiler.emit_line("#include \"abra.h\"");
 
         compiler.switch_buf(BufferType::MainFn);
         compiler.emit_line("int main(int argc, char** argv) {");
