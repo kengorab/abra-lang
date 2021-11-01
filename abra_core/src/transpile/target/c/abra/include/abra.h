@@ -94,7 +94,7 @@ char const* std__to_string(AbraValue val) {
     case ABRA_TYPE_BOOL:
       return val.as.abra_bool ? "true" : "false";
     case ABRA_TYPE_OBJ: {
-      Obj* o = val.as.obj;
+      Obj* o = AS_OBJ(val);
       return to_string_fns[o->type](o);
     } break;
     default:
@@ -112,18 +112,17 @@ size_t std__hash(AbraValue val) {
     case ABRA_TYPE_FLOAT: return (size_t) (val.as.abra_float * 1000000000000 * 839);
     case ABRA_TYPE_BOOL: return val.as.abra_bool ? 42643801 : 43112609;
     case ABRA_TYPE_OBJ: {
-      Obj* o = val.as.obj;
+      Obj* o = AS_OBJ(val);
       return hash_fns[o->type](o);
     }
   }
 }
 
-void std__print(AbraValue val) {
-  if (IS_NONE(val)) {
-    return;
-  }
+// print(*items: Any[])
+void std__print(void* _env, AbraValue val) {
+  if (IS_NONE(val)) return;
 
-  AbraArray* varargs = (AbraArray*)val.as.obj;
+  AbraArray* varargs = (AbraArray*)AS_OBJ(val);
   for (int i = 0; i < varargs->size; ++i) {
     printf("%s", std__to_string(varargs->items[i]));
     if (i < varargs->size - 1) {
@@ -131,27 +130,71 @@ void std__print(AbraValue val) {
     }
   }
 }
+AbraValue std__print_val;
 
-void std__println(AbraValue val) {
-  std__print(val);
+// println(*items: Any[])
+void std__println(void* _env, AbraValue val) {
+  std__print(NULL, val);
   printf("\n");
 }
+AbraValue std__println_val;
+
+// range(from: Int, to: Int, increment?: Int): Int[]
+AbraValue std__range(void* _env, AbraValue _from, AbraValue _to, AbraValue _increment) {
+    int64_t from = AS_INT(_from);
+    int64_t to = AS_INT(_to);
+    int64_t increment = IS_NONE(_increment) ? 1 : AS_INT(_increment);
+
+    if (to <= from) {
+        AbraValue* array_items = GC_MALLOC(sizeof(AbraValue) * 0);
+        return alloc_array(array_items, 0);
+    }
+
+    size_t size = (to - from) / increment;
+    AbraValue* array_items = GC_MALLOC(sizeof(AbraValue) * size);
+    size_t idx = 0;
+    while (from < to) {
+        array_items[idx++] = NEW_INT(from);
+        from += increment;
+    }
+
+    return alloc_array(array_items, size);
+}
+AbraValue std__range_val;
 
 void abra_init() {
   GC_INIT();
 
+  // Bind `print` builtin fn
+  callable_ctx__1_t* std__print_val_ctx = GC_MALLOC(sizeof(callable_ctx__1_t));
+  std__print_val_ctx->fn = &std__print;
+  std__print_val = alloc_function("print", "std__print", (void*) std__print_val_ctx);
+
+  // Bind `println` builtin fn
+  callable_ctx__1_t* std__println_val_ctx = GC_MALLOC(sizeof(callable_ctx__1_t));
+  std__println_val_ctx->fn = &std__println;
+  std__println_val = alloc_function("println", "std__println", (void*) std__println_val_ctx);
+
+  // Bind `range` builtin fn
+  callable_ctx__3_t* std__range_val_ctx = GC_MALLOC(sizeof(callable_ctx__3_t));
+  std__range_val_ctx->fn = &std__range;
+  std__range_val = alloc_function("range", "std__range", (void*) std__range_val_ctx);
+
+  // Bind eq functions for primitive types
   eq_fns[OBJ_STR] = &std_string__eq;
   eq_fns[OBJ_ARRAY] = &std_array__eq;
   eq_fns[OBJ_TUPLE] = &std_tuple__eq;
   eq_fns[OBJ_MAP] = &std_map__eq;
   eq_fns[OBJ_FUNCTION] = &std_function__eq;
 
+  // Bind toString functions for primitive types
   to_string_fns[OBJ_STR] = &std_string__to_string;
   to_string_fns[OBJ_ARRAY] = &std_array__to_string;
   to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
   to_string_fns[OBJ_MAP] = &std_map__to_string;
   to_string_fns[OBJ_FUNCTION] = &std_function__to_string;
 
+  // Bind hash functions for primitive types
   hash_fns[OBJ_STR] = &std_string__hash;
   hash_fns[OBJ_ARRAY] = &std_array__hash;
   hash_fns[OBJ_TUPLE] = &std_tuple__hash;

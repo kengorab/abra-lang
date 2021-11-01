@@ -42,6 +42,12 @@ println(arr2[1:])
 println(arr2[:2])
 println(arr2[1:3], arr2[-2:4])
 
+// Range builtin function
+println(range(0, 4))
+println(range(0, -4))
+println(range(0, 10, 2))
+println(range(1, 10, 3))
+
 /* assert(stdout):
 []
 [[[]]]
@@ -56,4 +62,8 @@ false
 [2, 3, 4, 5]
 [1, 2]
 [2, 3] [4]
+[0, 1, 2, 3]
+[]
+[0, 2, 4, 6, 8]
+[1, 4, 7]
 */

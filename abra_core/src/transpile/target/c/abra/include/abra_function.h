@@ -13,6 +13,10 @@ typedef struct callable_ctx__2_t { // Callable context, arity 2
   AbraValue (*fn)(void*, AbraValue, AbraValue);
   void* env;
 } callable_ctx__2_t;
+typedef struct callable_ctx__3_t { // Callable context, arity 3
+    AbraValue (*fn)(void*, AbraValue, AbraValue, AbraValue);
+    void* env;
+} callable_ctx__3_t;
 
 typedef struct AbraFunction {
   Obj _header;

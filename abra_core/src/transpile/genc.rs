@@ -188,8 +188,9 @@ impl CCompiler {
             name: "example".to_string(),
             bindings: {
                 let mut m = HashMap::new();
-                m.insert("print".to_string(), "std__print".to_string());
-                m.insert("println".to_string(), "std__println".to_string());
+                m.insert("print".to_string(), "std__print_val".to_string());
+                m.insert("println".to_string(), "std__println_val".to_string());
+                m.insert("range".to_string(), "std__range_val".to_string());
                 m.insert("None".to_string(), "ABRA_NONE".to_string());
                 m
             },
@@ -596,23 +597,11 @@ impl CCompiler {
             }
             TypedAstNode::Invocation(_, node) => {
                 let node = node.clone(); // :/
-                let is_builtin = match &*node.target {
-                    TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => name == "println" || name == "print",
-                    _ => false
-                };
                 let arity = node.args.len();
 
-                let ident_name = if is_builtin {
-                    // Push an empty string; the invocation code will be emitted here during lifting,
-                    // but there's nothing we need to emit when the node is visited later on.
-                    self.invocation_var_names_stack.last_mut().unwrap().push_back("".to_string());
-                    None
-                } else {
-                    let ident_name = format!("r_inv__{}", random_string(10));
-                    self.lift(&node.target)?;
-                    self.invocation_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
-                    Some(ident_name)
-                };
+                let ident_name = format!("r_inv__{}", random_string(10));
+                self.lift(&node.target)?;
+                self.invocation_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
 
                 for arg in &node.args {
                     if let Some(arg) = arg {
@@ -622,18 +611,13 @@ impl CCompiler {
                     }
                 }
 
-                if let Some(ident_name) = &ident_name {
-                    let ctx_type_name = format!("callable_ctx__{}_t", arity);
-                    self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &ident_name, &ctx_type_name));
-                    self.visit(*node.target)?;
-                    self.emit_line("))->ctx;");
+                let ctx_type_name = format!("callable_ctx__{}_t", arity);
+                self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &ident_name, &ctx_type_name));
+                self.visit(*node.target)?;
+                self.emit_line("))->ctx;");
 
-                    self.emit(format!("AbraValue {} = {}_ctx->fn({}_ctx->env", ident_name, ident_name, ident_name));
-                    if arity > 0 { self.emit(","); }
-                } else {
-                    self.visit(*node.target)?;
-                    self.emit("(");
-                }
+                self.emit(format!("AbraValue {} = {}_ctx->fn({}_ctx->env", ident_name, ident_name, ident_name));
+                if arity > 0 { self.emit(","); }
 
                 for (idx, arg) in node.args.into_iter().enumerate() {
                     if let Some(arg) = arg {
