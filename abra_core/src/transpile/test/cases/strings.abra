@@ -18,6 +18,9 @@ println(str[1:], str[:1])
 // Fields
 println("".length, "asdf".length, "hello world".length)
 
+// Methods
+println("".toUpper(), "asdf".toUpper(), "AsDf".toUpper(), "It's only $12.24!".toUpper())
+
 /* assert(stdout):
 hello world
 hello world!
@@ -27,4 +30,5 @@ h e None None
 ell ell
 ello h
 0 4 11
+ ASDF ASDF IT'S ONLY $12.24!
 */

@@ -1,28 +1,11 @@
 #ifndef __ABRA_FUNCTION_H
 #define __ABRA_FUNCTION_H
 
-typedef struct callable_ctx__0_t { // Callable context, arity 0
-  AbraValue (*fn)(void*);
-  void* env;
-} callable_ctx__0_t;
-typedef struct callable_ctx__1_t { // Callable context, arity 1
-  AbraValue (*fn)(void*, AbraValue);
-  void* env;
-} callable_ctx__1_t;
-typedef struct callable_ctx__2_t { // Callable context, arity 2
-  AbraValue (*fn)(void*, AbraValue, AbraValue);
-  void* env;
-} callable_ctx__2_t;
-typedef struct callable_ctx__3_t { // Callable context, arity 3
-    AbraValue (*fn)(void*, AbraValue, AbraValue, AbraValue);
-    void* env;
-} callable_ctx__3_t;
-
 typedef struct AbraFunction {
   Obj _header;
   char const* name;
   char const* c_name;
-  void* ctx; // This will be some flavor of callable_ctx__<arity>_t
+  void* ctx; // This will be some flavor of callable_ctx__<arity>_t (see callable.h)
 } AbraFunction;
 
 AbraValue alloc_function(char* name, char* c_name, void* ctx) {

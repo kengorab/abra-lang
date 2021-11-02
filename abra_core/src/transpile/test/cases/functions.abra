@@ -129,6 +129,10 @@ println(func1 != func2, func3() == func1)
 // Test toString
 println(func1, func2, func3, func3())
 
+// Test methods
+val toUpper = "asdf".toUpper
+println(toUpper())
+
 /* assert(stdout):
 hello world
 1
@@ -152,4 +156,5 @@ hello world
 hi! hello! bonjour!
 true true
 <func func1> <func func2> <func func3> <func func1>
+ASDF
 */

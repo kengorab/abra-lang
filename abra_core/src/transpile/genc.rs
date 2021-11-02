@@ -645,7 +645,7 @@ impl CCompiler {
                 self.visit(*node.target)?;
                 self.emit_line("))->ctx;");
 
-                self.emit(format!("AbraValue {} = {}_ctx->fn({}_ctx->env", ident_name, ident_name, ident_name));
+                self.emit(format!("AbraValue {} = call_fn_{}({}_ctx", ident_name, arity, ident_name));
                 if arity > 0 { self.emit(","); }
 
                 for (idx, arg) in node.args.into_iter().enumerate() {
@@ -1083,7 +1083,6 @@ impl TypedAstVisitor<(), ()> for CCompiler {
 
     fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<(), ()> {
         if node.is_opt_safe { todo!() }
-        if node.is_method { todo!() }
 
         let prefix = match node.target.get_type() {
             Type::String => "std_string",
@@ -1092,10 +1091,23 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             Type::Set(_) => "std_set",
             _ => todo!(),
         };
-        let fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
-        self.emit(format!("{}(", fn_name));
-        self.visit(*node.target)?;
-        self.emit(")");
+
+        if node.is_method {
+            let fn_name = Token::get_ident_name(&node.field_ident);
+            let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
+            let arity = if let Type::Fn(fn_type) = &node.typ {
+                fn_type.arg_types.len()
+            } else { unreachable!() };
+
+            self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
+            self.visit(*node.target)?;
+            self.emit(format!(")"));
+        } else {
+            let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
+            self.emit(format!("{}(", field_fn_name));
+            self.visit(*node.target)?;
+            self.emit(")");
+        }
 
         Ok(())
     }

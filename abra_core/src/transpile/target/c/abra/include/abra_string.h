@@ -102,4 +102,17 @@ AbraValue std_string__field_length(AbraValue _self) {
     return NEW_INT(self->size);
 }
 
+AbraValue std_string__method_toUpper(void* _env, AbraValue _self) {
+    AbraString* self = (AbraString*)AS_OBJ(_self);
+
+    char* str = strdup(self->data);
+    for (int i = 0; i < self->size; ++i) {
+        if (str[i] >= 'a' && str[i] <= 'z') {
+            str[i] = str[i] - 32;
+        }
+    }
+
+    return alloc_string(str, self->size);
+}
+
 #endif

@@ -22,6 +22,7 @@ size_t std__hash(AbraValue val);
 
 #include "utils.h"
 #include "hashmap.h"
+#include "callable.h"
 
 #include "abra_string.h"
 #include "abra_array.h"
