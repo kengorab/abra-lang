@@ -715,7 +715,14 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             TypedLiteralNode::FloatLiteral(f) => self.emit(format!("NEW_FLOAT({})", f)),
             TypedLiteralNode::BoolLiteral(b) => self.emit(format!("NEW_BOOL({})", b)),
             TypedLiteralNode::StringLiteral(s) => {
+                // TODO: Unicode escape sequences
                 let len = s.len();
+                let s = s.replace("\\", "\\\\");
+                let s = s.replace("\n", "\\n");
+                let s = s.replace("\r", "\\r");
+                let s = s.replace("\t", "\\t");
+                let s = s.replace("\"", "\\\"");
+
                 self.emit(format!("alloc_string(\"{}\", {})", s, len));
             }
         }

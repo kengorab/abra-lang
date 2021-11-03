@@ -43,7 +43,7 @@ impl NativeString {
     #[abra_method(signature = "padLeft(totalSize: Int, padding?: String): String")]
     fn pad_left(&self, mut args: Arguments) -> Self {
         let total_size = args.next_int();
-        let padding = args.next_string_or_default("");
+        let padding = args.next_string_or_default(" ");
 
         if total_size <= 0 {
             return self.clone();

@@ -1,2 +1,1 @@
-val toUpper = "asdf".toUpper
-println(toUpper())
+"a b c d e".replaceAll("  ", "||||||")
