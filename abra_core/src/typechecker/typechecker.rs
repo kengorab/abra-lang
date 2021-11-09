@@ -68,6 +68,7 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
         module_id,
         cur_typedef: None,
         scopes: vec![Scope::new(ScopeKind::Root)],
+        num_lambdas: 0,
         referencable_types: HashMap::new(),
         exports: HashMap::new(),
         module_loader: loader,
@@ -131,6 +132,7 @@ pub struct Typechecker<'a, R: ModuleReader> {
     module_id: ModuleId,
     cur_typedef: Option<Type>,
     scopes: Vec<Scope>,
+    num_lambdas: usize,
     referencable_types: HashMap<String, Type>,
     exports: HashMap<String, ExportedValue>,
     module_loader: &'a ModuleLoader<'a, R>,
@@ -339,7 +341,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let mut scopes = orig_scopes;
                     std::mem::swap(&mut self.scopes, &mut scopes);
 
-                    let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some(retyped_args))?;
+                    let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some((retyped_args, lambda_node.idx)))?;
                     let lambda_type = retyped_lambda.get_type();
 
                     // After re-typechecking, it _is_ possible that some of the scopes may have been modified, and those modifications
@@ -2854,7 +2856,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 Some(ScopeKind::Function(s)) => break Some((s.name.clone(), s.return_type.clone())),
                 Some(ScopeKind::Lambda(_)) => {
                     // TODO: Fix this when we do #336
-                    break Some(("lambda".to_string(), Type::Unknown))
+                    break Some(("lambda".to_string(), Type::Unknown));
                 }
                 Some(ScopeKind::Root) => break None,
                 _ => continue
@@ -3231,13 +3233,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                     (
                         TypedMatchKind::EnumVariant {
                             variant_idx: 0,
-                            args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))])
+                            args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))]),
                         },
                         None,
                         vec![
                             TypedAstNode::Identifier(
                                 token.clone(),
-                                TypedIdentifierNode { typ: unwrapped_type.clone(), name: "v".to_string(), is_mutable: false, scope_depth: 1 }
+                                TypedIdentifierNode { typ: unwrapped_type.clone(), name: "v".to_string(), is_mutable: false, scope_depth: 1 },
                             )
                         ]
                     ),
@@ -3252,15 +3254,15 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                                     target: Some(Box::new(
                                         TypedAstNode::Identifier(
                                             token.clone(),
-                                            TypedIdentifierNode { typ: expr_type.clone(), name: "e".to_string(), is_mutable: false, scope_depth: 1 }
+                                            TypedIdentifierNode { typ: expr_type.clone(), name: "e".to_string(), is_mutable: false, scope_depth: 1 },
                                         )
-                                    ))
-                                }
+                                    )),
+                                },
                             )
                         ]
-                    )
-                ]
-            }
+                    ),
+                ],
+            },
         );
         Ok(res)
     }
@@ -3269,7 +3271,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         &mut self,
         token: Token,
         node: LambdaNode,
-        args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>,
+        retyping_override: Option<( /* retyped_args */ Vec<(Token, Type, Option<TypedAstNode>)>, /* lambda_idx: */ usize)>,
     ) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let orig_node = node.clone();
         let LambdaNode { args, body } = node;
@@ -3277,7 +3279,16 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let orig_scopes = self.scopes.clone();
         self.scopes.push(Scope::new(ScopeKind::Lambda(token.clone())));
 
-        let typed_args = if let Some(args) = args_override {
+
+        let lambda_idx = if let Some((_, lambda_idx)) = retyping_override {
+            lambda_idx
+        } else {
+            let lambda_idx = self.num_lambdas;
+            self.num_lambdas += 1;
+            lambda_idx
+        };
+
+        let typed_args = if let Some((args, _)) = retyping_override {
             for (arg_tok, arg_type, _) in &args {
                 let arg_name = Token::get_ident_name(arg_tok);
                 self.add_binding(&arg_name, arg_tok, arg_type, false);
@@ -3301,7 +3312,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let typed_node = if has_unknown {
             let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false });
             let orig_node = Some((orig_node, orig_scopes));
-            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node };
+            let node = TypedLambdaNode { idx: lambda_idx, typ: fn_type, args: typed_args, typed_body: None, orig_node };
             TypedAstNode::Lambda(token, node)
         } else {
             let mut typed_body = self.visit_fn_body(body)?;
@@ -3312,7 +3323,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             }
 
             let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(body_type), is_variadic: false, is_enum_constructor: false });
-            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };
+            let node = TypedLambdaNode { idx: lambda_idx, typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };
             TypedAstNode::Lambda(token, node)
         };
 

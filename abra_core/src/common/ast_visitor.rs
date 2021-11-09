@@ -66,6 +66,6 @@ pub trait AstVisitor<V, E> {
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<V, E>;
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<V, E>;
     fn visit_try(&mut self, token: Token, node: TryNode) -> Result<V, E>;
-    fn visit_lambda(&mut self, token: Token, node: LambdaNode, args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>) -> Result<V, E>;
+    fn visit_lambda(&mut self, token: Token, node: LambdaNode, retyping_override: Option<( /* retyped_args */ Vec<(Token, Type, Option<TypedAstNode>)>, /* lambda_idx: */ usize)>) -> Result<V, E>;
     fn visit_tuple(&mut self, token: Token, nodes: Vec<AstNode>) -> Result<V, E>;
 }

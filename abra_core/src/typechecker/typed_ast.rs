@@ -169,6 +169,7 @@ pub struct TypedTupleNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedLambdaNode {
+    pub idx: usize,
     pub typ: Type,
     pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub typed_body: Option<Vec<TypedAstNode>>,

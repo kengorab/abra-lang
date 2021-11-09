@@ -4605,6 +4605,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 4)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
             args: vec![],
             typed_body: Some(vec![string_literal!((1, 7), "hello")]),
@@ -4622,6 +4623,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 3)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
             args: vec![(ident_token!((1, 1), "a"), Type::Unknown, None)],
             typed_body: None,
@@ -4650,6 +4652,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 14)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false), ("b".to_string(), Type::String, true)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
             args: vec![
                 (ident_token!((1, 2), "a"), Type::Unknown, None),
@@ -4687,6 +4690,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 13)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
             args: vec![
                 (ident_token!((1, 2), "a"), Type::String, None),
@@ -4721,6 +4725,7 @@ fn typecheck_lambda_closure() -> TestResult {
                 TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 3)),
                     TypedLambdaNode {
+                        idx: 0,
                         typ: Type::Fn(FnType {
                             arg_types: vec![("y".to_string(), Type::Int, false)],
                             type_args: vec![],
@@ -4791,6 +4796,7 @@ fn typecheck_lambda_inference() -> TestResult {
             expr: Box::new(TypedAstNode::Lambda(
                 Token::Arrow(Position::new(2, 8)),
                 TypedLambdaNode {
+                    idx: 1,
                     typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                     args: vec![
                         (ident_token!((2, 6), "a"), Type::String, None)
@@ -4818,6 +4824,7 @@ fn typecheck_lambda_inference() -> TestResult {
             expr: Box::new(TypedAstNode::Lambda(
                 Token::Arrow(Position::new(2, 19)),
                 TypedLambdaNode {
+                    idx: 1,
                     typ: Type::Fn(FnType {
                         arg_types: vec![("a".to_string(), Type::String, false), ("b".to_string(), Type::String, true)],
                         type_args: vec![],

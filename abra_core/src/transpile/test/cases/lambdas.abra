@@ -1,7 +1,7 @@
-val a = () => 24
+val a = () => 12
 val f: (() => Int) => Int = fn => fn() + fn()
 val f2: (Int, (Int) => Int) => Int = (num, fn) => fn(fn(num))
-println(a(), (() => 12)(), f(a), f2(12, x => x * 2))
+println(a() + 12, (() => 24)(), f(a), f2(6, x => x * 2))
 
 func b() {
   val f = () => 25
@@ -12,4 +12,10 @@ b()
 func idx(i: Int): (Int[]) => Int? {
   arr => arr[i]
 }
-idx(1)([1, 2, 3])
+println(idx(1)([1, 2, 3]))
+
+/* assert(stdout):
+24 24 24 24
+25
+2
+*/
