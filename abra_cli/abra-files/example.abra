@@ -1,15 +1,10 @@
-val a = () => 24
-val f: (() => Int) => Int = fn => fn() + fn()
-val f2: (Int, (Int) => Int) => Int = (num, fn) => fn(fn(num))
-println(a(), (() => 12)(), f(a), f2(12, x => x * 2))
+//[1, 2, 3, 4].join("||")
 
-func b() {
-  val f = () => 25
-  println(f())
-}
-b()
+println(
+  [].contains(5),
+  [1, 2, 3, 4, 5].contains(5),
+  [1, 2, 3, 4].contains(6),
+)
 
-func idx(i: Int): (Int[]) => Int? {
-  arr => arr[i]
-}
-idx(1)([1, 2, 3])
+//false true false
+

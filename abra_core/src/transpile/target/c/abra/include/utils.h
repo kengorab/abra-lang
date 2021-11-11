@@ -71,4 +71,39 @@ void range_endpoints(int64_t len, int64_t* start, int64_t* end) {
   }
 }
 
+typedef struct sort_item_t {
+  int64_t sort_key;
+  AbraValue sort_value;
+} sort_item_t;
+void quicksort(sort_item_t* items, int64_t first, int64_t last) {
+  int64_t i, j, pivot;
+  sort_item_t temp;
+
+  if (first < last) {
+    pivot = first;
+    i = first;
+    j = last;
+
+    while (i < j) {
+      while (items[i].sort_key <= items[pivot].sort_key && i < last) {
+        i++;
+      }
+      while (items[j].sort_key > items[pivot].sort_key) {
+        j--;
+      }
+      if (i < j) {
+        temp = items[i];
+        items[i] = items[j];
+        items[j] = temp;
+      }
+    }
+
+    temp = items[pivot];
+    items[pivot] = items[j];
+    items[j] = temp;
+    quicksort(items, first, j - 1);
+    quicksort(items, j + 1, last);
+  }
+}
+
 #endif

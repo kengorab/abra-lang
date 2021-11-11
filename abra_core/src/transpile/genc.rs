@@ -136,13 +136,13 @@ fn extract_functions(
                     }
                 }
             }
+            TypedAstNode::Accessor(_, n) => walk_and_find_vars(&n.target, vars),
             TypedAstNode::Instantiation(_, _) |
             TypedAstNode::ForLoop(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
             TypedAstNode::Continue(_) |
             TypedAstNode::ReturnStatement(_, _) |
-            TypedAstNode::Accessor(_, _) |
             TypedAstNode::MatchStatement(_, _) |
             TypedAstNode::MatchExpression(_, _) |
             TypedAstNode::ImportStatement(_, _) |
@@ -872,7 +872,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         match node {
             TypedLiteralNode::IntLiteral(i) => self.emit(format!("NEW_INT({})", i)),
             TypedLiteralNode::FloatLiteral(f) => self.emit(format!("NEW_FLOAT({})", f)),
-            TypedLiteralNode::BoolLiteral(b) => self.emit(format!("NEW_BOOL({})", b)),
+            TypedLiteralNode::BoolLiteral(b) => self.emit(if b { "ABRA_TRUE" } else { "ABRA_FALSE" }),
             TypedLiteralNode::StringLiteral(s) => {
                 // TODO: Unicode escape sequences
                 let len = s.len();

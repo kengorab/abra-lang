@@ -35,6 +35,7 @@ static AbraValue ABRA_NONE = {.type = ABRA_TYPE_NONE};
 
 static AbraValue ABRA_TRUE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = true}};
 static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false}};
+#define IS_FALSY(v) (IS_NONE(v) || (v.type == ABRA_TYPE_BOOL && !AS_BOOL(v)))
 
 #define NEW_INT(i) ((AbraValue){.type = ABRA_TYPE_INT, .as = {.abra_int = i}})
 #define AS_INT(v) v.as.abra_int
@@ -43,5 +44,43 @@ static AbraValue ABRA_FALSE = {.type = ABRA_TYPE_BOOL, .as = {.abra_bool = false
 #define NEW_BOOL(b) (b ? ABRA_TRUE : ABRA_FALSE)
 #define AS_BOOL(v) v.as.abra_bool
 #define AS_OBJ(v) (v.as.obj)
+
+// TODO: Proper .h/.c file split. Precompile .c's and statically link
+typedef struct AbraString {
+  Obj _header;
+  uint32_t size;
+  char* data;
+} AbraString;
+
+AbraValue alloc_string(char* data, size_t size) {
+  AbraString* str = GC_MALLOC(sizeof(AbraString));
+
+  str->_header.type = OBJ_STR;
+  str->size = size;
+  if (data != NULL) {
+    str->data = strdup(data);
+  }
+  str->data[size] = 0;
+
+  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)str)}});
+}
+
+typedef struct AbraArray {
+  Obj _header;
+  uint32_t size;
+  uint32_t capacity;
+  AbraValue* items;
+} AbraArray;
+
+AbraValue alloc_array(AbraValue* values, size_t size) {
+  AbraArray* arr = GC_MALLOC(sizeof(AbraArray));
+
+  arr->_header.type = OBJ_ARRAY;
+  arr->size = size;
+  arr->capacity = size;
+  arr->items = values;
+
+  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)arr)}});
+}
 
 #endif

@@ -51,6 +51,248 @@ println(range(1, 10, 3))
 // Fields
 println([].length, [1, 2].length, [[1], [2], [3]].length)
 
+// Methods
+// isEmpty
+println([].isEmpty(), [1, 2, 3].isEmpty())
+
+// enumerate
+println(
+  [].enumerate(),
+  ["a", "b", "c"].enumerate(),
+)
+
+// push, pop, popFront
+println("begin push, pop, popFront")
+val arr = [1]
+arr.push(2)
+arr.push(3, 4, 5)
+println(arr)
+
+println(arr.pop(), arr.pop(), arr.pop(), arr.pop(), arr.pop(), arr.pop(), arr.pop())
+println(arr)
+
+arr.push(1, 2, 3, 4, 5)
+println(arr)
+println(arr.popFront(), arr.popFront(), arr.popFront(), arr.popFront(), arr.popFront(), arr.popFront(), arr.popFront())
+println("end push, pop, popFront")
+
+// splitAt
+println(
+  [1, 2, 3, 4, 5, 6, 7].splitAt(0),
+  [1, 2, 3, 4, 5, 6, 7].splitAt(1),
+  [1, 2, 3, 4, 5, 6, 7].splitAt(-1),
+  [1, 2, 3, 4, 5, 6, 7].splitAt(-8),
+  [1, 2, 3, 4, 5, 6, 7].splitAt(10),
+)
+
+// concat
+if true {
+  val arr1 = [1, 2, 3]
+  val arr2 = [4, 5, 6]
+  println(arr1.concat(arr2), arr1, arr2)
+}
+
+// map
+if true {
+  val arr = [1, 2, 3, 4]
+  println(arr.map(i => i * 3), arr)
+}
+
+// This won't work yet... variables closed over by multiple functions
+// or variables accessed after being closed over don't work properly
+if false { // Verify closures work
+  var total = 0
+  val arr = [1, 2, 3, 4]
+  val arr2 = arr.map(i => {
+    total += i
+    i * 3
+  })
+  println(arr2.concat([total]))
+}
+
+if true { // Verify deep call stack initiated from native fn call
+  func mult1(a: Int): Int = a * 1
+  func sub1(a: Int): Int = mult1(a) - 1
+  func sameNum(a: Int): Int = sub1(a) + 1
+  println([1, 2].map(i => sameNum(i)))
+}
+
+// filter
+if true {
+  val arr = ["a", "bc", "def", "ghij", "klmno"]
+  println(arr.filter(w => w.length < 4), arr)
+}
+
+// reduce
+if true {
+  val arr = [1, 2, 3, 4, 5]
+  println(
+    arr.reduce(0, (acc, i) => acc + i),
+    arr.reduce("", (acc, i) => acc + i),
+    arr
+  )
+}
+
+// forEach
+if true {
+  var items: Int[] = []
+  [1, 2, 3, 4].forEach(i => items.push(i))
+  println(items)
+}
+
+// join
+println(
+  [1, 2, 3, 4, 5].join(),
+  ["a", "b", "c"].join(", "),
+)
+
+// contains
+println(
+  [].contains(5),
+  [1, 2, 3, 4, 5].contains(5),
+  [1, 2, 3, 4].contains(6),
+)
+
+// find
+println(
+  [1, 2, 3].find(x => x >= 2),
+  [[1, 2], [3, 4]].find(p => p[0]),
+  // [[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2), // This isn't implemented yet
+  [1, 2, 3].find(x => x >= 4),
+)
+
+// findIndex
+println(
+  [1, 2, 3].findIndex(x => x >= 2),
+  [[1, 2], [3, 4]].findIndex(p => p[0]),
+  // [[1, 2], [3, 4]].findIndex(p => if p[0] |f| f >= 2), // This isn't implemented yet
+  [1, 2, 3].findIndex(x => x >= 4),
+)
+
+// any
+println(
+  [1, 2, 3, 4, 5].any(x => x > 4),
+  [1, 2, 3, 4, 5].any(x => x < 0),
+  // [[1, 2], [3, 4]].any(p => if p[0] |f| f >= 2), // This isn't implemented yet
+)
+
+// all
+println(
+  ["a", "bc", "def"].all(w => w.length > 0),
+  ["a", "bc", "def"].all(w => w.length < 3),
+  ["1", "2", "24"].all(w => w.parseInt()),
+  ["a"].all(w => w.parseInt()),
+)
+
+// none
+println(
+  ["a", "bc", "def"].none(w => w.length > 0),
+  ["a", "bc", "def"].none(w => w.length < 0),
+  ["1", "2", "24"].none(w => w.parseInt()),
+  ["a", "b"].none(w => w.parseInt()),
+)
+
+// sortBy
+if true {
+  val arr = [1, 8, 3, 6, 1, 11, 5839, 6]
+  println(arr.sortBy(i => i), arr.sortBy(fn: i => i, reverse: true), arr)
+}
+
+if true {
+  val arr = ["a", "bcd", "ef", "ghijl", "lmno"]
+  println(
+    arr.sortBy(s => s.length),
+    arr.sortBy(fn: s => s.length, reverse: true),
+    arr
+  )
+}
+
+// dedupe
+println(
+  [].dedupe(),
+  ["a", "bc", "def"].dedupe(),
+  [2, 4, 2, 1, 2, 3, 4].dedupe(),
+  [[1, 2], [3, 4], [1, 2]].dedupe(),
+)
+
+// dedupeBy
+println(
+  ["a", "bc", "def"].dedupeBy(w => w.length),
+  ["a", "bc", "def", "ghi"].dedupeBy(w => w.length),
+)
+
+// partition
+println(
+  [1, 2, 3, 4, 5].partition(n => n % 2 == 0),
+  [[1, 1], [1, 2], [2, 1], [2, 2], [3, 1], [3, 2]].partition(p => p[0]),
+)
+
+// tally
+if true {
+  val tally = [1, 2, 3, 4, 3, 2, 1, 2, 1].tally()
+  println(tally[1], tally[2], tally[3], tally[4])
+}
+
+// tallyBy
+if true {
+  val tally = ["abc", "def", "gh", "ij", "klmn", "opqr", "s", "tuvw", "xyz"].tallyBy(s => s.length)
+  println(tally[1], tally[2], tally[3], tally[4])
+}
+
+// asSet
+println(
+  [].asSet(),
+  [1, 2, 3, 4, 3, 2, 1, 2, 1].asSet()
+)
+
+// getOrDefault
+println(
+  [1, 2, 3].getOrDefault(1, 12),
+  [1, 2, 3].getOrDefault(10, 12),
+)
+
+// getOrElse
+print([1, 2, 3].getOrElse(1, () => 12), "")
+if true {
+  var called: Bool[] = [] // TODO: Fix hack
+  [1, 2, 3].getOrElse(1, () => {
+    called.push(true)
+    12
+  })
+  print(called, "")
+}
+if true {
+  var called: Bool[] = [] // TODO: Fix hack
+  [1, 2, 3].getOrElse(10, () => {
+    called.push(true)
+    12
+  })
+  println(called)
+}
+
+// update
+if true {
+  val arr = [1, 2, 3]
+  arr.update(1, n => n + 100)
+  print(arr, "")
+}
+if true {
+  val arr = [1, 2, 3]
+  arr.update(7, n => n + 100)
+  print(arr, "")
+}
+if true {
+  val arr = [1, 2, 3]
+  arr.update(-1, n => n + 100)
+  println(arr)
+}
+
+// reverse
+if true {
+  val arr = [1, 2, 3]
+  println(arr.reverse(), arr, [].reverse())
+}
+
 /* assert(stdout):
 []
 [[[]]]
@@ -70,4 +312,39 @@ false
 [0, 2, 4, 6, 8]
 [1, 4, 7]
 0 2 3
+true false
+[] [(a, 0), (b, 1), (c, 2)]
+begin push, pop, popFront
+[1, 2, 3, 4, 5]
+5 4 3 2 1 None None
+[]
+[1, 2, 3, 4, 5]
+1 2 3 4 5 None None
+end push, pop, popFront
+([], [1, 2, 3, 4, 5, 6, 7]) ([1], [2, 3, 4, 5, 6, 7]) ([1, 2, 3, 4, 5, 6], [7]) ([], [1, 2, 3, 4, 5, 6, 7]) ([1, 2, 3, 4, 5, 6, 7], [])
+[1, 2, 3, 4, 5, 6] [1, 2, 3] [4, 5, 6]
+[3, 6, 9, 12] [1, 2, 3, 4]
+[1, 2]
+[a, bc, def] [a, bc, def, ghij, klmno]
+15 12345 [1, 2, 3, 4, 5]
+[1, 2, 3, 4]
+12345 a, b, c
+false true false
+2 [1, 2] None
+(2, 1) ([1, 2], 0) None
+true false
+true false true false
+false true false true
+[1, 1, 3, 6, 6, 8, 11, 5839] [5839, 11, 8, 6, 6, 3, 1, 1] [1, 8, 3, 6, 1, 11, 5839, 6]
+[a, ef, bcd, lmno, ghijl] [ghijl, lmno, bcd, ef, a] [a, bcd, ef, ghijl, lmno]
+[] [a, bc, def] [2, 4, 1, 3] [[1, 2], [3, 4]]
+[a, bc, def] [a, bc, def]
+{ true: [2, 4], false: [1, 3, 5] } { 3: [[3, 1], [3, 2]], 2: [[2, 1], [2, 2]], 1: [[1, 1], [1, 2]] }
+3 3 2 1
+1 2 3 3
+#{} #{4, 3, 2, 1}
+2 12
+2 [] [true]
+[1, 102, 3] [1, 2, 3] [1, 2, 103]
+[3, 2, 1] [1, 2, 3] []
 */

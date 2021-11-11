@@ -4,6 +4,7 @@ val world = "world"
 println(hello, world)
 
 println(hello + " " + world + "!")
+println(123 + "!", "abc" + 123)
 
 // Test equality operators
 println("hello" == "hello", "hello" == "world")
@@ -127,6 +128,7 @@ println(
 /* assert(stdout):
 hello world
 hello world!
+123! abc123
 true false
 false true
 h e None None

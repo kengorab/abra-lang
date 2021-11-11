@@ -8,39 +8,18 @@
 #include "abra_array.h"
 #include "abra_tuple.h"
 
-typedef struct AbraString {
-  Obj _header;
-  uint32_t size;
-  char* data;
-} AbraString;
-
-AbraValue alloc_string(char* data, size_t size) {
-  AbraString* str = GC_MALLOC(sizeof(AbraString));
-
-  str->_header.type = OBJ_STR;
-  str->size = size;
-  if (data != NULL) {
-    str->data = strdup(data);
-  }
-  str->data[size] = 0;
-
-  return ((AbraValue){.type = ABRA_TYPE_OBJ, .as = {.obj = ((Obj*)str)}});
-}
-
-AbraValue std_string__concat(AbraValue str1, AbraValue str2) {
-  AbraString* s1 = (AbraString*)AS_OBJ(str1);
-  AbraString* s2 = (AbraString*)AS_OBJ(str2);
-
-  size_t new_str_len = s1->size + s2->size + 1;
-  char* tmp = malloc(new_str_len);
-  memcpy(tmp, s1->data, s1->size);
-  memcpy(tmp + s1->size, s2->data, s2->size);
-  tmp[new_str_len] = 0;
-
-  size_t size = s1->size + s2->size;
-  AbraValue new_string = alloc_string(tmp, size);
-  free(tmp);
-  return new_string;
+AbraValue std_string__method_concat(void* _env, AbraValue _self, AbraValue _str, AbraValue _others);
+AbraValue std_string__concat(AbraValue lhs, AbraValue rhs) {
+    // If the lhs value is a string, we can just use the concat method impl, with the lhs as `self`.
+    // If the lhs value is _not_ a string then the rhs must be (otherwise, this would not have been
+    // a string concat operation). So convert the lhs value to an AbraString (wasteful) and use that
+    // as the `self` value for the concat method impl.
+    if (!(lhs.type == ABRA_TYPE_OBJ && AS_OBJ(lhs)->type == OBJ_STR)) {
+        char* str = (char*) std__to_string(lhs);
+        size_t str_size = strlen(str);
+        lhs = alloc_string(str, str_size);
+    }
+    return std_string__method_concat(NULL, lhs, rhs, ABRA_NONE);
 }
 
 bool std_string__eq(Obj* o1, Obj* o2) {
@@ -312,7 +291,6 @@ AbraValue std_string__method_splitAt(void* _env, AbraValue _self, AbraValue _ind
     int64_t index = AS_INT(_index);
 
     AbraValue* tuple_items = GC_MALLOC(sizeof(AbraValue) * 2);
-
     if (index >= self->size) {
         tuple_items[0] = alloc_string(self->data, self->size);
         tuple_items[1] = alloc_string("", 0);
