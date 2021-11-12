@@ -51,6 +51,19 @@ println(range(1, 10, 3))
 // Fields
 println([].length, [1, 2].length, [[1], [2], [3]].length)
 
+// Static methods
+// fill
+println(Array.fill(0, "a"), Array.fill(5, "b"))
+
+// fillBy
+if true {
+  print(Array.fillBy(0, i => i + 1), "")
+  print(Array.fillBy(5, i => i + 1), "")
+
+  func fib(n: Int): Int = if n <= 1 1 else fib(n - 1) + fib(n - 2)
+  println(Array.fillBy(6, fib))
+}
+
 // Methods
 // isEmpty
 println([].isEmpty(), [1, 2, 3].isEmpty())
@@ -312,6 +325,8 @@ false
 [0, 2, 4, 6, 8]
 [1, 4, 7]
 0 2 3
+[] [b, b, b, b, b]
+[] [1, 2, 3, 4, 5] [1, 1, 2, 3, 5, 8]
 true false
 [] [(a, 0), (b, 1), (c, 2)]
 begin push, pop, popFront

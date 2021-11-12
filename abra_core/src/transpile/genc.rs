@@ -323,6 +323,11 @@ impl CCompiler {
                 m.insert("println".to_string(), "std__println_val".to_string());
                 m.insert("range".to_string(), "std__range_val".to_string());
                 m.insert("None".to_string(), "ABRA_NONE".to_string());
+
+                // TODO: Fix when implementing type values
+                m.insert("String".to_string(), "ABRA_NONE".to_string());
+                m.insert("Array".to_string(), "ABRA_NONE".to_string());
+
                 m
             },
         };
@@ -1232,24 +1237,32 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<(), ()> {
         if node.is_opt_safe { todo!() }
 
-        let prefix = match node.target.get_type() {
-            Type::String => "std_string",
-            Type::Array(_) => "std_array",
-            Type::Map(_, _) => "std_map",
-            Type::Set(_) => "std_set",
+        let (prefix, is_static) = match node.target.get_type() {
+            Type::String => ("std_string", false),
+            Type::Array(_) => ("std_array", false),
+            Type::Map(_, _) => ("std_map", false),
+            Type::Set(_) => ("std_set", false),
+            Type::Type(name, _, _) => match name.as_str() {
+                "prelude/Array" => ("std_array", true),
+                _ => todo!()
+            }
             _ => todo!(),
         };
 
         if node.is_method {
-            let fn_name = Token::get_ident_name(&node.field_ident);
-            let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
             let arity = if let Type::Fn(fn_type) = &node.typ {
                 fn_type.arg_types.len()
             } else { unreachable!() };
-
-            self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
-            self.visit(*node.target)?;
-            self.emit(format!(")"));
+            let fn_name = Token::get_ident_name(&node.field_ident);
+            if is_static {
+                let static_method_fn_name = format!("{}__static_method_{}", prefix, &fn_name);
+                self.emit(format!("init_fn_{}(&{}, \"{}\", \"{}\")", arity, &static_method_fn_name, &fn_name, &static_method_fn_name));
+            } else {
+                let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
+                self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
+                self.visit(*node.target)?;
+                self.emit(format!(")"));
+            }
         } else {
             let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
             self.emit(format!("{}(", field_fn_name));

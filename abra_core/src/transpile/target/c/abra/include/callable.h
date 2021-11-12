@@ -111,6 +111,11 @@
     ctx->is_bound = true;                                                                          \
     ctx->self = self;                                                                              \
     return alloc_function(name, c_name, (void*) ctx);                                              \
+  }                                                                                                \
+  AbraValue init_fn_##arity(FN_T(arity) fn, char* name, char* c_name) {                            \
+    CTX_T(arity)* ctx = GC_MALLOC(sizeof(CTX_T(arity)));                                           \
+    ctx->fn = fn;                                                                                  \
+    return alloc_function(name, c_name, (void*) ctx);                                              \
   }
 
 // **********************************************************

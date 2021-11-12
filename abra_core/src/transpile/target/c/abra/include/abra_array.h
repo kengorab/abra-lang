@@ -97,6 +97,30 @@ AbraValue std_array__field_length(AbraValue _self) {
     return NEW_INT(self->size);
 }
 
+// static fill<T1>(amount: Int, value: T1): T1[]
+AbraValue std_array__static_method_fill(void* _env, AbraValue _amount, AbraValue value) {
+    int64_t amount = AS_INT(_amount);
+
+    AbraValue* items = GC_MALLOC(sizeof(AbraValue) * amount);
+    for (int i = 0; i < amount; ++i) {
+        items[i] = value;
+    }
+    return alloc_array(items, amount);
+}
+
+// static fillBy<T1>(amount: Int, fn: (Int) => T1): T1[]
+AbraValue std_array__static_method_fillBy(void* _env, AbraValue _amount, AbraValue _fn) {
+    AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
+    int64_t amount = AS_INT(_amount);
+
+    AbraValue* items = GC_MALLOC(sizeof(AbraValue) * amount);
+    for (int i = 0; i < amount; ++i) {
+        AbraValue value = call_fn_1((callable_ctx__1_t*)fn->ctx, NEW_INT(i));
+        items[i] = value;
+    }
+    return alloc_array(items, amount);
+}
+
 // isEmpty(): Bool
 AbraValue std_array__method_isEmpty(void* _env, AbraValue _self) {
     AbraArray* self = (AbraArray*)AS_OBJ(_self);
