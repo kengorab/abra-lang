@@ -22,6 +22,96 @@ println({ a: "1", b: "2" } != { b: 2, a: 1})
 // Fields
 println({}.size, { a: 1 }.size, { a: 1, b: 2 }.size)
 
+// Static methods
+// fromPairs
+println(
+  Map.fromPairs([]),
+  Map.fromPairs([("a", 123), ("b", 456)])
+)
+
+// Methods
+// isEmpty
+println({}.isEmpty(), { a: 123, b: true }.isEmpty())
+
+// enumerate
+println(
+  {}.enumerate(),
+  { a: 123 }.enumerate(),
+  { a: 123, b: 456 }.enumerate(),
+)
+
+// keys
+println({}.keys(), { a: 123, b: true }.keys())
+if true {
+  val m = {
+    ([1, 2]): 2,
+    ([1, 2, 3]): 3,
+  }
+  println(m.keys())
+}
+
+// values
+println({}.values(), { a: 123, b: true }.values())
+
+// entries
+println({}.entries(), { a: 123, b: true }.entries())
+
+// mapValues
+println(
+  { a: 1, b: 2 }.mapValues((_, v) => v + 1),
+  { a: 1, b: 2 }.mapValues((k, v) => k + v),
+)
+
+// getOrDefault
+println(
+  { a: 1, b: 2 }.getOrDefault("b", 12),
+  { a: 1, b: 2 }.getOrDefault("c", 12),
+)
+
+// getOrElse
+println(
+  { a: 1, b: 2 }.getOrElse("b", () => 12),
+  (() => {
+    val called: Bool[] = [] // TODO: Fix hack
+    { a: 1, b: 2 }.getOrElse("b", () => {
+      called.push(true)
+      12
+    })
+    called
+  })(),
+  { a: 1, b: 2 }.getOrElse("c", () => 12),
+  (() => {
+    val called: Bool[] = [] // TODO: Fix hack
+    { a: 1, b: 2 }.getOrElse("c", () => {
+      called.push(true)
+      12
+    })
+    called
+  })(),
+)
+
+// update
+println(
+  (() => {
+    val map = { a: 1, b: 2 }
+    map.update("b", n => n + 100)
+    map
+  })(),
+  (() => {
+    val map = { a: 1, b: 2 }
+    map.update("c", n => n + 100)
+    map
+  })()
+)
+
+// remove
+if true {
+  val map = { a: 1, b: 2, c: 3 }
+  println(map.remove("d"), map.keys(), map.values(), map)
+  println(map.remove("b"), map.keys(), map.values(), map)
+  println(map.remove("a"), map.keys(), map.values(), map)
+}
+
 /* assert(stdout):
 {}
 { a: 24 }
@@ -33,4 +123,18 @@ println({}.size, { a: 1 }.size, { a: 1, b: 2 }.size)
 true
 true
 0 1 2
+{} { a: 123, b: 456 }
+true false
+[] [(a, 123)] [(a, 123), (b, 456)]
+#{} #{a, b}
+#{[1, 2, 3], [1, 2]}
+#{} #{true, 123}
+#{} #{(b, true), (a, 123)}
+{ a: 2, b: 3 } { a: a1, b: b2 }
+2 12
+2 [] 12 [true]
+{ a: 1, b: 102 } { a: 1, b: 2 }
+None #{a, c, b} #{3, 2, 1} { a: 1, c: 3, b: 2 }
+2 #{a, c} #{3, 1} { a: 1, c: 3 }
+1 #{c} #{3} { c: 3 }
 */

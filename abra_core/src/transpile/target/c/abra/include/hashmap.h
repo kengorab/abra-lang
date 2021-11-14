@@ -84,6 +84,31 @@ AbraValue hashmap_get(hashmap_t* h, AbraValue key) {
   return ABRA_NONE;
 }
 
+AbraValue hashmap_remove(hashmap_t* h, AbraValue key) {
+    size_t hash = h->hash_fn(key);
+    size_t idx = hash % h->capacity;
+
+    if (h->buckets[idx] == NULL) return ABRA_NONE;
+
+    hash_entry_t* node;
+    hash_entry_t* prev;
+    size_t depth = 0;
+    for (node = h->buckets[idx]; node; node = node->next) {
+        if (h->eq_fn(node->key, key)) {
+            if (depth == 0) {
+                h->buckets[idx] = node->next;
+            } else {
+                prev->next = node->next;
+            }
+            h->size--;
+            return node->value;
+        }
+        prev = node;
+        depth++;
+    }
+    return ABRA_NONE;
+}
+
 AbraValue* hashmap_keys(hashmap_t* h) {
   AbraValue* keys = GC_MALLOC(sizeof(AbraValue) * h->size);
   size_t idx = 0;

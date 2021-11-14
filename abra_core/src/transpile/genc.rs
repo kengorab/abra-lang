@@ -82,7 +82,7 @@ fn extract_functions(
                     walk_and_find_vars(&item, vars);
                 }
             }
-            TypedAstNode::Lambda(_, _) => todo!(),
+            TypedAstNode::Lambda(_, _) => {}
             TypedAstNode::BindingDecl(_, n) => {
                 if let Some(expr) = &n.expr {
                     walk_and_find_vars(&expr, vars);
@@ -1244,6 +1244,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             Type::Set(_) => ("std_set", false),
             Type::Type(name, _, _) => match name.as_str() {
                 "prelude/Array" => ("std_array", true),
+                "prelude/Map" => ("std_map", true),
                 _ => todo!()
             }
             _ => todo!(),

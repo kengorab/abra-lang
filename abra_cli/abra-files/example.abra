@@ -1,10 +1,3 @@
-println(Array.fill(0, "a"), Array.fill(5, "b"))
-
-// fillBy
-if true {
-  print(Array.fillBy(0, i => i + 1), "")
-  print(Array.fillBy(5, i => i + 1), "")
-
-  func fib(n: Int): Int = if n <= 1 1 else fib(n - 1) + fib(n - 2)
-  println(Array.fillBy(6, fib))
-}
+val map = { a: 1, b: 2, c: 3 }
+println(map.remove("b"), map.keys(), map.values(), map)
+println(map.remove("a"), map.keys(), map.values(), map)
