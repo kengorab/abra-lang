@@ -1,1 +1,1 @@
-1.23456.withPrecision(2)
+[[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2)

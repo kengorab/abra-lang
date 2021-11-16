@@ -41,6 +41,18 @@ if false {
   println("false")
 }
 
+// If statements with condition binding
+if 1 + 1 >= 2 |v| print(v, "")
+if [1, 2, 3][2] |v| print(v, "")
+if [1, 2, 3][3] |v| print(v, "") else println("nothing")
+
+// If expressions with condition binding
+println(
+  if 1 + 1 >= 2 |v| v else false,
+  if [1, 2, 3][2] |v| v else -1,
+  if [1, 2, 3][3] |v| v else -1
+)
+
 /* assert(stdout):
 7
 11
@@ -50,4 +62,6 @@ if false {
 None
 true
 true
+true 3 nothing
+true 3 -1
 */

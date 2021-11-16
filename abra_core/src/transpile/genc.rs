@@ -299,6 +299,32 @@ fn extract_functions(
                     BindingPattern::Tuple(_, _) | BindingPattern::Array(_, _, _) => todo!()
                 }
             }
+            TypedAstNode::IfStatement(_, if_node) |
+            TypedAstNode::IfExpression(_, if_node) => {
+                walk_and_find_vars(&node, &mut seen_vars);
+                extract_functions(&if_node.condition, &seen_vars, path.clone(), seen_fns);
+
+                if let Some(condition_binding) = &if_node.condition_binding {
+                    match condition_binding {
+                        BindingPattern::Variable(tok) => {
+                            current_known_vars.push(Token::get_ident_name(tok));
+                        }
+                        BindingPattern::Tuple(_, _) |
+                        BindingPattern::Array(_, _, _) => todo!()
+                    }
+                }
+
+                for node in &if_node.if_block {
+                    walk_and_find_vars(&node, &mut seen_vars);
+                    extract_functions(&node, &seen_vars, path.clone(), seen_fns);
+                }
+                if let Some(else_block) = &if_node.else_block {
+                    for node in else_block {
+                        walk_and_find_vars(&node, &mut seen_vars);
+                        extract_functions(&node, &seen_vars, path.clone(), seen_fns);
+                    }
+                }
+            }
             _ => {
                 walk_and_find_vars(&node, &mut seen_vars);
                 extract_functions(&node, &known_vars, path.clone(), seen_fns);
@@ -372,11 +398,11 @@ impl CCompiler {
 
             let should_print = idx == ast_len - 1 && node.get_type() != Type::Unit;
             if should_print {
-                let ident = random_string(10);
-                compiler.emit(format!("const char* last_expr_{} = std__to_string(", ident));
+                let salt = random_string(10);
+                compiler.emit(format!("const char* last_expr_{} = std__to_string(", salt));
                 compiler.visit(node)?;
                 compiler.emit_line(");");
-                compiler.emit_line(format!("printf(\"%s\\n\", last_expr_{});", ident));
+                compiler.emit_line(format!("printf(\"%s\\n\", last_expr_{});", salt));
             } else {
                 compiler.visit(node)?;
                 compiler.emit_line(";");
@@ -636,8 +662,8 @@ impl CCompiler {
                 let node = node.clone(); // :/
                 let size = node.items.len();
 
-                let ident = random_string(10);
-                let items_ident = format!("arr_items_{}", &ident);
+                let salt = random_string(10);
+                let items_ident = format!("arr_items_{}", &salt);
                 self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
                 for (idx, item) in node.items.into_iter().enumerate() {
                     self.array_literal_var_names_stack.push(VecDeque::new());
@@ -648,7 +674,7 @@ impl CCompiler {
                     self.emit_line(";");
                 }
 
-                let arr_ident = format!("arr_{}", ident);
+                let arr_ident = format!("arr_{}", salt);
                 self.array_literal_var_names_stack.last_mut().unwrap().push_back(arr_ident.clone());
                 self.emit_line(format!("AbraValue {} = alloc_array({}, {});", &arr_ident, items_ident, size));
             }
@@ -656,8 +682,8 @@ impl CCompiler {
                 let node = node.clone(); // :/
                 let size = node.items.len();
 
-                let ident = random_string(10);
-                let items_ident = format!("tuple_items_{}", &ident);
+                let salt = random_string(10);
+                let items_ident = format!("tuple_items_{}", &salt);
                 self.emit_line(format!("AbraValue* {} = GC_MALLOC(sizeof(AbraValue) * {});", items_ident, size));
                 for (idx, item) in node.items.into_iter().enumerate() {
                     self.tuple_literal_var_names_stack.push(VecDeque::new());
@@ -668,14 +694,14 @@ impl CCompiler {
                     self.emit_line(";");
                 }
 
-                let tuple_ident = format!("tuple_{}", ident);
+                let tuple_ident = format!("tuple_{}", salt);
                 self.tuple_literal_var_names_stack.last_mut().unwrap().push_back(tuple_ident.clone());
                 self.emit_line(format!("AbraValue {} = alloc_tuple({}, {});", &tuple_ident, items_ident, size));
             }
             TypedAstNode::Map(_, node) => {
                 let node = node.clone(); // :/
-                let ident = random_string(10);
-                let map_ident = format!("map_{}", ident);
+                let salt = random_string(10);
+                let map_ident = format!("map_{}", salt);
                 self.emit_line(format!("AbraValue {} = alloc_map();", map_ident));
 
                 for (idx, (key, val)) in node.items.into_iter().enumerate() {
@@ -704,8 +730,8 @@ impl CCompiler {
             }
             TypedAstNode::Set(_, node) => {
                 let node = node.clone(); // :/
-                let ident = random_string(10);
-                let set_ident = format!("set_{}", ident);
+                let salt = random_string(10);
+                let set_ident = format!("set_{}", salt);
                 self.emit_line(format!("AbraValue {} = alloc_set();", set_ident));
 
                 for val in node.items {
@@ -743,16 +769,31 @@ impl CCompiler {
             }
             TypedAstNode::IfExpression(_, node) => {
                 let node = node.clone(); // :/
-                let ident_name = format!("r_ifexp__{}", random_string(10));
+                let salt = random_string(10);
+                let ident_name = format!("r_ifexp__{}", salt);
                 self.if_result_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
 
                 self.emit_line(format!("AbraValue {};", ident_name));
                 self.if_result_var_names_stack.push(VecDeque::new());
+
                 self.lift(&node.condition)?;
-                self.emit("if (");
-                self.visit_and_convert(*node.condition)?;
+                let salt = random_string(10);
+                self.emit(format!("AbraValue if_cond_{} = ", salt));
+                self.visit(*node.condition)?;
                 self.if_result_var_names_stack.pop();
-                self.emit_line(") {");
+                self.emit_line(";");
+
+                self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
+                if let Some(condition_binding) = node.condition_binding {
+                    match condition_binding {
+                        BindingPattern::Variable(tok) => {
+                            let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
+                            self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
+                        }
+                        BindingPattern::Tuple(_, _) |
+                        BindingPattern::Array(_, _, _) => todo!()
+                    }
+                }
 
                 self.if_result_var_names_stack.push(VecDeque::new());
                 let len = node.if_block.len();
@@ -785,13 +826,13 @@ impl CCompiler {
                 let node = node.clone(); // :/
                 let arity = node.args.len();
 
-                let ident_name = format!("r_inv__{}", random_string(10));
+                let salt = format!("r_inv__{}", random_string(10));
                 self.lift(&node.target)?;
-                self.invocation_var_names_queue.back_mut().unwrap().push_back(ident_name.clone());
+                self.invocation_var_names_queue.back_mut().unwrap().push_back(salt.clone());
 
 
                 let ctx_type_name = format!("callable_ctx__{}_t", arity);
-                self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &ident_name, &ctx_type_name));
+                self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &salt, &ctx_type_name));
                 self.visit(*node.target)?;
                 self.emit_line("))->ctx;");
 
@@ -802,7 +843,7 @@ impl CCompiler {
                     }
                 }
 
-                self.emit(format!("AbraValue {} = call_fn_{}({}_ctx", ident_name, arity, ident_name));
+                self.emit(format!("AbraValue {} = call_fn_{}({}_ctx", salt, arity, salt));
                 if arity > 0 { self.emit(","); }
 
                 for (idx, arg) in node.args.into_iter().enumerate() {
@@ -1075,7 +1116,6 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         match binding {
             BindingPattern::Variable(tok) => {
                 let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-
                 self.emit(format!("AbraValue {} = ", c_name));
 
                 if let Some(expr) = expr {
@@ -1188,9 +1228,23 @@ impl TypedAstVisitor<(), ()> for CCompiler {
 
     fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedIfNode) -> Result<(), ()> {
         self.lift(&node.condition)?;
-        self.emit("if (");
-        self.visit_and_convert(*node.condition)?;
-        self.emit_line(") {");
+
+        let salt = random_string(10);
+        self.emit(format!("AbraValue if_cond_{} = ", salt));
+        self.visit(*node.condition)?;
+        self.emit_line(";");
+
+        self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
+        if let Some(condition_binding) = node.condition_binding {
+            match condition_binding {
+                BindingPattern::Variable(tok) => {
+                    let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
+                    self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
+                }
+                BindingPattern::Tuple(_, _) |
+                BindingPattern::Array(_, _, _) => todo!()
+            }
+        }
 
         for node in node.if_block {
             self.lift(&node)?;

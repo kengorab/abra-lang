@@ -170,7 +170,7 @@ println(
 println(
   [1, 2, 3].find(x => x >= 2),
   [[1, 2], [3, 4]].find(p => p[0]),
-  // [[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2), // This isn't implemented yet
+  [[1, 2], [3, 4]].find(p => if p[0] |f| f >= 2),
   [1, 2, 3].find(x => x >= 4),
 )
 
@@ -178,7 +178,7 @@ println(
 println(
   [1, 2, 3].findIndex(x => x >= 2),
   [[1, 2], [3, 4]].findIndex(p => p[0]),
-  // [[1, 2], [3, 4]].findIndex(p => if p[0] |f| f >= 2), // This isn't implemented yet
+  [[1, 2], [3, 4]].findIndex(p => if p[0] |f| f >= 2),
   [1, 2, 3].findIndex(x => x >= 4),
 )
 
@@ -186,7 +186,7 @@ println(
 println(
   [1, 2, 3, 4, 5].any(x => x > 4),
   [1, 2, 3, 4, 5].any(x => x < 0),
-  // [[1, 2], [3, 4]].any(p => if p[0] |f| f >= 2), // This isn't implemented yet
+  [[1, 2], [3, 4]].any(p => if p[0] |f| f >= 2),
 )
 
 // all
@@ -345,9 +345,9 @@ end push, pop, popFront
 [1, 2, 3, 4]
 12345 a, b, c
 false true false
-2 [1, 2] None
-(2, 1) ([1, 2], 0) None
-true false
+2 [1, 2] [3, 4] None
+(2, 1) ([1, 2], 0) ([3, 4], 1) None
+true false true
 true false true false
 false true false true
 [1, 1, 3, 6, 6, 8, 11, 5839] [5839, 11, 8, 6, 6, 3, 1, 1] [1, 8, 3, 6, 1, 11, 5839, 6]
