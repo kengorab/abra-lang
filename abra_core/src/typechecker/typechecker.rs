@@ -3301,6 +3301,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 .collect()
         };
 
+        // TODO: Filter out anon args (args named `_`), since we don't care about those
         let has_unknown = typed_args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
 
         let arg_types = typed_args.iter()

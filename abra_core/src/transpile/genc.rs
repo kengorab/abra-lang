@@ -1238,6 +1238,8 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         if node.is_opt_safe { todo!() }
 
         let (prefix, is_static) = match node.target.get_type() {
+            Type::Int => ("std_int", false),
+            Type::Float => ("std_float", false),
             Type::String => ("std_string", false),
             Type::Array(_) => ("std_array", false),
             Type::Map(_, _) => ("std_map", false),

@@ -1,3 +1,1 @@
-val map = { a: 1, b: 2, c: 3 }
-println(map.remove("b"), map.keys(), map.values(), map)
-println(map.remove("a"), map.keys(), map.values(), map)
+1.23456.withPrecision(2)

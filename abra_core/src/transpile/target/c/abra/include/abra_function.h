@@ -31,7 +31,7 @@ char const* std_function__to_string(Obj* obj) {
   AbraFunction* self = (AbraFunction*) obj;
 
   size_t name_len = strlen(self->name);
-  char* str = GC_MALLOC(sizeof(char) * 8 + name_len); // <func {name}>
+  char* str = GC_MALLOC(sizeof(char) * 7 + name_len + 1); // <func {name}>
   memcpy(str, "<func ", 6);
   memcpy(str + 6, self->name, name_len);
   memcpy(str + 6 + name_len, ">", 1);
