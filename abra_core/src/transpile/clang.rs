@@ -12,7 +12,7 @@ pub fn clang<S: AsRef<str>>(working_dir: &PathBuf, src_file: S, out_file: S) -> 
 
     let output = Command::new("clang")
         .arg(src_file)
-        .arg(format!("{}/gc.a", join_path(&libgc_base_path, "lib")))
+        .arg(format!("{}/libgc.a", join_path(&libgc_base_path, "lib")))
         .arg("-o").arg(out_file)
         .arg(format!("-I{}", join_path(&abra_base_path, "include")))
         .arg(format!("-I{}", join_path(&libgc_base_path, "include")))
