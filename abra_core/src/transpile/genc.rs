@@ -32,6 +32,7 @@ pub struct CCompiler {
     map_literal_var_names_stack: Vec<VecDeque<String>>,
     set_literal_var_names_stack: Vec<VecDeque<String>>,
     invocation_var_names_queue: VecDeque<VecDeque<String>>,
+    accessor_var_names_stack: Vec<VecDeque<String>>,
     upvalues_by_fn_cname: HashMap<String, HashSet<String>>,
 }
 
@@ -374,6 +375,7 @@ impl CCompiler {
                 q.push_back(VecDeque::new());
                 q
             },
+            accessor_var_names_stack: vec![VecDeque::new()],
             upvalues_by_fn_cname: HashMap::new(),
         }
     }
@@ -830,7 +832,6 @@ impl CCompiler {
                 self.lift(&node.target)?;
                 self.invocation_var_names_queue.back_mut().unwrap().push_back(salt.clone());
 
-
                 let ctx_type_name = format!("callable_ctx__{}_t", arity);
                 self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &salt, &ctx_type_name));
                 self.visit(*node.target)?;
@@ -871,7 +872,50 @@ impl CCompiler {
                 }
             }
             TypedAstNode::Accessor(_, node) => {
+                let node = node.clone();
+                if node.is_opt_safe { todo!() }
+
+                let (prefix, is_static) = match node.target.get_type() {
+                    Type::Int => ("std_int", false),
+                    Type::Float => ("std_float", false),
+                    Type::String => ("std_string", false),
+                    Type::Array(_) => ("std_array", false),
+                    Type::Map(_, _) => ("std_map", false),
+                    Type::Set(_) => ("std_set", false),
+                    Type::Type(name, _, _) => match name.as_str() {
+                        "prelude/Array" => ("std_array", true),
+                        "prelude/Map" => ("std_map", true),
+                        _ => todo!()
+                    }
+                    _ => todo!(),
+                };
+
+                let ident_name = format!("acc__{}", random_string(10));
                 self.lift(&node.target)?;
+                self.accessor_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
+
+                self.emit(format!("AbraValue {} =", &ident_name));
+                if node.is_method {
+                    let arity = if let Type::Fn(fn_type) = &node.typ {
+                        fn_type.arg_types.len()
+                    } else { unreachable!() };
+                    let fn_name = Token::get_ident_name(&node.field_ident);
+                    if is_static {
+                        let static_method_fn_name = format!("{}__static_method_{}", prefix, &fn_name);
+                        self.emit(format!("init_fn_{}(&{}, \"{}\", \"{}\")", arity, &static_method_fn_name, &fn_name, &static_method_fn_name));
+                    } else {
+                        let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
+                        self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
+                        self.visit(*node.target)?;
+                        self.emit(format!(")"));
+                    }
+                } else {
+                    let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
+                    self.emit(format!("{}(", field_fn_name));
+                    self.visit(*node.target)?;
+                    self.emit(")");
+                }
+                self.emit_line(";");
             }
             TypedAstNode::Lambda(_, node) => {
                 let node = node.clone(); // :/
@@ -1288,44 +1332,9 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         todo!()
     }
 
-    fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<(), ()> {
-        if node.is_opt_safe { todo!() }
-
-        let (prefix, is_static) = match node.target.get_type() {
-            Type::Int => ("std_int", false),
-            Type::Float => ("std_float", false),
-            Type::String => ("std_string", false),
-            Type::Array(_) => ("std_array", false),
-            Type::Map(_, _) => ("std_map", false),
-            Type::Set(_) => ("std_set", false),
-            Type::Type(name, _, _) => match name.as_str() {
-                "prelude/Array" => ("std_array", true),
-                "prelude/Map" => ("std_map", true),
-                _ => todo!()
-            }
-            _ => todo!(),
-        };
-
-        if node.is_method {
-            let arity = if let Type::Fn(fn_type) = &node.typ {
-                fn_type.arg_types.len()
-            } else { unreachable!() };
-            let fn_name = Token::get_ident_name(&node.field_ident);
-            if is_static {
-                let static_method_fn_name = format!("{}__static_method_{}", prefix, &fn_name);
-                self.emit(format!("init_fn_{}(&{}, \"{}\", \"{}\")", arity, &static_method_fn_name, &fn_name, &static_method_fn_name));
-            } else {
-                let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
-                self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
-                self.visit(*node.target)?;
-                self.emit(format!(")"));
-            }
-        } else {
-            let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
-            self.emit(format!("{}(", field_fn_name));
-            self.visit(*node.target)?;
-            self.emit(")");
-        }
+    fn visit_accessor(&mut self, _token: Token, _node: TypedAccessorNode) -> Result<(), ()> {
+        let ident_name = self.accessor_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach an accessor without having visited it previously");
+        self.emit(ident_name);
 
         Ok(())
     }
