@@ -354,6 +354,7 @@ impl CCompiler {
                 // TODO: Fix when implementing type values
                 m.insert("String".to_string(), "ABRA_NONE".to_string());
                 m.insert("Array".to_string(), "ABRA_NONE".to_string());
+                m.insert("Map".to_string(), "ABRA_NONE".to_string());
 
                 m
             },
@@ -828,14 +829,27 @@ impl CCompiler {
                 let node = node.clone(); // :/
                 let arity = node.args.len();
 
-                let salt = format!("r_inv__{}", random_string(10));
-                self.lift(&node.target)?;
-                self.invocation_var_names_queue.back_mut().unwrap().push_back(salt.clone());
+                let is_opt_safe_call = if let Type::Option(_) = node.target.get_type() { true } else { false };
 
-                let ctx_type_name = format!("callable_ctx__{}_t", arity);
-                self.emit(format!("{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ(", &ctx_type_name, &salt, &ctx_type_name));
+                let salt = random_string(10);
+                let result_ident_name = format!("r_inv__{}", &salt);
+                self.lift(&node.target)?;
+                self.invocation_var_names_queue.back_mut().unwrap().push_back(result_ident_name.clone());
+
+                self.emit_line(format!("AbraValue {} = ABRA_NONE;", result_ident_name));
+                let target_ident_name = format!("inv_target__{}", &salt);
+                self.emit(format!("AbraValue {} =", &target_ident_name));
                 self.visit(*node.target)?;
-                self.emit_line("))->ctx;");
+                self.emit_line(";");
+
+                if is_opt_safe_call {
+                    self.emit_line(format!("if (!IS_NONE({})) {{", &target_ident_name));
+                }
+                let ctx_type_name = format!("callable_ctx__{}_t", arity);
+                self.emit_line(format!(
+                    "{}* {}_ctx = ({}*) ((AbraFunction*)AS_OBJ({}))->ctx;",
+                    &ctx_type_name, &result_ident_name, &ctx_type_name, &target_ident_name
+                ));
 
                 self.invocation_var_names_queue.push_back(VecDeque::new());
                 for arg in &node.args {
@@ -844,7 +858,7 @@ impl CCompiler {
                     }
                 }
 
-                self.emit(format!("AbraValue {} = call_fn_{}({}_ctx", salt, arity, salt));
+                self.emit(format!("{} = call_fn_{}({}_ctx", result_ident_name, arity, result_ident_name));
                 if arity > 0 { self.emit(","); }
 
                 for (idx, arg) in node.args.into_iter().enumerate() {
@@ -860,6 +874,8 @@ impl CCompiler {
                 self.invocation_var_names_queue.pop_back();
 
                 self.emit_line(");");
+
+                if is_opt_safe_call { self.emit_line("}"); }
             }
             TypedAstNode::Instantiation(_, node) => {
                 for (_, field) in &node.fields {
@@ -873,9 +889,25 @@ impl CCompiler {
             }
             TypedAstNode::Accessor(_, node) => {
                 let node = node.clone();
-                if node.is_opt_safe { todo!() }
+                let node_typ = node.target.get_type().get_opt_unwrapped();
 
-                let (prefix, is_static) = match node.target.get_type() {
+                let salt = random_string(10);
+                let ident_name = format!("acc__{}", &salt);
+                self.lift(&node.target)?;
+                self.accessor_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
+
+                let target_ident_name = format!("target__{}", &salt);
+                self.emit(format!("AbraValue {} = ", &target_ident_name));
+                self.visit(*node.target)?;
+                self.emit_line(";");
+
+                self.emit(format!("AbraValue {} = ABRA_NONE;", &ident_name));
+                if node.is_opt_safe {
+                    // TODO: This adds a lot of flat !IS_NONE checks which could otherwise be skipped if they were nested
+                    self.emit_line(format!("if (!IS_NONE({})) {{", &target_ident_name));
+                }
+
+                let (prefix, is_static) = match node_typ {
                     Type::Int => ("std_int", false),
                     Type::Float => ("std_float", false),
                     Type::String => ("std_string", false),
@@ -890,13 +922,9 @@ impl CCompiler {
                     _ => todo!(),
                 };
 
-                let ident_name = format!("acc__{}", random_string(10));
-                self.lift(&node.target)?;
-                self.accessor_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
-
-                self.emit(format!("AbraValue {} =", &ident_name));
+                self.emit(format!("{} =", &ident_name));
                 if node.is_method {
-                    let arity = if let Type::Fn(fn_type) = &node.typ {
+                    let arity = if let Type::Fn(fn_type) = node.typ.get_opt_unwrapped() {
                         fn_type.arg_types.len()
                     } else { unreachable!() };
                     let fn_name = Token::get_ident_name(&node.field_ident);
@@ -905,17 +933,15 @@ impl CCompiler {
                         self.emit(format!("init_fn_{}(&{}, \"{}\", \"{}\")", arity, &static_method_fn_name, &fn_name, &static_method_fn_name));
                     } else {
                         let method_fn_name = format!("{}__method_{}", prefix, &fn_name);
-                        self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", ", arity, &method_fn_name, &fn_name, &method_fn_name));
-                        self.visit(*node.target)?;
-                        self.emit(format!(")"));
+                        self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", {})", arity, &method_fn_name, &fn_name, &method_fn_name, &target_ident_name));
                     }
                 } else {
                     let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
-                    self.emit(format!("{}(", field_fn_name));
-                    self.visit(*node.target)?;
-                    self.emit(")");
+                    self.emit(format!("{}({})", field_fn_name, &target_ident_name));
                 }
                 self.emit_line(";");
+
+                if node.is_opt_safe { self.emit_line("}"); }
             }
             TypedAstNode::Lambda(_, node) => {
                 let node = node.clone(); // :/
@@ -1001,13 +1027,23 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_binary(&mut self, _token: Token, node: TypedBinaryNode) -> Result<(), ()> {
-        match &node.typ {
-            Type::Int => self.emit("NEW_INT("),
-            Type::Float => self.emit("NEW_FLOAT("),
-            Type::Bool => self.emit("NEW_BOOL("),
-            Type::String => {} // Do nothing, it's handled below
+        let is_coalesce = node.op == BinaryOp::Coalesce || node.op == BinaryOp::CoalesceEq;
+        let requires_conversion = !is_coalesce && match &node.typ {
+            Type::Int => {
+                self.emit("NEW_INT(");
+                true
+            },
+            Type::Float => {
+                self.emit("NEW_FLOAT(");
+                true
+            },
+            Type::Bool => {
+                self.emit("NEW_BOOL(");
+                true
+            },
+            Type::String => false,
             _ => todo!()
-        }
+        };
 
         match node.op {
             BinaryOp::Add => {
@@ -1065,7 +1101,13 @@ impl TypedAstVisitor<(), ()> for CCompiler {
                 self.emit("!");
                 self.visit_and_convert(*node.right)?;
             }
-            BinaryOp::Coalesce => todo!(),
+            BinaryOp::Coalesce => {
+                self.emit("std_option__coalesce(");
+                self.visit(*node.left)?;
+                self.emit(",");
+                self.visit(*node.right)?;
+                self.emit(")");
+            }
             BinaryOp::Lt => {
                 self.visit_and_convert(*node.left)?;
                 self.emit("<");
@@ -1105,7 +1147,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assignment operators get transformed into Assignment nodes")
         }
 
-        self.emit(")");
+        if requires_conversion { self.emit(")"); }
 
         Ok(())
     }

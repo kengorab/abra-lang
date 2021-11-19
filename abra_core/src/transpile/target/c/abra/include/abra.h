@@ -168,6 +168,11 @@ AbraValue std__range(void* _env, AbraValue _from, AbraValue _to, AbraValue _incr
 }
 AbraValue std__range_val;
 
+// Coalesce operator (`?:`) implementation
+AbraValue std_option__coalesce(AbraValue lhs, AbraValue rhs) {
+    return IS_NONE(lhs) ? rhs : lhs;
+}
+
 void abra_init() {
   GC_INIT();
 
