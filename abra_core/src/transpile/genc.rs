@@ -4,7 +4,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
 #[derive(Clone)]
@@ -754,6 +754,7 @@ impl CCompiler {
                 }
             }
             TypedAstNode::Assignment(_, node) => {
+                self.lift(&node.target)?;
                 self.lift(&node.expr)?;
             }
             TypedAstNode::Indexing(_, node) => {
@@ -1243,16 +1244,33 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_assignment(&mut self, _token: Token, node: TypedAssignmentNode) -> Result<(), ()> {
-        match node.kind {
-            AssignmentTargetKind::Identifier => {
-                self.visit(*node.target)?;
+        match *node.target {
+            TypedAstNode::Indexing(_, TypedIndexingNode { target, index, .. }) => {
+                match target.get_type() {
+                    Type::Array(_) => self.emit("std_array__index_assign("),
+                    Type::Tuple(_) => self.emit("std_tuple__index_assign("),
+                    Type::Map(_, _) => self.emit("std_map__index_assign("),
+                    _ => unreachable!()
+                }
+
+                self.visit_and_convert(*target)?;
+                self.emit(",");
+                match index {
+                    IndexingMode::Index(idx) => self.visit(*idx)?,
+                    _ => unreachable!()
+                };
+                self.emit(",");
+                self.visit(*node.expr)?;
+                self.emit(")");
+            }
+            TypedAstNode::Accessor(_, _) => todo!(),
+            target @ TypedAstNode::Identifier(_, _) => {
+                self.visit(target)?;
                 self.emit("=");
                 self.visit(*node.expr)?;
             }
-            AssignmentTargetKind::ArrayIndex |
-            AssignmentTargetKind::MapIndex |
-            AssignmentTargetKind::Field => todo!()
-        }
+            _ => todo!()
+        };
 
         Ok(())
     }

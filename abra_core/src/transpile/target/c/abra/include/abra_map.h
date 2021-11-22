@@ -100,6 +100,12 @@ AbraValue std_map__index(Obj* obj, AbraValue key) {
   return hashmap_get(&self->hash, key);
 }
 
+AbraValue std_map__index_assign(Obj* obj, AbraValue key, AbraValue item) {
+    AbraMap* self = (AbraMap*)obj;
+    hashmap_insert(&self->hash, key, item);
+    return item;
+}
+
 // ************************************
 // * Map fields & methods
 // ************************************

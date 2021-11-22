@@ -56,4 +56,11 @@ AbraValue std_tuple__index(Obj* obj, int64_t index) {
   return self->items[index];
 }
 
+AbraValue std_tuple__index_assign(Obj* obj, AbraValue _index, AbraValue item) {
+    AbraTuple* self = (AbraTuple*)obj;
+    int64_t index = AS_INT(_index);
+    self->items[index] = item;
+    return item;
+}
+
 #endif

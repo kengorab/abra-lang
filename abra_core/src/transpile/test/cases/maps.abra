@@ -15,6 +15,26 @@ println(m4[[1, 2, 3]], m4[[4, 5]])
 val m5 = { ({ a: 1 }): "1", ({ b: 2 }): "2" }
 println(m5[{a: 1}], m5[{b:2}])
 
+// Index assignment
+(() => {
+  val map = { a: "one", b: "two" }
+  print(map, "")
+  println(
+    map["a"] = "three",
+    map["b"] = "four",
+    map
+  )
+})()
+(() => {
+  val map = { ([1, 2]): "one two", ([3, 4]): "three four" }
+  print(map, "")
+  println(
+    map[[1, 2]] = "1, 2",
+    map[[3, 4]] = "3, 4",
+    map
+  )
+})()
+
 // Test equality operators
 println({ a: 1, b: 2 } == { "b": 2, "a": 1})
 println({ a: "1", b: "2" } != { b: 2, a: 1})
@@ -120,6 +140,8 @@ if true {
 1 2
 1 2
 1 2
+{ a: one, b: two } three four { a: three, b: four }
+{ [3, 4]: three four, [1, 2]: one two } 1, 2 3, 4 { [3, 4]: 3, 4, [1, 2]: 1, 2 }
 true
 true
 0 1 2

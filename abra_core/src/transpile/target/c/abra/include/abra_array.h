@@ -65,6 +65,24 @@ AbraValue std_array__index(Obj* obj, int64_t index) {
   return self->items[index];
 }
 
+AbraValue std_array__index_assign(Obj* obj, AbraValue _index, AbraValue item) {
+    AbraArray* self = (AbraArray*)obj;
+    int64_t index = AS_INT(_index);
+    int64_t len = (int64_t) self->size;
+
+    if (index < -len) return item;
+    if (index >= len) {
+        size_t new_cap = index + 1;
+        self->items = GC_REALLOC(self->items, sizeof(AbraValue) * new_cap);
+        self->capacity = new_cap;
+        self->size = new_cap;
+    }
+    if (index < 0) index += len;
+
+    self->items[index] = item;
+    return item;
+}
+
 AbraValue std_array__range(Obj* obj, int64_t start, int64_t end) {
   AbraArray* self = (AbraArray*)obj;
   int64_t len = (int64_t) self->size;

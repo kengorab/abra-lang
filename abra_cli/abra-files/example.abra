@@ -1,1 +1,7 @@
-[1, 2, 3][6] ?: 12
+val map = { a: "one", b: "two" }
+println(
+  map,
+  map["a"] = "three",
+  map["b"] = "four",
+  map
+)
