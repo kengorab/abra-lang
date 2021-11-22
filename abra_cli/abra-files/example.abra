@@ -1,7 +1,29 @@
-val map = { a: "one", b: "two" }
-println(
-  map,
-  map["a"] = "three",
-  map["b"] = "four",
-  map
-)
+// Iterate over array
+val arr = [1, 2, 3]
+for item in arr {       // Without index
+  print(item, "")
+}
+for item, idx in arr {  // With index
+  print((item, idx), "")
+}
+println()
+
+// Iterate over set
+val set = #{1, 2, 3}
+for item in set {       // Without index
+  print(item, "")
+}
+for item, idx in set {  // With index
+  print((item, idx), "")
+}
+println()
+
+// Iterate over map
+val map = { a: "one", b: "two", c: "three" }
+for key in map {       // Without `value`
+  print(key, "")
+}
+for k, v in map {      // With `value`
+  print((k, v), "")
+}
+println()

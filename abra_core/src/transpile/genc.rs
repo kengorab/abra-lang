@@ -1399,8 +1399,46 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_for_loop(&mut self, _token: Token, _node: TypedForLoopNode) -> Result<(), ()> {
-        todo!()
+    fn visit_for_loop(&mut self, _token: Token, node: TypedForLoopNode) -> Result<(), ()> {
+        let salt = random_string(10);
+
+        let iter_ident = format!("iter_{}", &salt);
+        self.lift(&node.iterator)?;
+        self.emit(format!("AbraValue {} =", &iter_ident));
+        let enumerate_method_name = match node.iterator.get_type() {
+            Type::Array(_) => "std_array__method_enumerate",
+            Type::Set(_) => "std_set__method_enumerate",
+            Type::Map(_, _) => "std_map__method_enumerate",
+            _ => unreachable!("Should have been caught during typechecking")
+        };
+        self.emit(format!("{}(NULL, ", enumerate_method_name));
+        self.visit(*node.iterator)?;
+        self.emit_line(");");
+        self.emit_line(format!("int64_t iter_idx_{} = ((AbraArray*)AS_OBJ(iter_{}))->size;", &salt, &salt));
+        self.emit_line(format!("AbraValue* iter_items_{} = ((AbraArray*)AS_OBJ(iter_{}))->items;", &salt, &salt));
+
+        self.emit_line(format!("for (int64_t i = 0; i < iter_idx_{}; ++i) {{", &salt));
+        self.scopes.push(Scope { name: "__for_loop".to_string(), bindings: HashMap::new() });
+        self.emit_line(format!("AbraValue iter_item_{} = iter_items_{}[i];", &salt, &salt));
+        match node.binding {
+            BindingPattern::Variable(tok) => {
+                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
+                self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 0);", c_name, &salt));
+            }
+            BindingPattern::Tuple(_, _) | BindingPattern::Array(_, _, _) => todo!()
+        }
+        if let Some(index_ident) = node.index_ident {
+            let c_name = self.add_c_var_name(Token::get_ident_name(&index_ident));
+            self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 1);", c_name, &salt));
+        }
+        for node in node.body {
+            self.lift(&node)?;
+            self.visit(node)?;
+        }
+        self.scopes.pop();
+        self.emit_line("}");
+
+        Ok(())
     }
 
     fn visit_while_loop(&mut self, _token: Token, _node: TypedWhileLoopNode) -> Result<(), ()> {
@@ -1408,11 +1446,13 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_break(&mut self, _token: Token) -> Result<(), ()> {
-        todo!()
+        self.emit_line("break;");
+        Ok(())
     }
 
     fn visit_continue(&mut self, _token: Token) -> Result<(), ()> {
-        todo!()
+        self.emit_line("continue;");
+        Ok(())
     }
 
     fn visit_return(&mut self, _token: Token, _node: TypedReturnNode) -> Result<(), ()> {
