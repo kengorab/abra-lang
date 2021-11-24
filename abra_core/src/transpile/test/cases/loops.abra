@@ -1,3 +1,4 @@
+// For loops
 // Iterate over array
 println("Iterate over array:")
 val arr = [1, 2, 3]
@@ -42,6 +43,49 @@ for i in range(0, 4) {
   println(i)
 }
 
+// While loops
+println("While-loop:")
+(() => {
+  val arr = [1, 2, 3]
+  var i = 0
+  while arr[i] {
+    println(arr[i])
+    i += 1
+  }
+})()
+
+// Condition binding
+println("While-loop with condition binding:")
+(() => {
+  val arr = [1, 2, 3]
+  var i = 0
+  while arr[i] |item| {
+    println(arr[i], item)
+    i += 1
+  }
+})()
+
+// Break out of while-loop
+println("While-loop break:")
+while true {
+  println("first loop")
+  break
+}
+
+// Continue within while-loop
+println("While-loop continue:")
+(() => {
+  var i = 0
+  while i < 4 {
+    if i == 2 {
+      i += 1
+      continue
+    }
+    println(i)
+    i += 1
+  }
+})()
+
 /* assert(stdout):
 Iterate over array:
 1
@@ -68,6 +112,20 @@ For-loop break:
 0
 1
 For-loop continue:
+0
+1
+3
+While-loop:
+1
+2
+3
+While-loop with condition binding:
+1 1
+2 2
+3 3
+While-loop break:
+first loop
+While-loop continue:
 0
 1
 3

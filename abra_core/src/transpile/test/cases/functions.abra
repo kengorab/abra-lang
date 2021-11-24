@@ -133,6 +133,48 @@ println(func1, func2, func3, func3())
 val toUpper = "asdf".toUpper
 println(toUpper())
 
+// Returns
+func simpleReturn(): Int {
+  return 24
+}
+println(simpleReturn())
+func conditionalReturn(cond: Bool): Int {
+  if cond return 6
+  else return 24
+}
+println(conditionalReturn(true), conditionalReturn(false))
+func conditionalReturn2(cond: Bool): Int {
+  if cond return 6
+  return 24
+}
+println(conditionalReturn2(true), conditionalReturn2(false))
+func conditionalReturn3(cond: Bool): Int {
+  if cond return 6
+  24
+}
+println(conditionalReturn3(true), conditionalReturn3(false))
+func returnInIfExpr(cond: Bool): Int {
+  val x = if cond return 6 else 23
+  x + 1
+}
+println(returnInIfExpr(true), returnInIfExpr(false))
+func returnInNestedIfExpr(cond: Bool): Int {
+  val x = if cond {
+    if true return 6
+    0
+  } else 23
+  x + 1
+}
+println(returnInNestedIfExpr(true), returnInNestedIfExpr(false))
+func returnFromForLoop(): Int {
+  for _ in range(0, 2) return 24
+}
+println(returnFromForLoop())
+func returnFromWhileLoop(): Int {
+  while true return 24
+}
+println(returnFromWhileLoop())
+
 /* assert(stdout):
 hello world
 1
@@ -157,4 +199,12 @@ hi! hello! bonjour!
 true true
 <func func1> <func func2> <func func3> <func func1>
 ASDF
+24
+6 24
+6 24
+6 24
+6 24
+6 24
+24
+24
 */

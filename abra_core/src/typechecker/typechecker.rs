@@ -469,7 +469,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 }
                 let typed_node = self.visit(node)?;
-                has_terminated = Self::all_branches_terminate(&typed_node).is_some();
+                has_terminated = typed_node.all_branches_terminate().is_some();
 
                 Ok(typed_node)
             })
@@ -931,50 +931,6 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         Ok(typed_args)
     }
 
-    // The usage of Option<bool> here is weird:
-    //   - if None, then no termination (break/continue/return) occurred
-    //   - if Some(false), then a non-return occurred; Some(true) means a return occurred
-    fn all_branches_terminate(node: &TypedAstNode) -> Option<bool> {
-        match node {
-            TypedAstNode::IfStatement(_, TypedIfNode { if_block, else_block, .. }) |
-            TypedAstNode::IfExpression(_, TypedIfNode { if_block, else_block, .. }) => {
-                let if_block_terminator = if_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                if if_block_terminator.is_none() {
-                    None
-                } else if let Some(else_block) = else_block {
-                    let else_block_terminator = else_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                    match (&if_block_terminator, &else_block_terminator) {
-                        (Some(true), Some(true)) => Some(true),
-                        (Some(_), Some(_)) => Some(false),
-                        (None, _) | (_, None) => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
-            TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
-                branches.iter().fold(Some(true), |acc, (_, _, body)| {
-                    let terminator = body.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                    match (acc, terminator) {
-                        (Some(true), Some(true)) => Some(true),
-                        (Some(_), Some(_)) => Some(false),
-                        (None, _) | (_, None) => None,
-                    }
-                })
-            }
-            TypedAstNode::ForLoop(_, TypedForLoopNode { body, .. }) |
-            TypedAstNode::WhileLoop(_, TypedWhileLoopNode { body, .. }) => {
-                // A loop can only be guaranteed to terminate if all branches terminate in a return
-                body.iter().find(|n| Self::all_branches_terminate(n) == Some(true))
-                    .map(|_| true)
-            }
-            TypedAstNode::ReturnStatement(_, _) => Some(true),
-            TypedAstNode::Break(_) | TypedAstNode::Continue(_) => Some(false),
-            _ => None
-        }
-    }
-
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerErrorKind> {
         self.hoist_declarations_in_scope(&body)?;
 
@@ -1046,7 +1002,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 } else {
                     let typed_node = self.visit(node)?;
-                    has_terminated = Self::all_branches_terminate(&typed_node).is_some();
+                    has_terminated = typed_node.all_branches_terminate().is_some();
 
                     Ok(typed_node)
                 }
@@ -1803,7 +1759,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             Type::Unit => body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0)))),
             typ => {
                 if let Some(mut node) = body.last_mut() {
-                    if Self::all_branches_terminate(node).is_none() {
+                    if node.all_branches_terminate().is_none() {
                         let node_type = node.get_type();
 
                         if !self.are_types_equivalent(&mut node, &typ)? {
@@ -2389,7 +2345,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let if_block_type = match &node.if_block.last() {
             None => Err(TypecheckerErrorKind::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
             Some(expr) => {
-                if_block_terminates = Self::all_branches_terminate(expr).is_some();
+                if_block_terminates = expr.all_branches_terminate().is_some();
                 Ok(expr.get_type())
             }
         }?;
@@ -2401,13 +2357,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                     let else_block_type = expr.get_type();
 
                     if if_block_terminates {
-                        if Self::all_branches_terminate(expr).is_some() {
+                        if expr.all_branches_terminate().is_some() {
                             node.typ = Type::Unit;
                             return Ok(TypedAstNode::IfExpression(token.clone(), node));
                         } else {
                             Ok(else_block_type)
                         }
-                    } else if Self::all_branches_terminate(expr).is_some() {
+                    } else if expr.all_branches_terminate().is_some() {
                         node.typ = if_block_type;
                         return Ok(TypedAstNode::IfExpression(token.clone(), node));
                     } else {
@@ -2447,7 +2403,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
         let mut typ = None;
         for (_, _, ref mut block) in &mut node.branches {
-            if block.last().as_ref().map_or(false, |n| Self::all_branches_terminate(n).is_some()) {
+            if block.last().as_ref().map_or(false, |n| n.all_branches_terminate().is_some()) {
                 continue;
             }
 

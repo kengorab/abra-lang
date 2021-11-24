@@ -625,7 +625,7 @@ impl CCompiler {
         for (idx, node) in body.into_iter().enumerate() {
             self.lift(&node)?;
 
-            if idx == len - 1 {
+            if idx == len - 1 && node.is_expression() {
                 self.emit("return ");
             }
 
@@ -803,7 +803,7 @@ impl CCompiler {
                 let len = node.if_block.len();
                 for (idx, node) in node.if_block.into_iter().enumerate() {
                     self.lift(&node)?;
-                    if idx == len - 1 {
+                    if idx == len - 1 && node.all_branches_terminate().is_none() {
                         self.emit(format!("{} = ", ident_name));
                     }
                     self.visit(node)?;
@@ -1434,6 +1434,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         for node in node.body {
             self.lift(&node)?;
             self.visit(node)?;
+            self.emit_line(";");
         }
         self.scopes.pop();
         self.emit_line("}");
@@ -1441,8 +1442,35 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_while_loop(&mut self, _token: Token, _node: TypedWhileLoopNode) -> Result<(), ()> {
-        todo!()
+    fn visit_while_loop(&mut self, _token: Token, node: TypedWhileLoopNode) -> Result<(), ()> {
+        let salt = random_string(10);
+
+        let while_cond_ident = format!("while_cond_{}", &salt);
+
+        self.emit_line("while (true) {");
+        self.scopes.push(Scope { name: "__while_loop".to_string(), bindings: HashMap::new() });
+
+        self.lift(&node.condition)?;
+        self.emit(format!("AbraValue {} =", &while_cond_ident));
+        self.visit(*node.condition)?;
+        self.emit_line(";");
+        self.emit_line(format!("if (IS_FALSY({})) {{ break; }}", &while_cond_ident));
+
+        if let Some(condition_binding) = node.condition_binding {
+            let c_name = self.add_c_var_name(Token::get_ident_name(&condition_binding));
+            self.emit_line(format!("AbraValue {} = {};", c_name, &while_cond_ident));
+        }
+
+        for node in node.body {
+            self.lift(&node)?;
+            self.visit(node)?;
+            self.emit_line(";");
+        }
+
+        self.scopes.pop();
+        self.emit_line("}");
+
+        Ok(())
     }
 
     fn visit_break(&mut self, _token: Token) -> Result<(), ()> {
@@ -1455,8 +1483,20 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_return(&mut self, _token: Token, _node: TypedReturnNode) -> Result<(), ()> {
-        todo!()
+    fn visit_return(&mut self, _token: Token, node: TypedReturnNode) -> Result<(), ()> {
+        if let Some(target) = &node.target {
+            self.lift(target)?;
+        }
+
+        self.emit("return ");
+        if let Some(target) = node.target {
+            self.visit(*target)?;
+        } else {
+            self.emit("ABRA_NONE");
+        }
+        self.emit_line(";");
+
+        Ok(())
     }
 
     fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedMatchNode) -> Result<(), ()> {

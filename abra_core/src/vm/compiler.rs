@@ -110,7 +110,7 @@ impl<'a> Compiler<'a> {
 
     fn compile_node(&mut self, node: TypedAstNode, is_last: bool) {
         let line = node.get_token().get_position().line;
-        let is_expr = is_expression(&node);
+        let is_expr = node.is_expression();
         self.visit(node).unwrap();
 
         if !is_last && is_expr {
@@ -146,22 +146,6 @@ pub fn compile(
     let metadata = compiler.metadata.clone();
     let module = compiler.build_module_final();
     Ok((module, metadata))
-}
-
-fn is_expression(node: &TypedAstNode) -> bool {
-    match node {
-        TypedAstNode::BindingDecl(_, _) |
-        TypedAstNode::FunctionDecl(_, _) |
-        TypedAstNode::TypeDecl(_, _) |
-        TypedAstNode::EnumDecl(_, _) |
-        TypedAstNode::IfStatement(_, _) |
-        TypedAstNode::MatchStatement(_, _) |
-        TypedAstNode::Break(_) | // This is here for completeness; the return type for this node should never matter
-        TypedAstNode::ForLoop(_, _) |
-        TypedAstNode::WhileLoop(_, _) |
-        TypedAstNode::ImportStatement(_, _) => false,
-        _ => true
-    }
 }
 
 impl<'a> Compiler<'a> {
@@ -509,7 +493,7 @@ impl<'a> Compiler<'a> {
             last_line = line;
             let is_last_node = idx == body_len - 1;
 
-            let is_expr = is_expression(&node);
+            let is_expr = node.is_expression();
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
@@ -642,7 +626,7 @@ impl<'a> Compiler<'a> {
         for (idx, node) in body.into_iter().enumerate() {
             last_line = node.get_token().get_position().line;
             let is_last_line = idx == body_len - 1;
-            let is_expr = is_expression(&node);
+            let is_expr = node.is_expression();
             self.visit(node)?;
 
             // Handle bare expressions
@@ -706,7 +690,7 @@ impl<'a> Compiler<'a> {
             let line = node.get_token().get_position().line;
             let is_last_line = idx == block_len - 1;
 
-            let node_is_expr = is_expression(&node);
+            let node_is_expr = node.is_expression();
             let is_interrupt = match &node {
                 TypedAstNode::Break(_) => true,
                 _ => false
@@ -5447,11 +5431,10 @@ mod tests {
                     name: "f".to_string(),
                     code: vec![
                         Opcode::T,
-                        Opcode::JumpIfF(4),
+                        Opcode::JumpIfF(3),
                         Opcode::Constant(1, 0),
                         Opcode::LStore(0),
-                        Opcode::Jump(4),
-                        Opcode::Pop(1),
+                        Opcode::Jump(3),
                         Opcode::Constant(1, 1),
                         Opcode::LStore(0),
                         Opcode::Jump(0),
