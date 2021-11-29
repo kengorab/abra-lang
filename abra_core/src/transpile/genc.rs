@@ -4,7 +4,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
-use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
 #[derive(Clone)]
@@ -26,6 +26,7 @@ pub struct CCompiler {
     body_buf: String,
     buf_type: BufferType,
     scopes: Vec<Scope>,
+    type_ids: HashMap<String, usize>,
     if_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -366,6 +367,9 @@ impl CCompiler {
             body_buf: "".to_string(),
             buf_type: BufferType::MainFn,
             scopes: vec![root_scope],
+            type_ids: vec!["Int", "Float", "Bool", "String"].into_iter().enumerate()
+                .map(|(idx, name)| (name.to_string(), idx))
+                .collect(),
             if_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
             tuple_literal_var_names_stack: vec![VecDeque::new()],
@@ -1499,8 +1503,78 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedMatchNode) -> Result<(), ()> {
-        todo!()
+    fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedMatchNode) -> Result<(), ()> {
+        let salt = random_string(10);
+        let match_end_label = format!("match_{}_end", &salt);
+
+        let match_target_ident = format!("match_target_{}", &salt);
+        self.lift(&node.target)?;
+        self.emit(format!("AbraValue {} =", &match_target_ident));
+        self.visit(*node.target)?;
+        self.emit_line(";");
+
+        for (match_kind, binding, body) in node.branches {
+            match &match_kind {
+                TypedMatchKind::Constant { node } => self.lift(node)?,
+                TypedMatchKind::Tuple { nodes } => {
+                    for node in nodes {
+                        self.lift(node)?;
+                    }
+                }
+                _ => {}
+            }
+
+            self.emit("if (");
+
+            match match_kind {
+                TypedMatchKind::Wildcard => self.emit("true"),
+                TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
+                TypedMatchKind::Type { type_name, .. } => {
+                    let type_id = self.type_ids.get(&type_name)
+                        .expect(&format!("Should have registered type of name {}", &type_name))
+                        .clone();
+                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_id));
+                }
+                TypedMatchKind::EnumVariant { .. } => {}
+                TypedMatchKind::Constant { node } => {
+                    self.emit(format!("std__eq({}, ", &match_target_ident));
+                    self.visit(node)?;
+                    self.emit(")");
+                }
+                TypedMatchKind::Tuple { nodes } => {
+                    self.emit(format!("std_type_is_tuple({}) && ", &match_target_ident));
+                    let len = nodes.len();
+                    for (idx, node) in nodes.into_iter().enumerate() {
+                        self.emit("std__eq(");
+                        self.emit(format!("std_tuple__index(AS_OBJ({}), {})", &match_target_ident, idx));
+                        self.emit(",");
+                        self.visit(node)?;
+                        self.emit(")");
+
+                        if idx < len - 1 {
+                            self.emit(" && ");
+                        }
+                    }
+                }
+            }
+            self.emit_line(") {");
+            self.scopes.push(Scope { name: "__match_branch".to_string(), bindings: HashMap::new() });
+            if let Some(binding) = binding {
+                let c_name = self.add_c_var_name(&binding);
+                self.emit_line(format!("AbraValue {} = {};", c_name, &match_target_ident));
+            }
+            for node in body {
+                self.lift(&node)?;
+                self.visit(node)?;
+            }
+
+            self.scopes.pop();
+            self.emit_line(format!("goto {};", &match_end_label));
+            self.emit_line("}");
+        }
+        self.emit_line(format!("{}:", match_end_label));
+
+        Ok(())
     }
 
     fn visit_match_expression(&mut self, _token: Token, _node: TypedMatchNode) -> Result<(), ()> {

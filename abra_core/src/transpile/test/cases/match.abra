@@ -1,0 +1,67 @@
+// Test None & builtin type matching
+println("Test None & builtin type matching:")
+(() => {
+  val items: (Int | Float | Bool | String)[] = [1234, 12.34, true, "hello"]
+  for i in range(0, items.length + 1) {
+    match items[i] {
+      Int i => println("Int:", i)
+      Float f => println("Float:", f)
+      Bool b => println("Bool:", b)
+      String s => println("String:", s)
+      None => println("None")
+    }
+  }
+})()
+
+// Test literal & wildcard matching
+println("Test literal & wildcard matching:")
+(() => {
+  val items: (Int | Float | Bool | String)[] = [
+    1234, 5678,
+    12.34, 56.78,
+    true, false,
+    "hello", "goodbye"
+  ]
+  for i in range(0, items.length + 1) {
+    match items[i] {
+      1234 i => println("Int:", i)
+      12.34 f => println("Float:", f)
+      true b => println("Bool:", b)
+      "hello" s => println("String:", s)
+      _ e => println("Else:", e)
+    }
+  }
+})()
+
+// Test tuple matching
+println("Test tuple matching:")
+(() => {
+  val tuple: (Int, Int) | (String, String) | (Int, String) = (1, "2")
+  match tuple {
+    (1, 2) => println("wrong 1")
+    ("1", "2") => println("wrong 2")
+    (1, "2") => println("right!")
+    _ => println("wrong 3")
+  }
+})()
+
+/* assert(stdout):
+Test None & builtin type matching:
+Int: 1234
+Float: 12.34
+Bool: true
+String: hello
+None
+Test literal & wildcard matching:
+Int: 1234
+Else: 5678
+Float: 12.34
+Else: 56.78
+Bool: true
+Else: false
+String: hello
+Else: goodbye
+Else: None
+Test tuple matching:
+right!
+*/
