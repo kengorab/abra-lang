@@ -45,6 +45,21 @@ println("Test tuple matching:")
   }
 })()
 
+// Match expressions
+println("Test match expression:")
+(() => {
+  val nums = [1233, 1234]
+  for i in range(0, nums.length + 1) {
+    println(match nums[i] {
+      Int i => match i {
+        1234 => 5678
+        _ => i + 1
+      }
+      None => 0
+    })
+  }
+})()
+
 /* assert(stdout):
 Test None & builtin type matching:
 Int: 1234
@@ -64,4 +79,8 @@ Else: goodbye
 Else: None
 Test tuple matching:
 right!
+Test match expression:
+1234
+5678
+0
 */

@@ -1,18 +1,9 @@
-//val items: (Int | Float | Bool | String)[] = [1234, 5678, 12.34, 56.78, true, false, "hello", "goodbye"]
-//for i in range(0, items.length + 1) {
-//  match items[i] {
-//    1234 i => println("Int:", i)
-//    12.34 f => println("Float:", f)
-//    true b => println("Bool:", b)
-//    "hello" s => println("String:", s)
-//    _ e => println("Else:", e)
-//  }
-//}
-
-val tuple: (Int, Int) | (String, String) | (Int, String) = (1, "2")
-match tuple {
-  (1, 2) => println("wrong 1")
-  ("1", "2") => println("wrong 2")
-  (1, "2") => println("right!")
-  _ => println("wrong 3")
+val b: Int? = 1233
+val x = match b {
+  Int i => match i {
+    1234 => 5678
+    _ => i + 1
+  }
+  None => 0
 }
+println(x)

@@ -28,6 +28,7 @@ pub struct CCompiler {
     scopes: Vec<Scope>,
     type_ids: HashMap<String, usize>,
     if_result_var_names_stack: Vec<VecDeque<String>>,
+    match_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
     tuple_literal_var_names_stack: Vec<VecDeque<String>>,
     map_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -371,6 +372,7 @@ impl CCompiler {
                 .map(|(idx, name)| (name.to_string(), idx))
                 .collect(),
             if_result_var_names_stack: vec![VecDeque::new()],
+            match_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
             tuple_literal_var_names_stack: vec![VecDeque::new()],
             map_literal_var_names_stack: vec![VecDeque::new()],
@@ -776,59 +778,7 @@ impl CCompiler {
                 }
             }
             TypedAstNode::IfExpression(_, node) => {
-                let node = node.clone(); // :/
-                let salt = random_string(10);
-                let ident_name = format!("r_ifexp__{}", salt);
-                self.if_result_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
-
-                self.emit_line(format!("AbraValue {};", ident_name));
-                self.if_result_var_names_stack.push(VecDeque::new());
-
-                self.lift(&node.condition)?;
-                let salt = random_string(10);
-                self.emit(format!("AbraValue if_cond_{} = ", salt));
-                self.visit(*node.condition)?;
-                self.if_result_var_names_stack.pop();
-                self.emit_line(";");
-
-                self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
-                if let Some(condition_binding) = node.condition_binding {
-                    match condition_binding {
-                        BindingPattern::Variable(tok) => {
-                            let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                            self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
-                        }
-                        BindingPattern::Tuple(_, _) |
-                        BindingPattern::Array(_, _, _) => todo!()
-                    }
-                }
-
-                self.if_result_var_names_stack.push(VecDeque::new());
-                let len = node.if_block.len();
-                for (idx, node) in node.if_block.into_iter().enumerate() {
-                    self.lift(&node)?;
-                    if idx == len - 1 && node.all_branches_terminate().is_none() {
-                        self.emit(format!("{} = ", ident_name));
-                    }
-                    self.visit(node)?;
-                    self.emit_line(";");
-                }
-                self.if_result_var_names_stack.pop();
-
-                self.emit_line("} else {");
-                self.if_result_var_names_stack.push(VecDeque::new());
-                let else_block = node.else_block.unwrap();
-                let len = else_block.len();
-                for (idx, node) in else_block.into_iter().enumerate() {
-                    self.lift(&node)?;
-                    if idx == len - 1 {
-                        self.emit(format!("{} = ", ident_name));
-                    }
-                    self.visit(node)?;
-                    self.emit_line(";");
-                }
-                self.emit_line("}");
-                self.if_result_var_names_stack.pop();
+                self.visit_if_node(node.clone(), true)?;
             }
             TypedAstNode::Invocation(_, node) => {
                 let node = node.clone(); // :/
@@ -955,7 +905,9 @@ impl CCompiler {
                 let c_name = format!("{}__{}", self.scopes.first().unwrap().name, fn_name);
                 self.emit_finalize_function_value(arity, &fn_name, &c_name);
             }
-            TypedAstNode::MatchExpression(_, _) => todo!("This will also need to be lifted"),
+            TypedAstNode::MatchExpression(_, node) => {
+                self.visit_match_node(node.clone(), true)?;
+            }
             // The following node types cannot contain expressions that need lifting
             TypedAstNode::Literal(_, _) |
             TypedAstNode::FunctionDecl(_, _) |
@@ -971,6 +923,171 @@ impl CCompiler {
             TypedAstNode::ImportStatement(_, _) |
             TypedAstNode::_Nil(_) => {}
         };
+
+        Ok(())
+    }
+
+    fn visit_if_node(&mut self, node: TypedIfNode, is_expr: bool) -> Result<(), ()> {
+        let salt = random_string(10);
+
+        let if_expr_res_ident_name = format!("r_ifexp__{}", salt);
+        if is_expr {
+            self.if_result_var_names_stack.last_mut().unwrap().push_back(if_expr_res_ident_name.clone());
+            self.emit_line(format!("AbraValue {};", if_expr_res_ident_name));
+            self.if_result_var_names_stack.push(VecDeque::new());
+        }
+
+        self.lift(&node.condition)?;
+        self.emit(format!("AbraValue if_cond_{} = ", salt));
+        self.visit(*node.condition)?;
+        self.emit_line(";");
+        if is_expr {
+            self.if_result_var_names_stack.pop();
+        }
+
+        self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
+        if let Some(condition_binding) = node.condition_binding {
+            match condition_binding {
+                BindingPattern::Variable(tok) => {
+                    let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
+                    self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
+                }
+                BindingPattern::Tuple(_, _) |
+                BindingPattern::Array(_, _, _) => todo!()
+            }
+        }
+
+        if is_expr {
+            self.if_result_var_names_stack.push(VecDeque::new());
+        }
+        let len = node.if_block.len();
+        for (idx, node) in node.if_block.into_iter().enumerate() {
+            self.lift(&node)?;
+            if idx == len - 1 && is_expr && node.all_branches_terminate().is_none() {
+                self.emit(format!("{} = ", if_expr_res_ident_name));
+            }
+            self.visit(node)?;
+            self.emit_line(";");
+        }
+        if is_expr {
+            self.if_result_var_names_stack.pop();
+        }
+
+        if let Some(else_block) = node.else_block {
+            self.emit_line("} else {");
+            if is_expr {
+                self.if_result_var_names_stack.push(VecDeque::new());
+            }
+            let len = else_block.len();
+            for (idx, node) in else_block.into_iter().enumerate() {
+                self.lift(&node)?;
+                if idx == len - 1 && is_expr {
+                    self.emit(format!("{} = ", if_expr_res_ident_name));
+                }
+                self.visit(node)?;
+                self.emit_line(";");
+            }
+        }
+        self.emit_line("}");
+        if is_expr {
+            self.if_result_var_names_stack.pop();
+        }
+
+        Ok(())
+    }
+
+    fn visit_match_node(&mut self, node: TypedMatchNode, is_expr: bool) -> Result<(), ()> {
+        let salt = random_string(10);
+        let match_end_label = format!("match_{}_end", &salt);
+
+        let match_expr_res_ident_name = format!("r_matchexp__{}", salt);
+        if is_expr {
+            self.match_result_var_names_stack.last_mut().unwrap().push_back(match_expr_res_ident_name.clone());
+            self.emit_line(format!("AbraValue {};", match_expr_res_ident_name));
+            self.match_result_var_names_stack.push(VecDeque::new());
+        }
+
+        let match_target_ident = format!("match_target_{}", &salt);
+        self.lift(&node.target)?;
+        self.emit(format!("AbraValue {} =", &match_target_ident));
+        self.visit(*node.target)?;
+        self.emit_line(";");
+        if is_expr {
+            self.match_result_var_names_stack.pop();
+        }
+
+        if is_expr {
+            self.match_result_var_names_stack.push(VecDeque::new());
+        }
+
+        for (match_kind, binding, body) in node.branches {
+            match &match_kind {
+                TypedMatchKind::Constant { node } => self.lift(node)?,
+                TypedMatchKind::Tuple { nodes } => {
+                    for node in nodes {
+                        self.lift(node)?;
+                    }
+                }
+                _ => {}
+            }
+
+            self.emit("if (");
+
+            match match_kind {
+                TypedMatchKind::Wildcard => self.emit("true"),
+                TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
+                TypedMatchKind::Type { type_name, .. } => {
+                    let type_id = self.type_ids.get(&type_name)
+                        .expect(&format!("Should have registered type of name {}", &type_name))
+                        .clone();
+                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_id));
+                }
+                TypedMatchKind::EnumVariant { .. } => {}
+                TypedMatchKind::Constant { node } => {
+                    self.emit(format!("std__eq({}, ", &match_target_ident));
+                    self.visit(node)?;
+                    self.emit(")");
+                }
+                TypedMatchKind::Tuple { nodes } => {
+                    self.emit(format!("std_type_is_tuple({}) && ", &match_target_ident));
+                    let len = nodes.len();
+                    for (idx, node) in nodes.into_iter().enumerate() {
+                        self.emit("std__eq(");
+                        self.emit(format!("std_tuple__index(AS_OBJ({}), {})", &match_target_ident, idx));
+                        self.emit(",");
+                        self.visit(node)?;
+                        self.emit(")");
+
+                        if idx < len - 1 {
+                            self.emit(" && ");
+                        }
+                    }
+                }
+            }
+            self.emit_line(") {");
+            self.scopes.push(Scope { name: "__match_branch".to_string(), bindings: HashMap::new() });
+            if let Some(binding) = binding {
+                let c_name = self.add_c_var_name(&binding);
+                self.emit_line(format!("AbraValue {} = {};", c_name, &match_target_ident));
+            }
+            let len = body.len();
+            for (idx, node) in body.into_iter().enumerate() {
+                self.lift(&node)?;
+                if idx == len - 1 && is_expr && node.all_branches_terminate().is_none() {
+                    self.emit(format!("{} = ", match_expr_res_ident_name));
+                }
+                self.visit(node)?;
+                self.emit_line(";");
+            }
+
+            self.scopes.pop();
+            self.emit_line(format!("goto {};", &match_end_label));
+            self.emit_line("}");
+        }
+        if is_expr {
+            self.match_result_var_names_stack.pop();
+        }
+        self.emit_line(format!("{}:;", match_end_label));
 
         Ok(())
     }
@@ -1335,41 +1452,7 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedIfNode) -> Result<(), ()> {
-        self.lift(&node.condition)?;
-
-        let salt = random_string(10);
-        self.emit(format!("AbraValue if_cond_{} = ", salt));
-        self.visit(*node.condition)?;
-        self.emit_line(";");
-
-        self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
-        if let Some(condition_binding) = node.condition_binding {
-            match condition_binding {
-                BindingPattern::Variable(tok) => {
-                    let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                    self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
-                }
-                BindingPattern::Tuple(_, _) |
-                BindingPattern::Array(_, _, _) => todo!()
-            }
-        }
-
-        for node in node.if_block {
-            self.lift(&node)?;
-            self.visit(node)?;
-            self.emit_line(";");
-        }
-
-        if let Some(else_block) = node.else_block {
-            self.emit_line("} else {");
-            for node in else_block {
-                self.lift(&node)?;
-                self.visit(node)?;
-                self.emit_line(";");
-            }
-        }
-
-        self.emit_line("}");
+        self.visit_if_node(node.clone(), false)?;
 
         Ok(())
     }
@@ -1504,81 +1587,16 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, node: TypedMatchNode) -> Result<(), ()> {
-        let salt = random_string(10);
-        let match_end_label = format!("match_{}_end", &salt);
-
-        let match_target_ident = format!("match_target_{}", &salt);
-        self.lift(&node.target)?;
-        self.emit(format!("AbraValue {} =", &match_target_ident));
-        self.visit(*node.target)?;
-        self.emit_line(";");
-
-        for (match_kind, binding, body) in node.branches {
-            match &match_kind {
-                TypedMatchKind::Constant { node } => self.lift(node)?,
-                TypedMatchKind::Tuple { nodes } => {
-                    for node in nodes {
-                        self.lift(node)?;
-                    }
-                }
-                _ => {}
-            }
-
-            self.emit("if (");
-
-            match match_kind {
-                TypedMatchKind::Wildcard => self.emit("true"),
-                TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
-                TypedMatchKind::Type { type_name, .. } => {
-                    let type_id = self.type_ids.get(&type_name)
-                        .expect(&format!("Should have registered type of name {}", &type_name))
-                        .clone();
-                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_id));
-                }
-                TypedMatchKind::EnumVariant { .. } => {}
-                TypedMatchKind::Constant { node } => {
-                    self.emit(format!("std__eq({}, ", &match_target_ident));
-                    self.visit(node)?;
-                    self.emit(")");
-                }
-                TypedMatchKind::Tuple { nodes } => {
-                    self.emit(format!("std_type_is_tuple({}) && ", &match_target_ident));
-                    let len = nodes.len();
-                    for (idx, node) in nodes.into_iter().enumerate() {
-                        self.emit("std__eq(");
-                        self.emit(format!("std_tuple__index(AS_OBJ({}), {})", &match_target_ident, idx));
-                        self.emit(",");
-                        self.visit(node)?;
-                        self.emit(")");
-
-                        if idx < len - 1 {
-                            self.emit(" && ");
-                        }
-                    }
-                }
-            }
-            self.emit_line(") {");
-            self.scopes.push(Scope { name: "__match_branch".to_string(), bindings: HashMap::new() });
-            if let Some(binding) = binding {
-                let c_name = self.add_c_var_name(&binding);
-                self.emit_line(format!("AbraValue {} = {};", c_name, &match_target_ident));
-            }
-            for node in body {
-                self.lift(&node)?;
-                self.visit(node)?;
-            }
-
-            self.scopes.pop();
-            self.emit_line(format!("goto {};", &match_end_label));
-            self.emit_line("}");
-        }
-        self.emit_line(format!("{}:", match_end_label));
+        self.visit_match_node(node, false)?;
 
         Ok(())
     }
 
     fn visit_match_expression(&mut self, _token: Token, _node: TypedMatchNode) -> Result<(), ()> {
-        todo!()
+        let ident_name = self.match_result_var_names_stack.last_mut().unwrap().pop_front().expect("We shouldn't reach a match without having visited it previously");
+        self.emit(ident_name);
+
+        Ok(())
     }
 
     fn visit_import_statement(&mut self, _token: Token, _node: TypedImportNode) -> Result<(), ()> {
