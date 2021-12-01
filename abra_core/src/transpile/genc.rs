@@ -27,6 +27,7 @@ pub struct CCompiler {
     buf_type: BufferType,
     scopes: Vec<Scope>,
     type_ids: HashMap<String, usize>,
+    curr_type_id: usize,
     if_result_var_names_stack: Vec<VecDeque<String>>,
     match_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -39,8 +40,15 @@ pub struct CCompiler {
 }
 
 #[derive(Clone, Debug)]
+enum FnKind {
+    Fn,
+    Method(/* type_name: */ String),
+    StaticMethod(/* type_name: */ String),
+}
+
+#[derive(Clone, Debug)]
 enum FunctionLike {
-    FunctionDecl(TypedFunctionDeclNode),
+    FunctionDecl(FnKind, TypedFunctionDeclNode),
     Lambda(TypedLambdaNode),
 }
 
@@ -52,7 +60,8 @@ fn extract_functions(
     node: &TypedAstNode,
     known_vars: &Vec<String>,
     path: Vec<String>,
-    seen_fns: &mut Vec<(Vec<String>, FunctionLike, HashSet<String>)>,
+    fn_kind: FnKind,
+    seen_fns: &mut Vec<(Vec<String>, String, FunctionLike, HashSet<String>)>,
 ) {
     #[inline]
     fn walk_and_find_vars(node: &TypedAstNode, vars: &mut Vec<String>) {
@@ -156,7 +165,7 @@ fn extract_functions(
     let (fn_name, args, body, f) = match node {
         TypedAstNode::FunctionDecl(_, decl_node) => {
             let fn_name = Token::get_ident_name(&decl_node.name);
-            (fn_name, decl_node.args.clone(), &decl_node.body, FunctionLike::FunctionDecl(decl_node.clone()))
+            (fn_name, decl_node.args.clone(), &decl_node.body, FunctionLike::FunctionDecl(fn_kind, decl_node.clone()))
         }
         TypedAstNode::Lambda(_, lambda_node) => {
             let args = lambda_node.args.clone().into_iter()
@@ -169,7 +178,7 @@ fn extract_functions(
         }
         TypedAstNode::BindingDecl(_, n) => {
             if let Some(expr) = &n.expr {
-                extract_functions(&expr, known_vars, path, seen_fns);
+                extract_functions(&expr, known_vars, path, FnKind::Fn, seen_fns);
             }
             return;
         }
@@ -177,53 +186,69 @@ fn extract_functions(
         TypedAstNode::Unary(_, _) |
         TypedAstNode::Binary(_, _) => { return; }
         TypedAstNode::Grouped(_, n) => {
-            extract_functions(&n.expr, known_vars, path, seen_fns);
+            extract_functions(&n.expr, known_vars, path, FnKind::Fn, seen_fns);
             return;
         }
         TypedAstNode::Array(_, n) => {
             for item in &n.items {
-                extract_functions(&item, known_vars, path.clone(), seen_fns);
+                extract_functions(&item, known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
             return;
         }
         TypedAstNode::Map(_, n) => {
             for (key, val) in &n.items {
-                extract_functions(&key, known_vars, path.clone(), seen_fns);
-                extract_functions(&val, known_vars, path.clone(), seen_fns);
+                extract_functions(&key, known_vars, path.clone(), FnKind::Fn, seen_fns);
+                extract_functions(&val, known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
             return;
         }
         TypedAstNode::Set(_, n) => {
             for item in &n.items {
-                extract_functions(&item, known_vars, path.clone(), seen_fns);
+                extract_functions(&item, known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
             return;
         }
         TypedAstNode::Tuple(_, n) => {
             for item in &n.items {
-                extract_functions(&item, known_vars, path.clone(), seen_fns);
+                extract_functions(&item, known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
             return;
         }
-        TypedAstNode::TypeDecl(_, _) |
+        TypedAstNode::TypeDecl(_, n) => {
+            for field in &n.fields {
+                if let Some(default_value) = &field.default_value {
+                    extract_functions(&default_value, known_vars, path.clone(), FnKind::Fn, seen_fns);
+                }
+            }
+            for (_, typ, node) in &n.static_fields {
+                if let Type::Fn(_) = &typ {
+                    let method_node = node.as_ref().unwrap();
+                    extract_functions(method_node, known_vars, path.clone(), FnKind::StaticMethod(Token::get_ident_name(&n.name)), seen_fns);
+                } else { todo!() }
+            }
+            for (_, method_node) in &n.methods {
+                extract_functions(&method_node, known_vars, path.clone(), FnKind::Method(Token::get_ident_name(&n.name)), seen_fns);
+            }
+            return;
+        }
         TypedAstNode::EnumDecl(_, _) |
         TypedAstNode::Identifier(_, _) => { return; }
         TypedAstNode::Assignment(_, n) => {
-            extract_functions(&n.expr, known_vars, path, seen_fns);
+            extract_functions(&n.expr, known_vars, path, FnKind::Fn, seen_fns);
             return;
         }
         TypedAstNode::Indexing(_, n) => {
-            extract_functions(&n.target, known_vars, path.clone(), seen_fns);
+            extract_functions(&n.target, known_vars, path.clone(), FnKind::Fn, seen_fns);
             match &n.index {
                 IndexingMode::Index(i) => {
-                    extract_functions(&i, known_vars, path, seen_fns);
+                    extract_functions(&i, known_vars, path, FnKind::Fn, seen_fns);
                 }
                 IndexingMode::Range(s, e) => {
                     if let Some(s) = s {
-                        extract_functions(&s, known_vars, path.clone(), seen_fns);
+                        extract_functions(&s, known_vars, path.clone(), FnKind::Fn, seen_fns);
                     }
                     if let Some(e) = e {
-                        extract_functions(&e, known_vars, path, seen_fns);
+                        extract_functions(&e, known_vars, path, FnKind::Fn, seen_fns);
                     }
                 }
             }
@@ -231,29 +256,29 @@ fn extract_functions(
         }
         TypedAstNode::IfStatement(_, n) |
         TypedAstNode::IfExpression(_, n) => {
-            extract_functions(&n.condition, known_vars, path.clone(), seen_fns);
+            extract_functions(&n.condition, known_vars, path.clone(), FnKind::Fn, seen_fns);
             for node in &n.if_block {
-                extract_functions(&node, known_vars, path.clone(), seen_fns);
+                extract_functions(&node, known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
             if let Some(else_block) = &n.else_block {
                 for node in else_block {
-                    extract_functions(&node, known_vars, path.clone(), seen_fns);
+                    extract_functions(&node, known_vars, path.clone(), FnKind::Fn, seen_fns);
                 }
             }
             return;
         }
         TypedAstNode::Invocation(_, n) => {
-            extract_functions(&n.target, known_vars, path.clone(), seen_fns);
+            extract_functions(&n.target, known_vars, path.clone(), FnKind::Fn, seen_fns);
             for arg in &n.args {
                 if let Some(arg) = arg {
-                    extract_functions(&arg, known_vars, path.clone(), seen_fns);
+                    extract_functions(&arg, known_vars, path.clone(), FnKind::Fn, seen_fns);
                 }
             }
             return;
         }
         TypedAstNode::ReturnStatement(_, n) => {
             if let Some(n) = &n.target {
-                extract_functions(&n, known_vars, path, seen_fns);
+                extract_functions(&n, known_vars, path, FnKind::Fn, seen_fns);
             }
             return;
         }
@@ -286,14 +311,14 @@ fn extract_functions(
             TypedAstNode::Lambda(_, _) => {
                 let mut sub_path = path.clone();
                 sub_path.push(fn_name.clone());
-                extract_functions(&node, &known_vars, sub_path, seen_fns);
+                extract_functions(&node, &known_vars, sub_path, FnKind::Fn, seen_fns);
 
-                let (_, _, seen_vars_in_fn) = seen_fns.last().unwrap();
+                let (_, _, _, seen_vars_in_fn) = seen_fns.last().unwrap();
                 let mut seen_vars_in_fn = seen_vars_in_fn.clone().into_iter().collect();
                 seen_vars.append(&mut seen_vars_in_fn);
             }
             TypedAstNode::BindingDecl(_, n) => {
-                extract_functions(&node, &known_vars, path.clone(), seen_fns);
+                extract_functions(&node, &known_vars, path.clone(), FnKind::Fn, seen_fns);
 
                 match &n.binding {
                     BindingPattern::Variable(v) => {
@@ -305,7 +330,7 @@ fn extract_functions(
             TypedAstNode::IfStatement(_, if_node) |
             TypedAstNode::IfExpression(_, if_node) => {
                 walk_and_find_vars(&node, &mut seen_vars);
-                extract_functions(&if_node.condition, &seen_vars, path.clone(), seen_fns);
+                extract_functions(&if_node.condition, &seen_vars, path.clone(), FnKind::Fn, seen_fns);
 
                 if let Some(condition_binding) = &if_node.condition_binding {
                     match condition_binding {
@@ -319,18 +344,18 @@ fn extract_functions(
 
                 for node in &if_node.if_block {
                     walk_and_find_vars(&node, &mut seen_vars);
-                    extract_functions(&node, &seen_vars, path.clone(), seen_fns);
+                    extract_functions(&node, &seen_vars, path.clone(), FnKind::Fn, seen_fns);
                 }
                 if let Some(else_block) = &if_node.else_block {
                     for node in else_block {
                         walk_and_find_vars(&node, &mut seen_vars);
-                        extract_functions(&node, &seen_vars, path.clone(), seen_fns);
+                        extract_functions(&node, &seen_vars, path.clone(), FnKind::Fn, seen_fns);
                     }
                 }
             }
             _ => {
                 walk_and_find_vars(&node, &mut seen_vars);
-                extract_functions(&node, &known_vars, path.clone(), seen_fns);
+                extract_functions(&node, &known_vars, path.clone(), FnKind::Fn, seen_fns);
             }
         }
     }
@@ -339,8 +364,11 @@ fn extract_functions(
         .filter(|var| !current_known_vars.contains(var))
         .map(|var| var.clone())
         .collect::<HashSet<_>>();
-    seen_fns.push((path, f, closed_over_variables))
+    seen_fns.push((path, fn_name, f, closed_over_variables))
 }
+
+// This MUST be equal to the `OBJ_INSTANCE` enum value defined in `abra.h`
+const STARTING_TYPE_ID: usize = 6;
 
 impl CCompiler {
     fn new() -> Self {
@@ -371,6 +399,7 @@ impl CCompiler {
             type_ids: vec!["Int", "Float", "Bool", "String"].into_iter().enumerate()
                 .map(|(idx, name)| (name.to_string(), idx))
                 .collect(),
+            curr_type_id: STARTING_TYPE_ID,
             if_result_var_names_stack: vec![VecDeque::new()],
             match_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
@@ -396,6 +425,8 @@ impl CCompiler {
         compiler.switch_buf(BufferType::MainFn);
         compiler.emit_line("int main(int argc, char** argv) {");
         compiler.emit_line("abra_init();");
+
+        compiler.lift_types(&ast)?;
 
         compiler.switch_buf(BufferType::Body);
         compiler.lift_fns(&ast)?;
@@ -452,10 +483,21 @@ impl CCompiler {
         let prefix = self.scopes.iter().map(|Scope { name, .. }| name).join("_");
 
         let c_name = format!("{}__{}{}", prefix, name.as_ref(), suffix.as_ref());
+        self.insert_top_level_binding(name, &c_name);
+        c_name
+    }
+
+    fn insert_top_level_binding<S1: AsRef<str>, S2: AsRef<str>>(&mut self, name: S1, binding_name: S2) {
         self.scopes.last_mut().expect("There's always at least 1 scope")
             .bindings
-            .insert(name.as_ref().to_string(), c_name.clone());
-        c_name
+            .insert(name.as_ref().to_string(), binding_name.as_ref().to_string());
+    }
+
+    fn add_type<S: AsRef<str>>(&mut self, type_name: S) -> usize {
+        let type_id = self.curr_type_id;
+        self.type_ids.insert(type_name.as_ref().to_string(), type_id);
+        self.curr_type_id += 1;
+        type_id
     }
 
     fn switch_buf(&mut self, buf_type: BufferType) -> BufferType {
@@ -502,29 +544,92 @@ impl CCompiler {
         self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &fn_name, &c_name, &c_name));
     }
 
+    fn lift_types(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
+        for node in ast {
+            let node = if let TypedAstNode::TypeDecl(_, n) = &node { n } else { continue; };
+
+            // Typedef struct
+            let prev_buf = self.switch_buf(BufferType::Body);
+
+            let type_name = Token::get_ident_name(&node.name);
+            let c_name = self.add_c_var_name(&type_name);
+            self.emit_line(format!("typedef struct {} {{", &c_name));
+            self.emit_line("  Obj _header;");
+            for field in &node.fields {
+                let field_name = Token::get_ident_name(&field.ident);
+                self.emit_line(format!("  AbraValue {};", field_name));
+            }
+            self.emit_line(format!("}} {};", &c_name));
+
+            let type_id = self.add_type(&type_name);
+            self.emit_line(format!("#define {}__type_id {}", &c_name, type_id));
+
+            // Constructor function
+            self.emit(format!("AbraValue {}__new(", &c_name));
+            let num_fields = node.fields.len();
+            for (idx, field) in node.fields.iter().enumerate() {
+                let field_name = Token::get_ident_name(&field.ident);
+                self.emit(format!("AbraValue {}", field_name));
+                if idx < num_fields - 1 {
+                    self.emit(", ");
+                }
+            }
+            self.emit_line(") {");
+            self.emit_line(format!("{}* self = GC_MALLOC(sizeof({}));", &c_name, &c_name));
+            self.emit_line("self->_header.type = OBJ_INSTANCE;");
+            self.emit_line(format!("self->_header.type_id = {}__type_id;", &c_name));
+            for field in &node.fields {
+                let field_name = Token::get_ident_name(&field.ident);
+                self.emit_line(format!("self->{} = {};", &field_name, &field_name));
+            }
+            self.emit_line(format!("return (AbraValue){{.type = ABRA_TYPE_OBJ, .as = {{.obj = ((Obj*)self)}}}};"));
+            self.emit_line("}");
+
+            self.switch_buf(prev_buf);
+        }
+
+        Ok(())
+    }
+
     fn lift_fns(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
         let mut seen_fns = Vec::new();
         for node in ast {
             let mut known_vars = self.scopes.first().unwrap().bindings.keys().map(|v| v.clone()).collect();
-            extract_functions(&node, &mut known_vars, vec![], &mut seen_fns);
+            extract_functions(&node, &mut known_vars, vec![], FnKind::Fn, &mut seen_fns);
         }
 
         let mut fns_at_path = HashMap::new();
-        for (path, f, closed_over_vars) in &seen_fns {
+        for (path, fn_name, f, closed_over_vars) in &seen_fns {
             let c_name = match f {
-                FunctionLike::FunctionDecl(decl) => {
-                    let name = Token::get_ident_name(&decl.name);
-                    fns_at_path.entry(path.clone()).or_insert(vec![]).push(name.clone());
-                    let mut c_name = vec![vec![self.scopes.first().unwrap().name.clone()], path.clone()].concat().iter().join("_");
-                    c_name.push_str("__");
-                    c_name.push_str(&name);
+                FunctionLike::FunctionDecl(fn_kind, decl) => {
+                    let mod_name = self.scopes.first().unwrap().name.clone();
+                    let (fn_ident, c_name) = match fn_kind {
+                        FnKind::Fn => {
+                            let fn_ident = fn_name.clone();
+                            let mut c_name = vec![vec![mod_name], path.clone()].concat().iter().join("_");
+                            c_name.push_str("__");
+                            c_name.push_str(&fn_ident);
+                            (fn_ident, c_name)
+                        },
+                        FnKind::Method(type_name) => {
+                            let fn_ident = format!("{}__method_{}", type_name, &fn_name);
+                            let c_name = format!("{}__{}", mod_name, &fn_ident);
+                            (fn_ident, c_name)
+                        },
+                        FnKind::StaticMethod(type_name) => {
+                            let fn_ident = format!("{}__static_method_{}", type_name, &fn_name);
+                            let c_name = format!("{}__{}", mod_name, &fn_ident);
+                            (fn_ident, c_name)
+                        }
+                    };
+                    fns_at_path.entry(path.clone()).or_insert(vec![]).push(fn_ident);
                     c_name
-                },
+                }
                 FunctionLike::Lambda(lambda) => {
                     let name = lambda_name(&lambda);
                     fns_at_path.entry(vec![]).or_insert(vec![]).push(name.clone());
                     format!("{}__{}", self.scopes.first().unwrap().name, &name)
-                },
+                }
             };
 
             self.upvalues_by_fn_cname.insert(c_name, closed_over_vars.clone());
@@ -539,7 +644,7 @@ impl CCompiler {
 
         // Emit code for each fn, making sure to set the proper intermediate scopes, as well as
         // pre-define a cvar for each other fn in that scope (to handle out-of-order references).
-        for (path, f, vars) in seen_fns {
+        for (path, fn_name, f, vars) in seen_fns {
             for scope_name in &path {
                 self.scopes.push(Scope { name: scope_name.clone(), bindings: HashMap::new() });
             }
@@ -550,7 +655,7 @@ impl CCompiler {
                 }
             }
 
-            self.lift_fn(&f, &vars)?;
+            self.lift_fn(&fn_name, &f, &vars)?;
 
             for _ in 0..path.len() {
                 self.scopes.pop();
@@ -560,13 +665,17 @@ impl CCompiler {
         Ok(())
     }
 
-    fn lift_fn(&mut self, node: &FunctionLike, closed_over_vars: &HashSet<String>) -> Result<(), ()> {
+    fn lift_fn(&mut self, fn_name: &String, node: &FunctionLike, closed_over_vars: &HashSet<String>) -> Result<(), ()> {
         let node = node.clone(); // :/
         let (fn_name, c_name, args, body) = match node {
-            FunctionLike::FunctionDecl(node) => {
-                let fn_name = Token::get_ident_name(&node.name);
+            FunctionLike::FunctionDecl(fn_kind, node) => {
+                let fn_name = match fn_kind {
+                    FnKind::Fn => fn_name.clone(),
+                    FnKind::Method(type_name) => format!("{}__method_{}", type_name, &fn_name),
+                    FnKind::StaticMethod(type_name) => format!("{}__static_method_{}", type_name, &fn_name),
+                };
                 let c_name = self.find_c_var_name_trim_suffix(&fn_name, "_val").expect(&format!("Could not find c-variable name for {}", fn_name));
-                (fn_name, c_name, node.args, node.body)
+                (fn_name.clone(), c_name, node.args, node.body)
             }
             FunctionLike::Lambda(node) => {
                 let fn_name = lambda_name(&node);
@@ -833,6 +942,7 @@ impl CCompiler {
                 if is_opt_safe_call { self.emit_line("}"); }
             }
             TypedAstNode::Instantiation(_, node) => {
+                self.lift(&node.target)?;
                 for (_, field) in &node.fields {
                     self.lift(&field)?;
                 }
@@ -846,36 +956,54 @@ impl CCompiler {
                 let node = node.clone();
                 let node_typ = node.target.get_type().get_opt_unwrapped();
 
+                let mut is_typeref = false;
+                let (prefix, is_static) = match node_typ {
+                    Type::Int => ("std_int".to_string(), false),
+                    Type::Float => ("std_float".to_string(), false),
+                    Type::String => ("std_string".to_string(), false),
+                    Type::Array(_) => ("std_array".to_string(), false),
+                    Type::Map(_, _) => ("std_map".to_string(), false),
+                    Type::Set(_) => ("std_set".to_string(), false),
+                    Type::Type(name, _, _) => match name.as_str() {
+                        "prelude/Array" => ("std_array".to_string(), true),
+                        "prelude/Map" => ("std_map".to_string(), true),
+                        n => {
+                            let type_name = n.split("/").last().unwrap();
+                            let c_name = match self.find_c_var_name(type_name) {
+                                Some(c_name) => c_name,
+                                None => {
+                                    unimplemented!("Accessing values of type {} not implemented", n);
+                                }
+                            };
+                            (c_name, true)
+                        }
+                    }
+                    Type::Reference(t, _) => {
+                        let type_name = t.split("/").last().unwrap();
+                        let c_name = self.find_c_var_name(type_name).unwrap();
+                        is_typeref = true;
+                        (c_name, false)
+                    }
+                    _ => todo!(),
+                };
+
                 let salt = random_string(10);
                 let ident_name = format!("acc__{}", &salt);
                 self.lift(&node.target)?;
                 self.accessor_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
 
                 let target_ident_name = format!("target__{}", &salt);
-                self.emit(format!("AbraValue {} = ", &target_ident_name));
-                self.visit(*node.target)?;
-                self.emit_line(";");
+                if !is_static {
+                    self.emit(format!("AbraValue {} = ", &target_ident_name));
+                    self.visit(*node.target)?;
+                    self.emit_line(";");
+                }
 
-                self.emit(format!("AbraValue {} = ABRA_NONE;", &ident_name));
+                self.emit_line(format!("AbraValue {} = ABRA_NONE;", &ident_name));
                 if node.is_opt_safe {
                     // TODO: This adds a lot of flat !IS_NONE checks which could otherwise be skipped if they were nested
                     self.emit_line(format!("if (!IS_NONE({})) {{", &target_ident_name));
                 }
-
-                let (prefix, is_static) = match node_typ {
-                    Type::Int => ("std_int", false),
-                    Type::Float => ("std_float", false),
-                    Type::String => ("std_string", false),
-                    Type::Array(_) => ("std_array", false),
-                    Type::Map(_, _) => ("std_map", false),
-                    Type::Set(_) => ("std_set", false),
-                    Type::Type(name, _, _) => match name.as_str() {
-                        "prelude/Array" => ("std_array", true),
-                        "prelude/Map" => ("std_map", true),
-                        _ => todo!()
-                    }
-                    _ => todo!(),
-                };
 
                 self.emit(format!("{} =", &ident_name));
                 if node.is_method {
@@ -891,8 +1019,13 @@ impl CCompiler {
                         self.emit(format!("bind_fn_{}(&{}, \"{}\", \"{}\", {})", arity, &method_fn_name, &fn_name, &method_fn_name, &target_ident_name));
                     }
                 } else {
-                    let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
-                    self.emit(format!("{}({})", field_fn_name, &target_ident_name));
+                    if is_typeref {
+                        let field_fn_name = Token::get_ident_name(&node.field_ident);
+                        self.emit(format!("(({}*)AS_OBJ({}))->{}", &prefix, &target_ident_name, field_fn_name));
+                    } else {
+                        let field_fn_name = format!("{}__field_{}", prefix, Token::get_ident_name(&node.field_ident));
+                        self.emit(format!("{}({})", field_fn_name, &target_ident_name));
+                    }
                 }
                 self.emit_line(";");
 
@@ -1154,15 +1287,15 @@ impl TypedAstVisitor<(), ()> for CCompiler {
             Type::Int => {
                 self.emit("NEW_INT(");
                 true
-            },
+            }
             Type::Float => {
                 self.emit("NEW_FLOAT(");
                 true
-            },
+            }
             Type::Bool => {
                 self.emit("NEW_BOOL(");
                 true
-            },
+            }
             Type::String => false,
             _ => todo!()
         };
@@ -1349,8 +1482,84 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_type_decl(&mut self, _token: Token, _node: TypedTypeDeclNode) -> Result<(), ()> {
-        todo!()
+    fn visit_type_decl(&mut self, _token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
+        let prev_buf = self.switch_buf(BufferType::Body);
+
+        // Typedef & constructor fn was emitted in lift
+        let type_name = Token::get_ident_name(&node.name);
+        let c_name = self.find_c_var_name(&type_name).unwrap();
+        let num_fields = node.fields.len();
+
+        // eq function
+        self.emit_line(format!("bool {}__eq(Obj* _self, Obj* _other) {{", &c_name));
+        self.emit_line(format!("{}* self = ({}*)_self;", &c_name, &c_name));
+        self.emit_line(format!("{}* other = ({}*)_other;", &c_name, &c_name));
+        for field in &node.fields {
+            let field_name = Token::get_ident_name(&field.ident);
+            self.emit_line(format!("if (!std__eq(self->{}, other->{})) return false;", &field_name, &field_name));
+        }
+        self.emit_line("return true;");
+        self.emit_line("}");
+        self.switch_buf(BufferType::MainFn);
+        self.emit_line(format!("eq_fns[{}__type_id] = &{}__eq;", &c_name, &c_name));
+        self.switch_buf(BufferType::Body);
+
+        // toString function
+        self.emit_line(format!("char const* {}__to_string(Obj* obj) {{", &c_name));
+        self.emit_line(format!("{}* self = ({}*)obj;", &c_name, &c_name));
+        for field in &node.fields {
+            let field_name = Token::get_ident_name(&field.ident);
+            self.emit_line(format!("char const* {}_str = std__to_string(self->{});", &field_name, &field_name));
+            self.emit_line(format!("size_t {}_str_len = strlen({}_str);", &field_name, &field_name));
+        }
+        let mut str_len = type_name.len() + 2; // Account for `()`
+        let mut field_str_var_names = vec![];
+        for (idx, field) in node.fields.iter().enumerate() {
+            let field_name = Token::get_ident_name(&field.ident);
+            field_str_var_names.push(format!("{}_str", &field_name));
+            str_len += field_name.len() + 2; // Account for `: `
+            if idx < num_fields - 1 {
+                str_len += 2; // Account for `, `
+            }
+        }
+        self.emit_line(format!(
+            "size_t str_len = sizeof(char)*{}+{}+1;",
+            str_len,
+            field_str_var_names.iter().map(|n| format!("{}_len", n)).join("+")
+        ));
+        self.emit_line("char* str = malloc(str_len);");
+        self.emit(format!("sprintf(str, \"{}(", &type_name));
+        for (idx, field) in node.fields.iter().enumerate() {
+            let field_name = Token::get_ident_name(&field.ident);
+            self.emit(format!("{}: %s", field_name));
+            if idx < num_fields - 1 {
+                self.emit(", ");
+            }
+        }
+        self.emit_line(format!(")\", {});", field_str_var_names.iter().join(", ")));
+        self.emit_line("str[str_len] = 0;");
+        self.emit_line("return str;");
+        self.emit_line("}");
+        self.switch_buf(BufferType::MainFn);
+        self.emit_line(format!("to_string_fns[{}__type_id] = &{}__to_string;", &c_name, &c_name));
+        self.switch_buf(BufferType::Body);
+
+        // hash function
+        self.emit_line(format!("size_t {}__hash(Obj* _self) {{", &c_name));
+        self.emit_line(format!("{}* self = ({}*)_self;", &c_name, &c_name));
+        self.emit_line("size_t hash = 1;");
+        for field in &node.fields {
+            let field_name = Token::get_ident_name(&field.ident);
+            self.emit_line(format!("hash = 31 * hash + std__hash(self->{});", &field_name));
+        }
+        self.emit_line("return hash;");
+        self.emit_line("}");
+        self.switch_buf(BufferType::MainFn);
+        self.emit_line(format!("hash_fns[{}__type_id] = &{}__hash;", &c_name, &c_name));
+        self.switch_buf(BufferType::Body);
+
+        self.switch_buf(prev_buf);
+        Ok(())
     }
 
     fn visit_enum_decl(&mut self, _token: Token, _node: TypedEnumDeclNode) -> Result<(), ()> {
@@ -1475,8 +1684,24 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_instantiation(&mut self, _token: Token, _node: TypedInstantiationNode) -> Result<(), ()> {
-        todo!()
+    fn visit_instantiation(&mut self, _token: Token, node: TypedInstantiationNode) -> Result<(), ()> {
+        let target_c_name = match &*node.target {
+            TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => {
+                self.find_c_var_name(name).unwrap()
+            }
+            _ => todo!()
+        };
+        self.emit(format!("{}__new(", &target_c_name));
+        let num_fields = node.fields.len();
+        for (idx, (_, field_node)) in node.fields.into_iter().enumerate() {
+            self.visit(field_node)?;
+            if idx < num_fields - 1 {
+                self.emit(",");
+            }
+        }
+        self.emit(")");
+
+        Ok(())
     }
 
     fn visit_accessor(&mut self, _token: Token, _node: TypedAccessorNode) -> Result<(), ()> {

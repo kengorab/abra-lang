@@ -59,6 +59,11 @@ bool std__eq(AbraValue v1, AbraValue v2) {
       Obj* o1 = v1.as.obj;
       Obj* o2 = v2.as.obj;
       if (o1->type != o2->type) return false;
+      if (o1->type == OBJ_INSTANCE) {
+          if (o1->type_id != o2->type_id) return false;
+          // o1->type_id will be >= OBJ_INSTANCE
+          return eq_fns[o1->type_id](o1, o2);
+      }
       return eq_fns[o1->type](o1, o2);
     }
   }
@@ -99,8 +104,12 @@ char const* std__to_string(AbraValue val) {
       return val.as.abra_bool ? "true" : "false";
     case ABRA_TYPE_OBJ: {
       Obj* o = AS_OBJ(val);
+      if (o->type == OBJ_INSTANCE) {
+          // o->type_id will be >= OBJ_INSTANCE
+          return to_string_fns[o->type_id](o);
+      }
       return to_string_fns[o->type](o);
-    } break;
+    }
     default:
       UNREACHABLE // All the primitive types have been handled
   }
@@ -117,6 +126,10 @@ size_t std__hash(AbraValue val) {
     case ABRA_TYPE_BOOL: return val.as.abra_bool ? 42643801 : 43112609;
     case ABRA_TYPE_OBJ: {
       Obj* o = AS_OBJ(val);
+      if (o->type == OBJ_INSTANCE) {
+          // o->type_id will be >= OBJ_INSTANCE
+          return hash_fns[o->type_id](o);
+      }
       return hash_fns[o->type](o);
     }
   }

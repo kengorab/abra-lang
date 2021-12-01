@@ -8,9 +8,11 @@ typedef enum {
   OBJ_MAP,
   OBJ_SET,
   OBJ_FUNCTION,
+  OBJ_INSTANCE,
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
+  size_t type_id;
 } Obj;
 
 typedef enum {

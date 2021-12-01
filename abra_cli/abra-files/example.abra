@@ -1,9 +1,33 @@
-val b: Int? = 1233
-val x = match b {
-  Int i => match i {
-    1234 => 5678
-    _ => i + 1
-  }
-  None => 0
+//func f1() {
+//
+//}
+//
+////val A = 123
+//
+//type Person {
+//  name: String
+//  age: Int
+//
+//  func hello(self) = println(self.name)
+//}
+//
+//func f2() {
+//  //println(A)
+//}
+//
+//val me = Person(name: "Ken", age: 29)
+//me.hello()
+//
+////f2()
+
+type Foo3 {
+  foo: String
+
+  func asdf() = println("hello")
+  func yellFoo(self): String = self.foo.toUpper()
 }
-println(x)
+
+Foo3.asdf()
+
+val foo3 = Foo3(foo: "hello")
+println(foo3, foo3.yellFoo())

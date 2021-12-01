@@ -1,0 +1,60 @@
+// Type with required fields
+type Foo1 {
+  foo: String
+  bar: Int
+}
+val foo1 = Foo1(foo: "foo", bar: 24)
+println(foo1)
+
+// Type with optional fields
+type Foo2 {
+  foo: String = ["a"][3] ?: "foo"
+  bar: Int = (() => 24)()
+}
+val foo2 = Foo2()
+println(foo2)
+
+// Test equality
+println(
+  foo1 == foo2,
+  foo1 == "foo1",
+  "foo1" == foo2,
+  foo1 == Foo1(foo: "foo", bar: 24),
+)
+
+// Test hash
+(() => {
+  val set: Set<Foo1> = #{}
+  set.insert(foo1)
+  set.insert(foo1)
+  println(set)
+})()
+
+type Foo3<T> {
+  foo: T
+
+  func init(foo: T): Foo3<T> = Foo3(foo: foo)
+  func yellFoo(self): String = self.foo + "!"
+}
+
+// Test methods
+(() => {
+  val foo3 = Foo3(foo: "hello")
+  val yellFoo = foo3.yellFoo
+  println(foo3, foo3.yellFoo(), yellFoo())
+})()
+
+// Test static methods
+(() => {
+  val foo3 = Foo3.init("hello")
+  println(foo3)
+})()
+
+/* assert(stdout):
+Foo1(foo: foo, bar: 24)
+Foo2(foo: foo, bar: 24)
+false false false true
+#{Foo1(foo: foo, bar: 24)}
+Foo3(foo: hello) hello! hello!
+Foo3(foo: hello)
+*/
