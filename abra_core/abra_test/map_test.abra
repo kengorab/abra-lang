@@ -138,13 +138,17 @@ describe("Map", () => {
 
   describe("#values", () => {
     it("should return an empty set if self is empty", () => {
-      expect({}.values()).toEqual(#{})
+      expect({}.values()).toEqual([])
     })
 
     it("should return a set of self's values", () => {
-      expect({ a: 1, b: 2 }.values()).toEqual(#{1, 2})
-      expect({ a: 1, b: 1 }.values()).toEqual(#{1})
-      expect({ ([1, 2]): true, ([3, 4]): false }.values()).toEqual(#{true, false})
+      val values1 = { a: 1, b: 2 }.values()
+      expect(values1 == [1, 2] || values1 == [2, 1]).toEqual(true)
+
+      val values2 = { ([1, 2]): true, ([3, 4]): false }.values()
+      expect(values2 == [true, false] || values2 == [false, true]).toEqual(true)
+
+      expect({ a: 1, b: 1 }.values()).toEqual([1, 1])
     })
   })
 

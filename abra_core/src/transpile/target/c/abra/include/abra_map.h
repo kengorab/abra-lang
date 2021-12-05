@@ -167,18 +167,19 @@ AbraValue std_map__method_keys(void* _env, AbraValue _self) {
     return set;
 }
 
-// values(): Set<V>
+// values(): V[]
 AbraValue std_map__method_values(void* _env, AbraValue _self) {
     AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
     size_t size = self->hash.size;
-    AbraValue set = alloc_set();
+    AbraValue* items = GC_MALLOC(sizeof(AbraValue) * size);
+
     AbraValue* map_keys = hashmap_keys(&self->hash);
     for (int i = 0; i < size; ++i) {
         AbraValue val = hashmap_get(&self->hash, map_keys[i]);
-        std_set__insert(AS_OBJ(set), val);
+        items[i] = val;
     }
-    return set;
+    return alloc_array(items, size);
 }
 
 // entries(): Set<(K, V)>

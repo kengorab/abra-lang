@@ -601,7 +601,7 @@ impl CCompiler {
         let mut fns_at_path = HashMap::new();
         for (path, fn_name, f, closed_over_vars) in &seen_fns {
             let c_name = match f {
-                FunctionLike::FunctionDecl(fn_kind, decl) => {
+                FunctionLike::FunctionDecl(fn_kind, _) => {
                     let mod_name = self.scopes.first().unwrap().name.clone();
                     let (fn_ident, c_name) = match fn_kind {
                         FnKind::Fn => {

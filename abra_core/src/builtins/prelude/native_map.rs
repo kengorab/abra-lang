@@ -68,12 +68,12 @@ impl NativeMap {
         Value::new_set_obj(keys)
     }
 
-    #[abra_method(signature = "values(): Set<V>")]
+    #[abra_method(signature = "values(): V[]")]
     fn values(&self) -> Value {
         let keys = self._inner.values()
             .map(|v| v.clone())
             .collect();
-        Value::new_set_obj(keys)
+        Value::new_array_obj(keys)
     }
 
     #[abra_method(signature = "entries(): Set<(K, V)>")]
@@ -263,12 +263,15 @@ mod test {
     #[test]
     fn test_map_values() {
         let result = interpret("{}.values()");
-        let expected = set![];
+        let expected = array![];
         assert_eq!(expected, result);
 
         let result = interpret("{ a: 123, b: true }.values()");
-        let expected = set![Value::Int(123), Value::Bool(true)];
-        assert_eq!(expected, result);
+        let expecteds = vec![
+            array![Value::Int(123), Value::Bool(true)],
+            array![Value::Bool(true), Value::Int(123)]
+        ];
+        assert!(expecteds.contains(&result));
     }
 
     #[test]

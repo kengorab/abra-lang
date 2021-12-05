@@ -1,33 +1,6 @@
-//func f1() {
-//
-//}
-//
-////val A = 123
-//
-//type Person {
-//  name: String
-//  age: Int
-//
-//  func hello(self) = println(self.name)
-//}
-//
-//func f2() {
-//  //println(A)
-//}
-//
-//val me = Person(name: "Ken", age: 29)
-//me.hello()
-//
-////f2()
+type DefaultMap<K, V> {
+  default: V
+  _map: Map<K, V> = {}
 
-type Foo3 {
-  foo: String
-
-  func asdf() = println("hello")
-  func yellFoo(self): String = self.foo.toUpper()
+  func defaultMap<_K, _V>(default: _V): DefaultMap<_K, _V> = DefaultMap<_K, _V>(default)
 }
-
-Foo3.asdf()
-
-val foo3 = Foo3(foo: "hello")
-println(foo3, foo3.yellFoo())
