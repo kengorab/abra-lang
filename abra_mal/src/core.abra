@@ -462,5 +462,5 @@ ns["vals"] = Value.BuiltinFn(args => {
     Value.Hash(h) => h
     _ => return Result.Err(Error(error: "vals expects hash as first argument"))
   }
-  Result.Ok(Value.List(hash.values().asArray()))
+  Result.Ok(Value.List(hash.values()))
 })

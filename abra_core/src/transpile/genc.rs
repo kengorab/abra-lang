@@ -305,6 +305,24 @@ fn extract_functions(
         }
     }
 
+    fn visit_binding_pattern(current_known_vars: &mut Vec<String>, pat: &BindingPattern) {
+        match pat {
+            BindingPattern::Variable(v) => {
+                current_known_vars.push(Token::get_ident_name(v));
+            }
+            BindingPattern::Tuple(_, pats) => {
+                for pat in pats {
+                    visit_binding_pattern(current_known_vars, pat);
+                }
+            }
+            BindingPattern::Array(_, pats, _) => {
+                for (pat, _) in pats {
+                    visit_binding_pattern(current_known_vars, pat);
+                }
+            }
+        }
+    }
+
     for node in body {
         match &node {
             TypedAstNode::FunctionDecl(_, _) |
@@ -319,13 +337,7 @@ fn extract_functions(
             }
             TypedAstNode::BindingDecl(_, n) => {
                 extract_functions(&node, &known_vars, path.clone(), FnKind::Fn, seen_fns);
-
-                match &n.binding {
-                    BindingPattern::Variable(v) => {
-                        current_known_vars.push(Token::get_ident_name(v));
-                    }
-                    BindingPattern::Tuple(_, _) | BindingPattern::Array(_, _, _) => todo!()
-                }
+                visit_binding_pattern(&mut current_known_vars, &n.binding);
             }
             TypedAstNode::IfStatement(_, if_node) |
             TypedAstNode::IfExpression(_, if_node) => {
@@ -333,13 +345,7 @@ fn extract_functions(
                 extract_functions(&if_node.condition, &seen_vars, path.clone(), FnKind::Fn, seen_fns);
 
                 if let Some(condition_binding) = &if_node.condition_binding {
-                    match condition_binding {
-                        BindingPattern::Variable(tok) => {
-                            current_known_vars.push(Token::get_ident_name(tok));
-                        }
-                        BindingPattern::Tuple(_, _) |
-                        BindingPattern::Array(_, _, _) => todo!()
-                    }
+                    visit_binding_pattern(&mut current_known_vars, condition_binding);
                 }
 
                 for node in &if_node.if_block {
@@ -1080,14 +1086,7 @@ impl CCompiler {
 
         self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
         if let Some(condition_binding) = node.condition_binding {
-            match condition_binding {
-                BindingPattern::Variable(tok) => {
-                    let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                    self.emit_line(format!("AbraValue {} = if_cond_{};", c_name, salt));
-                }
-                BindingPattern::Tuple(_, _) |
-                BindingPattern::Array(_, _, _) => todo!()
-            }
+            self.visit_binding_pattern(&condition_binding, format!("if_cond_{}", &salt));
         }
 
         if is_expr {
@@ -1235,6 +1234,24 @@ impl CCompiler {
         self.visit(node)?;
         self.emit(")");
         Ok(())
+    }
+
+    fn visit_binding_pattern(&mut self, pat: &BindingPattern, var_name: String) {
+        match pat {
+            BindingPattern::Variable(tok) => {
+                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
+                self.emit_line(format!("AbraValue {} = {};", c_name, var_name));
+            }
+            BindingPattern::Tuple(_, pats) => {
+                let salt = random_string(10);
+                for (idx, pat) in pats.iter().enumerate() {
+                    let tuple_var_name = format!("tuple_item_{}_{}", &salt, &idx);
+                    self.emit_line(format!("AbraValue {} = ((AbraTuple*)AS_OBJ({}))->items[{}];", &tuple_var_name, &var_name, &idx));
+                    self.visit_binding_pattern(pat, tuple_var_name);
+                }
+            }
+            BindingPattern::Array(_, _, _) => {}
+        }
     }
 }
 
@@ -1454,20 +1471,15 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
         let TypedBindingDeclNode { binding, expr, .. } = node;
 
-        match binding {
-            BindingPattern::Variable(tok) => {
-                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                self.emit(format!("AbraValue {} = ", c_name));
-
-                if let Some(expr) = expr {
-                    self.visit(*expr)?;
-                } else {
-                    self.emit("ABRA_NONE");
-                }
-            }
-            BindingPattern::Tuple(_, _) => todo!(),
-            BindingPattern::Array(_, _, _) => todo!()
+        let var_name = format!("bind_destr_{}", random_string(10));
+        self.emit(format!("AbraValue {} = ", var_name));
+        if let Some(expr) = expr {
+            self.visit(*expr)?;
+        } else {
+            self.emit("ABRA_NONE");
         }
+        self.emit_line(";");
+        self.visit_binding_pattern(&binding, var_name);
 
         Ok(())
     }
@@ -1732,13 +1744,9 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         self.emit_line(format!("for (int64_t i = 0; i < iter_idx_{}; ++i) {{", &salt));
         self.scopes.push(Scope { name: "__for_loop".to_string(), bindings: HashMap::new() });
         self.emit_line(format!("AbraValue iter_item_{} = iter_items_{}[i];", &salt, &salt));
-        match node.binding {
-            BindingPattern::Variable(tok) => {
-                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 0);", c_name, &salt));
-            }
-            BindingPattern::Tuple(_, _) | BindingPattern::Array(_, _, _) => todo!()
-        }
+        let var_name = format!("bind_destr_{}", random_string(10));
+        self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 0);", var_name, &salt));
+        self.visit_binding_pattern(&node.binding, var_name);
         if let Some(index_ident) = node.index_ident {
             let c_name = self.add_c_var_name(Token::get_ident_name(&index_ident));
             self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 1);", c_name, &salt));
