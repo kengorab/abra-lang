@@ -88,6 +88,10 @@ AbraValue std_array__range(Obj* obj, int64_t start, int64_t end) {
   int64_t len = (int64_t) self->size;
   range_endpoints(len, &start, &end);
 
+  if (start >= end) {
+      return alloc_array(GC_MALLOC(0), 0);
+  }
+
   int64_t slice_size = end - start;
   AbraValue* items = GC_MALLOC(sizeof(AbraValue) * slice_size);
   for (int i = start; i < end; ++i) {

@@ -1,3 +1,2 @@
-val tuple = ((1, 2), 3)
-val ((a, b), c) = tuple
-println(a, b, c)
+val [a, *b, c, d, e, f, g] = "hello"
+println(a, b, c, d, e, f, g)

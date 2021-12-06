@@ -616,12 +616,12 @@ impl CCompiler {
                             c_name.push_str("__");
                             c_name.push_str(&fn_ident);
                             (fn_ident, c_name)
-                        },
+                        }
                         FnKind::Method(type_name) => {
                             let fn_ident = format!("{}__method_{}", type_name, &fn_name);
                             let c_name = format!("{}__{}", mod_name, &fn_ident);
                             (fn_ident, c_name)
-                        },
+                        }
                         FnKind::StaticMethod(type_name) => {
                             let fn_ident = format!("{}__static_method_{}", type_name, &fn_name);
                             let c_name = format!("{}__{}", mod_name, &fn_ident);
@@ -1246,11 +1246,38 @@ impl CCompiler {
                 let salt = random_string(10);
                 for (idx, pat) in pats.iter().enumerate() {
                     let tuple_var_name = format!("tuple_item_{}_{}", &salt, &idx);
-                    self.emit_line(format!("AbraValue {} = ((AbraTuple*)AS_OBJ({}))->items[{}];", &tuple_var_name, &var_name, &idx));
+                    self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ({}), {});", &tuple_var_name, &var_name, &idx));
                     self.visit_binding_pattern(pat, tuple_var_name);
                 }
             }
-            BindingPattern::Array(_, _, _) => {}
+            BindingPattern::Array(_, pats, is_string) => {
+                let salt = random_string(10);
+                let num_pats = pats.len();
+                let mut seen_splat = false;
+                for (idx, (pat, is_splat)) in pats.iter().enumerate() {
+                    let array_var_name = format!("array_item_{}_{}", &salt, &idx).replace("-", "neg");
+                    if *is_splat {
+                        if (idx as usize) == num_pats - 1 {
+                            let f = if *is_string { "std_string__range_to_end" } else { "std_array__range_to_end" };
+                            self.emit_line(format!("AbraValue {} = {}(AS_OBJ({}), {});", &array_var_name, f, &var_name, &idx));
+                        } else {
+                            let f = if *is_string { "std_string__range" } else { "std_array__range" };
+                            let end_idx = num_pats - (idx as usize) - 1;
+                            self.emit_line(format!("AbraValue {} = {}(AS_OBJ({}), {}, -{});", &array_var_name, f, &var_name, &idx, end_idx));
+                            self.emit_line(format!("int64_t cur_idx_{} = {} + ((AbraArray*)AS_OBJ({}))->size;", salt, idx, array_var_name));
+                            seen_splat = true;
+                        };
+                    } else {
+                        let f = if *is_string { "std_string__index" } else { "std_array__index" };
+                        if seen_splat {
+                            self.emit_line(format!("AbraValue {} = {}(AS_OBJ({}), cur_idx_{}++);", &array_var_name, f, &var_name, salt));
+                        } else {
+                            self.emit_line(format!("AbraValue {} = {}(AS_OBJ({}), {});", &array_var_name, f, &var_name, &idx));
+                        }
+                    }
+                    self.visit_binding_pattern(pat, array_var_name);
+                }
+            }
         }
     }
 }

@@ -62,6 +62,10 @@ AbraValue std_string__range(Obj* obj, int64_t start, int64_t end) {
   int64_t len = self->size;
   range_endpoints(len, &start, &end);
 
+  if (start >= end) {
+    return alloc_string("", 0);
+  }
+
   int64_t slice_size = end - start;
   char* tmp = malloc(slice_size);
   memcpy(tmp, self->data+start, slice_size);
