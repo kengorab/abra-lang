@@ -198,6 +198,7 @@ bool std_type_is(AbraValue val, size_t type_id) {
     if (val.type == ABRA_TYPE_OBJ) {
         Obj* o = AS_OBJ(val);
         if (o->type == OBJ_STR) return type_id == ABRA_TYPE_ID_STRING;
+        if (o->type == OBJ_INSTANCE) return o->type_id == type_id;
 
         printf("Unknown type_id %zu\n", type_id);
         return false;

@@ -60,6 +60,18 @@ println("Test match expression:")
   }
 })()
 
+// Matching on user-defined types
+type Foo { foo: String }
+val foos = [Foo(foo: "asdf")]
+match foos[0] {
+  Foo f => println(f.foo)
+  None => println("nothing")
+}
+match foos[1] {
+  Foo f => println(f.foo)
+  None => println("nothing")
+}
+
 /* assert(stdout):
 Test None & builtin type matching:
 Int: 1234
@@ -83,4 +95,6 @@ Test match expression:
 1234
 5678
 0
+asdf
+nothing
 */

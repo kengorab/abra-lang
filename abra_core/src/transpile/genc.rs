@@ -990,6 +990,10 @@ impl CCompiler {
                         is_typeref = true;
                         (c_name, false)
                     }
+                    Type::Struct(t) => {
+                        is_typeref = true;
+                        (self.find_c_var_name(&t.name).unwrap(), false)
+                    }
                     _ => todo!(),
                 };
 
