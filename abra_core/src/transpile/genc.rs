@@ -338,6 +338,9 @@ fn extract_functions(
             TypedAstNode::BindingDecl(_, n) => {
                 extract_functions(&node, &known_vars, path.clone(), FnKind::Fn, seen_fns);
                 visit_binding_pattern(&mut current_known_vars, &n.binding);
+                if let Some(expr) = &n.expr {
+                    walk_and_find_vars(&expr, &mut seen_vars);
+                }
             }
             TypedAstNode::IfStatement(_, if_node) |
             TypedAstNode::IfExpression(_, if_node) => {

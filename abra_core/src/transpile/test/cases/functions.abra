@@ -69,7 +69,8 @@ hello3()("world")
 val H = "hello"
 func hello4(h: String) {
   func sayHi(H: String) = println(H + " " + h)
-  sayHi(H)
+  val outerH = H
+  sayHi(outerH)
 }
 hello4("world")
 
