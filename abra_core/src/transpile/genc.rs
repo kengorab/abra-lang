@@ -131,8 +131,36 @@ fn extract_functions(
             TypedAstNode::IfStatement(_, n) |
             TypedAstNode::IfExpression(_, n) => {
                 walk_and_find_vars(&n.condition, vars);
+
+                fn visit_binding_pattern(vars: &mut Vec<String>, pat: &BindingPattern) {
+                    match pat {
+                        BindingPattern::Variable(v) => {
+                            vars.push(Token::get_ident_name(v));
+                        }
+                        BindingPattern::Tuple(_, pats) => {
+                            for pat in pats {
+                                visit_binding_pattern(vars, pat);
+                            }
+                        }
+                        BindingPattern::Array(_, pats, _) => {
+                            for (pat, _) in pats {
+                                visit_binding_pattern(vars, pat);
+                            }
+                        }
+                    }
+                }
+
+                let mut binding_vars = vec![];
+                if let Some(binding) = &n.condition_binding {
+                    visit_binding_pattern(&mut binding_vars, &binding);
+                }
                 for node in &n.if_block {
                     walk_and_find_vars(&node, vars);
+                    for v in &binding_vars {
+                        if let Some((idx, _)) = vars.iter().find_position(|var| var == &v) {
+                            vars.remove(idx);
+                        }
+                    }
                 }
                 if let Some(else_block) = &n.else_block {
                     for node in else_block {
@@ -149,8 +177,10 @@ fn extract_functions(
                 }
             }
             TypedAstNode::Accessor(_, n) => walk_and_find_vars(&n.target, vars),
+            TypedAstNode::ForLoop(_, n) => {
+                walk_and_find_vars(&n.iterator, vars);
+            }
             TypedAstNode::Instantiation(_, _) |
-            TypedAstNode::ForLoop(_, _) |
             TypedAstNode::WhileLoop(_, _) |
             TypedAstNode::Break(_) |
             TypedAstNode::Continue(_) |
@@ -1838,10 +1868,6 @@ impl TypedAstVisitor<(), ()> for CCompiler {
     }
 
     fn visit_return(&mut self, _token: Token, node: TypedReturnNode) -> Result<(), ()> {
-        if let Some(target) = &node.target {
-            self.lift(target)?;
-        }
-
         self.emit("return ");
         if let Some(target) = node.target {
             self.visit(*target)?;
