@@ -410,9 +410,9 @@ fn extract_functions(
 const STARTING_TYPE_ID: usize = 6;
 
 impl CCompiler {
-    fn new() -> Self {
+    fn new(module_name: String) -> Self {
         let root_scope = Scope {
-            name: "example".to_string(),
+            name: module_name,
             bindings: {
                 let mut m = HashMap::new();
                 m.insert("print".to_string(), "std__print_val".to_string());
@@ -455,8 +455,8 @@ impl CCompiler {
         }
     }
 
-    pub fn gen_c(ast: Vec<TypedAstNode>) -> Result<String, ()> {
-        let mut compiler = CCompiler::new();
+    pub fn gen_c(module_name: &String, ast: Vec<TypedAstNode>) -> Result<String, ()> {
+        let mut compiler = CCompiler::new(module_name.clone());
 
         compiler.switch_buf(BufferType::FwdDecls);
         compiler.emit_line("#include \"abra.h\"");

@@ -35,8 +35,12 @@ pub fn run_tests() {
         println!("Running tests...");
     }
 
+    let working_dir = std::env::temp_dir().join(random_string(7));
+    fs::create_dir(&working_dir)
+        .map_err(|_| format!("Could not create tmp dir {}", working_dir.as_path().to_str().unwrap()))
+        .unwrap();
     for case in test_cases {
-        let res = run_test(&case);
+        let res = run_test(&working_dir, &case);
         results.push((case.name, res));
     }
 
@@ -52,10 +56,10 @@ pub fn run_tests() {
     if has_failure { panic!("Encountered test failures for native target 'C'"); }
 }
 
-fn run_test(case: &TestCase) -> Option<String> {
+fn run_test(working_dir: &PathBuf, case: &TestCase) -> Option<String> {
     match read_test_case(&case) {
         Ok((contents, assertions)) => {
-            match compile_and_run(&case, &contents) {
+            match compile_and_run(&working_dir, &case, &contents) {
                 Ok(output) => {
                     if output != assertions {
                         let err = format!("Expected:\n{}\n    Got:\n{}", assertions, output);
@@ -69,7 +73,7 @@ fn run_test(case: &TestCase) -> Option<String> {
     }
 }
 
-fn compile_and_run(case: &TestCase, input: &String) -> Result<String, String> {
+fn compile_and_run(working_dir: &PathBuf, case: &TestCase, input: &String) -> Result<String, String> {
     let mock_reader = MockModuleReader::new(vec![]);
     let mut mock_loader = ModuleLoader::new(&mock_reader);
     let module_id = ModuleId::from_name(&case.name);
@@ -80,14 +84,10 @@ fn compile_and_run(case: &TestCase, input: &String) -> Result<String, String> {
     )?;
     let typed_ast = module.typed_nodes;
 
-    let working_dir = std::env::temp_dir().join(random_string(7));
-    fs::create_dir(&working_dir)
-        .map_err(|_| format!("Could not create tmp dir {}", working_dir.as_path().to_str().unwrap()))?;
-
-    let c_code = CCompiler::gen_c(typed_ast).unwrap();
-
-    let src_file = format!("{}.c", &case.name);
-    let out_file = &case.name;
+    let module_name = &case.name;
+    let c_code = CCompiler::gen_c(&module_name, typed_ast).unwrap();
+    let src_file = format!("{}.c", &module_name);
+    let out_file = &module_name;
     std::fs::write(working_dir.join(&src_file), c_code).unwrap();
     if PRINT_TMP_FILES {
         println!("Wrote {}", working_dir.join(&src_file).display());

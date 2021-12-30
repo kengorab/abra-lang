@@ -150,17 +150,22 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         }
     }
 
-    let src_file = "example.c";
-    let out_file = "example";
-    let c_code = abra_core::transpile::genc::CCompiler::gen_c(ast)?;
-    std::fs::write(dotabra_dir.join(&src_file), c_code).unwrap();
+    let module_name = file_path.strip_prefix(&working_dir).unwrap();
+    let module_name = module_name.to_str().unwrap()
+        .replace('/', "_")
+        .replace("-", "-")
+        .replace(".abra", "");
+    let gen_src_file = format!("{}.c", &module_name);
+    let c_code = abra_core::transpile::genc::CCompiler::gen_c(&module_name, ast)?;
+    std::fs::write(dotabra_dir.join(&gen_src_file), c_code).unwrap();
 
-    if let Err(e) = clang(&dotabra_dir, &src_file, &out_file) {
+    let out_bin_file = module_name;
+    if let Err(e) = clang(&dotabra_dir, &gen_src_file, &out_bin_file) {
         eprintln!("{}", e);
         std::process::exit(1);
     }
 
-    let mut run_cmd = Command::new(dotabra_dir.join(out_file).to_str().unwrap());
+    let mut run_cmd = Command::new(dotabra_dir.join(out_bin_file).to_str().unwrap());
     let run_output = run_cmd.output().unwrap();
     if !run_output.status.success() {
         eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
