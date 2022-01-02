@@ -7,7 +7,7 @@ extern crate rustyline;
 
 use crate::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
-use abra_core::{compile, compile_and_disassemble, Error};
+use abra_core::{compile, compile_and_disassemble, Error, typecheck};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
 use abra_core::module_loader::ModuleReader;
@@ -110,22 +110,11 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let module_id = ModuleId::from_path(&opts.file_path);
 
     let module_reader = fs_module_reader::FsModuleReader::new(file_path.clone());
-    let loader = abra_core::module_loader::ModuleLoader::new(&module_reader);
+    let mut loader = abra_core::module_loader::ModuleLoader::new(&module_reader);
 
-    let result = match abra_core::lexer::lexer::tokenize(&module_id, &contents) {
-        Err(e) => Err(Error::LexerError(e)),
-        Ok(tokens) => match abra_core::parser::parser::parse(module_id.clone(), tokens) {
-            Err(e) => Err(Error::ParseError(e)),
-            Ok(abra_core::parser::parser::ParseResult { nodes, .. }) => {
-                match abra_core::typechecker::typechecker::typecheck(module_id, nodes, &loader) {
-                    Err(e) => Err(Error::TypecheckerError(e)),
-                    Ok(module) => Ok(module.typed_nodes)
-                }
-            }
-        }
-    };
-    let ast = match result {
-        Ok(ast) => ast,
+    let typecheck_result = typecheck(module_id, &contents, &mut loader);
+    let ast = match typecheck_result {
+        Ok(typed_module) => typed_module.typed_nodes,
         Err(e) => {
             let module_id = e.module_id();
             let contents = module_reader.read_module(module_id).unwrap_or(contents);
@@ -156,7 +145,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         .replace("-", "-")
         .replace(".abra", "");
     let gen_src_file = format!("{}.c", &module_name);
-    let c_code = abra_core::transpile::genc::CCompiler::gen_c(&module_name, ast)?;
+    let c_code = abra_core::transpile::genc::CCompiler::gen_c(&mut loader, &module_name, ast)?;
     std::fs::write(dotabra_dir.join(&gen_src_file), c_code).unwrap();
 
     let out_bin_file = module_name;

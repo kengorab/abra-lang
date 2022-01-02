@@ -85,7 +85,7 @@ fn compile_and_run(working_dir: &PathBuf, case: &TestCase, input: &String) -> Re
     let typed_ast = module.typed_nodes;
 
     let module_name = &case.name;
-    let c_code = CCompiler::gen_c(&module_name, typed_ast).unwrap();
+    let c_code = CCompiler::gen_c(&mut mock_loader, &module_name, typed_ast).unwrap();
     let src_file = format!("{}.c", &module_name);
     let out_file = &module_name;
     std::fs::write(working_dir.join(&src_file), c_code).unwrap();

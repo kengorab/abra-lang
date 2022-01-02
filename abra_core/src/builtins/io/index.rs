@@ -1,3 +1,4 @@
+use std::env::current_dir;
 use abra_native::abra_function;
 use crate::builtins::native_module_builder::{ModuleSpec, ModuleSpecBuilder};
 use crate::vm::value::Value;
@@ -13,6 +14,12 @@ fn read_file(mut args: Arguments) -> Value {
     }
 }
 
+#[abra_function(signature = "getCurrentDir(): String")]
+fn get_current_dir() -> Value {
+    let cwd = current_dir().unwrap().to_str().unwrap().to_string();
+    Value::new_string_obj(cwd)
+}
+
 #[abra_function(signature = "prompt(path: String?): String")]
 fn prompt(mut args: Arguments, vm: &mut VM) -> Value {
     let prompt = args.next_string_or_default("");
@@ -23,6 +30,7 @@ fn prompt(mut args: Arguments, vm: &mut VM) -> Value {
 pub fn load_module() -> ModuleSpec {
     ModuleSpecBuilder::new("io")
         .add_function(read_file__gen_spec)
+        .add_function(get_current_dir__gen_spec)
         .add_function(prompt__gen_spec)
         .build()
 }

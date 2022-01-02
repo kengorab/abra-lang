@@ -1,2 +1,3 @@
-val [a, *b, c, d, e, f, g] = "hello"
-println(a, b, c, d, e, f, g)
+import readFile, getCurrentDir from io
+
+println(readFile(getCurrentDir() + "/../README.md"))

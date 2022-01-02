@@ -3,13 +3,16 @@ use itertools::Itertools;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
+use crate::{ModuleId, ModuleLoader, ModuleReader};
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
+use crate::typechecker::typechecker::ExportedValue;
 use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
 #[derive(Clone)]
 enum BufferType {
     MainFn,
+    Includes,
     FwdDecls,
     Body,
 }
@@ -20,7 +23,8 @@ struct Scope {
     bindings: HashMap<String, String>,
 }
 
-pub struct CCompiler {
+pub struct CCompiler<'a, R: ModuleReader> {
+    includes_buf: String,
     main_fn_buf: String,
     fwd_decls_buf: String,
     body_buf: String,
@@ -28,6 +32,8 @@ pub struct CCompiler {
     scopes: Vec<Scope>,
     type_ids: HashMap<String, usize>,
     curr_type_id: usize,
+    module_loader: &'a ModuleLoader<'a, R>,
+
     if_result_var_names_stack: Vec<VecDeque<String>>,
     match_result_var_names_stack: Vec<VecDeque<String>>,
     array_literal_var_names_stack: Vec<VecDeque<String>>,
@@ -409,8 +415,8 @@ fn extract_functions(
 // This MUST be equal to the `OBJ_INSTANCE` enum value defined in `abra.h`
 const STARTING_TYPE_ID: usize = 6;
 
-impl CCompiler {
-    fn new(module_name: String) -> Self {
+impl<'a, R: ModuleReader> CCompiler<'a, R> {
+    fn new(module_loader: &'a mut ModuleLoader<R>, module_name: String) -> Self {
         let root_scope = Scope {
             name: module_name,
             bindings: {
@@ -430,6 +436,7 @@ impl CCompiler {
         };
 
         CCompiler {
+            includes_buf: "".to_string(),
             main_fn_buf: "".to_string(),
             fwd_decls_buf: "".to_string(),
             body_buf: "".to_string(),
@@ -439,6 +446,8 @@ impl CCompiler {
                 .map(|(idx, name)| (name.to_string(), idx))
                 .collect(),
             curr_type_id: STARTING_TYPE_ID,
+            module_loader,
+
             if_result_var_names_stack: vec![VecDeque::new()],
             match_result_var_names_stack: vec![VecDeque::new()],
             array_literal_var_names_stack: vec![VecDeque::new()],
@@ -455,15 +464,23 @@ impl CCompiler {
         }
     }
 
-    pub fn gen_c(module_name: &String, ast: Vec<TypedAstNode>) -> Result<String, ()> {
-        let mut compiler = CCompiler::new(module_name.clone());
+    pub fn gen_c(module_loader: &mut ModuleLoader<R>, module_name: &String, ast: Vec<TypedAstNode>) -> Result<String, ()> {
+        let mut compiler = CCompiler::new(module_loader, module_name.clone());
 
-        compiler.switch_buf(BufferType::FwdDecls);
+        let (imports, non_imports) = ast.into_iter()
+            .partition(|node| if let TypedAstNode::ImportStatement(_, _) = node { true } else { false });
+        let ast = non_imports;
+
+        compiler.switch_buf(BufferType::Includes);
         compiler.emit_line("#include \"abra.h\"");
 
         compiler.switch_buf(BufferType::MainFn);
         compiler.emit_line("int main(int argc, char** argv) {");
         compiler.emit_line("abra_init();");
+
+        for import_node in imports {
+            compiler.visit(import_node)?;
+        }
 
         compiler.lift_types(&ast)?;
 
@@ -491,7 +508,8 @@ impl CCompiler {
         compiler.emit_line("  return 0;\n}");
 
         let output = format!(
-            "{}\n{}\n{}",
+            "{}\n{}\n{}\n{}",
+            compiler.includes_buf,
             compiler.fwd_decls_buf,
             compiler.body_buf,
             compiler.main_fn_buf,
@@ -547,6 +565,7 @@ impl CCompiler {
 
     fn buf(&mut self) -> &mut String {
         match self.buf_type {
+            BufferType::Includes => &mut self.includes_buf,
             BufferType::MainFn => &mut self.main_fn_buf,
             BufferType::FwdDecls => &mut self.fwd_decls_buf,
             BufferType::Body => &mut self.body_buf,
@@ -584,11 +603,11 @@ impl CCompiler {
     }
 
     fn lift_types(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
+        // Typedef struct
+        let prev_buf = self.switch_buf(BufferType::Body);
+
         for node in ast {
             let node = if let TypedAstNode::TypeDecl(_, n) = &node { n } else { continue; };
-
-            // Typedef struct
-            let prev_buf = self.switch_buf(BufferType::Body);
 
             let type_name = Token::get_ident_name(&node.name);
             let c_name = self.add_c_var_name(&type_name);
@@ -601,7 +620,10 @@ impl CCompiler {
             self.emit_line(format!("}} {};", &c_name));
 
             let type_id = self.add_type(&type_name);
-            self.emit_line(format!("#define {}__type_id {}", &c_name, type_id));
+            self.emit_line(format!("size_t {}__type_id;", &c_name));
+            self.switch_buf(BufferType::MainFn);
+            self.emit_line(format!("{}__type_id = {};", &c_name, &type_id));
+            self.switch_buf(BufferType::Body);
 
             // Constructor function
             self.emit(format!("AbraValue {}__new(", &c_name));
@@ -624,8 +646,9 @@ impl CCompiler {
             self.emit_line(format!("return (AbraValue){{.type = ABRA_TYPE_OBJ, .as = {{.obj = ((Obj*)self)}}}};"));
             self.emit_line("}");
 
-            self.switch_buf(prev_buf);
         }
+
+        self.switch_buf(prev_buf);
 
         Ok(())
     }
@@ -1319,7 +1342,7 @@ impl CCompiler {
     }
 }
 
-impl TypedAstVisitor<(), ()> for CCompiler {
+impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
     fn visit_literal(&mut self, _token: Token, node: TypedLiteralNode) -> Result<(), ()> {
         match node {
             TypedLiteralNode::IntLiteral(i) => self.emit(format!("NEW_INT({})", i)),
@@ -1892,8 +1915,38 @@ impl TypedAstVisitor<(), ()> for CCompiler {
         Ok(())
     }
 
-    fn visit_import_statement(&mut self, _token: Token, _node: TypedImportNode) -> Result<(), ()> {
-        todo!()
+    fn visit_import_statement(&mut self, _token: Token, node: TypedImportNode) -> Result<(), ()> {
+        let TypedImportNode { module_id, imports, .. } = node;
+        let ModuleId(is_local_import, path) = &module_id;
+        let module = self.module_loader.get_module(&module_id);
+
+        if *is_local_import { unimplemented!(); }
+        if path.len() > 1 { unimplemented!(); }
+
+        self.switch_buf(BufferType::Includes);
+        let builtin_module_name = path.first().unwrap();
+        self.emit_line(format!("#include \"abra_module_{}.h\"", builtin_module_name));
+
+        self.switch_buf(BufferType::MainFn);
+        self.emit_line(format!("init_module_{}();", builtin_module_name));
+
+        for import_name in imports {
+            self.switch_buf(BufferType::Body);
+            let c_name = self.add_c_var_name_with_suffix(&import_name, "_val");
+            self.emit_line(format!("AbraValue {};", c_name));
+
+            self.switch_buf(BufferType::MainFn);
+
+            let export = module.exports.get(&import_name).unwrap();
+            let import_c_name = match export {
+                ExportedValue::Binding(Type::Fn(_)) => format!("{}__{}_val", builtin_module_name, &import_name),
+                ExportedValue::Binding(_) => format!("{}__{}", builtin_module_name, &import_name),
+                ExportedValue::Type { .. } => todo!()
+            };
+            self.emit_line(format!("{} = {};", c_name, import_c_name));
+        }
+
+        Ok(())
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<(), ()> {
