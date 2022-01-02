@@ -3,11 +3,11 @@
 
 #include "abra_module.h"
 
+#include "limits.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
 #include "sys/stat.h"
-#include "sys/syslimits.h"
 #include "unistd.h"
 
 ABRA_FN(io, getCurrentDir)(void* _env) {
