@@ -186,18 +186,13 @@ AbraValue std_option__coalesce(AbraValue lhs, AbraValue rhs) {
     return IS_NONE(lhs) ? rhs : lhs;
 }
 
-#define ABRA_TYPE_ID_INT 0
-#define ABRA_TYPE_ID_FLOAT 1
-#define ABRA_TYPE_ID_BOOL 2
-#define ABRA_TYPE_ID_STRING 3
-
 bool std_type_is(AbraValue val, size_t type_id) {
-    if (val.type == ABRA_TYPE_INT) return type_id == ABRA_TYPE_ID_INT;
-    if (val.type == ABRA_TYPE_FLOAT) return type_id == ABRA_TYPE_ID_FLOAT;
-    if (val.type == ABRA_TYPE_BOOL) return type_id == ABRA_TYPE_ID_BOOL;
+    if (val.type == ABRA_TYPE_INT) return type_id == std__Int__type_id;
+    if (val.type == ABRA_TYPE_FLOAT) return type_id == std__Float__type_id;
+    if (val.type == ABRA_TYPE_BOOL) return type_id == std__Bool__type_id;
     if (val.type == ABRA_TYPE_OBJ) {
         Obj* o = AS_OBJ(val);
-        if (o->type == OBJ_STR) return type_id == ABRA_TYPE_ID_STRING;
+        if (o->type == OBJ_STR) return type_id == std__String__type_id;
         if (o->type == OBJ_INSTANCE) return o->type_id == type_id;
 
         printf("Unknown type_id %zu\n", type_id);

@@ -1,0 +1,15 @@
+import Date from date
+
+val d = Date(year: 2022, month: 1, day: 2)
+println(d)
+
+val tomorrow = d.addDays(1)
+println(tomorrow)
+
+println(d == tomorrow, d == tomorrow.addDays(-1))
+
+/* assert(stdout):
+Date(year: 2022, month: 1, day: 2, hour: None, minute: None, second: None)
+Date(year: 2022, month: 1, day: 3, hour: None, minute: None, second: None)
+false true
+*/

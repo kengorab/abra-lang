@@ -9,11 +9,24 @@ typedef enum {
   OBJ_SET,
   OBJ_FUNCTION,
   OBJ_INSTANCE,
+  _OBJECT_TYPE_END
 } ObjectType;
 typedef struct Obj {
   ObjectType type;
   size_t type_id;
 } Obj;
+
+// Predefined type_ids for builtins. Note that additional types will be assigned
+// a type_id at runtime, incrementing from __next_type_id. Note also that there is
+// a gap between the predefined type_ids and the start of the auto-incrementing
+// type_ids. This is okay, as the two are actually unrelated; the important thing
+// about the auto-incrementing type_ids is that their entries in
+// eq_fns/to_string_fns/hash_fns begins at OBJ_INSTANCE.
+size_t std__Int__type_id = 0;
+size_t std__Float__type_id = 1;
+size_t std__Bool__type_id = 2;
+size_t std__String__type_id = 3;
+static size_t __next_type_id = _OBJECT_TYPE_END - 1;
 
 typedef enum {
   ABRA_TYPE_NONE = 0,

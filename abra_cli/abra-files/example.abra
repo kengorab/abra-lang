@@ -1,3 +1,12 @@
-import readFile, getCurrentDir from io
+import readFile from io
+import Date from date
 
-println(readFile(getCurrentDir() + "/../README.md"))
+val d = Date(year: 2022, month: 1, day: 2)
+println(d)
+
+val tomorrow = d.addDays(1)
+println(tomorrow)
+
+// TODO: `toString` should be available as a method to explicitly call
+// val m = { a: 1 }
+// println(m.toString())

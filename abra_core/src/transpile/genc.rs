@@ -30,8 +30,7 @@ pub struct CCompiler<'a, R: ModuleReader> {
     body_buf: String,
     buf_type: BufferType,
     scopes: Vec<Scope>,
-    type_ids: HashMap<String, usize>,
-    curr_type_id: usize,
+    c_type_names: HashMap<String, String>,
     module_loader: &'a ModuleLoader<'a, R>,
 
     if_result_var_names_stack: Vec<VecDeque<String>>,
@@ -412,9 +411,6 @@ fn extract_functions(
     seen_fns.push((path, fn_name, f, closed_over_variables))
 }
 
-// This MUST be equal to the `OBJ_INSTANCE` enum value defined in `abra.h`
-const STARTING_TYPE_ID: usize = 6;
-
 impl<'a, R: ModuleReader> CCompiler<'a, R> {
     fn new(module_loader: &'a mut ModuleLoader<R>, module_name: String) -> Self {
         let root_scope = Scope {
@@ -442,10 +438,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             body_buf: "".to_string(),
             buf_type: BufferType::MainFn,
             scopes: vec![root_scope],
-            type_ids: vec!["Int", "Float", "Bool", "String"].into_iter().enumerate()
-                .map(|(idx, name)| (name.to_string(), idx))
-                .collect(),
-            curr_type_id: STARTING_TYPE_ID,
+            c_type_names: HashMap::new(),
             module_loader,
 
             if_result_var_names_stack: vec![VecDeque::new()],
@@ -540,21 +533,22 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
         let prefix = self.scopes.iter().map(|Scope { name, .. }| name).join("_");
 
         let c_name = format!("{}__{}{}", prefix, name.as_ref(), suffix.as_ref());
-        self.insert_top_level_binding(name, &c_name);
+        self.insert_binding(name, &c_name);
         c_name
     }
 
-    fn insert_top_level_binding<S1: AsRef<str>, S2: AsRef<str>>(&mut self, name: S1, binding_name: S2) {
+    fn insert_binding<S1: AsRef<str>, S2: AsRef<str>>(&mut self, name: S1, binding_name: S2) {
         self.scopes.last_mut().expect("There's always at least 1 scope")
             .bindings
             .insert(name.as_ref().to_string(), binding_name.as_ref().to_string());
     }
 
-    fn add_type<S: AsRef<str>>(&mut self, type_name: S) -> usize {
-        let type_id = self.curr_type_id;
-        self.type_ids.insert(type_name.as_ref().to_string(), type_id);
-        self.curr_type_id += 1;
-        type_id
+    fn c_name_for_type<S: AsRef<str>>(&self, type_name: S) -> String {
+        format!("{}__{}", self.scopes.first().unwrap().name, type_name.as_ref())
+    }
+
+    fn c_name_for_type_in_module<S1: AsRef<str>, S2: AsRef<str>>(mod_name: S1, type_name: S2) -> String {
+        format!("{}__{}", mod_name.as_ref(), type_name.as_ref())
     }
 
     fn switch_buf(&mut self, buf_type: BufferType) -> BufferType {
@@ -611,6 +605,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
 
             let type_name = Token::get_ident_name(&node.name);
             let c_name = self.add_c_var_name(&type_name);
+            self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
             self.emit_line(format!("typedef struct {} {{", &c_name));
             self.emit_line("  Obj _header;");
             for field in &node.fields {
@@ -619,10 +614,9 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             }
             self.emit_line(format!("}} {};", &c_name));
 
-            let type_id = self.add_type(&type_name);
             self.emit_line(format!("size_t {}__type_id;", &c_name));
             self.switch_buf(BufferType::MainFn);
-            self.emit_line(format!("{}__type_id = {};", &c_name, &type_id));
+            self.emit_line(format!("{}__type_id = __next_type_id++;", &c_name));
             self.switch_buf(BufferType::Body);
 
             // Constructor function
@@ -1031,24 +1025,26 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                         "prelude/Map" => ("std_map".to_string(), true),
                         n => {
                             let type_name = n.split("/").last().unwrap();
-                            let c_name = match self.find_c_var_name(type_name) {
+                            let type_c_name = self.c_name_for_type(&type_name);
+                            let c_name = match self.c_type_names.get(&type_c_name) {
                                 Some(c_name) => c_name,
-                                None => {
-                                    unimplemented!("Accessing values of type {} not implemented", n);
-                                }
+                                None => unimplemented!("Accessing values of type {} not implemented", n)
                             };
-                            (c_name, true)
+                            (c_name.clone(), true)
                         }
                     }
                     Type::Reference(t, _) => {
                         let type_name = t.split("/").last().unwrap();
-                        let c_name = self.find_c_var_name(type_name).unwrap();
+                        let type_c_name = self.c_name_for_type(&type_name);
+                        let c_name = self.c_type_names.get(&type_c_name).unwrap();
                         is_typeref = true;
-                        (c_name, false)
+                        (c_name.clone(), false)
                     }
                     Type::Struct(t) => {
                         is_typeref = true;
-                        (self.find_c_var_name(&t.name).unwrap(), false)
+                        let type_c_name = self.c_name_for_type(&t.name);
+                        let c_name = self.c_type_names.get(&type_c_name).unwrap();
+                        (c_name.clone(), false)
                     }
                     _ => todo!(),
                 };
@@ -1229,10 +1225,14 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 TypedMatchKind::Wildcard => self.emit("true"),
                 TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
                 TypedMatchKind::Type { type_name, .. } => {
-                    let type_id = self.type_ids.get(&type_name)
-                        .expect(&format!("Should have registered type of name {}", &type_name))
-                        .clone();
-                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_id));
+                    let type_c_name = match type_name.as_ref() {
+                        "Int"| "Float"| "Bool"| "String" => format!("std__{}__type_id", &type_name),
+                        _ => {
+                            let type_c_name = self.c_name_for_type(&type_name);
+                            format!("{}__type_id", self.c_type_names.get(&type_c_name).unwrap())
+                        }
+                    };
+                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_c_name));
                 }
                 TypedMatchKind::EnumVariant { .. } => {}
                 TypedMatchKind::Constant { node } => {
@@ -1621,11 +1621,12 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
                 str_len += 2; // Account for `, `
             }
         }
-        self.emit_line(format!(
-            "size_t str_len = sizeof(char)*{}+{}+1;",
-            str_len,
-            field_str_var_names.iter().map(|n| format!("{}_len", n)).join("+")
-        ));
+        if field_str_var_names.is_empty() {
+            self.emit_line(format!("size_t str_len = sizeof(char)*{}+1;", str_len));
+        } else {
+            let field_str_len = field_str_var_names.iter().map(|n| format!("{}_len", n)).join("+");
+            self.emit_line(format!("size_t str_len = sizeof(char)*{}+{}+1;", str_len, field_str_len));
+        };
         self.emit_line("char* str = malloc(str_len);");
         self.emit(format!("sprintf(str, \"{}(", &type_name));
         for (idx, field) in node.fields.iter().enumerate() {
@@ -1635,7 +1636,11 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
                 self.emit(", ");
             }
         }
-        self.emit_line(format!(")\", {});", field_str_var_names.iter().join(", ")));
+        if field_str_var_names.is_empty() {
+            self.emit_line(")\");");
+        } else {
+            self.emit_line(format!(")\", {});", field_str_var_names.iter().join(", ")));
+        }
         self.emit_line("str[str_len] = 0;");
         self.emit_line("return str;");
         self.emit_line("}");
@@ -1786,7 +1791,8 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
     fn visit_instantiation(&mut self, _token: Token, node: TypedInstantiationNode) -> Result<(), ()> {
         let target_c_name = match &*node.target {
             TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => {
-                self.find_c_var_name(name).unwrap()
+                let type_c_name = self.c_name_for_type(name);
+                self.c_type_names.get(&type_c_name).unwrap().clone()
             }
             _ => todo!()
         };
@@ -1931,19 +1937,28 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         self.emit_line(format!("init_module_{}();", builtin_module_name));
 
         for import_name in imports {
-            self.switch_buf(BufferType::Body);
-            let c_name = self.add_c_var_name_with_suffix(&import_name, "_val");
-            self.emit_line(format!("AbraValue {};", c_name));
-
-            self.switch_buf(BufferType::MainFn);
-
             let export = module.exports.get(&import_name).unwrap();
-            let import_c_name = match export {
-                ExportedValue::Binding(Type::Fn(_)) => format!("{}__{}_val", builtin_module_name, &import_name),
-                ExportedValue::Binding(_) => format!("{}__{}", builtin_module_name, &import_name),
-                ExportedValue::Type { .. } => todo!()
+            match export {
+                ExportedValue::Binding(t) => {
+                    self.switch_buf(BufferType::Body);
+                    let c_name = self.add_c_var_name_with_suffix(&import_name, "_val");
+                    self.emit_line(format!("AbraValue {};", c_name));
+
+                    self.switch_buf(BufferType::MainFn);
+
+                    let import_c_name = if let Type::Fn(_) = t {
+                        format!("{}__{}_val", builtin_module_name, &import_name)
+                    } else {
+                        format!("{}__{}", builtin_module_name, &import_name)
+                    };
+                    self.emit_line(format!("{} = {};", c_name, import_c_name));
+                },
+                ExportedValue::Type { .. } => {
+                    let imported_type_c_name = Self::c_name_for_type_in_module(&builtin_module_name, &import_name);
+                    let alias_type_name = self.c_name_for_type(&import_name);
+                    self.c_type_names.insert(alias_type_name, imported_type_c_name);
+                }
             };
-            self.emit_line(format!("{} = {};", c_name, import_c_name));
         }
 
         Ok(())
