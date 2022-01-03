@@ -124,11 +124,15 @@
     MAP(_GEN_TOSTRING_LINES, __VA_ARGS__) \
     char* format_str = _FORMAT_STR(type, __VA_ARGS__); \
     size_t str_len = _STRING_LEN(type, __VA_ARGS__); \
-    char* str = malloc(str_len); \
+    char* str = GC_MALLOC(str_len); \
     _DO_SPRINTF(__VA_ARGS__); \
     str[str_len - 1] = ')'; \
     str[str_len] = 0; \
     return str; \
+  } \
+  AbraValue mod##__##type##__method_toString(void* _env, AbraValue _self) { \
+    char* str = (char*) mod##__##type##__to_string(AS_OBJ(_self)); \
+    return alloc_string(str, strlen(str)); \
   }
 
 /**

@@ -80,6 +80,13 @@ AbraValue std_set__field_size(AbraValue _self) {
   return NEW_INT(self->hash.size);
 }
 
+// toString(): String
+AbraValue std_set__method_toString(void* _env, AbraValue _self) {
+  char* str = (char*) std_set__to_string(AS_OBJ(_self));
+  // No need to free str, since it's GC_MALLOC'd
+  return alloc_string(str, strlen(str));
+}
+
 // isEmpty(): Bool
 AbraValue std_set__method_isEmpty(void* _env, AbraValue _self) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);

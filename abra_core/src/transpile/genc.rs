@@ -1627,7 +1627,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
             let field_str_len = field_str_var_names.iter().map(|n| format!("{}_len", n)).join("+");
             self.emit_line(format!("size_t str_len = sizeof(char)*{}+{}+1;", str_len, field_str_len));
         };
-        self.emit_line("char* str = malloc(str_len);");
+        self.emit_line("char* str = GC_MALLOC(str_len);");
         self.emit(format!("sprintf(str, \"{}(", &type_name));
         for (idx, field) in node.fields.iter().enumerate() {
             let field_name = Token::get_ident_name(&field.ident);
@@ -1647,6 +1647,12 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         self.switch_buf(BufferType::MainFn);
         self.emit_line(format!("to_string_fns[{}__type_id] = &{}__to_string;", &c_name, &c_name));
         self.switch_buf(BufferType::Body);
+
+        // toString method
+        self.emit_line(format!("AbraValue {}__method_toString(void* _env, AbraValue _self) {{", &c_name));
+        self.emit_line(format!("char* str = (char*) {}__to_string(AS_OBJ(_self));", &c_name));
+        self.emit_line("return alloc_string(str, strlen(str));");
+        self.emit_line("}");
 
         // hash function
         self.emit_line(format!("size_t {}__hash(Obj* _self) {{", &c_name));

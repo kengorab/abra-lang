@@ -4,6 +4,13 @@
 #include "abra_value.h"
 #include "math.h"
 
+// toString(): String
+AbraValue std_float__method_toString(void* _env, AbraValue _self) {
+  char* str = (char*) std__to_string(_self);
+  // No need to free str, since it's GC_MALLOC'd
+  return alloc_string(str, strlen(str));
+}
+
 // floor(): Int
 AbraValue std_float__method_floor(void* _env, AbraValue _self) {
   int64_t val = (int64_t) floor(AS_FLOAT(_self));

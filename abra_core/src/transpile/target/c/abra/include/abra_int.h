@@ -5,6 +5,13 @@
 #include "math.h"
 #include "string.h"
 
+// toString(): String
+AbraValue std_int__method_toString(void* _env, AbraValue _self) {
+  char* str = (char*) std__to_string(_self);
+  // No need to free str, since it's GC_MALLOC'd
+  return alloc_string(str, strlen(str));
+}
+
 // abs(): Int
 AbraValue std_int__method_abs(void* _env, AbraValue _self) {
   int64_t self = AS_INT(_self);

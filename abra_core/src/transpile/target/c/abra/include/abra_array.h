@@ -143,6 +143,13 @@ AbraValue std_array__static_method_fillBy(void* _env, AbraValue _amount, AbraVal
   return alloc_array(items, amount);
 }
 
+// toString(): String
+AbraValue std_array__method_toString(void* _env, AbraValue _self) {
+  char* str = (char*) std_array__to_string(AS_OBJ(_self));
+  // No need to free str, since it's GC_MALLOC'd
+  return alloc_string(str, strlen(str));
+}
+
 // isEmpty(): Bool
 AbraValue std_array__method_isEmpty(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);

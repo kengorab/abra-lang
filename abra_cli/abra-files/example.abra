@@ -1,12 +1,15 @@
-import readFile from io
+//import readFile from io
 import Date from date
 
 val d = Date(year: 2022, month: 1, day: 2)
-println(d)
+println(d, d.toString())
 
-val tomorrow = d.addDays(1)
-println(tomorrow)
+//val tomorrow = d.addDays(1)
+//println(tomorrow)
 
-// TODO: `toString` should be available as a method to explicitly call
-// val m = { a: 1 }
-// println(m.toString())
+//type Abc {}
+//val abc = Abc()
+//println(abc, abc.toString())
+
+val m = { a: 1 }
+println(m.toString())
