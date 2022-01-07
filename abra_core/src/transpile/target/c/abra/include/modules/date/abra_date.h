@@ -1,7 +1,7 @@
-#ifndef __ABRA_MODULE_DATE_H
-#define __ABRA_MODULE_DATE_H
+#ifndef __ABRA_DATE_DATE_H
+#define __ABRA_DATE_DATE_H
 
-#include "abra_module.h"
+#include "../../abra_module.h"
 
 /*
 type Date {
@@ -34,10 +34,6 @@ ABRA_DEFINE_METHOD(date, Date, addDays, self, _amount) //{
     self->minute,
     self->second
   );
-}
-
-ABRA_MODULE(date) {
-  TYPE_SETUP(date, Date);
 }
 
 #endif

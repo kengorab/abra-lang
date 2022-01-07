@@ -1,7 +1,7 @@
-#ifndef __ABRA_MODULE_IO_H
-#define __ABRA_MODULE_IO_H
+#ifndef __ABRA_IO_FNS_H
+#define __ABRA_IO_FNS_H
 
-#include "abra_module.h"
+#include "../../abra_module.h"
 
 #include "limits.h"
 #include "stdio.h"
@@ -48,11 +48,6 @@ ABRA_DEFINE_FN(io, readFile, _path) {
   free(buf);
   fclose(f);
   return ret;
-}
-
-ABRA_MODULE(io) {
-  FN_SETUP(getCurrentDir, 0, io__getCurrentDir);
-  FN_SETUP(readFile, 1, io__readFile);
 }
 
 #endif

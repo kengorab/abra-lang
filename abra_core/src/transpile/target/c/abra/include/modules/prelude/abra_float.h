@@ -1,7 +1,7 @@
 #ifndef __ABRA_FLOAT_H
 #define __ABRA_FLOAT_H
 
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "math.h"
 
 // toString(): String

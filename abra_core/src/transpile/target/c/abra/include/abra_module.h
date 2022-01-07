@@ -58,6 +58,12 @@
 
 #define ABRA_MODULE(mod) void init_module_##mod()
 
+/*
+  Begin type-generation macros
+  Types are generated using the ABRA_DEFINE_TYPE macro, which is defined using
+  the following helper macros.
+*/
+
 /**
  * Generate the struct typedef for the type.
  */
@@ -77,7 +83,7 @@
 #define _GEN_ASSN_LINE(field) self->field = field;
 #define GEN_METHOD_INIT(mod, type_name, ...) \
   AbraValue mod##__##type_name##__new( \
-    MAP_LIST(_GEN_ARG, year, month, day, hour, minute, second) \
+    MAP_LIST(_GEN_ARG, __VA_ARGS__) \
   ) { \
     mod##__##type_name* self = GC_MALLOC(sizeof(mod##__##type_name)); \
     self->_header.type = OBJ_INSTANCE; \
@@ -163,6 +169,139 @@
   GEN_METHOD_EQ(mod, type, __VA_ARGS__) \
   GEN_METHOD_TOSTRING(mod, type, __VA_ARGS__) \
   GEN_METHOD_HASH(mod, type, __VA_ARGS__)
+
+/* End type-generation macros */
+
+/*
+  Begin enum-generation macros
+  Enums are a bit more involved to define, compared to types. The
+  complexity comes in the variants. Construction of an enum uses 4 macros,
+  and a basic example looks like:
+    ABRA_INIT_ENUM(std, Result, Ok)
+    ABRA_INIT_ENUM_VARIANT(std, Result, Ok, value)
+    ABRA_DEFINE_ENUM(std, Result, Ok)
+    ABRA_DEFINE_ENUM_VARIANT(std, Result, Ok, value)
+  The corresponding Abra code would be
+    enum Result<V> { Ok(value: T) }
+*/
+
+/**
+ * Generate the underlying c-enum, used to denote the variant
+ * indices of each subsequent variant.
+ */
+#define _VARIANT_IDX_NAME(a, b) a##_Variant_##b##_idx
+#define ABRA_INIT_ENUM(mod, type, var0, ...) \
+  typedef enum {                             \
+    mod##__##type##_Variant_##var0##_idx = 0,\
+    MAP_EXTRA(_VARIANT_IDX_NAME, mod##__##type, __VA_ARGS__) \
+  } mod##__##type##_Variant; \
+  size_t mod##__##type##__type_id;
+
+/**
+ * Generate the struct which represents the underlying shape
+ * of an enum variant. Also forward-declare the eq/to_string/hash
+ * functions for simplicity. The implementations of the top-level
+ * eq/to_string/hash functions will delegate to the respective
+ * function for each variant.
+ */
+#define _ENUM_VARIANT_FIELD(field) AbraValue field;
+#define ABRA_INIT_ENUM_VARIANT(mod, type, varname, ...) \
+  typedef struct mod##__##type##_Variant_##varname {    \
+    MAP_LIST(_ENUM_VARIANT_FIELD, __VA_ARGS__) \
+  } mod##__##type##_Variant_##varname;\
+  bool mod##__##type##_Variant_##varname##__eq(mod##__##type##_Variant_##varname self, mod##__##type##_Variant_##varname other);\
+  char const* mod##__##type##_Variant_##varname##__to_string(mod##__##type##_Variant_##varname self);\
+  size_t mod##__##type##_Variant_##varname##__hash(mod##__##type##_Variant_##varname self);
+
+/**
+ * Generate the code for the top-level struct for the enum type.
+ * The struct will contain a union consisting of all of the
+ * backing structs for each variant. The eq/to_string/hash functions
+ * will delegate to the respective function for each variant (the
+ * signatures are forward-declared in the ABRA_INIT_ENUM_VARIANT
+ * call, and are implemented in the ABRA_DEFINE_ENUM_VARIANT call).
+ * @see ABRA_INIT_ENUM_VARIANT
+ * @see ABRA_DEFINE_ENUM_VARIANT
+ */
+#define _VARIANT_UNION_NAME(a, b)    a##_Variant_##b b;
+#define _VARIANT_EQ_CASE(a, b)       case a##_Variant_##b##_idx: return a##_Variant_##b##__eq(self->b, other->b);
+#define _VARIANT_TOSTRING_CASE(a, b) case a##_Variant_##b##_idx: return a##_Variant_##b##__to_string(self->b);
+#define _VARIANT_HASH_CASE(a, b)     case a##_Variant_##b##_idx: return a##_Variant_##b##__hash(self->b);
+#define ABRA_DEFINE_ENUM(mod, type, ...) \
+  typedef struct mod##__##type { \
+    Obj _header; \
+    mod##__##type##_Variant variant; \
+    union {                            \
+      MAP_EXTRA(_VARIANT_UNION_NAME, mod##__##type, __VA_ARGS__) \
+    }; \
+  } mod##__##type;    \
+  bool mod##__##type##__eq(Obj* _self, Obj* _other) {                \
+    mod##__##type* self = (mod##__##type*) _self; \
+    mod##__##type* other = (mod##__##type*) _other; \
+    if (self->variant != other->variant) return false; \
+    switch (self->variant) {           \
+      MAP_EXTRA(_VARIANT_EQ_CASE, mod##__##type, __VA_ARGS__) \
+    } \
+  } \
+  char const* mod##__##type##__to_string(Obj* obj) { \
+    mod##__##type* self = (mod##__##type*) obj; \
+    switch (self->variant) { \
+      MAP_EXTRA(_VARIANT_TOSTRING_CASE, mod##__##type, __VA_ARGS__) \
+    } \
+  } \
+  AbraValue mod##__##type##__method_toString(void* _env, AbraValue _self) { \
+    char* str = (char*) mod##__##type##__to_string(AS_OBJ(_self)); \
+    return alloc_string(str, strlen(str)); \
+  } \
+  size_t mod##__##type##__hash(Obj* _self) { \
+    mod##__##type* self = (mod##__##type*) _self; \
+    switch (self->variant) { \
+      MAP_EXTRA(_VARIANT_HASH_CASE, mod##__##type, __VA_ARGS__) \
+    } \
+  }
+
+/**
+ * Generate the implementation for the variant's eq/to_string/hash
+ * functions, as well as the initialization (`new`) function.
+ */
+#define _VARIANT_FIELD_ASSN(a, field) a.field = field;
+#define _GEN_VARIANT_EQ_LINE(field) if (!std__eq(self.field, other.field)) return false;
+#define _GEN_VARIANT_TOSTRING_LINES(field) \
+  char const* field##_str = std__to_string(self.field); \
+  size_t field##_str_len = strlen(field##_str);
+#define _GEN_VARIANT_HASH_LINE(field) hash = 31 * hash + std__hash(self.field);
+#define ABRA_DEFINE_ENUM_VARIANT(mod, typ, varname, ...) \
+  AbraValue mod##__##typ##__new_##varname(\
+    MAP_LIST(_METHOD_ARG, __VA_ARGS__)\
+  ) { \
+    mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
+    self->_header.type = OBJ_INSTANCE; \
+    self->_header.type_id = mod##__##typ##__type_id; \
+    self->variant = mod##__##typ##_Variant_##varname##_idx; \
+    MAP_EXTRA(_VARIANT_FIELD_ASSN, self->varname, __VA_ARGS__)      \
+    return (AbraValue) {.type=ABRA_TYPE_OBJ, .as={.obj=((Obj*) self)}}; \
+  } \
+  bool mod##__##typ##_Variant_##varname##__eq(mod##__##typ##_Variant_##varname self, mod##__##typ##_Variant_##varname other) { \
+    MAP(_GEN_VARIANT_EQ_LINE, __VA_ARGS__)\
+    return true; \
+  } \
+  char const* mod##__##typ##_Variant_##varname##__to_string(mod##__##typ##_Variant_##varname self) { \
+    MAP(_GEN_VARIANT_TOSTRING_LINES, __VA_ARGS__) \
+    char* format_str = _FORMAT_STR(typ.varname, __VA_ARGS__); \
+    size_t str_len = _STRING_LEN(typ.varname, __VA_ARGS__); \
+    char* str = GC_MALLOC(str_len); \
+    _DO_SPRINTF(__VA_ARGS__); \
+    str[str_len - 1] = ')'; \
+    str[str_len] = 0; \
+    return str; \
+  } \
+  size_t mod##__##typ##_Variant_##varname##__hash(mod##__##typ##_Variant_##varname self) { \
+    size_t hash = 1; \
+    MAP(_GEN_VARIANT_HASH_LINE, __VA_ARGS__) \
+    return hash; \
+  }
+
+/* End enum-generation macros */
 
 /**
  * Define the signature for a method for a given type in an Abra module.

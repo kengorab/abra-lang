@@ -1,15 +1,15 @@
 #ifndef __ABRA_ARRAY_H
 #define __ABRA_ARRAY_H
 
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "abra_tuple.h"
 #include "abra_function.h"
 #include "abra_string.h"
 #include "abra_map.h"
 #include "abra_set.h"
-#include "callable.h"
-#include "utils.h"
-#include "hashmap.h"
+#include "../../callable.h"
+#include "../../utils.h"
+#include "../../hashmap.h"
 
 void std_array_grow_if_necessary(AbraArray* self) {
   if (self->size == self->capacity) {

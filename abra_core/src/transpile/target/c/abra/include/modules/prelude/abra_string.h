@@ -4,7 +4,7 @@
 #include "ctype.h"
 #include "string.h"
 #include "errno.h"
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "abra_array.h"
 #include "abra_tuple.h"
 

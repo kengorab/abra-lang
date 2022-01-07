@@ -20,25 +20,22 @@ bool std__eq(AbraValue v1, AbraValue v2);
 char const* std__to_string(AbraValue val);
 size_t std__hash(AbraValue val);
 
+// Arbitrary limit for number of unique object types. This will need tuning
+#define OBJ_LIMIT 100
+typedef bool (*EqFn)(Obj*, Obj*);
+static EqFn eq_fns[OBJ_LIMIT];
+typedef char const* (*ToStringFn)(Obj*);
+static ToStringFn to_string_fns[OBJ_LIMIT];
+typedef size_t (*HashFn)(Obj*);
+static HashFn hash_fns[OBJ_LIMIT];
+
 #include "utils.h"
 #include "hashmap.h"
 #include "callable.h"
 
-#include "abra_int.h"
-#include "abra_float.h"
-#include "abra_string.h"
-#include "abra_array.h"
-#include "abra_tuple.h"
-#include "abra_map.h"
-#include "abra_set.h"
-#include "abra_function.h"
-
-// Arbitrary limit for number of unique object types. This will need tuning
-#define OBJ_LIMIT 100
+#include "modules/prelude/_mod.h"
 
 // equality functions for builtin types
-typedef bool (*EqFn)(Obj*, Obj*);
-static EqFn eq_fns[OBJ_LIMIT];
 bool std__eq(AbraValue v1, AbraValue v2) {
   if (v1.type == ABRA_TYPE_INT && v2.type == ABRA_TYPE_FLOAT)
     return ((double)v1.as.abra_int) == v2.as.abra_float;
@@ -72,8 +69,6 @@ bool std__eq(AbraValue v1, AbraValue v2) {
 }
 
 // toString functions for builtin types
-typedef char const* (*ToStringFn)(Obj*);
-static ToStringFn to_string_fns[OBJ_LIMIT];
 char const* std__to_string(AbraValue val) {
   switch (val.type) {
     case ABRA_TYPE_NONE:
@@ -116,8 +111,6 @@ char const* std__to_string(AbraValue val) {
 }
 
 // hash functions for builtin types
-typedef size_t (*HashFn)(Obj*);
-static HashFn hash_fns[OBJ_LIMIT];
 size_t std__hash(AbraValue val) {
   switch (val.type) {
     case ABRA_TYPE_NONE: return 0;
@@ -223,29 +216,7 @@ void abra_init() {
   std__range_val_ctx->fn = &std__range;
   std__range_val = alloc_function("range", "std__range", (void*) std__range_val_ctx);
 
-  // Bind eq functions for primitive types
-  eq_fns[OBJ_STR] = &std_string__eq;
-  eq_fns[OBJ_ARRAY] = &std_array__eq;
-  eq_fns[OBJ_TUPLE] = &std_tuple__eq;
-  eq_fns[OBJ_MAP] = &std_map__eq;
-  eq_fns[OBJ_SET] = &std_set__eq;
-  eq_fns[OBJ_FUNCTION] = &std_function__eq;
-
-  // Bind toString functions for primitive types
-  to_string_fns[OBJ_STR] = &std_string__to_string;
-  to_string_fns[OBJ_ARRAY] = &std_array__to_string;
-  to_string_fns[OBJ_TUPLE] = &std_tuple__to_string;
-  to_string_fns[OBJ_MAP] = &std_map__to_string;
-  to_string_fns[OBJ_SET] = &std_set__to_string;
-  to_string_fns[OBJ_FUNCTION] = &std_function__to_string;
-
-  // Bind hash functions for primitive types
-  hash_fns[OBJ_STR] = &std_string__hash;
-  hash_fns[OBJ_ARRAY] = &std_array__hash;
-  hash_fns[OBJ_TUPLE] = &std_tuple__hash;
-  hash_fns[OBJ_MAP] = &std_map__hash;
-  hash_fns[OBJ_SET] = &std_set__hash;
-  hash_fns[OBJ_FUNCTION] = &std_function__hash;
+  init_module_prelude();
 }
 
 #endif

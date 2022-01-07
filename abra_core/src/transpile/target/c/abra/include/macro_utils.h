@@ -43,6 +43,16 @@
  */
 #define MAP_LIST(f, ...) EVAL(MAP_LIST1(f, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
 
+// These macros are my own addition, which allow passing an "extra" value into each
+// `map` call. This is probably buggy, but works for now.
+#define MAP_EXTRA0(f, extra, x, peek, ...) f(extra, x) MAP_NEXT(peek, MAP_EXTRA1)(f, extra, peek, __VA_ARGS__)
+#define MAP_EXTRA1(f, extra, x, peek, ...) f(extra, x) MAP_NEXT(peek, MAP_EXTRA0)(f, extra, peek, __VA_ARGS__)
+
+/**
+ * Applies the function macro `f` to each of the remaining parameters.
+ */
+#define MAP_EXTRA(f, extra, ...) EVAL(MAP_EXTRA1(f, extra, __VA_ARGS__, ()()(), ()()(), ()()(), 0))
+
 
 
 // These macros are also incredibly useful, and also borrowed from an

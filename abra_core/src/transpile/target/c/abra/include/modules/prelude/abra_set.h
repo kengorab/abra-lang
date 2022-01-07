@@ -1,9 +1,9 @@
 #ifndef __ABRA_SET_H
 #define __ABRA_SET_H
 
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "abra_tuple.h"
-#include "hashmap.h"
+#include "../../hashmap.h"
 
 typedef struct AbraSet {
   Obj _header;

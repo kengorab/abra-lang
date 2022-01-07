@@ -1,7 +1,7 @@
 #ifndef __ABRA_CALLABLE_H
 #define __ABRA_CALLABLE_H
 
-#include "abra_function.h"
+#include "modules/prelude/abra_function.h"
 
 // Define callable context structs and functions which operate on them
 // -------------------------------------------------------------------

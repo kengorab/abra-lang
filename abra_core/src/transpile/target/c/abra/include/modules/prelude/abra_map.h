@@ -1,7 +1,7 @@
 #ifndef __ABRA_MAP_H
 #define __ABRA_MAP_H
 
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "abra_array.h"
 #include "abra_set.h"
 

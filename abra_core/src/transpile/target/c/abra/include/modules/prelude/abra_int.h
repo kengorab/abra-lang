@@ -1,7 +1,7 @@
 #ifndef __ABRA_INT_H
 #define __ABRA_INT_H
 
-#include "abra_value.h"
+#include "../../abra_value.h"
 #include "math.h"
 #include "string.h"
 

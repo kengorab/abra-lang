@@ -1937,7 +1937,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
 
         self.switch_buf(BufferType::Includes);
         let builtin_module_name = path.first().unwrap();
-        self.emit_line(format!("#include \"abra_module_{}.h\"", builtin_module_name));
+        self.emit_line(format!("#include \"modules/{}/_mod.h\"", builtin_module_name));
 
         self.switch_buf(BufferType::MainFn);
         self.emit_line(format!("init_module_{}();", builtin_module_name));

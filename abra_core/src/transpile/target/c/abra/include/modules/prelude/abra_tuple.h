@@ -1,8 +1,8 @@
 #ifndef __ABRA_TUPLE_H
 #define __ABRA_TUPLE_H
 
-#include "abra_value.h"
-#include "utils.h"
+#include "../../abra_value.h"
+#include "../../utils.h"
 
 typedef struct AbraTuple {
   Obj _header;
