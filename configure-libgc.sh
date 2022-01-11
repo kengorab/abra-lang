@@ -17,9 +17,9 @@ cd "$EXT_DIR"
 
 echo "Cloning bdwgc repo"
 echo "=================="
-git clone git://github.com/ivmai/bdwgc.git
+git clone https://github.com/ivmai/bdwgc.git
 cd bdwgc
-git clone git://github.com/ivmai/libatomic_ops.git
+git clone https://github.com/ivmai/libatomic_ops.git
 echo "Configuring bdwgc"
 ./autogen.sh
 ./configure
