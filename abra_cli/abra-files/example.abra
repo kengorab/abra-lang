@@ -1,15 +1,8 @@
-//import readFile from io
-import Date from date
+enum C {
+  C1
+  C2(a: Int)
+  C3(a: Int, b: Int)
+}
 
-val d = Date(year: 2022, month: 1, day: 2)
-println(d, d.toString())
-
-//val tomorrow = d.addDays(1)
-//println(tomorrow)
-
-//type Abc {}
-//val abc = Abc()
-//println(abc, abc.toString())
-
-val m = { a: 1 }
-println(m.toString())
+//val ok = Result.Ok(value: "asdf")
+//println(ok)

@@ -1,0 +1,26 @@
+enum A {
+  A1
+}
+println(A.A1)
+
+enum B {
+  B1
+  B2
+}
+println(B.B1, B.B2)
+
+enum C {
+  C1
+  C2(a: Int)
+  C3(a: Int, b: Int)
+  C4(a: Int, b: Int, c: Int)
+}
+println(C.C1, C.C2, C.C2(a: 1), C.C3, C.C3(a: 1, b: 2), C.C4, C.C4(a: 1, b: 2, c: 3))
+println(C.C3(a: 1, b: 2) == C.C3(a: 2, b: 3))
+
+/* assert(stdout):
+A.A1
+B.B1 B.B2
+C.C1 <func C.C2> C.C2(a: 1) <func C.C3> C.C3(a: 1, b: 2) <func C.C4> C.C4(a: 1, b: 2, c: 3)
+false
+*/

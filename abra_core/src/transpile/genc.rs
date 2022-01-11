@@ -29,6 +29,7 @@ pub struct CCompiler<'a, R: ModuleReader> {
     fwd_decls_buf: String,
     body_buf: String,
     buf_type: BufferType,
+    module_name: String,
     scopes: Vec<Scope>,
     c_type_names: HashMap<String, String>,
     module_loader: &'a ModuleLoader<'a, R>,
@@ -414,7 +415,7 @@ fn extract_functions(
 impl<'a, R: ModuleReader> CCompiler<'a, R> {
     fn new(module_loader: &'a mut ModuleLoader<R>, module_name: String) -> Self {
         let root_scope = Scope {
-            name: module_name,
+            name: module_name.clone(),
             bindings: {
                 let mut m = HashMap::new();
                 m.insert("print".to_string(), "std__print_val".to_string());
@@ -437,8 +438,16 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             fwd_decls_buf: "".to_string(),
             body_buf: "".to_string(),
             buf_type: BufferType::MainFn,
+            module_name,
             scopes: vec![root_scope],
-            c_type_names: HashMap::new(),
+            c_type_names: {
+                let mut m = HashMap::new();
+                // TODO: standardize std method names (eg. std_array should be std__Array, etc)
+                m.insert("std_Array".to_string(), "std_array".to_string());
+                m.insert("std_Map".to_string(), "std_map".to_string());
+                m.insert("std_Result".to_string(), "std__Result".to_string());
+                m
+            },
             module_loader,
 
             if_result_var_names_stack: vec![VecDeque::new()],
@@ -544,7 +553,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
     }
 
     fn c_name_for_type<S: AsRef<str>>(&self, type_name: S) -> String {
-        format!("{}__{}", self.scopes.first().unwrap().name, type_name.as_ref())
+        format!("{}__{}", &self.module_name, type_name.as_ref())
     }
 
     fn c_name_for_type_in_module<S1: AsRef<str>, S2: AsRef<str>>(mod_name: S1, type_name: S2) -> String {
@@ -597,12 +606,57 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
     }
 
     fn lift_types(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
-        // Typedef struct
         let prev_buf = self.switch_buf(BufferType::Body);
 
         for node in ast {
-            let node = if let TypedAstNode::TypeDecl(_, n) = &node { n } else { continue; };
+            let node = match &node {
+                TypedAstNode::EnumDecl(_, n) => {
+                    let enum_name = Token::get_ident_name(&n.name);
+                    let c_name = self.add_c_var_name(&enum_name);
+                    self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
 
+                    self.emit_line(format!("// Begin declare {}", &c_name));
+                    let var_names = n.variants.iter().map(|(tok, _)| Token::get_ident_name(tok)).join(",");
+                    for clause in &["INIT", "DEFINE"] {
+                        self.emit_line(format!("ABRA_{}_ENUM({}, {}, {})", &clause, &self.module_name, &enum_name, &var_names));
+                        for (var_name, (var_type, _)) in &n.variants {
+                            let var_name = Token::get_ident_name(var_name);
+
+                            if let Type::Fn(fn_type) = var_type {
+                                let variant_field_names = fn_type.arg_types.iter().map(|(arg_name, _, _)| arg_name).join(",");
+                                self.emit_line(format!(
+                                    "ABRA_{}_ENUM_VARIANT({}, {}, {}, {})", &clause,
+                                    &self.module_name, &enum_name, &var_name, variant_field_names
+                                ));
+                            } else {
+                                self.emit_line(format!(
+                                    "ABRA_{}_ENUM_VARIANT_0({}, {}, {})", &clause,
+                                    &self.module_name, &enum_name, &var_name
+                                ));
+                            }
+                        }
+                    }
+                    self.emit_line(format!("// End declare {}\n", &c_name));
+
+                    self.switch_buf(BufferType::MainFn);
+
+                    self.emit_line(format!(
+                        "ENUM_SETUP({}, {}, {});",
+                        &self.module_name, &enum_name,
+                        n.variants.iter().map(|(var_name, (var_type, _))| {
+                            let var_name = Token::get_ident_name(var_name);
+                            let arity = if let Type::Fn(fn_type) = var_type { fn_type.arg_types.len() } else { 0 };
+                            format!("({}, {})", var_name, arity)
+                        }).join(",")
+                    ));
+                    self.switch_buf(BufferType::Body);
+                    continue;
+                }
+                TypedAstNode::TypeDecl(_, n) => n,
+                _ => continue,
+            };
+
+            // Typedef struct
             let type_name = Token::get_ident_name(&node.name);
             let c_name = self.add_c_var_name(&type_name);
             self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
@@ -1012,7 +1066,11 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 let node = node.clone();
                 let node_typ = node.target.get_type().get_opt_unwrapped();
 
+                let salt = random_string(10);
+                let ident_name = format!("acc__{}", &salt);
+
                 let mut is_typeref = false;
+                let mut enum_variant_init_code = None;
                 let (prefix, is_static) = match node_typ {
                     Type::Int => ("std_int".to_string(), false),
                     Type::Float => ("std_float".to_string(), false),
@@ -1020,18 +1078,32 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     Type::Array(_) => ("std_array".to_string(), false),
                     Type::Map(_, _) => ("std_map".to_string(), false),
                     Type::Set(_) => ("std_set".to_string(), false),
-                    Type::Type(name, _, _) => match name.as_str() {
-                        "prelude/Array" => ("std_array".to_string(), true),
-                        "prelude/Map" => ("std_map".to_string(), true),
-                        n => {
-                            let type_name = n.split("/").last().unwrap();
-                            let type_c_name = self.c_name_for_type(&type_name);
-                            let c_name = match self.c_type_names.get(&type_c_name) {
-                                Some(c_name) => c_name,
-                                None => unimplemented!("Accessing values of type {} not implemented", n)
-                            };
-                            (c_name.clone(), true)
+                    Type::Type(name, _, _) => {
+                        let type_name = name.split("/").last().unwrap();
+                        let type_c_name = if name.starts_with("prelude/") {
+                            format!("std_{}", type_name)
+                        } else {
+                            self.c_name_for_type(&type_name)
+                        };
+                        let c_name = match self.c_type_names.get(&type_c_name) {
+                            Some(c_name) => c_name,
+                            None => unimplemented!("Accessing values of type {} not implemented", type_name)
+                        };
+
+                        if let Some(Type::Enum(enum_type)) = self.module_loader.resolve_type(&name) {
+                            let variant_name = Token::get_ident_name(&node.field_ident);
+                            enum_variant_init_code = enum_type.variants.iter()
+                                .find_map(|(v_name, v_type)| if v_name == &variant_name { Some(v_type) } else { None })
+                                .map(|typ| {
+                                    if let Type::Fn(_) = typ {
+                                        format!("{}__new_{}_val", &c_name, &variant_name)
+                                    } else {
+                                        format!("{}__new_{}()", &c_name, &variant_name)
+                                    }
+                                })
                         }
+
+                        (c_name.clone(), true)
                     }
                     Type::Reference(t, _) => {
                         let type_name = t.split("/").last().unwrap();
@@ -1049,10 +1121,13 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     _ => todo!(),
                 };
 
-                let salt = random_string(10);
-                let ident_name = format!("acc__{}", &salt);
                 self.lift(&node.target)?;
                 self.accessor_var_names_stack.last_mut().unwrap().push_back(ident_name.clone());
+
+                if let Some(code) = enum_variant_init_code {
+                    self.emit_line(format!("AbraValue {} = {};", &ident_name, code));
+                    return Ok(());
+                }
 
                 let target_ident_name = format!("target__{}", &salt);
                 if !is_static {
@@ -1673,7 +1748,8 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
     }
 
     fn visit_enum_decl(&mut self, _token: Token, _node: TypedEnumDeclNode) -> Result<(), ()> {
-        todo!()
+        // All code necessary for enum declaration was emitted when lifting types
+        Ok(())
     }
 
     fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<(), ()> {

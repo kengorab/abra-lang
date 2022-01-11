@@ -37,7 +37,7 @@ ABRA_MODULE(prelude) {
     hash_fns[OBJ_SET] = &std_set__hash;
     hash_fns[OBJ_FUNCTION] = &std_function__hash;
 
-    TYPE_SETUP(std, Result);
+    ENUM_SETUP(std, Result, (Ok, 1), (Err, 1));
 }
 
 #endif

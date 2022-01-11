@@ -44,6 +44,7 @@
   } while (0)
 
 /**
+ * Perform the necessary setup in order to represent the type in the runtime.
  * Assign __type_id value for the given type, using the auto-incrementing
  * __next_type_id value. Also, insert the eq/to_string/hash functions into
  * the arrays at the appropriate index as determined by this __type_id.
@@ -55,6 +56,38 @@
     to_string_fns[mod##__##name##__type_id] = &mod##__##name##__to_string; \
     hash_fns[mod##__##name##__type_id] = &mod##__##name##__hash; \
   } while (0)
+
+/**
+ * Perform the necessary setup in order to represent the enum in the runtime.
+ * This performs the TYPE_SETUP as well as performs setup for each variant in
+ * the enum. For 0-arity enum variants, nothing happens, but for all supported
+ * arity variants (<= 12, as per `callable.h`), perform FN_SETUP for each.
+ * @see callable.h
+ */
+#define _COND_VARIANT_ARITY_0 0
+#define _COND_VARIANT_ARITY_1 1
+#define _COND_VARIANT_ARITY_2 1
+#define _COND_VARIANT_ARITY_3 1
+#define _COND_VARIANT_ARITY_4 1
+#define _COND_VARIANT_ARITY_5 1
+#define _COND_VARIANT_ARITY_6 1
+#define _COND_VARIANT_ARITY_7 1
+#define _COND_VARIANT_ARITY_8 1
+#define _COND_VARIANT_ARITY_9 1
+#define _COND_VARIANT_ARITY_10 1
+#define _COND_VARIANT_ARITY_11 1
+#define _COND_VARIANT_ARITY_12 1
+#define _ENUM_VARIANT_SETUP(mod, name, var_name, arity) \
+  IF( \
+    CONC(_COND_VARIANT_ARITY, arity), \
+    FN_SETUP(name.var_name, arity, mod##__##name##__new_##var_name);, \
+  )
+#define _EXPAND_TUPLE(...) __VA_ARGS__
+#define _EXPAND_TUPLES(a, b) (_EXPAND_TUPLE a, _EXPAND_TUPLE b)
+#define _ENUM_VARIANT_SETUP_THUNK(a, b) EVAL0(_ENUM_VARIANT_SETUP _EXPAND_TUPLES(a, b))
+#define ENUM_SETUP(mod, name, ...) \
+  TYPE_SETUP(mod, name);           \
+  MAP_EXTRA(_ENUM_VARIANT_SETUP_THUNK, (mod, name), __VA_ARGS__)
 
 #define ABRA_MODULE(mod) void init_module_##mod()
 
@@ -189,7 +222,7 @@
  * Generate the underlying c-enum, used to denote the variant
  * indices of each subsequent variant.
  */
-#define _VARIANT_IDX_NAME(a, b) a##_Variant_##b##_idx
+#define _VARIANT_IDX_NAME(a, b) a##_Variant_##b##_idx,
 #define ABRA_INIT_ENUM(mod, type, var0, ...) \
   typedef enum {                             \
     mod##__##type##_Variant_##var0##_idx = 0,\
@@ -207,11 +240,19 @@
 #define _ENUM_VARIANT_FIELD(field) AbraValue field;
 #define ABRA_INIT_ENUM_VARIANT(mod, type, varname, ...) \
   typedef struct mod##__##type##_Variant_##varname {    \
-    MAP_LIST(_ENUM_VARIANT_FIELD, __VA_ARGS__) \
+    MAP(_ENUM_VARIANT_FIELD, __VA_ARGS__) \
   } mod##__##type##_Variant_##varname;\
   bool mod##__##type##_Variant_##varname##__eq(mod##__##type##_Variant_##varname self, mod##__##type##_Variant_##varname other);\
   char const* mod##__##type##_Variant_##varname##__to_string(mod##__##type##_Variant_##varname self);\
   size_t mod##__##type##_Variant_##varname##__hash(mod##__##type##_Variant_##varname self);
+#define ABRA_INIT_ENUM_VARIANT_0(mod, type, varname) \
+  typedef struct mod##__##type##_Variant_##varname {} mod##__##type##_Variant_##varname;\
+  bool mod##__##type##_Variant_##varname##__eq(mod##__##type##_Variant_##varname self, mod##__##type##_Variant_##varname other) { return true; } \
+  char const* mod##__##type##_Variant_##varname##__to_string(mod##__##type##_Variant_##varname self) { return #type "." #varname; } \
+  size_t mod##__##type##_Variant_##varname##__hash(mod##__##type##_Variant_##varname self) { \
+    size_t hash = 1; \
+    return hash + mod##__##type##_Variant_##varname##_idx; \
+  }
 
 /**
  * Generate the code for the top-level struct for the enum type.
@@ -271,8 +312,10 @@
   size_t field##_str_len = strlen(field##_str);
 #define _GEN_VARIANT_HASH_LINE(field) hash = 31 * hash + std__hash(self.field);
 #define ABRA_DEFINE_ENUM_VARIANT(mod, typ, varname, ...) \
-  AbraValue mod##__##typ##__new_##varname(\
-    MAP_LIST(_METHOD_ARG, __VA_ARGS__)\
+  AbraValue mod##__##typ##__new_##varname##_val; \
+  AbraValue mod##__##typ##__new_##varname( \
+    void* _env, \
+    MAP_LIST(_METHOD_ARG, __VA_ARGS__) \
   ) { \
     mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
     self->_header.type = OBJ_INSTANCE; \
@@ -298,7 +341,15 @@
   size_t mod##__##typ##_Variant_##varname##__hash(mod##__##typ##_Variant_##varname self) { \
     size_t hash = 1; \
     MAP(_GEN_VARIANT_HASH_LINE, __VA_ARGS__) \
-    return hash; \
+    return hash + mod##__##typ##_Variant_##varname##_idx; \
+  }
+#define ABRA_DEFINE_ENUM_VARIANT_0(mod, typ, varname) \
+  AbraValue mod##__##typ##__new_##varname() { \
+    mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
+    self->_header.type = OBJ_INSTANCE; \
+    self->_header.type_id = mod##__##typ##__type_id; \
+    self->variant = mod##__##typ##_Variant_##varname##_idx; \
+    return (AbraValue) {.type=ABRA_TYPE_OBJ, .as={.obj=((Obj*) self)}}; \
   }
 
 /* End enum-generation macros */

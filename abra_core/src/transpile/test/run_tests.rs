@@ -74,18 +74,19 @@ fn run_test(working_dir: &PathBuf, case: &TestCase) -> Option<String> {
 }
 
 fn compile_and_run(working_dir: &PathBuf, case: &TestCase, input: &String) -> Result<String, String> {
-    let mock_reader = MockModuleReader::new(vec![]);
-    let mut mock_loader = ModuleLoader::new(&mock_reader);
+    let reader = MockModuleReader::new(vec![]);
+    let mut loader = ModuleLoader::new(&reader);
     let module_id = ModuleId::from_name(&case.name);
-    let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader).map_err(|e|
+    let module = crate::typecheck(module_id, &input.to_string(), &mut loader).map_err(|e|
         if let crate::Error::TypecheckerError(e) = e {
             e.get_message(&case.path.to_str().unwrap().to_string(), input)
         } else { unreachable!() }
     )?;
+    loader.add_typed_module(module.clone());
     let typed_ast = module.typed_nodes;
 
     let module_name = &case.name;
-    let c_code = CCompiler::gen_c(&mut mock_loader, &module_name, typed_ast).unwrap();
+    let c_code = CCompiler::gen_c(&mut loader, &module_name, typed_ast).unwrap();
     let src_file = format!("{}.c", &module_name);
     let out_file = &module_name;
     std::fs::write(working_dir.join(&src_file), c_code).unwrap();

@@ -113,8 +113,8 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let mut loader = abra_core::module_loader::ModuleLoader::new(&module_reader);
 
     let typecheck_result = typecheck(module_id, &contents, &mut loader);
-    let ast = match typecheck_result {
-        Ok(typed_module) => typed_module.typed_nodes,
+    let module = match typecheck_result {
+        Ok(typed_module) => typed_module,
         Err(e) => {
             let module_id = e.module_id();
             let contents = module_reader.read_module(module_id).unwrap_or(contents);
@@ -129,6 +129,8 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
             std::process::exit(1);
         }
     };
+    loader.add_typed_module(module.clone());
+    let ast = module.typed_nodes;
 
     let working_dir = file_path.parent().unwrap();
     let dotabra_dir = working_dir.join(".abra");
