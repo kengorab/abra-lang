@@ -267,7 +267,18 @@ fn extract_functions(
             }
             return;
         }
-        TypedAstNode::EnumDecl(_, _) |
+        TypedAstNode::EnumDecl(_, n) => {
+            for (_, typ, node) in &n.static_fields {
+                if let Type::Fn(_) = &typ {
+                    let method_node = node.as_ref().unwrap();
+                    extract_functions(method_node, known_vars, path.clone(), FnKind::StaticMethod(Token::get_ident_name(&n.name)), seen_fns);
+                } else { todo!() }
+            }
+            for (_, method_node) in &n.methods {
+                extract_functions(&method_node, known_vars, path.clone(), FnKind::Method(Token::get_ident_name(&n.name)), seen_fns);
+            }
+            return;
+        }
         TypedAstNode::Identifier(_, _) => { return; }
         TypedAstNode::Assignment(_, n) => {
             extract_functions(&n.expr, known_vars, path, FnKind::Fn, seen_fns);
