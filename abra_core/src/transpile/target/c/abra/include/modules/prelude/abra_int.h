@@ -2,18 +2,19 @@
 #define __ABRA_INT_H
 
 #include "../../abra_value.h"
+#include "../../abra_module.h"
 #include "math.h"
 #include "string.h"
 
 // toString(): String
-AbraValue std_int__method_toString(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Int, toString)(void* _env, AbraValue _self) {
   char* str = (char*) std__to_string(_self);
   // No need to free str, since it's GC_MALLOC'd
   return alloc_string(str, strlen(str));
 }
 
 // abs(): Int
-AbraValue std_int__method_abs(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Int, abs)(void* _env, AbraValue _self) {
   int64_t self = AS_INT(_self);
   return NEW_INT(llabs(self));
 }
@@ -28,7 +29,7 @@ char char_from_digit(int num, int base) {
 }
 
 // asBase(base: Int): String
-AbraValue std_int__method_asBase(void* _env, AbraValue _self, AbraValue _base) {
+AbraValue ABRA_METHOD_NAME(std, Int, asBase)(void* _env, AbraValue _self, AbraValue _base) {
   int64_t self = AS_INT(_self);
   int64_t base = AS_INT(_base);
 
@@ -54,17 +55,17 @@ AbraValue std_int__method_asBase(void* _env, AbraValue _self, AbraValue _base) {
 }
 
 // isEven(): Bool
-AbraValue std_int__method_isEven(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Int, isEven)(void* _env, AbraValue _self) {
   return AS_INT(_self) % 2 == 0 ? ABRA_TRUE : ABRA_FALSE;
 }
 
 // isOdd(): Bool
-AbraValue std_int__method_isOdd(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Int, isOdd)(void* _env, AbraValue _self) {
   return AS_INT(_self) % 2 == 0 ? ABRA_FALSE : ABRA_TRUE;
 }
 
 // isBetween(lower: Int, upper: Int, inclusive?: Bool): Bool
-AbraValue std_int__method_isBetween(void* _env, AbraValue _self, AbraValue _lower, AbraValue _upper, AbraValue _inclusive) {
+AbraValue ABRA_METHOD_NAME(std, Int, isBetween)(void* _env, AbraValue _self, AbraValue _lower, AbraValue _upper, AbraValue _inclusive) {
   int64_t self = AS_INT(_self);
   int64_t upper = AS_INT(_upper);
   int64_t lower = AS_INT(_lower);

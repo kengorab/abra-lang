@@ -111,13 +111,13 @@ AbraValue std_map__index_assign(Obj* obj, AbraValue key, AbraValue item) {
 // ************************************
 
 // size: Int
-AbraValue std_map__field_size(AbraValue _self) {
+AbraValue ABRA_FIELD_NAME(std, Map, size)(AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   return NEW_INT(self->hash.size);
 }
 
 // static fromPairs<T1, T2>(pairs: (T1, T2)[]): Map<T1, T2>
-AbraValue std_map__static_method_fromPairs(void* _env, AbraValue _pairs) {
+AbraValue ABRA_STATIC_METHOD_NAME(std, Map, fromPairs)(void* _env, AbraValue _pairs) {
   AbraArray* pairs = (AbraArray*)AS_OBJ(_pairs);
   AbraValue map = alloc_map();
   for (int i = 0; i < pairs->size; ++i) {
@@ -130,20 +130,20 @@ AbraValue std_map__static_method_fromPairs(void* _env, AbraValue _pairs) {
 }
 
 // toString(): String
-AbraValue std_map__method_toString(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, toString)(void* _env, AbraValue _self) {
   char* str = (char*) std_map__to_string(AS_OBJ(_self));
   // No need to free str, since it's GC_MALLOC'd
   return alloc_string(str, strlen(str));
 }
 
 // isEmpty(): Bool
-AbraValue std_map__method_isEmpty(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, isEmpty)(void* _env, AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   return self->hash.size == 0 ? ABRA_TRUE : ABRA_FALSE;
 }
 
 // enumerate(): (K, V)[]
-AbraValue std_map__method_enumerate(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, enumerate)(void* _env, AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
   size_t size = self->hash.size;
@@ -162,7 +162,7 @@ AbraValue std_map__method_enumerate(void* _env, AbraValue _self) {
 }
 
 // keys(): Set<K>
-AbraValue std_map__method_keys(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, keys)(void* _env, AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
   size_t size = self->hash.size;
@@ -175,7 +175,7 @@ AbraValue std_map__method_keys(void* _env, AbraValue _self) {
 }
 
 // values(): V[]
-AbraValue std_map__method_values(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, values)(void* _env, AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
   size_t size = self->hash.size;
@@ -190,7 +190,7 @@ AbraValue std_map__method_values(void* _env, AbraValue _self) {
 }
 
 // entries(): Set<(K, V)>
-AbraValue std_map__method_entries(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Map, entries)(void* _env, AbraValue _self) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
   size_t size = self->hash.size;
@@ -209,13 +209,13 @@ AbraValue std_map__method_entries(void* _env, AbraValue _self) {
 }
 
 // containsKey(key: K): Bool
-AbraValue std_map__method_containsKey(void* _env, AbraValue _self, AbraValue key) {
+AbraValue ABRA_METHOD_NAME(std, Map, containsKey)(void* _env, AbraValue _self, AbraValue key) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   return IS_NONE(hashmap_get(&self->hash, key)) ? ABRA_FALSE : ABRA_TRUE;
 }
 
 // mapValues<U>(fn: (K, V) => U): Map<K, U>
-AbraValue std_map__method_mapValues(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Map, mapValues)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -232,7 +232,7 @@ AbraValue std_map__method_mapValues(void* _env, AbraValue _self, AbraValue _fn) 
 }
 
 // getOrDefault(key: K, default: V): V
-AbraValue std_map__method_getOrDefault(void* _env, AbraValue _self, AbraValue key, AbraValue _default) {
+AbraValue ABRA_METHOD_NAME(std, Map, getOrDefault)(void* _env, AbraValue _self, AbraValue key, AbraValue _default) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
 
   AbraValue val = hashmap_get(&self->hash, key);
@@ -240,7 +240,7 @@ AbraValue std_map__method_getOrDefault(void* _env, AbraValue _self, AbraValue ke
 }
 
 // getOrElse(key: K, fn: () => V): V
-AbraValue std_map__method_getOrElse(void* _env, AbraValue _self, AbraValue key, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Map, getOrElse)(void* _env, AbraValue _self, AbraValue key, AbraValue _fn) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -252,7 +252,7 @@ AbraValue std_map__method_getOrElse(void* _env, AbraValue _self, AbraValue key, 
 }
 
 // update(key: K, fn: (V) => V)
-AbraValue std_map__method_update(void* _env, AbraValue _self, AbraValue key, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Map, update)(void* _env, AbraValue _self, AbraValue key, AbraValue _fn) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -266,7 +266,7 @@ AbraValue std_map__method_update(void* _env, AbraValue _self, AbraValue key, Abr
 }
 
 // remove(key: K): V?
-AbraValue std_map__method_remove(void* _env, AbraValue _self, AbraValue key) {
+AbraValue ABRA_METHOD_NAME(std, Map, remove)(void* _env, AbraValue _self, AbraValue key) {
   AbraMap* self = (AbraMap*)AS_OBJ(_self);
   return hashmap_remove(&self->hash, key);
 }

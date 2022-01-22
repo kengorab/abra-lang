@@ -354,6 +354,10 @@
 
 /* End enum-generation macros */
 
+#define ABRA_FIELD_NAME(mod, type, name) mod##__##type##__field_##name
+#define ABRA_METHOD_NAME(mod, type, name) mod##__##type##__method_##name
+#define ABRA_STATIC_METHOD_NAME(mod, type, name) mod##__##type##__static_method_##name
+
 /**
  * Define the signature for a method for a given type in an Abra module.
  * This also casts the receiver value from a generic object into an instance
@@ -362,10 +366,10 @@
  * can be used.
  */
 #define ABRA_DEFINE_METHOD(mod, type, name, self, ...) \
-  AbraValue mod##__##type##__method_##name(void* _env, AbraValue _##self, MAP_LIST(_METHOD_ARG, __VA_ARGS__)) { \
+  AbraValue ABRA_METHOD_NAME(mod, type, name)(void* _env, AbraValue _##self, MAP_LIST(_METHOD_ARG, __VA_ARGS__)) { \
     mod##__##type* self = (mod##__##type*) AS_OBJ(_##self);
 #define ABRA_DEFINE_METHOD_0(mod, type, name, self) \
-  AbraValue mod##__##type##__method_##name(void* _env, AbraValue _##self) { \
+  AbraValue ABRA_METHOD_NAME(mod, type, name)(void* _env, AbraValue _##self) { \
     mod##__##type* self = (mod##__##type*) AS_OBJ(_##self);
 
 

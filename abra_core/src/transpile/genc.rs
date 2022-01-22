@@ -453,10 +453,9 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             scopes: vec![root_scope],
             c_type_names: {
                 let mut m = HashMap::new();
-                // TODO: standardize std method names (eg. std_array should be std__Array, etc)
-                m.insert("std_Array".to_string(), "std_array".to_string());
-                m.insert("std_Map".to_string(), "std_map".to_string());
-                m.insert("std_Result".to_string(), "std__Result".to_string());
+                m.insert("std__Array".to_string(), "std__Array".to_string());
+                m.insert("std__Map".to_string(), "std__Map".to_string());
+                m.insert("std__Result".to_string(), "std__Result".to_string());
                 m
             },
             module_loader,
@@ -569,6 +568,19 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
 
     fn c_name_for_type_in_module<S1: AsRef<str>, S2: AsRef<str>>(mod_name: S1, type_name: S2) -> String {
         format!("{}__{}", mod_name.as_ref(), type_name.as_ref())
+    }
+
+    fn c_name_for_builtin_type(typ: &Type) -> String {
+        let name = match typ {
+            Type::Int => "Int",
+            Type::Float => "Float",
+            Type::String => "String",
+            Type::Array(_) => "Array",
+            Type::Map(_, _) => "Map",
+            Type::Set(_) => "Set",
+            _ => unreachable!()
+        };
+        format!("std__{}", name)
     }
 
     fn switch_buf(&mut self, buf_type: BufferType) -> BufferType {
@@ -1081,18 +1093,15 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 let ident_name = format!("acc__{}", &salt);
 
                 let mut is_typeref = false;
+                let mut is_static = false;
                 let mut enum_variant_init_code = None;
-                let (prefix, is_static) = match node_typ {
-                    Type::Int => ("std_int".to_string(), false),
-                    Type::Float => ("std_float".to_string(), false),
-                    Type::String => ("std_string".to_string(), false),
-                    Type::Array(_) => ("std_array".to_string(), false),
-                    Type::Map(_, _) => ("std_map".to_string(), false),
-                    Type::Set(_) => ("std_set".to_string(), false),
+                let prefix= match node_typ {
+                    Type::Int | Type::Float | Type::String | Type::Array(_) |
+                    Type::Map(_, _) | Type::Set(_) => Self::c_name_for_builtin_type(&node_typ),
                     Type::Type(name, _, _) => {
                         let type_name = name.split("/").last().unwrap();
                         let type_c_name = if name.starts_with("prelude/") {
-                            format!("std_{}", type_name)
+                            Self::c_name_for_type_in_module("std", &type_name)
                         } else {
                             self.c_name_for_type(&type_name)
                         };
@@ -1114,20 +1123,21 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                                 })
                         }
 
-                        (c_name.clone(), true)
+                        is_static = true;
+                        c_name.clone()
                     }
                     Type::Reference(t, _) => {
                         let type_name = t.split("/").last().unwrap();
                         let type_c_name = self.c_name_for_type(&type_name);
                         let c_name = self.c_type_names.get(&type_c_name).unwrap();
                         is_typeref = true;
-                        (c_name.clone(), false)
+                        c_name.clone()
                     }
                     Type::Struct(t) => {
                         is_typeref = true;
                         let type_c_name = self.c_name_for_type(&t.name);
                         let c_name = self.c_type_names.get(&type_c_name).unwrap();
-                        (c_name.clone(), false)
+                        c_name.clone()
                     }
                     _ => todo!(),
                 };
@@ -1916,10 +1926,10 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         self.lift(&node.iterator)?;
         self.emit(format!("AbraValue {} =", &iter_ident));
         let enumerate_method_name = match node.iterator.get_type() {
-            Type::Array(_) => "std_array__method_enumerate",
-            Type::Set(_) => "std_set__method_enumerate",
-            Type::Map(_, _) => "std_map__method_enumerate",
-            _ => unreachable!("Should have been caught during typechecking")
+            Type::Array(_) => "std__Array__method_enumerate",
+            Type::Set(_) => "std__Set__method_enumerate",
+            Type::Map(_, _) => "std__Map__method_enumerate",
+            _ => unreachable!("Un-enumerable type, should have been caught during typechecking")
         };
         self.emit(format!("{}(NULL, ", enumerate_method_name));
         self.visit(*node.iterator)?;

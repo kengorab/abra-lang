@@ -2,6 +2,7 @@
 #define __ABRA_SET_H
 
 #include "../../abra_value.h"
+#include "../../abra_module.h"
 #include "abra_tuple.h"
 #include "../../hashmap.h"
 
@@ -75,26 +76,26 @@ size_t std_set__hash(Obj* obj) {
 // ************************************
 
 // size: Int
-AbraValue std_set__field_size(AbraValue _self) {
+AbraValue ABRA_FIELD_NAME(std, Set, size)(AbraValue _self) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   return NEW_INT(self->hash.size);
 }
 
 // toString(): String
-AbraValue std_set__method_toString(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Set, toString)(void* _env, AbraValue _self) {
   char* str = (char*) std_set__to_string(AS_OBJ(_self));
   // No need to free str, since it's GC_MALLOC'd
   return alloc_string(str, strlen(str));
 }
 
 // isEmpty(): Bool
-AbraValue std_set__method_isEmpty(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Set, isEmpty)(void* _env, AbraValue _self) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   return self->hash.size == 0 ? ABRA_TRUE : ABRA_FALSE;
 }
 
 // enumerate(): (T, Int)[]
-AbraValue std_set__method_enumerate(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Set, enumerate)(void* _env, AbraValue _self) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
 
   size_t size = self->hash.size;
@@ -110,26 +111,26 @@ AbraValue std_set__method_enumerate(void* _env, AbraValue _self) {
 }
 
 // contains(item: T): Bool
-AbraValue std_set__method_contains(void* _env, AbraValue _self, AbraValue _item) {
+AbraValue ABRA_METHOD_NAME(std, Set, contains)(void* _env, AbraValue _self, AbraValue _item) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   return IS_NONE(hashmap_get(&self->hash, _item)) ? ABRA_FALSE : ABRA_TRUE;
 }
 
 // insert(item: T)
-AbraValue std_set__method_insert(void* _env, AbraValue _self, AbraValue item) {
+AbraValue ABRA_METHOD_NAME(std, Set, insert)(void* _env, AbraValue _self, AbraValue item) {
   std_set__insert(AS_OBJ(_self), item);
   return ABRA_NONE;
 }
 
 // remove(item: T)
-AbraValue std_set__method_remove(void* _env, AbraValue _self, AbraValue item) {
+AbraValue ABRA_METHOD_NAME(std, Set, remove)(void* _env, AbraValue _self, AbraValue item) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   hashmap_remove(&self->hash, item);
   return ABRA_NONE;
 }
 
 // map<U>(fn: (T) => U): U[]
-AbraValue std_set__method_map(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Set, map)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   size_t size = self->hash.size;
   if (size == 0) return alloc_array(GC_MALLOC(0), 0);
@@ -146,7 +147,7 @@ AbraValue std_set__method_map(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // filter(fn: (T) => Bool): Set<T>
-AbraValue std_set__method_filter(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Set, filter)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   size_t size = self->hash.size;
   if (size == 0) return alloc_set();
@@ -166,7 +167,7 @@ AbraValue std_set__method_filter(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // reduce<U>(initialValue: U, fn: (U, T) => U): U
-AbraValue std_set__method_reduce(void* _env, AbraValue _self, AbraValue initial_value, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Set, reduce)(void* _env, AbraValue _self, AbraValue initial_value, AbraValue _fn) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   size_t size = self->hash.size;
   if (size == 0) return initial_value;
@@ -181,7 +182,7 @@ AbraValue std_set__method_reduce(void* _env, AbraValue _self, AbraValue initial_
 }
 
 // asArray(): T[]
-AbraValue std_set__method_asArray(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Set, asArray)(void* _env, AbraValue _self) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   size_t size = self->hash.size;
   if (size == 0) return alloc_array(GC_MALLOC(0), 0);
@@ -191,7 +192,7 @@ AbraValue std_set__method_asArray(void* _env, AbraValue _self) {
 }
 
 // union(other: Set<T>): Set<T>
-AbraValue std_set__method_union(void* _env, AbraValue _self, AbraValue _other) {
+AbraValue ABRA_METHOD_NAME(std, Set, union)(void* _env, AbraValue _self, AbraValue _other) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   AbraSet* other = (AbraSet*)AS_OBJ(_other);
 
@@ -208,7 +209,7 @@ AbraValue std_set__method_union(void* _env, AbraValue _self, AbraValue _other) {
 }
 
 // difference(other: Set<T>): Set<T>
-AbraValue std_set__method_difference(void* _env, AbraValue _self, AbraValue _other) {
+AbraValue ABRA_METHOD_NAME(std, Set, difference)(void* _env, AbraValue _self, AbraValue _other) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   AbraSet* other = (AbraSet*)AS_OBJ(_other);
   
@@ -225,7 +226,7 @@ AbraValue std_set__method_difference(void* _env, AbraValue _self, AbraValue _oth
 }
 
 // intersection(other: Set<T>): Set<T>
-AbraValue std_set__method_intersection(void* _env, AbraValue _self, AbraValue _other) {
+AbraValue ABRA_METHOD_NAME(std, Set, intersection)(void* _env, AbraValue _self, AbraValue _other) {
   AbraSet* self = (AbraSet*)AS_OBJ(_self);
   AbraSet* other = (AbraSet*)AS_OBJ(_other);
 

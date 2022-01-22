@@ -1,16 +1,1 @@
-enum C {
-  C1
-  C2(a: Int)
-  C3(a: Int, b: Int)
-
-  func foo(): String = "asdf"
-
-  func print(self): String = self.toString()
-}
-
-val p = C.C3(a: 1, b: 2).print
-println(p, p(), C.C3(a: 1, b: 2).print())
-println(C.foo, C.foo())
-
-//val ok = Result.Ok(value: "asdf")
-//println(ok)
+println(Map.fromPairs([("a", 1), ("b", 3)]))

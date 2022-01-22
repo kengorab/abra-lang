@@ -5,10 +5,11 @@
 #include "string.h"
 #include "errno.h"
 #include "../../abra_value.h"
+#include "../../abra_module.h"
 #include "abra_array.h"
 #include "abra_tuple.h"
 
-AbraValue std_string__method_concat(void* _env, AbraValue _self, AbraValue _str, AbraValue _others);
+AbraValue ABRA_METHOD_NAME(std, String, concat)(void* _env, AbraValue _self, AbraValue _str, AbraValue _others);
 AbraValue std_string__concat(AbraValue lhs, AbraValue rhs) {
     // If the lhs value is a string, we can just use the concat method impl, with the lhs as `self`.
     // If the lhs value is _not_ a string then the rhs must be (otherwise, this would not have been
@@ -19,7 +20,7 @@ AbraValue std_string__concat(AbraValue lhs, AbraValue rhs) {
         size_t str_size = strlen(str);
         lhs = alloc_string(str, str_size);
     }
-    return std_string__method_concat(NULL, lhs, rhs, ABRA_NONE);
+    return ABRA_METHOD_NAME(std, String, concat)(NULL, lhs, rhs, ABRA_NONE);
 }
 
 bool std_string__eq(Obj* o1, Obj* o2) {
@@ -90,13 +91,13 @@ AbraValue std_string__range_to_end(Obj* obj, int64_t start) {
 // ************************************
 
 // length: Int
-AbraValue std_string__field_length(AbraValue _self) {
+AbraValue ABRA_FIELD_NAME(std, String, length)(AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   return NEW_INT(self->size);
 }
 
 // toString(): String
-AbraValue std_string__method_toString(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, toString)(void* _env, AbraValue _self) {
   char* str = (char*) std_string__to_string(AS_OBJ(_self));
   AbraValue ret = alloc_string(str, strlen(str));
   free(str);
@@ -104,7 +105,7 @@ AbraValue std_string__method_toString(void* _env, AbraValue _self) {
 }
 
 // toLower(): String
-AbraValue std_string__method_toLower(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, toLower)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   char* str = strdup(self->data);
   for (int i = 0; i < self->size; ++i) {
@@ -116,7 +117,7 @@ AbraValue std_string__method_toLower(void* _env, AbraValue _self) {
 }
 
 // toUpper(): String
-AbraValue std_string__method_toUpper(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, toUpper)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   char* str = strdup(self->data);
   for (int i = 0; i < self->size; ++i) {
@@ -128,7 +129,7 @@ AbraValue std_string__method_toUpper(void* _env, AbraValue _self) {
 }
 
 // padLeft(totalSize: Int, padding: String = ""): String
-AbraValue std_string__method_padLeft(void* _env, AbraValue _self, AbraValue _total_size, AbraValue _padding) {
+AbraValue ABRA_METHOD_NAME(std, String, padLeft)(void* _env, AbraValue _self, AbraValue _total_size, AbraValue _padding) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   int64_t total_size = AS_INT(_total_size);
   if (total_size <= 0 || self->size >= total_size) {
@@ -156,7 +157,7 @@ AbraValue std_string__method_padLeft(void* _env, AbraValue _self, AbraValue _tot
 }
 
 // trim(): String
-AbraValue std_string__method_trim(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, trim)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   char* new_str = strdup(self->data);
   size_t size = self->size;
@@ -184,7 +185,7 @@ AbraValue std_string__method_trim(void* _env, AbraValue _self) {
 }
 
 // trimStart(pattern: String = ""): String
-AbraValue std_string__method_trimStart(void* _env, AbraValue _self, AbraValue _pattern) {
+AbraValue ABRA_METHOD_NAME(std, String, trimStart)(void* _env, AbraValue _self, AbraValue _pattern) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
 
   char const* pattern = " ";
@@ -208,7 +209,7 @@ AbraValue std_string__method_trimStart(void* _env, AbraValue _self, AbraValue _p
 }
 
 // trimEnd(pattern: String = ""): String
-AbraValue std_string__method_trimEnd(void* _env, AbraValue _self, AbraValue _pattern) {
+AbraValue ABRA_METHOD_NAME(std, String, trimEnd)(void* _env, AbraValue _self, AbraValue _pattern) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
 
   char const* pattern = " ";
@@ -290,7 +291,7 @@ AbraValue split_string_by(char* self, size_t self_size, char* splitter, size_t s
 }
 
 // split(splitter: String): String[]
-AbraValue std_string__method_split(void* _env, AbraValue _self, AbraValue _splitter) {
+AbraValue ABRA_METHOD_NAME(std, String, split)(void* _env, AbraValue _self, AbraValue _splitter) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   AbraString* splitter = (AbraString*)AS_OBJ(_splitter);
 
@@ -298,7 +299,7 @@ AbraValue std_string__method_split(void* _env, AbraValue _self, AbraValue _split
 }
 
 // splitAt(index: Int): (String, String)
-AbraValue std_string__method_splitAt(void* _env, AbraValue _self, AbraValue _index) {
+AbraValue ABRA_METHOD_NAME(std, String, splitAt)(void* _env, AbraValue _self, AbraValue _index) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   int64_t index = AS_INT(_index);
 
@@ -324,19 +325,19 @@ AbraValue std_string__method_splitAt(void* _env, AbraValue _self, AbraValue _ind
 }
 
 // lines(): String[]
-AbraValue std_string__method_lines(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, lines)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   return split_string_by(self->data, self->size, "\n", 1);
 }
 
 // chars(): String[]
-AbraValue std_string__method_chars(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, chars)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   return split_string_by(self->data, self->size, "", 0);
 }
 
 // parseInt(radix?: Int): Int?
-AbraValue std_string__method_parseInt(void* _env, AbraValue _self, AbraValue _radix) {
+AbraValue ABRA_METHOD_NAME(std, String, parseInt)(void* _env, AbraValue _self, AbraValue _radix) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   int radix = 10;
   if (!IS_NONE(_radix)) {
@@ -355,7 +356,7 @@ AbraValue std_string__method_parseInt(void* _env, AbraValue _self, AbraValue _ra
 }
 
 // parseFloat(): Float?
-AbraValue std_string__method_parseFloat(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, String, parseFloat)(void* _env, AbraValue _self) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
 
   double val = strtod(self->data, NULL);
@@ -370,7 +371,7 @@ AbraValue std_string__method_parseFloat(void* _env, AbraValue _self) {
 }
 
 // concat(str: Any, *others: Any[]): String
-AbraValue std_string__method_concat(void* _env, AbraValue _self, AbraValue _str, AbraValue _others) {
+AbraValue ABRA_METHOD_NAME(std, String, concat)(void* _env, AbraValue _self, AbraValue _str, AbraValue _others) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
 
   char const* str = std__to_string(_str);
@@ -400,7 +401,7 @@ AbraValue std_string__method_concat(void* _env, AbraValue _self, AbraValue _str,
 }
 
 // replaceAll(pattern: String, replacement: String): String
-AbraValue std_string__method_replaceAll(void* _env, AbraValue _self, AbraValue _pattern, AbraValue _replacement) {
+AbraValue ABRA_METHOD_NAME(std, String, replaceAll)(void* _env, AbraValue _self, AbraValue _pattern, AbraValue _replacement) {
   AbraString* self = (AbraString*)AS_OBJ(_self);
   AbraString* pattern = (AbraString*)AS_OBJ(_pattern);
   AbraString* replacement = (AbraString*)AS_OBJ(_replacement);

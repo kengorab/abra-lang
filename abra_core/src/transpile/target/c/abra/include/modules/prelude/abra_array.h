@@ -2,6 +2,7 @@
 #define __ABRA_ARRAY_H
 
 #include "../../abra_value.h"
+#include "../../abra_module.h"
 #include "abra_tuple.h"
 #include "abra_function.h"
 #include "abra_string.h"
@@ -114,13 +115,13 @@ AbraValue std_array__range_to_end(Obj* obj, int64_t start) {
 // ************************************
 
 // length: Int
-AbraValue std_array__field_length(AbraValue _self) {
+AbraValue ABRA_FIELD_NAME(std, Array, length)(AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   return NEW_INT(self->size);
 }
 
 // static fill<T1>(amount: Int, value: T1): T1[]
-AbraValue std_array__static_method_fill(void* _env, AbraValue _amount, AbraValue value) {
+AbraValue ABRA_STATIC_METHOD_NAME(std, Array, fill)(void* _env, AbraValue _amount, AbraValue value) {
   int64_t amount = AS_INT(_amount);
 
   AbraValue* items = GC_MALLOC(sizeof(AbraValue) * amount);
@@ -131,7 +132,7 @@ AbraValue std_array__static_method_fill(void* _env, AbraValue _amount, AbraValue
 }
 
 // static fillBy<T1>(amount: Int, fn: (Int) => T1): T1[]
-AbraValue std_array__static_method_fillBy(void* _env, AbraValue _amount, AbraValue _fn) {
+AbraValue ABRA_STATIC_METHOD_NAME(std, Array, fillBy)(void* _env, AbraValue _amount, AbraValue _fn) {
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
   int64_t amount = AS_INT(_amount);
 
@@ -144,20 +145,20 @@ AbraValue std_array__static_method_fillBy(void* _env, AbraValue _amount, AbraVal
 }
 
 // toString(): String
-AbraValue std_array__method_toString(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, toString)(void* _env, AbraValue _self) {
   char* str = (char*) std_array__to_string(AS_OBJ(_self));
   // No need to free str, since it's GC_MALLOC'd
   return alloc_string(str, strlen(str));
 }
 
 // isEmpty(): Bool
-AbraValue std_array__method_isEmpty(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, isEmpty)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   return self->size == 0 ? ABRA_TRUE : ABRA_FALSE;
 }
 
 // enumerate(): (T, Int)[]
-AbraValue std_array__method_enumerate(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, enumerate)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   AbraValue* items = GC_MALLOC(sizeof(AbraValue) * self->size);
@@ -172,7 +173,7 @@ AbraValue std_array__method_enumerate(void* _env, AbraValue _self) {
 }
 
 // push(item: T, *others: T[])
-AbraValue std_array__method_push(void* _env, AbraValue _self, AbraValue item, AbraValue _others) {
+AbraValue ABRA_METHOD_NAME(std, Array, push)(void* _env, AbraValue _self, AbraValue item, AbraValue _others) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   std_array_grow_if_necessary(self);
@@ -190,7 +191,7 @@ AbraValue std_array__method_push(void* _env, AbraValue _self, AbraValue item, Ab
 }
 
 // pop(): T?
-AbraValue std_array__method_pop(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, pop)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return ABRA_NONE;
 
@@ -200,7 +201,7 @@ AbraValue std_array__method_pop(void* _env, AbraValue _self) {
 }
 
 // popFront(): T?
-AbraValue std_array__method_popFront(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, popFront)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return ABRA_NONE;
 
@@ -211,7 +212,7 @@ AbraValue std_array__method_popFront(void* _env, AbraValue _self) {
 }
 
 // splitAt(index: Int): (T[], T[])
-AbraValue std_array__method_splitAt(void* _env, AbraValue _self, AbraValue _index) {
+AbraValue ABRA_METHOD_NAME(std, Array, splitAt)(void* _env, AbraValue _self, AbraValue _index) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   int64_t index = AS_INT(_index);
 
@@ -233,7 +234,7 @@ AbraValue std_array__method_splitAt(void* _env, AbraValue _self, AbraValue _inde
 }
 
 // concat(other: T[]): T[]
-AbraValue std_array__method_concat(void* _env, AbraValue _self, AbraValue _other) {
+AbraValue ABRA_METHOD_NAME(std, Array, concat)(void* _env, AbraValue _self, AbraValue _other) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraArray* other = (AbraArray*)AS_OBJ(_other);
 
@@ -249,7 +250,7 @@ AbraValue std_array__method_concat(void* _env, AbraValue _self, AbraValue _other
 }
 
 // map<U>(fn: (T) => U): U[]
-AbraValue std_array__method_map(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, map)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return _self;
 
@@ -263,7 +264,7 @@ AbraValue std_array__method_map(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // filter(fn: (T) => Bool): T[]
-AbraValue std_array__method_filter(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, filter)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return _self;
 
@@ -280,7 +281,7 @@ AbraValue std_array__method_filter(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // reduce<U>(initialValue: U, fn: (U, T) => U): U
-AbraValue std_array__method_reduce(void* _env, AbraValue _self, AbraValue initial_value, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, reduce)(void* _env, AbraValue _self, AbraValue initial_value, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return _self;
 
@@ -292,7 +293,7 @@ AbraValue std_array__method_reduce(void* _env, AbraValue _self, AbraValue initia
 }
 
 // forEach(fn: (T) => Unit)
-AbraValue std_array__method_forEach(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, forEach)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return _self;
 
@@ -304,7 +305,7 @@ AbraValue std_array__method_forEach(void* _env, AbraValue _self, AbraValue _fn) 
 }
 
 // join(joiner?: String): String
-AbraValue std_array__method_join(void* _env, AbraValue _self, AbraValue _joiner) {
+AbraValue ABRA_METHOD_NAME(std, Array, join)(void* _env, AbraValue _self, AbraValue _joiner) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   if (self->size == 0) return alloc_string("", 0);
 
@@ -342,7 +343,7 @@ AbraValue std_array__method_join(void* _env, AbraValue _self, AbraValue _joiner)
 }
 
 // contains(item: T): Bool
-AbraValue std_array__method_contains(void* _env, AbraValue _self, AbraValue item) {
+AbraValue ABRA_METHOD_NAME(std, Array, contains)(void* _env, AbraValue _self, AbraValue item) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   for (int i = 0; i < self->size; ++i) {
     if (std__eq(self->items[i], item)) return ABRA_TRUE;
@@ -364,7 +365,7 @@ void array_find_item(AbraArray* self, AbraFunction* fn, AbraValue* item, size_t*
 }
 
 // find<U>(fn: (T) => (Bool | U?)): T?
-AbraValue std_array__method_find(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, find)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -375,7 +376,7 @@ AbraValue std_array__method_find(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // findIndex<U>(fn: (T) => (Bool | U?)): (T, Int)?
-AbraValue std_array__method_findIndex(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, findIndex)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -391,7 +392,7 @@ AbraValue std_array__method_findIndex(void* _env, AbraValue _self, AbraValue _fn
 }
 
 // any<U>(fn: (T) => (Bool | U?)): Bool
-AbraValue std_array__method_any(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, any)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -402,7 +403,7 @@ AbraValue std_array__method_any(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // all<U>(fn: (T) => (Bool | U?)): Bool
-AbraValue std_array__method_all(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, all)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -414,13 +415,13 @@ AbraValue std_array__method_all(void* _env, AbraValue _self, AbraValue _fn) {
 }
 
 // none<U>(fn: (T) => (Bool | U?)): Bool
-AbraValue std_array__method_none(void* _env, AbraValue _self, AbraValue _fn) {
-  AbraValue all = std_array__method_all(_env, _self, _fn);
+AbraValue ABRA_METHOD_NAME(std, Array, none)(void* _env, AbraValue _self, AbraValue _fn) {
+  AbraValue all = std__Array__method_all(_env, _self, _fn);
   return AS_BOOL(all) ? ABRA_FALSE : ABRA_TRUE;
 }
 
 // sortBy(fn: (T) => Int, reverse?: Bool): T[]
-AbraValue std_array__method_sortBy(void* _env, AbraValue _self, AbraValue _fn, AbraValue _reverse) {
+AbraValue ABRA_METHOD_NAME(std, Array, sortBy)(void* _env, AbraValue _self, AbraValue _fn, AbraValue _reverse) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -450,7 +451,7 @@ AbraValue std_array__method_sortBy(void* _env, AbraValue _self, AbraValue _fn, A
 }
 
 // dedupe(): T[]
-AbraValue std_array__method_dedupe(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, dedupe)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   hashmap_t map = new_hashmap(&std__hash, &std__eq);
@@ -467,7 +468,7 @@ AbraValue std_array__method_dedupe(void* _env, AbraValue _self) {
 }
 
 // dedupeBy<U>(fn: (T) => U): T[]
-AbraValue std_array__method_dedupeBy(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, dedupeBy)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -486,7 +487,7 @@ AbraValue std_array__method_dedupeBy(void* _env, AbraValue _self, AbraValue _fn)
 }
 
 // partition<U>(fn: (T) => U): Map<U, T[]>
-AbraValue std_array__method_partition(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, partition)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -502,14 +503,14 @@ AbraValue std_array__method_partition(void* _env, AbraValue _self, AbraValue _fn
       AbraValue arr = alloc_array(items, 1);
       std_map__insert(AS_OBJ(map), partition_key, arr);
     } else {
-      std_array__method_push(_env, partition, item, ABRA_NONE);
+      std__Array__method_push(_env, partition, item, ABRA_NONE);
     }
   }
   return map;
 }
 
 // tally(): Map<T, Int>
-AbraValue std_array__method_tally(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, tally)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   AbraValue map = alloc_map();
@@ -527,7 +528,7 @@ AbraValue std_array__method_tally(void* _env, AbraValue _self) {
 }
 
 // tallyBy<U>(fn: (T) => U): Map<U, Int>
-AbraValue std_array__method_tallyBy(void* _env, AbraValue _self, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, tallyBy)(void* _env, AbraValue _self, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
 
@@ -547,7 +548,7 @@ AbraValue std_array__method_tallyBy(void* _env, AbraValue _self, AbraValue _fn) 
 }
 
 // asSet(): Set<T>
-AbraValue std_array__method_asSet(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, asSet)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   AbraValue set = alloc_set();
@@ -558,13 +559,13 @@ AbraValue std_array__method_asSet(void* _env, AbraValue _self) {
 }
 
 // getOrDefault(key: Int, default: T): T
-AbraValue std_array__method_getOrDefault(void* _env, AbraValue _self, AbraValue _key, AbraValue _default) {
+AbraValue ABRA_METHOD_NAME(std, Array, getOrDefault)(void* _env, AbraValue _self, AbraValue _key, AbraValue _default) {
   AbraValue item = std_array__index(AS_OBJ(_self), AS_INT(_key));
   return IS_NONE(item) ? _default : item;
 }
 
 // getOrElse(key: Int, fn: () => T): T
-AbraValue std_array__method_getOrElse(void* _env, AbraValue _self, AbraValue _key, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, getOrElse)(void* _env, AbraValue _self, AbraValue _key, AbraValue _fn) {
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
   AbraValue item = std_array__index(AS_OBJ(_self), AS_INT(_key));
   if (IS_NONE(item)) {
@@ -574,7 +575,7 @@ AbraValue std_array__method_getOrElse(void* _env, AbraValue _self, AbraValue _ke
 }
 
 // update(key: Int, fn: (T) => T)
-AbraValue std_array__method_update(void* _env, AbraValue _self, AbraValue _key, AbraValue _fn) {
+AbraValue ABRA_METHOD_NAME(std, Array, update)(void* _env, AbraValue _self, AbraValue _key, AbraValue _fn) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
   AbraFunction* fn = (AbraFunction*)AS_OBJ(_fn);
   int64_t index = AS_INT(_key);
@@ -590,7 +591,7 @@ AbraValue std_array__method_update(void* _env, AbraValue _self, AbraValue _key, 
 }
 
 // reverse(): T[]
-AbraValue std_array__method_reverse(void* _env, AbraValue _self) {
+AbraValue ABRA_METHOD_NAME(std, Array, reverse)(void* _env, AbraValue _self) {
   AbraArray* self = (AbraArray*)AS_OBJ(_self);
 
   AbraValue* items = GC_MALLOC(sizeof(AbraValue) * self->size);
