@@ -1,1 +1,3 @@
-println(Map.fromPairs([("a", 1), ("b", 3)]))
+val a = 1
+val b = [1, 2, 3]
+println("a: $a, b: ${b.contains(1)}, c: ${"${b[0]} + ${b[1]}"}")

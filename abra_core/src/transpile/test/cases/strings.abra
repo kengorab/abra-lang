@@ -16,6 +16,13 @@ println(str[0], str[-4], str[-8], str[8])
 println(str[1:4], str[-4:4])
 println(str[1:], str[:1])
 
+// Interpolation
+if true {
+  val a = 1
+  val b = [1, 2, 3]
+  println("a: $a, b: ${b.contains(1)}, c: ${"${b[0]} + ${b[1]}"}")
+}
+
 // Fields
 println("".length, "asdf".length, "hello world".length)
 
@@ -134,6 +141,7 @@ false true
 h e None None
 ell ell
 ello h
+a: 1, b: true, c: 1 + 2
 0 4 11
  asdf asdf it's only $12.24!
  ASDF ASDF IT'S ONLY $12.24!
