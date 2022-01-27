@@ -632,7 +632,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
         let prev_buf = self.switch_buf(BufferType::Body);
 
         for node in ast {
-            let node = match &node {
+            let type_setup_code = match &node {
                 TypedAstNode::EnumDecl(_, n) => {
                     let enum_name = Token::get_ident_name(&n.name);
                     let c_name = self.add_c_var_name(&enum_name);
@@ -661,9 +661,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     }
                     self.emit_line(format!("// End declare {}\n", &c_name));
 
-                    self.switch_buf(BufferType::MainFn);
-
-                    self.emit_line(format!(
+                    format!(
                         "ENUM_SETUP({}, {}, {});",
                         &self.module_name, &enum_name,
                         n.variants.iter().map(|(var_name, (var_type, _))| {
@@ -671,52 +669,29 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                             let arity = if let Type::Fn(fn_type) = var_type { fn_type.arg_types.len() } else { 0 };
                             format!("({}, {})", var_name, arity)
                         }).join(",")
-                    ));
-                    self.switch_buf(BufferType::Body);
-                    continue;
+                    )
                 }
-                TypedAstNode::TypeDecl(_, n) => n,
+                TypedAstNode::TypeDecl(_, node) => {
+                    let type_name = Token::get_ident_name(&node.name);
+                    let c_name = self.add_c_var_name(&type_name);
+                    self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
+
+                    self.emit_line(format!(
+                        "ABRA_DEFINE_TYPE({}, {}, {});",
+                        &self.module_name, &type_name,
+                        node.fields.iter()
+                            .map(|f| Token::get_ident_name(&f.ident))
+                            .join(","),
+                    ));
+
+                    format!("TYPE_SETUP({}, {});", &self.module_name, &type_name)
+                },
                 _ => continue,
             };
 
-            // Typedef struct
-            let type_name = Token::get_ident_name(&node.name);
-            let c_name = self.add_c_var_name(&type_name);
-            self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
-            self.emit_line(format!("typedef struct {} {{", &c_name));
-            self.emit_line("  Obj _header;");
-            for field in &node.fields {
-                let field_name = Token::get_ident_name(&field.ident);
-                self.emit_line(format!("  AbraValue {};", field_name));
-            }
-            self.emit_line(format!("}} {};", &c_name));
-
-            self.emit_line(format!("size_t {}__type_id;", &c_name));
             self.switch_buf(BufferType::MainFn);
-            self.emit_line(format!("{}__type_id = __next_type_id++;", &c_name));
+            self.emit_line(type_setup_code);
             self.switch_buf(BufferType::Body);
-
-            // Constructor function
-            self.emit(format!("AbraValue {}__new(", &c_name));
-            let num_fields = node.fields.len();
-            for (idx, field) in node.fields.iter().enumerate() {
-                let field_name = Token::get_ident_name(&field.ident);
-                self.emit(format!("AbraValue {}", field_name));
-                if idx < num_fields - 1 {
-                    self.emit(", ");
-                }
-            }
-            self.emit_line(") {");
-            self.emit_line(format!("{}* self = GC_MALLOC(sizeof({}));", &c_name, &c_name));
-            self.emit_line("self->_header.type = OBJ_INSTANCE;");
-            self.emit_line(format!("self->_header.type_id = {}__type_id;", &c_name));
-            for field in &node.fields {
-                let field_name = Token::get_ident_name(&field.ident);
-                self.emit_line(format!("self->{} = {};", &field_name, &field_name));
-            }
-            self.emit_line(format!("return (AbraValue){{.type = ABRA_TYPE_OBJ, .as = {{.obj = ((Obj*)self)}}}};"));
-            self.emit_line("}");
-
         }
 
         self.switch_buf(prev_buf);
@@ -1677,94 +1652,8 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         Ok(())
     }
 
-    fn visit_type_decl(&mut self, _token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
-        let prev_buf = self.switch_buf(BufferType::Body);
-
-        // Typedef & constructor fn was emitted in lift
-        let type_name = Token::get_ident_name(&node.name);
-        let c_name = self.find_c_var_name(&type_name).unwrap();
-        let num_fields = node.fields.len();
-
-        // eq function
-        self.emit_line(format!("bool {}__eq(Obj* _self, Obj* _other) {{", &c_name));
-        self.emit_line(format!("{}* self = ({}*)_self;", &c_name, &c_name));
-        self.emit_line(format!("{}* other = ({}*)_other;", &c_name, &c_name));
-        for field in &node.fields {
-            let field_name = Token::get_ident_name(&field.ident);
-            self.emit_line(format!("if (!std__eq(self->{}, other->{})) return false;", &field_name, &field_name));
-        }
-        self.emit_line("return true;");
-        self.emit_line("}");
-        self.switch_buf(BufferType::MainFn);
-        self.emit_line(format!("eq_fns[{}__type_id] = &{}__eq;", &c_name, &c_name));
-        self.switch_buf(BufferType::Body);
-
-        // toString function
-        self.emit_line(format!("char const* {}__to_string(Obj* obj) {{", &c_name));
-        self.emit_line(format!("{}* self = ({}*)obj;", &c_name, &c_name));
-        for field in &node.fields {
-            let field_name = Token::get_ident_name(&field.ident);
-            self.emit_line(format!("char const* {}_str = std__to_string(self->{});", &field_name, &field_name));
-            self.emit_line(format!("size_t {}_str_len = strlen({}_str);", &field_name, &field_name));
-        }
-        let mut str_len = type_name.len() + 2; // Account for `()`
-        let mut field_str_var_names = vec![];
-        for (idx, field) in node.fields.iter().enumerate() {
-            let field_name = Token::get_ident_name(&field.ident);
-            field_str_var_names.push(format!("{}_str", &field_name));
-            str_len += field_name.len() + 2; // Account for `: `
-            if idx < num_fields - 1 {
-                str_len += 2; // Account for `, `
-            }
-        }
-        if field_str_var_names.is_empty() {
-            self.emit_line(format!("size_t str_len = sizeof(char)*{}+1;", str_len));
-        } else {
-            let field_str_len = field_str_var_names.iter().map(|n| format!("{}_len", n)).join("+");
-            self.emit_line(format!("size_t str_len = sizeof(char)*{}+{}+1;", str_len, field_str_len));
-        };
-        self.emit_line("char* str = GC_MALLOC(str_len);");
-        self.emit(format!("sprintf(str, \"{}(", &type_name));
-        for (idx, field) in node.fields.iter().enumerate() {
-            let field_name = Token::get_ident_name(&field.ident);
-            self.emit(format!("{}: %s", field_name));
-            if idx < num_fields - 1 {
-                self.emit(", ");
-            }
-        }
-        if field_str_var_names.is_empty() {
-            self.emit_line(")\");");
-        } else {
-            self.emit_line(format!(")\", {});", field_str_var_names.iter().join(", ")));
-        }
-        self.emit_line("str[str_len] = 0;");
-        self.emit_line("return str;");
-        self.emit_line("}");
-        self.switch_buf(BufferType::MainFn);
-        self.emit_line(format!("to_string_fns[{}__type_id] = &{}__to_string;", &c_name, &c_name));
-        self.switch_buf(BufferType::Body);
-
-        // toString method
-        self.emit_line(format!("AbraValue {}__method_toString(void* _env, AbraValue _self) {{", &c_name));
-        self.emit_line(format!("char* str = (char*) {}__to_string(AS_OBJ(_self));", &c_name));
-        self.emit_line("return alloc_string(str, strlen(str));");
-        self.emit_line("}");
-
-        // hash function
-        self.emit_line(format!("size_t {}__hash(Obj* _self) {{", &c_name));
-        self.emit_line(format!("{}* self = ({}*)_self;", &c_name, &c_name));
-        self.emit_line("size_t hash = 1;");
-        for field in &node.fields {
-            let field_name = Token::get_ident_name(&field.ident);
-            self.emit_line(format!("hash = 31 * hash + std__hash(self->{});", &field_name));
-        }
-        self.emit_line("return hash;");
-        self.emit_line("}");
-        self.switch_buf(BufferType::MainFn);
-        self.emit_line(format!("hash_fns[{}__type_id] = &{}__hash;", &c_name, &c_name));
-        self.switch_buf(BufferType::Body);
-
-        self.switch_buf(prev_buf);
+    fn visit_type_decl(&mut self, _token: Token, _node: TypedTypeDeclNode) -> Result<(), ()> {
+        // All code necessary for type declaration was emitted when lifting types
         Ok(())
     }
 

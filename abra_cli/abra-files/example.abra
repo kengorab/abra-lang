@@ -1,3 +1,5 @@
-val a = 1
-val b = [1, 2, 3]
-println("a: $a, b: ${b.contains(1)}, c: ${"${b[0]} + ${b[1]}"}")
+type Person {
+  name: String
+}
+
+println(Person(name: "Meg"))
