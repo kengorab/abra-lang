@@ -14,6 +14,7 @@ typedef enum {
 typedef struct Obj {
   ObjectType type;
   size_t type_id;
+  int enum_variant_idx;
 } Obj;
 
 // Predefined type_ids for builtins. Note that additional types will be assigned

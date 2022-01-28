@@ -179,7 +179,7 @@ AbraValue std_option__coalesce(AbraValue lhs, AbraValue rhs) {
     return IS_NONE(lhs) ? rhs : lhs;
 }
 
-bool std_type_is(AbraValue val, size_t type_id) {
+bool std_type_eq(AbraValue val, size_t type_id) {
     if (val.type == ABRA_TYPE_INT) return type_id == std__Int__type_id;
     if (val.type == ABRA_TYPE_FLOAT) return type_id == std__Float__type_id;
     if (val.type == ABRA_TYPE_BOOL) return type_id == std__Bool__type_id;
@@ -196,6 +196,11 @@ bool std_type_is(AbraValue val, size_t type_id) {
 
 bool std_type_is_tuple(AbraValue val) {
     return val.type == ABRA_TYPE_OBJ && AS_OBJ(val)->type == OBJ_TUPLE;
+}
+
+bool std_enum_variant_eq(AbraValue val, size_t type_id, size_t variant_idx) {
+    Obj* o = AS_OBJ(val);
+    return o->type == OBJ_INSTANCE && o->type_id == type_id && o->enum_variant_idx == variant_idx;
 }
 
 void abra_init() {

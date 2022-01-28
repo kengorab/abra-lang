@@ -61,6 +61,7 @@ println("Test match expression:")
 })()
 
 // Matching on user-defined types
+println("Test matching on user-defined types:")
 type Foo { foo: String }
 val foos = [Foo(foo: "asdf")]
 match foos[0] {
@@ -71,6 +72,38 @@ match foos[1] {
   Foo f => println(f.foo)
   None => println("nothing")
 }
+
+// Matching on enum variants
+enum A { A1, A2 }
+enum B { B1, B2 }
+println("Test matching on enum variants:")
+(() => {
+  val v1 = A.A1
+  match v1 {
+    A.A2 => println("A2")
+    A.A1 => println("A1")
+  }
+
+  val v2 = B.B2
+  match v2 {
+    B.B1 => println("B1")
+    B.B2 => println("B2")
+  }
+
+  val v3: A | B = B.B1
+  match v3 {
+    A.A1 => println("A1")
+    A.A2 => println("A2")
+    B.B1 => println("B1")
+    B.B2 => println("B2")
+  }
+
+  val r = Result.Ok("asdf")
+  match r {
+    Result.Ok => println("ok")
+    Result.Err => println("err")
+  }
+})()
 
 /* assert(stdout):
 Test None & builtin type matching:
@@ -95,6 +128,12 @@ Test match expression:
 1234
 5678
 0
+Test matching on user-defined types:
 asdf
 nothing
+Test matching on enum variants:
+A1
+B2
+B1
+ok
 */

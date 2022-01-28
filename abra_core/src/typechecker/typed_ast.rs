@@ -390,7 +390,7 @@ pub enum TypedMatchKind {
     Wildcard,
     None,
     Type { type_name: String, args: Option<Vec<TypedMatchCaseArgument>> },
-    EnumVariant { variant_idx: usize, args: Option<Vec<TypedMatchCaseArgument>> },
+    EnumVariant { enum_name: String, variant_idx: usize, args: Option<Vec<TypedMatchCaseArgument>> },
     Constant { node: TypedAstNode },
     Tuple { nodes: Vec<TypedAstNode> },
 }

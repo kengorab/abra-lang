@@ -271,7 +271,6 @@
 #define ABRA_DEFINE_ENUM(mod, type, ...) \
   typedef struct mod##__##type { \
     Obj _header; \
-    mod##__##type##_Variant variant; \
     union {                            \
       MAP_EXTRA(_VARIANT_UNION_NAME, mod##__##type, __VA_ARGS__) \
     }; \
@@ -279,14 +278,14 @@
   bool mod##__##type##__eq(Obj* _self, Obj* _other) {                \
     mod##__##type* self = (mod##__##type*) _self; \
     mod##__##type* other = (mod##__##type*) _other; \
-    if (self->variant != other->variant) return false; \
-    switch (self->variant) {           \
+    if (self->_header.enum_variant_idx != other->_header.enum_variant_idx) return false; \
+    switch (self->_header.enum_variant_idx) {           \
       MAP_EXTRA(_VARIANT_EQ_CASE, mod##__##type, __VA_ARGS__) \
     } \
   } \
   char const* mod##__##type##__to_string(Obj* obj) { \
     mod##__##type* self = (mod##__##type*) obj; \
-    switch (self->variant) { \
+    switch (self->_header.enum_variant_idx) { \
       MAP_EXTRA(_VARIANT_TOSTRING_CASE, mod##__##type, __VA_ARGS__) \
     } \
   } \
@@ -296,7 +295,7 @@
   } \
   size_t mod##__##type##__hash(Obj* _self) { \
     mod##__##type* self = (mod##__##type*) _self; \
-    switch (self->variant) { \
+    switch (self->_header.enum_variant_idx) { \
       MAP_EXTRA(_VARIANT_HASH_CASE, mod##__##type, __VA_ARGS__) \
     } \
   }
@@ -320,7 +319,7 @@
     mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
     self->_header.type = OBJ_INSTANCE; \
     self->_header.type_id = mod##__##typ##__type_id; \
-    self->variant = mod##__##typ##_Variant_##varname##_idx; \
+    self->_header.enum_variant_idx = mod##__##typ##_Variant_##varname##_idx; \
     MAP_EXTRA(_VARIANT_FIELD_ASSN, self->varname, __VA_ARGS__)      \
     return (AbraValue) {.type=ABRA_TYPE_OBJ, .as={.obj=((Obj*) self)}}; \
   } \
@@ -348,7 +347,7 @@
     mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
     self->_header.type = OBJ_INSTANCE; \
     self->_header.type_id = mod##__##typ##__type_id; \
-    self->variant = mod##__##typ##_Variant_##varname##_idx; \
+    self->_header.enum_variant_idx = mod##__##typ##_Variant_##varname##_idx; \
     return (AbraValue) {.type=ABRA_TYPE_OBJ, .as={.obj=((Obj*) self)}}; \
   }
 

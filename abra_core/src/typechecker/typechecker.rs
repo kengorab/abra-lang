@@ -615,7 +615,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 }
                 MatchCaseType::Compound(idents, args) => {
                     let mut idents = idents.into_iter();
-                    let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
+                    let ident = idents.next().expect("There should be at least one ident");
+                    let enum_name = Token::get_ident_name(&ident);
+                    let type_ident = TypeIdentifier::Normal { ident, type_args: None };
                     let typ = self.type_from_type_ident(&type_ident, true)?;
                     let enum_type = match self.resolve_ref_type(&typ) {
                         Type::Enum(enum_type) => enum_type,
@@ -751,7 +753,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     } else { None };
 
-                    TypedMatchKind::EnumVariant { variant_idx, args }
+                    TypedMatchKind::EnumVariant { enum_name, variant_idx, args }
                 }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
@@ -3188,6 +3190,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 branches: vec![
                     (
                         TypedMatchKind::EnumVariant {
+                            enum_name: "Result".to_string(),
                             variant_idx: 0,
                             args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))]),
                         },
@@ -3200,7 +3203,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         ]
                     ),
                     (
-                        TypedMatchKind::EnumVariant { variant_idx: 1, args: None },
+                        TypedMatchKind::EnumVariant { enum_name: "Result".to_string(), variant_idx: 1, args: None },
                         Some("e".to_string()),
                         vec![
                             TypedAstNode::ReturnStatement(

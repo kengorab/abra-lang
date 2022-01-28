@@ -438,6 +438,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 m.insert("String".to_string(), "ABRA_NONE".to_string());
                 m.insert("Array".to_string(), "ABRA_NONE".to_string());
                 m.insert("Map".to_string(), "ABRA_NONE".to_string());
+                m.insert("Result".to_string(), "ABRA_NONE".to_string());
 
                 m
             },
@@ -1296,16 +1297,25 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 TypedMatchKind::Wildcard => self.emit("true"),
                 TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
                 TypedMatchKind::Type { type_name, .. } => {
-                    let type_c_name = match type_name.as_ref() {
-                        "Int"| "Float"| "Bool"| "String" => format!("std__{}__type_id", &type_name),
+                    let type_id_var = match type_name.as_ref() {
+                        "Int" | "Float" | "Bool" | "String" => format!("std__{}__type_id", &type_name),
                         _ => {
                             let type_c_name = self.c_name_for_type(&type_name);
                             format!("{}__type_id", self.c_type_names.get(&type_c_name).unwrap())
                         }
                     };
-                    self.emit(format!("std_type_is({}, {})", &match_target_ident, type_c_name));
+                    self.emit(format!("std_type_eq({}, {})", &match_target_ident, type_id_var));
                 }
-                TypedMatchKind::EnumVariant { .. } => {}
+                TypedMatchKind::EnumVariant { enum_name, variant_idx, .. } => {
+                    let type_id_var = match enum_name.as_ref() {
+                        "Result" => format!("std__{}__type_id", &enum_name),
+                        _ => {
+                            let type_c_name = self.c_name_for_type(&enum_name);
+                            format!("{}__type_id", self.c_type_names.get(&type_c_name).unwrap())
+                        }
+                    };
+                    self.emit(format!("std_enum_variant_eq({}, {}, {})", &match_target_ident, type_id_var, variant_idx));
+                }
                 TypedMatchKind::Constant { node } => {
                     self.emit(format!("std__eq({}, ", &match_target_ident));
                     self.visit(node)?;

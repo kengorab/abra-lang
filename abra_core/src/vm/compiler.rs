@@ -1576,7 +1576,8 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
                     args
                 }
-                TypedMatchKind::EnumVariant { variant_idx, args } => {
+                TypedMatchKind::EnumVariant { variant_idx, args, .. } => {
+                    // TODO: Note, this is broken (#347)
                     self.write_opcode(Opcode::Dup, token.get_position().line);
                     self.write_int_constant(variant_idx as u32, token.get_position().line);
 
