@@ -1585,7 +1585,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                     next_case_jump_handles.push(self.begin_jump(Opcode::JumpIfF(0), token.get_position().line));
 
                     if let Some(args) = &args {
-                        for (idx, arg) in args.iter().enumerate() {
+                        for (idx, (_, arg)) in args.iter().enumerate() {
                             match arg {
                                 TypedMatchCaseArgument::Pattern(_) => { continue; }
                                 TypedMatchCaseArgument::Literal(arg) => {
@@ -1600,7 +1600,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                         }
                     }
 
-                    args
+                    args.map(|args| args.into_iter().map(|(_, arg)| arg).collect())
                 }
                 TypedMatchKind::Constant { node, } => {
                     self.write_opcode(Opcode::Dup, token.get_position().line);

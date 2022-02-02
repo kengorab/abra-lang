@@ -6,7 +6,7 @@ use crate::lexer::tokens::Token;
 use crate::{ModuleId, ModuleLoader, ModuleReader};
 use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typechecker::ExportedValue;
-use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchCaseArgument, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
 
 #[derive(Clone)]
@@ -1280,7 +1280,8 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             self.match_result_var_names_stack.push(VecDeque::new());
         }
 
-        for (match_kind, binding, body) in node.branches {
+        let num_branches = node.branches.len();
+        for (idx, (match_kind, binding, body)) in node.branches.into_iter().enumerate() {
             match &match_kind {
                 TypedMatchKind::Constant { node } => self.lift(node)?,
                 TypedMatchKind::Tuple { nodes } => {
@@ -1291,8 +1292,10 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 _ => {}
             }
 
+            self.emit_line(format!("match_{}_case_{}:", &salt, idx));
             self.emit("if (");
 
+            let mut enum_variant_match_case_ctx = None;
             match match_kind {
                 TypedMatchKind::Wildcard => self.emit("true"),
                 TypedMatchKind::None => self.emit(format!("IS_NONE({})", &match_target_ident)),
@@ -1306,7 +1309,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     };
                     self.emit(format!("std_type_eq({}, {})", &match_target_ident, type_id_var));
                 }
-                TypedMatchKind::EnumVariant { enum_name, variant_idx, .. } => {
+                TypedMatchKind::EnumVariant { enum_name, variant_idx, variant_name, args } => {
                     let type_id_var = match enum_name.as_ref() {
                         "Result" => format!("std__{}__type_id", &enum_name),
                         _ => {
@@ -1315,6 +1318,10 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                         }
                     };
                     self.emit(format!("std_enum_variant_eq({}, {}, {})", &match_target_ident, type_id_var, variant_idx));
+
+                    if let Some(args) = args {
+                        enum_variant_match_case_ctx = Some((enum_name, variant_name, args));
+                    }
                 }
                 TypedMatchKind::Constant { node } => {
                     self.emit(format!("std__eq({}, ", &match_target_ident));
@@ -1342,6 +1349,40 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             if let Some(binding) = binding {
                 let c_name = self.add_c_var_name(&binding);
                 self.emit_line(format!("AbraValue {} = {};", c_name, &match_target_ident));
+            }
+            if let Some((enum_name, variant_name, args)) = enum_variant_match_case_ctx {
+                for (arg_idx, (arg_name, arg)) in args.into_iter().enumerate() {
+                    let type_c_name = self.c_name_for_type(&enum_name);
+                    let c_name = self.c_type_names.get(&type_c_name).unwrap();
+                    let arg_var_name = format!(
+                        "(({}*)AS_OBJ({}))->{}.{}",
+                        &c_name, &match_target_ident, &variant_name, &arg_name
+                    );
+
+                    match arg {
+                        TypedMatchCaseArgument::Pattern(pat) => {
+                            self.visit_binding_pattern(&pat, arg_var_name);
+                        }
+                        TypedMatchCaseArgument::Literal(ast_node) => {
+                            self.lift(&ast_node)?;
+                            let lit_ident = format!("match_{}_case_{}_lit_{}", &salt, &idx, &arg_idx);
+                            self.emit(format!("AbraValue {} = ", &lit_ident));
+                            self.visit(ast_node)?;
+                            self.emit_line(";");
+
+                            if idx < num_branches {
+                                let next_match_case_label = format!("match_{}_case_{}", &salt, idx + 1);
+                                self.emit_line(format!(
+                                    "if (!std__eq({}, {})) {{ goto {}; }}",
+                                    &arg_var_name, &lit_ident, &next_match_case_label
+                                ));
+                            } else {
+                                unreachable!("The last match case should never include a literal")
+                            }
+                        }
+                    }
+                }
+
             }
             let len = body.len();
             for (idx, node) in body.into_iter().enumerate() {

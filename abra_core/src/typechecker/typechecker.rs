@@ -724,7 +724,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 }
 
                                 let mut args = Vec::new();
-                                for ((_, arg_type, _), pat) in arg_types.iter().zip(destructured_args.into_iter()) {
+                                for ((arg_name, arg_type, _), pat) in arg_types.iter().zip(destructured_args.into_iter()) {
                                     let arg_type = match &arg_type {
                                         Type::Generic(g) => generics.get(g).unwrap(),
                                         t => t
@@ -742,7 +742,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                             TypedMatchCaseArgument::Literal(typed_node)
                                         }
                                     };
-                                    args.push(arg);
+                                    args.push((arg_name.clone(), arg));
                                 }
                                 Some(args)
                             }
@@ -753,7 +753,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     } else { None };
 
-                    TypedMatchKind::EnumVariant { enum_name, variant_idx, args }
+                    TypedMatchKind::EnumVariant { enum_name, variant_idx, variant_name, args }
                 }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
@@ -3192,7 +3192,10 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         TypedMatchKind::EnumVariant {
                             enum_name: "Result".to_string(),
                             variant_idx: 0,
-                            args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))]),
+                            variant_name: "Ok".to_string(),
+                            args: Some(vec![
+                                ("value".to_string(), TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string()))))
+                            ]),
                         },
                         None,
                         vec![
@@ -3203,7 +3206,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         ]
                     ),
                     (
-                        TypedMatchKind::EnumVariant { enum_name: "Result".to_string(), variant_idx: 1, args: None },
+                        TypedMatchKind::EnumVariant { enum_name: "Result".to_string(), variant_idx: 1, variant_name: "Err".to_string(), args: None },
                         Some("e".to_string()),
                         vec![
                             TypedAstNode::ReturnStatement(

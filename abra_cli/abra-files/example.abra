@@ -1,3 +1,14 @@
-(() => {
-  println(Result.Ok(value: "asdf"))
-})()
+enum A { A1(a: Int, b: Int), A2 }
+//enum B { B1, B2 }
+
+//val v: A | B = B.B1
+val v = A.A1(a: 3, b: 3)
+match v {
+  A.A1(2, b) => println("1")
+  A.A1(1, 4) => println("2")
+  A.A1(a, 4) => println("3")
+  A.A1(a, b) => println("4")
+  A.A2 => println("A2")
+  // B.B1 => println("B1")
+  // B.B2 => println("B2")
+}

@@ -4982,22 +4982,22 @@ fn typecheck_match_statements() -> TestResult {
             target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
             branches: vec![
                 (
-                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 0, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 0, variant_name: "Left".to_string(), args: None },
                     None,
                     vec![int_literal!((4, 19), 0)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 1, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 1, variant_name: "Right".to_string(), args: None },
                     None,
                     vec![int_literal!((5, 20), 1)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 2, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 2, variant_name: "Up".to_string(), args: None },
                     None,
                     vec![int_literal!((6, 17), 2)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 3, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 3, variant_name: "Down".to_string(), args: None },
                     None,
                     vec![int_literal!((7, 19), 3)],
                 ),

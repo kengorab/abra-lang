@@ -105,6 +105,40 @@ println("Test matching on enum variants:")
   }
 })()
 
+// Matching on constants in enum variants
+println("Test matching on constants in enum variants:")
+enum C { C1(c1: Int, c2: Int) }
+(() => {
+  val cases = [
+    C.C1(c1: 2, c2: 3),
+    C.C1(c1: 1, c2: 4),
+    C.C1(c1: 3, c2: 4),
+    C.C1(c1: 3, c2: 3),
+  ]
+  for v in cases {
+    match v {
+      C.C1(2, b) => println("case 1: b=$b")
+      C.C1(1, 4) => println("case 2")
+      C.C1(a, 4) => println("case 3: a=$a")
+      C.C1(a, b) => println("case 4: a=$a, b=$b")
+    }
+  }
+})()
+
+// Destructuring in enum variant match cases
+println("Test destructuring in enum variant match cases:")
+enum D { D1(d: Int[]) }
+(() => {
+  val v = D.D1(d: [1, 2, 3])
+  match v {
+    D.D1([a, b, c]) => println("a=$a, b=$b, c=$c")
+  }
+
+  match v {
+    D.D1([a, *b]) => println("a=$a, b=$b")
+  }
+})()
+
 /* assert(stdout):
 Test None & builtin type matching:
 Int: 1234
@@ -136,4 +170,12 @@ A1
 B2
 B1
 ok
+Test matching on constants in enum variants:
+case 1: b=3
+case 2
+case 3: a=3
+case 4: a=3, b=3
+Test destructuring in enum variant match cases:
+a=1, b=2, c=3
+a=1, b=[2, 3]
 */
