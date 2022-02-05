@@ -50,6 +50,20 @@ type Foo3<T> {
   println(foo3)
 })()
 
+type Foo4 {
+  foo1: Foo1
+}
+
+// Test updating fields
+(() => {
+  val foo4 = Foo4(foo1: Foo1(foo: "foo", bar: 24))
+  foo4.foo1 = Foo1(foo: "bar", bar: 12)
+  println(foo4)
+
+  foo4.foo1.bar = 16
+  println(foo4)
+})()
+
 /* assert(stdout):
 Foo1(foo: foo, bar: 24)
 Foo2(foo: foo, bar: 24)
@@ -57,4 +71,6 @@ false false false true
 #{Foo1(foo: foo, bar: 24)}
 Foo3(foo: hello) hello! hello!
 Foo3(foo: hello)
+Foo4(foo1: Foo1(foo: bar, bar: 12))
+Foo4(foo1: Foo1(foo: bar, bar: 16))
 */

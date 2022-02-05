@@ -1413,7 +1413,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
                     }
                 }
             }
-            _ => todo!()
+            _ => unreachable!("All other node types are caught in typechecking")
         };
 
         Ok(())

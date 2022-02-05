@@ -978,7 +978,12 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 }
             }
             TypedAstNode::Assignment(_, node) => {
-                self.lift(&node.target)?;
+                if let TypedAstNode::Accessor(_, TypedAccessorNode { target, .. }) = &*node.target {
+                    self.lift(&*target)?;
+                } else {
+                    self.lift(&node.target)?;
+                }
+
                 self.lift(&node.expr)?;
             }
             TypedAstNode::Indexing(_, node) => {
@@ -1740,13 +1745,39 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
                 self.visit(*node.expr)?;
                 self.emit(")");
             }
-            TypedAstNode::Accessor(_, _) => todo!(),
+            TypedAstNode::Accessor(_, TypedAccessorNode { target, field_ident, .. }) => {
+                let field_name = Token::get_ident_name(&field_ident);
+
+                let type_c_name = match target.get_type() {
+                    Type::Int | Type::Float | Type::String | Type::Array(_) | Type::Map(_, _) | Type::Set(_) => unimplemented!("Builtins have no mutable static members"),
+                    Type::Type(name, _, _) => {
+                        let type_name = name.split("/").last().unwrap();
+                        if name.starts_with("prelude/") {
+                            Self::c_name_for_type_in_module("std", &type_name)
+                        } else {
+                            self.c_name_for_type(&type_name)
+                        }
+                    }
+                    Type::Reference(t, _) => {
+                        let type_name = t.split("/").last().unwrap();
+                        self.c_name_for_type(&type_name)
+                    }
+                    Type::Struct(t) => self.c_name_for_type(&t.name),
+                    _ => unimplemented!()
+                };
+                let c_name = self.c_type_names.get(&type_c_name).unwrap();
+                let line = format!("(({}*)AS_OBJ(", &c_name);
+                self.emit(line);
+                self.visit(*target)?;
+                self.emit(format!("))->{} = ", field_name));
+                self.visit(*node.expr)?;
+            },
             target @ TypedAstNode::Identifier(_, _) => {
                 self.visit(target)?;
                 self.emit("=");
                 self.visit(*node.expr)?;
             }
-            _ => todo!()
+            _ => unreachable!("All other node types are caught in typechecking")
         };
 
         Ok(())
