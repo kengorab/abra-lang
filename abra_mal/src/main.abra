@@ -1,8 +1,8 @@
-import prompt from io
-import Env, Value, FnValue, Error from .types
-import Reader from .reader
-import prStr from .printer
-import ns from .core  
+import prompt from "io"
+import Env, Value, FnValue, Error from "./types"
+import Reader from "./reader"
+import prStr from "./printer"
+import ns from "./core"
 
 func read(input: String): Value = Reader.readStr(input)
 

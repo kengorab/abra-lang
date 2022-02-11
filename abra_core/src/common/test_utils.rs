@@ -17,7 +17,7 @@ impl MockModuleReader {
 
 impl ModuleReader for MockModuleReader {
     fn resolve_module_path(&mut self, module_id: &ModuleId, _with_respect_to: &ModuleId) -> String {
-        module_id.get_path(PathBuf::from(""))
+        module_id.get_path("")
     }
 
     fn read_module(&mut self, _module_id: &ModuleId, module_name: &String) -> Option<String> {
@@ -33,7 +33,7 @@ impl ModuleReader for MockModuleReader {
             })
                 .unwrap()
         } else {
-            PathBuf::from(module_id.get_path(PathBuf::from(""))).to_str().map(|s| s.to_string()).unwrap()
+            PathBuf::from(module_id.get_path("")).to_str().map(|s| s.to_string()).unwrap()
         }
     }
 }

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::fmt::Debug;
-use abra_core::parser::ast::{ModuleId, ModulePathSegment};
-use abra_core::module_loader::ModuleReader;
+use crate::parser::ast::{ModuleId, ModulePathSegment};
+use crate::ModuleReader;
 
 #[derive(Clone, Debug)]
 pub struct FsModuleReader {
-    pub(crate) project_root: PathBuf,
-    pub(crate) module_id_paths: HashMap<ModuleId, PathBuf>,
+    pub module_id_paths: HashMap<ModuleId, PathBuf>,
 }
 
 impl FsModuleReader {
@@ -17,7 +16,7 @@ impl FsModuleReader {
         let entrypoint_path = PathBuf::from(entrypoint_module_id.get_path(&project_root));
         module_id_paths.insert(entrypoint_module_id, entrypoint_path);
 
-        Self { project_root, module_id_paths }
+        Self { module_id_paths }
     }
 }
 

@@ -1,8 +1,8 @@
-import io
-import Value, Error, AtomInner from .types
-import doMath, Op from .math_util
-import prStr from .printer 
-import Reader from .reader
+import "io" as io
+import Value, Error, AtomInner from "./types"
+import doMath, Op from "./math-util"
+import prStr from "./printer"
+import Reader from "./reader"
 
 export val ns: Map<String, Value> = {}
 ns["+"] = Value.BuiltinFn(args => Result.Ok(doMath(args, Op.Add)))

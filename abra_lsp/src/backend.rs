@@ -1,83 +1,43 @@
 use crate::utils::abra_error_to_diagnostic;
 use abra_core::typecheck;
-use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::{Client, LanguageServer};
 use tower_lsp::lsp_types::notification::PublishDiagnostics;
 use tower_lsp::lsp_types::{Url, PublishDiagnosticsParams, InitializeParams, InitializeResult, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, InitializedParams, MessageType, DidOpenTextDocumentParams, TextDocumentItem, DidChangeTextDocumentParams, VersionedTextDocumentIdentifier};
 use abra_core::parser::ast::ModuleId;
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
-use std::ops::Deref;
 use std::path::PathBuf;
-
-#[derive(Debug)]
-pub struct LspModuleReader {
-    project_root: Option<PathBuf>,
-}
-
-impl ModuleReader for LspModuleReader {
-    fn resolve_module_path(&mut self, module_id: &ModuleId, with_respect_to: &ModuleId) -> String {
-        todo!()
-    }
-
-    fn read_module(&mut self, module_id: &ModuleId, module_name: &String) -> Option<String> {
-        todo!()
-    }
-
-    fn get_module_name(&self, module_id: &ModuleId) -> String {
-        todo!()
-    }
-    // fn read_module(&self, module_id: &ModuleId) -> Option<String> {
-    //     match &self.project_root {
-    //         None => None,
-    //         Some(project_root) => {
-    //             let file_path = module_id.get_path(Some(project_root));
-    //             match std::fs::read_to_string(file_path) {
-    //                 Ok(contents) => Some(contents),
-    //                 Err(_) => None
-    //             }
-    //         }
-    //     }
-    // }
-}
+use abra_core::common::fs_module_reader::FsModuleReader;
 
 #[derive(Debug)]
 pub struct Backend {
     client: Client,
-    project_root: Mutex<Option<String>>,
 }
 
 impl Backend {
     pub fn new(client: Client) -> Self {
-        Self { client, project_root: Mutex::new(None) }
-    }
-
-    async fn module_id_from_url(&self, uri: &Url) -> ModuleId {
-        let project_root = self.project_root.lock().await;
-        let module_uri = uri.path();
-        let mut module_path = match project_root.deref() {
-            None => module_uri.to_string(),
-            Some(project_root) => module_uri.replace(project_root, ""),
-        };
-        if module_path.starts_with('/') {
-            module_path = module_path.replacen('/', "", 1);
-        }
-
-        ModuleId::from_path(&module_path)
+        Self { client }
     }
 
     async fn get_diagnostics(&self, uri: Url, version: Option<i64>, text: String) -> PublishDiagnosticsParams {
-        let module_id = self.module_id_from_url(&uri).await;
+        let path = uri.to_file_path().unwrap();
+        let parent = path.parent().unwrap().to_path_buf();
+        let module_path = path.file_name().unwrap().to_str().unwrap().to_string();
+        let module_id = ModuleId::from_path(&module_path);
 
-        let project_root = self.project_root.lock().await;
-        let project_root_path = project_root.as_ref().map(|root| PathBuf::from(root));
-        let mut module_reader = LspModuleReader { project_root: project_root_path };
+        let mut module_reader = FsModuleReader::new(module_id.clone(), parent);
         let mut loader = ModuleLoader::new(&mut module_reader);
 
         match typecheck(module_id, &text, &mut loader) {
-            Ok(_) => PublishDiagnosticsParams { uri, version, diagnostics: vec![] },
+            Ok(_) =>  PublishDiagnosticsParams { uri, version, diagnostics: vec![] },
             Err(e) => {
-                let file_name = e.module_id().get_path(project_root.as_ref().unwrap_or(&"".to_string()));
+                let file_name = PathBuf::from(module_reader.get_module_name(&e.module_id()))
+                    .with_extension("abra")
+                    .canonicalize()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string();
                 let diagnostic = abra_error_to_diagnostic(e, &file_name, &text);
 
                 let uri = Url::from_file_path(file_name).unwrap();
@@ -107,24 +67,6 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let TextDocumentItem { uri, version, text, .. } = params.text_document;
-
-        // Force mutex ref to drop, unlocking it
-        {
-            let mut project_root = self.project_root.lock().await;
-            if project_root.is_none() {
-                *project_root = match self.client.workspace_folders().await {
-                    Ok(Some(folders)) => {
-                        folders.into_iter()
-                            .find_map(|f| {
-                                if uri.path().starts_with(f.uri.path()) {
-                                    Some(f.uri.path().to_string())
-                                } else { None }
-                            })
-                    }
-                    _ => None,
-                };
-            }
-        }
 
         let diagnostics = self.get_diagnostics(uri, Some(version), text).await;
         self.client.send_custom_notification::<PublishDiagnostics>(diagnostics).await;

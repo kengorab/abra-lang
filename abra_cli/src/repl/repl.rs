@@ -3,7 +3,7 @@ use ansi_term::Color;
 use rustyline::Editor;
 use std::env::current_dir;
 use abra_core::{compile, typecheck};
-use crate::fs_module_reader::FsModuleReader;
+use abra_core::common::fs_module_reader::FsModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::common::display_error::DisplayError;
 use itertools::Itertools;
@@ -45,7 +45,7 @@ impl<'a> Repl<'a> {
 
     fn new() -> Self {
         let rl = Editor::<AbraHighlighter>::new();
-        let module_reader = FsModuleReader { project_root: current_dir().unwrap(), module_id_paths: HashMap::new() };
+        let module_reader = FsModuleReader { module_id_paths: HashMap::new() };
 
         Self { running: false, rl, code: vec![], continuation_buf: "".to_string(), indentations: vec![], module_reader }
     }
