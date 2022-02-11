@@ -9,7 +9,9 @@ use crate::builtins::native::load_native_module_contents;
 use crate::builtins::native_module_builder::ModuleSpec;
 
 pub trait ModuleReader {
-    fn read_module(&self, module_id: &ModuleId) -> Option<String>;
+    fn resolve_module_path(&mut self, module_id: &ModuleId, with_respect_to: &ModuleId) -> String;
+    fn read_module(&mut self, module_id: &ModuleId, module_name: &String) -> Option<String>;
+    fn get_module_name(&self, module_id: &ModuleId) -> String;
 }
 
 pub enum ModuleLoaderError {
@@ -20,7 +22,7 @@ pub enum ModuleLoaderError {
 
 #[derive(Debug)]
 pub struct ModuleLoader<'a, R: ModuleReader> {
-    module_reader: &'a R,
+    module_reader: &'a mut R,
     native_module_cache: HashMap<String, ModuleSpec>,
     typed_module_cache: HashMap<String, Option<TypedModule>>,
     pub(crate) compiled_modules: Vec<(Module, Option<Metadata>)>,
@@ -28,7 +30,7 @@ pub struct ModuleLoader<'a, R: ModuleReader> {
 }
 
 impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
-    pub fn new(module_reader: &'a R) -> Self {
+    pub fn new(module_reader: &'a mut R) -> Self {
         let typed_module_cache = HashMap::new();
         let compiled_modules = Vec::new();
         let native_module_cache = HashMap::new();
@@ -39,8 +41,16 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
         loader
     }
 
-    pub fn load_module(&mut self, module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
-        let module_name = module_id.get_name();
+    pub fn get_module_name(&self, module_id: &ModuleId) -> String {
+        self.module_reader.get_module_name(&module_id)
+    }
+
+    pub fn load_module(&mut self, current_module_id: &ModuleId, import_module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
+        let module_name = if !import_module_id.0 {
+            self.module_reader.get_module_name(&import_module_id)
+        } else {
+            self.module_reader.resolve_module_path(&import_module_id, &current_module_id)
+        };
         match self.typed_module_cache.get(&module_name) {
             Some(Some(_)) => return Ok(()),
             Some(None) => return Err(ModuleLoaderError::CircularDependency),
@@ -51,18 +61,18 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
             return Ok(());
         }
 
-        let contents = if !module_id.0 {
-            load_native_module_contents(module_id)
+        let contents = if !import_module_id.0 {
+            load_native_module_contents(import_module_id)
         } else {
-            self.module_reader.read_module(&module_id)
+            self.module_reader.read_module(&import_module_id, &module_name)
         };
         let contents = contents.ok_or(ModuleLoaderError::NoSuchModule)?;
 
         self.typed_module_cache.insert(module_name.clone(), None);
-        match typecheck(module_id.clone(), &contents, self) {
+        match typecheck(import_module_id.clone(), &contents, self) {
             Ok(module) => {
                 self.typed_module_cache.insert(module_name.clone(), Some(module));
-                self.ordering.push(module_id.clone());
+                self.ordering.push(import_module_id.clone());
                 Ok(())
             }
             Err(e) => Err(ModuleLoaderError::WrappedError(e))
@@ -86,17 +96,18 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
         let module_id = mod_spec.typed_module.module_id.clone();
 
         self.ordering.push(module_id.clone());
-        self.typed_module_cache.insert(module_id.get_name(), Some(mod_spec.typed_module.clone()));
+        let module_name = self.module_reader.get_module_name(&module_id);
+        self.typed_module_cache.insert(module_name, Some(mod_spec.typed_module.clone()));
 
         true
     }
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
-        let name = module_id.get_name();
+        let name = self.module_reader.get_module_name(&module_id);
         self.typed_module_cache.get(&name)
-            .expect("It should have been loaded previously")
+            .expect(&format!("Module '{}' should have been loaded previously", name))
             .as_ref()
-            .expect("It should have completed loading")
+            .expect(&format!("Module '{}' should have completed loading", name))
     }
 
     pub fn resolve_binding_type(&self, name: &String) -> Option<&Type> {
@@ -119,18 +130,20 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
     }
 
     pub fn resolve_type(&self, type_name: &String) -> Option<&Type> {
-        let module_name = type_name.split("/").next()
-            .expect("Type name should be properly namespaced");
+        let slash_idx = type_name.rfind('/').unwrap();
+        let (module_name, _) = type_name.split_at(slash_idx) ;
+
         let typed_module = self.typed_module_cache.get(module_name)
-            .expect("It should have been loaded previously")
+            .expect(&format!("Module '{}' should have been loaded previously", &module_name))
             .as_ref()
-            .expect("It should have completed loading");
+            .expect(&format!("Module '{}' should have completed loading", &module_name));
         typed_module.referencable_types.get(type_name)
     }
 
     pub fn add_typed_module(&mut self, typed_module: TypedModule) {
         self.ordering.push(typed_module.module_id.clone());
-        self.typed_module_cache.insert(typed_module.module_id.get_name(), Some(typed_module));
+        let module_name = self.module_reader.get_module_name(&typed_module.module_id);
+        self.typed_module_cache.insert(module_name, Some(typed_module));
     }
 
     pub fn compile_all(&mut self) {
@@ -138,7 +151,7 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
 
         let ordering = self.ordering.clone();
         for module_id in ordering {
-            let module_name = module_id.get_name();
+            let module_name = self.module_reader.get_module_name(&module_id);
 
             if let Some(mod_spec) = self.native_module_cache.get(&module_name) {
                 self.compiled_modules.push((mod_spec.compiled_module.clone(), None));
@@ -157,9 +170,10 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
             let typed_module = self.typed_module_cache.get(&module_name).unwrap().as_ref().unwrap().clone();
 
             let module_idx = self.compiled_modules.len();
+            let module_name = self.module_reader.get_module_name(&module_id);
 
             globals.insert(module_id.clone(), HashMap::new());
-            let (module, metadata) = compile(typed_module, module_idx, &mut globals).unwrap();
+            let (module, metadata) = compile(typed_module, module_idx, module_name, &mut globals).unwrap();
             self.compiled_modules.push((module, Some(metadata)));
         }
     }

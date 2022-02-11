@@ -10,6 +10,7 @@ pub enum ParseErrorKind {
     UnexpectedToken(Token),
     ExpectedToken(TokenType, Token),
     ExpectedOneOf(Vec<TokenType>, Token),
+    InvalidImportPath(Token),
 }
 
 #[derive(Debug, PartialEq)]
@@ -67,6 +68,14 @@ impl DisplayError for ParseError {
                 format!(
                     "Error at {}:{}:{}\nExpected one of {}, saw '{}'\n{}",
                     file_name, pos.line, pos.col, expecteds, actual.to_string(), message
+                )
+            }
+            ParseErrorKind::InvalidImportPath(token) => {
+                let pos = token.get_position();
+                let message = Self::get_underlined_line(lines, token);
+                format!(
+                    "Error at {}:{}:{}\nInvalid import path\n{}",
+                    file_name, pos.line, pos.col, message
                 )
             }
         }

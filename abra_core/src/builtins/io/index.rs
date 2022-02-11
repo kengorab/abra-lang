@@ -33,7 +33,7 @@ mod test {
 
     #[test]
     fn test_importing_module() {
-        let result = interpret_get_result("import readFile, prompt from io");
+        let result = interpret_get_result("import readFile, prompt from \"io\"");
         assert!(result.is_ok());
     }
 }

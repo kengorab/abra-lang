@@ -1,0 +1,4 @@
+import runTests from "test"
+
+export val x = 7
+println(runTests)

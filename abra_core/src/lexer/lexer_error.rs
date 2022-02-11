@@ -100,11 +100,11 @@ mod tests {
         let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedChar(Position::new(1, 3), ".".to_string()) };
 
         let expected = format!("\
-Error at /tests/test.abra:1:3
+Error at ./tests/test.abra:1:3
 Unexpected character '.':
   |  1..23
        ^");
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
+        assert_eq!(expected, err.get_message(&"./tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -114,7 +114,7 @@ Unexpected character '.':
         let err = LexerError { module_id, kind: LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 18)) };
 
         let expected = format!("\
-Error at /tests/test.abra:1:18
+Error at ./tests/test.abra:1:18
 Unterminated string:
   String begins at (1:1)
   |  \"this is a string
@@ -122,7 +122,7 @@ Unterminated string:
   String is terminated at (1:18)
   |  \"this is a string
                       ^");
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
+        assert_eq!(expected, err.get_message(&"./tests/test.abra".to_string(), &src));
     }
 
     #[test]
@@ -132,24 +132,24 @@ Unterminated string:
         let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedEof(Position::new(1, 3)) };
 
         let expected = format!("\
-Error at /tests/test.abra:1:3
+Error at ./tests/test.abra:1:3
 Unexpected end of file:
   |  1.
        ^");
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
+        assert_eq!(expected, err.get_message(&"./tests/test.abra".to_string(), &src));
     }
 
     #[test]
     fn test_unsupported_escape_sequence() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::from_name("./test");
         let src = "\"a\\qb\"".to_string();
         let err = LexerError { module_id, kind: LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\q".to_string(), false) };
 
         let expected = format!("\
-Error at /tests/test.abra:1:2
+Error at ./tests/test.abra:1:2
 Unsupported escape sequence:
   |  \"a\\qb\"
       ^^");
-        assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
+        assert_eq!(expected, err.get_message(&"./tests/test.abra".to_string(), &src));
     }
 }

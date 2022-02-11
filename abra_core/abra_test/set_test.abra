@@ -1,4 +1,4 @@
-import * from test
+import * from "test"
 
 // Used in tests later on
 type Person { name: String }

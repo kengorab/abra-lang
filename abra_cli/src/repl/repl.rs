@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use ansi_term::Color;
 use rustyline::Editor;
 use std::env::current_dir;
 use abra_core::{compile, typecheck};
-use crate::fs_module_reader::FsModuleReader;
+use abra_core::common::fs_module_reader::FsModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::common::display_error::DisplayError;
 use itertools::Itertools;
@@ -44,7 +45,7 @@ impl<'a> Repl<'a> {
 
     fn new() -> Self {
         let rl = Editor::<AbraHighlighter>::new();
-        let module_reader = FsModuleReader { project_root: current_dir().unwrap() };
+        let module_reader = FsModuleReader { module_id_paths: HashMap::new() };
 
         Self { running: false, rl, code: vec![], continuation_buf: "".to_string(), indentations: vec![], module_reader }
     }
@@ -139,7 +140,8 @@ impl<'a> Repl<'a> {
     {
         if let Some(binding_name) = input.next() {
             let file = self.code.iter().join("\n");
-            let mut loader = ModuleLoader::new(&self.module_reader);
+            let mut module_reader = self.module_reader.clone();
+            let mut loader = ModuleLoader::new(&mut module_reader);
             match typecheck(Self::module_id(), &file, &mut loader) {
                 Err(_) => println!("Could not determine type for name '{}'", binding_name),
                 Ok(m) => {

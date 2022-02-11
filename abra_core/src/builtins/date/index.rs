@@ -13,7 +13,7 @@ mod test {
 
     #[test]
     fn test_importing_module() {
-        let result = interpret_get_result("import Date from date");
+        let result = interpret_get_result("import Date from \"date\"");
         assert!(result.is_ok());
     }
 }

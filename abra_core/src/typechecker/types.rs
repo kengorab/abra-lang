@@ -21,7 +21,7 @@ pub enum Type {
     Type(/* type_name: */ String, /* underlying_type: */ Box<Type>, /* is_enum: */ bool),
     Struct(StructType),
     Enum(EnumType),
-    Module(ModuleId),
+    Module(ModuleId, /* alias_name: */ String),
     // Acts as a sentinel value, right now only for when a function is referenced recursively without an explicit return type
     Unknown,
     Placeholder,
@@ -62,7 +62,7 @@ impl PartialEq for Type {
             (Type::Bool, Type::Bool) |
             (Type::Unknown, Type::Unknown) |
             (Type::Placeholder, Type::Placeholder) => true,
-            (Type::Module(m1), Type::Module(m2)) => m1.eq(&m2),
+            (Type::Module(m1, _), Type::Module(m2, _)) => m1.eq(&m2),
             (_, _) => false,
         }
     }
@@ -207,7 +207,7 @@ impl Type {
                 format!("{}<{}>", name, type_args_repr)
             }
             Type::Enum(EnumType { name, .. }) => format!("{}", name),
-            Type::Module(_) => "Module".to_string(),
+            Type::Module(_, _) => "Module".to_string(),
             Type::Placeholder => "_".to_string(),
             Type::Generic(name) => name.clone(),
             Type::Reference(name, type_args) => {

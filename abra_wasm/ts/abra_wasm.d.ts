@@ -5,7 +5,9 @@ export interface Context {
 }
 
 export interface ModuleReader {
+    resolveModulePath(moduleId: string, withRespectTo: string): string;
     readModule(moduleName: string): string | null;
+    getModuleName(moduleName: string): string;
 }
 
 export interface TypecheckSuccess {

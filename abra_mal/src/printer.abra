@@ -1,4 +1,4 @@
-import Value from .types
+import Value from "./types"
 
 export func prStr(value: Value, readable = false): String {
   match value {
