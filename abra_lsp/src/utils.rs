@@ -10,7 +10,8 @@ pub fn abra_error_to_diagnostic(e: abra_core::Error, file_name: &String, source:
             ParseErrorKind::UnexpectedEof(range) => range.clone(),
             ParseErrorKind::UnexpectedToken(tok) |
             ParseErrorKind::ExpectedToken(_, tok) |
-            ParseErrorKind::ExpectedOneOf(_, tok) => tok.get_range()
+            ParseErrorKind::ExpectedOneOf(_, tok) |
+            ParseErrorKind::InvalidImportPath(tok) => tok.get_range()
         }
         abra_core::Error::InterpretError(_) => unreachable!()
     };

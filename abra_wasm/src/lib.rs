@@ -11,7 +11,7 @@ use abra_core::{Error, typecheck, compile, compile_and_disassemble};
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VMContext, VM};
 use abra_core::common::display_error::DisplayError;
-use abra_core::parser::ast::ModuleId;
+use abra_core::parser::ast::{ModuleId, ModulePathSegment};
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
 use abra_core::builtins::common::to_string;
 
@@ -32,7 +32,7 @@ impl Serialize for RunResult {
             }
             Err(error) => {
                 obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("errorMessage", &error.get_message(&error.module_id().get_path::<&str>(None), &self.1))?;
+                obj.serialize_entry("errorMessage", &error.get_message(&error.module_id().get_path(""), &self.1))?;
             }
         };
 
@@ -58,7 +58,7 @@ impl Serialize for TypecheckedResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
 
-                let file_name = error.module_id().get_path::<&str>(None);
+                let file_name = format!("{}.abra", error.module_id().get_path(""));
                 obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
                 obj.end()
             }
@@ -85,7 +85,7 @@ impl Serialize for DisassembleResult {
                 let mut obj = serializer.serialize_map(Some(2))?;
                 obj.serialize_entry("success", &false)?;
 
-                let file_name = error.module_id().get_path::<&str>(None);
+                let file_name = error.module_id().get_path("");
                 obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
                 obj.end()
             }
@@ -96,9 +96,16 @@ impl Serialize for DisassembleResult {
 struct UnimplementedModuleReader;
 
 impl ModuleReader for UnimplementedModuleReader {
-    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
-        let msg = format!("Could not load module '{}'; please provide a valid ModuleReader instance", module_id.get_name());
-        wasm_bindgen::throw_str(msg.as_str());
+    fn resolve_module_path(&mut self, module_id: &ModuleId, _with_respect_to: &ModuleId) -> String {
+        module_id.get_path("")
+    }
+
+    fn read_module(&mut self, _module_id: &ModuleId, _module_name: &String) -> Option<String> {
+        wasm_bindgen::throw_str("Please provide a valid ModuleReader instance");
+    }
+
+    fn get_module_name(&self, module_id: &ModuleId) -> String {
+        module_id.get_path("")
     }
 }
 
@@ -111,39 +118,64 @@ extern "C" {
 
     pub type JsModuleReader;
 
+    #[wasm_bindgen(method, js_name = resolveModulePath)]
+    pub fn _resolve_module_path(this: &JsModuleReader, module_id: &str, with_respect_to: &str) -> String;
+
     #[wasm_bindgen(method, js_name = readModule)]
     pub fn _read_module(this: &JsModuleReader, module_name: &str) -> Option<String>;
+
+    #[wasm_bindgen(method, js_name = getModuleName)]
+    pub fn _get_module_name(this: &JsModuleReader, module_name: &str) -> String;
 
     #[wasm_bindgen(js_namespace = console, js_name = log)]
     fn console_log(s: &str);
 }
 
 impl ModuleReader for JsModuleReader {
-    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
-        let module_name = module_id.get_name();
+    fn resolve_module_path(&mut self, module_id: &ModuleId, with_respect_to: &ModuleId) -> String {
+        let module_id = module_id.get_path("");
+        let with_respect_to = with_respect_to.get_path("");
+        self._resolve_module_path(&module_id, &with_respect_to)
+    }
+
+    fn read_module(&mut self, _module_id: &ModuleId, module_name: &String) -> Option<String> {
         self._read_module(&module_name)
+    }
+
+    fn get_module_name(&self, module_id: &ModuleId) -> String {
+        if !module_id.0 {
+            module_id.1.first()
+                .map(|s| match s {
+                    ModulePathSegment::Module(m) => m.to_string(),
+                    _ => unreachable!()
+                })
+                .unwrap()
+        } else {
+            let module_name = module_id.get_path("");
+            self._get_module_name(&module_name)
+        }
     }
 }
 
 #[wasm_bindgen(js_name = disassemble)]
 pub fn disassemble(input: &str) -> JsValue {
-    let module_reader = UnimplementedModuleReader;
-    let module_id = ModuleId::from_name(".repl");
-    let result = compile_and_disassemble(module_id, &input.to_string(), &module_reader);
+    let mut module_reader = UnimplementedModuleReader;
+    let module_id = ModuleId::from_name("./_repl");
+    let result = compile_and_disassemble(module_id, &input.to_string(), &mut module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = disassembleModule)]
-pub fn disassemble_module(module_name: &str, module_reader: JsModuleReader) -> JsValue {
+pub fn disassemble_module(module_name: &str, mut module_reader: JsModuleReader) -> JsValue {
     let input = match module_reader._read_module(module_name) {
         None => wasm_bindgen::throw_str(format!("Could not load module '{}'", module_name).as_str()),
         Some(input) => input
     };
 
     let module_id = ModuleId::from_name(module_name);
-    let result = compile_and_disassemble(module_id, &input.to_string(), &module_reader);
+    let result = compile_and_disassemble(module_id, &input.to_string(), &mut module_reader);
     let disassemble_result = DisassembleResult(result, input.to_string());
     JsValue::from_serde(&disassemble_result)
         .unwrap_or(JsValue::NULL)
@@ -151,9 +183,9 @@ pub fn disassemble_module(module_name: &str, module_reader: JsModuleReader) -> J
 
 #[wasm_bindgen(js_name = typecheck)]
 pub fn typecheck_input(input: &str) -> JsValue {
-    let module_reader = UnimplementedModuleReader;
-    let module_id = ModuleId::from_name(".repl");
-    let mut module_loader = ModuleLoader::new(&module_reader);
+    let mut module_reader = UnimplementedModuleReader;
+    let module_id = ModuleId::from_name("./_repl");
+    let mut module_loader = ModuleLoader::new(&mut module_reader);
     let result = typecheck(module_id, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
@@ -161,21 +193,21 @@ pub fn typecheck_input(input: &str) -> JsValue {
 }
 
 #[wasm_bindgen(js_name = typecheckModule)]
-pub fn typecheck_module(module_name: &str, module_reader: JsModuleReader) -> JsValue {
+pub fn typecheck_module(module_name: &str, mut module_reader: JsModuleReader) -> JsValue {
     let input = match module_reader._read_module(module_name) {
         None => wasm_bindgen::throw_str(format!("Could not load module '{}'", module_name).as_str()),
         Some(input) => input
     };
 
     let module_id = ModuleId::from_name(module_name);
-    let mut module_loader = ModuleLoader::new(&module_reader);
+    let mut module_loader = ModuleLoader::new(&mut module_reader);
     let result = typecheck(module_id, &input.to_string(), &mut module_loader).map(|_| ());
     let typecheck_result = TypecheckedResult(result, input.to_string());
     JsValue::from_serde(&typecheck_result)
         .unwrap_or(JsValue::NULL)
 }
 
-fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: &R) -> Result<(Value, String), Error>
+fn compile_and_run<R>(module_name: &str, input: String, ctx: VMContext, module_reader: &mut R) -> Result<(Value, String), Error>
     where R: ModuleReader
 {
     let module_id = ModuleId::from_name(module_name);
@@ -211,15 +243,15 @@ pub fn run(input: &str, js_bridge: Option<AbraContext>) -> JsValue {
         ..VMContext::default()
     };
 
-    let module_reader = UnimplementedModuleReader;
-    let result = compile_and_run(".repl", input.to_string(), ctx, &module_reader);
+    let mut module_reader = UnimplementedModuleReader;
+    let result = compile_and_run("./_repl", input.to_string(), ctx, &mut module_reader);
     let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)
 }
 
 #[wasm_bindgen(js_name = runModule)]
-pub fn run_module(module_name: &str, module_reader: JsModuleReader, js_bridge: Option<AbraContext>) -> JsValue {
+pub fn run_module(module_name: &str, mut module_reader: JsModuleReader, js_bridge: Option<AbraContext>) -> JsValue {
     let ctx = VMContext {
         print: match js_bridge {
             Some(ctx) => Box::new(move |input| {
@@ -241,7 +273,7 @@ pub fn run_module(module_name: &str, module_reader: JsModuleReader, js_bridge: O
         Some(input) => input
     };
 
-    let result = compile_and_run(module_name, input.to_string(), ctx, &module_reader);
+    let result = compile_and_run(module_name, input.to_string(), ctx, &mut module_reader);
     let run_result = RunResult(result, input.to_string().clone());
     JsValue::from_serde(&run_result)
         .unwrap_or(JsValue::NULL)

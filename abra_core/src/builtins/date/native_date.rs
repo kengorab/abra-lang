@@ -124,7 +124,7 @@ mod test {
     #[test]
     fn test_date_construct() {
         let result = interpret(r#"
-          import Date from date
+          import Date from "date"
           Date(year: 2021, month: 3, day: 9).toString()
         "#);
         let expected = new_string_obj("Date(year: 2021, month: 3, day: 9, hour: 0, minute: 0, second: 0)");
@@ -134,7 +134,7 @@ mod test {
     #[test]
     fn test_date_static_now() {
         let result = interpret(r#"
-          import Date from date
+          import Date from "date"
           Date.now().toString()
         "#);
         let expected = new_string_obj("Date(year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0)");
@@ -144,7 +144,7 @@ mod test {
     #[test]
     fn test_date_add_days() {
         let result = interpret(r#"
-          import Date from date
+          import Date from "date"
           val now = Date.now()
           now.addDays(1).addDays(1).toString()
         "#);

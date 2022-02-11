@@ -15,8 +15,8 @@ fn test_typecheck(input: &str) -> Result<TypedModule, TypecheckerErrorKind> {
 }
 
 fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerErrorKind> {
-    let mock_reader = MockModuleReader::new(modules);
-    let mut mock_loader = ModuleLoader::new(&mock_reader);
+    let mut mock_reader = MockModuleReader::new(modules);
+    let mut mock_loader = ModuleLoader::new(&mut mock_reader);
     let module_id = ModuleId::from_name("_test");
     let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
         .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!() })?;
@@ -2762,7 +2762,7 @@ fn typecheck_enum_decl_methods_errors() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((6, 11), "hex"),
         target_type: Type::Reference("_test/Color".to_string(), vec![]),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, error);
 
@@ -2781,7 +2781,7 @@ fn typecheck_enum_decl_methods_errors() {
             Box::new(Type::Reference("_test/Color".to_string(), vec![])),
             true,
         ),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, error);
 
@@ -3024,7 +3024,7 @@ fn typecheck_assignment_errors_with_target() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((3, 3), "bogusField"),
         target_type: Type::Reference("_test/Person".to_string(), vec![]),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, err);
 
@@ -4586,7 +4586,7 @@ fn typecheck_accessor_error() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((3, 3), "firstName"),
         target_type: Type::Reference("_test/Person".to_string(), vec![]),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, error);
 
@@ -4594,7 +4594,7 @@ fn typecheck_accessor_error() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((1, 6), "value"),
         target_type: Type::Bool,
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, error);
 }
@@ -4761,7 +4761,7 @@ fn typecheck_lambda_errors() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((1, 15), "toUpper"),
         target_type: Type::Int,
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, error);
 
@@ -5199,7 +5199,7 @@ fn typecheck_match_statements_errors() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((4, 11), "Sideways"),
         target_type: Type::Reference("_test/Direction".to_string(), vec![]),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, err);
 
@@ -5214,7 +5214,7 @@ fn typecheck_match_statements_errors() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((4, 16), "A"),
         target_type: Type::Reference("_test/Direction".to_string(), vec![]),
-        module_id: None,
+        module_name: None,
     };
     assert_eq!(expected, err);
 
@@ -5679,78 +5679,82 @@ fn typecheck_exports_errors() {
 #[test]
 fn typecheck_imports() -> TestResult {
     // Verify all import kinds
-    let mod1 = "\
-          import a, b, Foo, Baz from .mod2\n\
-          Baz(foo1: b(a: a), foo2: Foo.Bar)
-        ";
+    let mod1 = r#"\
+      import a, b, Foo, Baz from "./mod2"
+      Baz(foo1: b(a: a), foo2: Foo.Bar)
+    "#;
     let modules = vec![(
-        ".mod2",
-        "\
-              export val a = 1\n\
-              export enum Foo { Bar }
-              export type Baz { foo1: Foo, foo2: Foo }
-              export func b(a: Int): Foo = Foo.Bar
-            "
+        "./mod2",
+        r#"
+          export val a = 1
+          export enum Foo { Bar }
+          export type Baz { foo1: Foo, foo2: Foo }
+          export func b(a: Int): Foo = Foo.Bar
+        "#
     )];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
     // Verify all import kinds, with import-all wildcard
-    let mod1 = "\
-          import * from .mod2\n\
-          Baz(foo1: b(a: a), foo2: Foo.Bar)
-        ";
+    let mod1 = r#"
+      import * from "./mod2"
+      Baz(foo1: b(a: a), foo2: Foo.Bar)
+    "#;
     let modules = vec![(
-        ".mod2",
-        "\
-              export val a = 1\n\
-              export enum Foo { Bar }\n\
-              export type Baz { foo1: Foo, foo2: Foo }\n\
-              export func b(a: Int): Foo = Foo.Bar\
-            "
+        "./mod2",
+        r#"
+          export val a = 1
+          export enum Foo { Bar }
+          export type Baz { foo1: Foo, foo2: Foo }
+          export func b(a: Int): Foo = Foo.Bar
+        "#
     )];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
     // Verify loading from multiple modules
-    let mod1 = "\
-          import a from .mod2\n\
-          import b from .mod3\n\
-          val _: Int = a + b\
-        ";
+    let mod1 = r#"
+      import a from "./mod2"
+      import b from "./mod3"
+      val _: Int = a + b
+    "#;
     let modules = vec![
-        (".mod2", "export val a = 1"),
-        (".mod3", "export val b = 2"),
+        ("./mod2", "export val a = 1"),
+        ("./mod3", "export val b = 2"),
     ];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
     // Verify nested module loading
-    let mod1 = "\
-          import a from .mod2\n\
-          val _: Int = a\
-        ";
+    let mod1 = r#"
+      import a from "./mod2"
+      val _: Int = a
+    "#;
     let modules = vec![
-        (".mod2", "\
-              import b from .mod3\n\
-              export val a = b + 1\
-            "),
-        (".mod3", "export val b = 2"),
+        (
+            "./mod2",
+            r#"
+              import b from "./mod3"
+              export val a = b + 1
+            "#
+        ),
+        ("./mod3", "export val b = 2"),
     ];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
     // Verify working with (non-imported) type from another module
-    let mod1 = "\
-          import me from .me\n\
-          me.name\
-        ";
-    let modules = vec![
-        (".me", "\
-              type Person { name: String }\n\
-              export val me = Person(name: \"Ken\")\
-            ")
-    ];
+    let mod1 = r#"
+      import me from "./me"
+      me.name
+    "#;
+    let modules = vec![(
+        "./me",
+        r#"
+          type Person { name: String }
+          export val me = Person(name: "Ken")
+        "#
+    )];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
@@ -5761,56 +5765,56 @@ fn typecheck_imports() -> TestResult {
 fn typecheck_imports_errors() {
     // Verify invalid import value
     let mod1 = "\
-          import a from .mod2\n\
+          import a from \"./mod2\"\n\
           a + 4
         ";
     let mod2 = "export val b = 6";
-    let modules = vec![(".mod2", mod2)];
+    let modules = vec![("./mod2", mod2)];
     let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
     let expected = TypecheckerErrorKind::InvalidImportValue { ident: ident_token!((1, 8), "a") };
     assert_eq!(expected, err);
 
     // Verify error when imported module doesn't exist
     let mod1 = "\
-          import a from .mod2.some_mod\n\
+          import a from \"./mod2/some_mod\"\n\
           a + 4
         ";
     let err = test_typecheck_with_modules(mod1, vec![]).unwrap_err();
     let expected = TypecheckerErrorKind::InvalidModuleImport {
         token: Token::Import(Position::new(1, 1)),
-        module_name: ".mod2.some_mod".to_string(),
+        module_name: "./mod2/some_mod".to_string(),
     };
     assert_eq!(expected, err);
 
     // Verify invalid circular import
     let mod1 = "\
-          import b from .mod2\n\
+          import b from \"./mod2\"\n\
           b + 4
         ";
     let modules = vec![
-        (".mod2", "\
-              import c from .mod3\n\
+        ("./mod2", "\
+              import c from \"./mod3\"\n\
               export val b = 6\
             "),
-        (".mod3", "\
-              import b from .mod2\n\
+        ("./mod3", "\
+              import b from \"./mod2\"\n\
               export val c = 6\
             "),
     ];
     let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
     let expected = TypecheckerErrorKind::CircularModuleImport {
         token: Token::Import(Position::new(1, 1)),
-        module_name: ".mod2".to_string(),
+        module_name: "./mod2".to_string(),
     };
     assert_eq!(expected, err);
 
     // Verify typechecking of functions across modules
     let mod1 = "\
-          import fn from .mod2\n\
+          import fn from \"./mod2\"\n\
           fn(a: 4)
         ";
     let mod2 = "export func fn(a: String) {}";
-    let modules = vec![(".mod2", mod2)];
+    let modules = vec![("./mod2", mod2)];
     let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
     let expected = TypecheckerErrorKind::Mismatch {
         token: Token::Int(Position::new(2, 7), 4),
@@ -5821,11 +5825,11 @@ fn typecheck_imports_errors() {
 
     // Verify duplicate function declarations
     let mod1 = "\
-          import fn from .mod2\n\
+          import fn from \"./mod2\"\n\
           func fn() {}
         ";
     let mod2 = "export func fn() {}";
-    let modules = vec![(".mod2", mod2)];
+    let modules = vec![("./mod2", mod2)];
     let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
     let expected = TypecheckerErrorKind::DuplicateBinding {
         ident: ident_token!((2, 6), "fn"),
@@ -5835,11 +5839,11 @@ fn typecheck_imports_errors() {
 
     // Verify duplicate type declarations
     let mod1 = "\
-          import A from .mod2\n\
+          import A from \"./mod2\"\n\
           type A {}
         ";
     let mod2 = "export type A {}";
-    let modules = vec![(".mod2", mod2)];
+    let modules = vec![("./mod2", mod2)];
     let err = test_typecheck_with_modules(mod1, modules).unwrap_err();
     let expected = TypecheckerErrorKind::DuplicateType {
         ident: ident_token!((2, 6), "A"),
@@ -5850,35 +5854,33 @@ fn typecheck_imports_errors() {
 
 #[test]
 fn typecheck_import_dependency_order() {
-    let mod1 = "import A from .mod2";
+    let mod1 = "import A from \"./mod2\"";
     let modules = vec![
         (
-            ".mod2", "\
-                  import B from .mod3\n\
-                  import C from .mod4\n\
-                  export val A = 4\
-                "
+            "./mod2",
+            r#"
+              import B from "./mod3"
+              import C from "./mod4"
+              export val A = 4
+            "#
         ),
         (
-            ".mod3", "\
-                  import C from .mod4\n\
-                  export val B = 4\
-                "
+            "./mod3",
+            r#"
+              import C from "./mod4"
+              export val B = 4
+            "#
         ),
-        (
-            ".mod4", "\
-                  export val C = 12\
-                "
-        ),
+        ("./mod4", "export val C = 12"),
     ];
-    let reader = MockModuleReader::new(modules);
-    let mut loader = ModuleLoader::new(&reader);
+    let mut reader = MockModuleReader::new(modules);
+    let mut loader = ModuleLoader::new(&mut reader);
     crate::typecheck(ModuleId::from_name("_test"), &mod1.to_string(), &mut loader).unwrap();
     let expected = vec![
         ModuleId::from_name("prelude"),
-        ModuleId::from_name(".mod4"),
-        ModuleId::from_name(".mod3"),
-        ModuleId::from_name(".mod2"),
+        ModuleId::from_name("./mod4"),
+        ModuleId::from_name("./mod3"),
+        ModuleId::from_name("./mod2"),
     ];
     assert_eq!(expected, loader.ordering);
 }
@@ -5886,24 +5888,24 @@ fn typecheck_import_dependency_order() {
 #[test]
 fn typecheck_import_alias() {
     let mod1 = "\
-          import .mod2 as mod2\n\
+          import \"./mod2\" as mod2\n\
           println(mod2.a)
         ";
-    let modules = vec![(".mod2", "export val a = 1")];
+    let modules = vec![("./mod2", "export val a = 1")];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 
     let res = test_typecheck("\
-          import io\n\
+          import \"io\" as io\n\
           println(io.prompt)
         ");
     assert!(res.is_ok());
 
     let mod1 = "\
-          import .mod2 as mod2\n\
+          import \"./mod2\" as mod2\n\
           println(mod2.A(a: 123))
         ";
-    let modules = vec![(".mod2", "export type A { a: Int }")];
+    let modules = vec![("./mod2", "export type A { a: Int }")];
     let res = test_typecheck_with_modules(mod1, modules);
     assert!(res.is_ok());
 }
@@ -5911,48 +5913,39 @@ fn typecheck_import_alias() {
 #[test]
 fn typecheck_import_alias_errors() {
     let mod1 = "\
-          import io\n\
-          import .mod2 as io
+          import \"io\" as io\n\
+          import \"./mod2\" as io
         ";
-    let modules = vec![(".mod2", "export val a = 1")];
+    let modules = vec![("./mod2", "export val a = 1")];
     let res = test_typecheck_with_modules(mod1, modules);
     let expected = TypecheckerErrorKind::DuplicateBinding {
-        ident: ident_token!((2, 17), "io"),
-        orig_ident: Some(ident_token!((1, 8), "io")),
+        ident: ident_token!((2, 20), "io"),
+        orig_ident: Some(ident_token!((1, 16), "io")),
     };
     assert_eq!(expected, res.unwrap_err());
 
     let mod1 = "\
-          import .mod2 as foo\n\
-          import .mod3 as foo
+          import \"./mod2\" as foo\n\
+          import \"./mod3\" as foo
         ";
-    let modules = vec![(".mod2", "export val a = 1"), (".mod3", "export val b = 2")];
+    let modules = vec![("./mod2", "export val a = 1"), ("./mod3", "export val b = 2")];
     let res = test_typecheck_with_modules(mod1, modules);
     let expected = TypecheckerErrorKind::DuplicateBinding {
-        ident: ident_token!((2, 17), "foo"),
-        orig_ident: Some(ident_token!((1, 17), "foo")),
-    };
-    assert_eq!(expected, res.unwrap_err());
-
-    let mod1 = "import .mod2";
-    let modules = vec![(".mod2", "export val a = 1")];
-    let res = test_typecheck_with_modules(mod1, modules);
-    let expected = TypecheckerErrorKind::ForbiddenImportAliasing {
-        import_token: Token::Import(Position::new(1, 1)),
-        module_id: ModuleId::from_name(".mod2"),
+        ident: ident_token!((2, 20), "foo"),
+        orig_ident: Some(ident_token!((1, 20), "foo")),
     };
     assert_eq!(expected, res.unwrap_err());
 
     let mod1 = "\
-          import .mod2 as mod2\n\
+          import \"./mod2\" as mod2\n\
           println(mod2.z)
         ";
-    let modules = vec![(".mod2", "export val a = 1")];
+    let modules = vec![("./mod2", "export val a = 1")];
     let res = test_typecheck_with_modules(mod1, modules);
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((2, 14), "z"),
-        target_type: Type::Module(ModuleId::from_name(".mod2")),
-        module_id: Some(ModuleId::from_name(".mod2")),
+        target_type: Type::Module(ModuleId::from_name("./mod2"), "mod2".to_string()),
+        module_name: Some("mod2".to_string()),
     };
     assert_eq!(expected, res.unwrap_err());
 }

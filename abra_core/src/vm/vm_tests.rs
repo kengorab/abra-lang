@@ -10,9 +10,9 @@ fn new_string_obj(string: &str) -> Value {
                                                                                  }
 
 fn interpret(input: &str) -> Value {
-    let mock_reader = MockModuleReader::default();
+    let mut mock_reader = MockModuleReader::default();
     let module_id = ModuleId::from_name("_test");
-    let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
+    let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
 
     let ctx = VMContext::default();
     let mut vm = VM::new(ctx);
@@ -24,9 +24,9 @@ fn interpret(input: &str) -> Value {
 }
 
 fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Value {
-    let mock_reader = MockModuleReader::new(modules);
+    let mut mock_reader = MockModuleReader::new(modules);
     let module_id = ModuleId::from_name("_test");
-    let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
+    let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
 
     let ctx = VMContext::default();
     let mut vm = VM::new(ctx);
@@ -2435,51 +2435,51 @@ fn interpret_destructuring_if_expr() {
 fn interpret_imports() {
     // Importing types
     let mod1 = r#"
-      import Person from .person
+      import Person from "./person"
       Person(name: "Ken").name
     "#;
     let modules = vec![
-        (".person", "export type Person { name: String }"),
+        ("./person", "export type Person { name: String }"),
     ];
     let chunk = interpret_with_modules(mod1, modules);
     assert_eq!(new_string_obj("Ken"), chunk);
 
     // Importing enums
     let mod1 = r#"
-      import Direction from .direction
+      import Direction from "./direction"
       "${Direction.Up}"
     "#;
     let modules = vec![
-        (".direction", "export enum Direction { Up, Down }"),
+        ("./direction", "export enum Direction { Up, Down }"),
     ];
     let chunk = interpret_with_modules(mod1, modules);
     assert_eq!(new_string_obj("Direction.Up"), chunk);
 
     // Importing bindings
     let mod1 = r#"
-      import x from .constants
+      import x from "./constants"
       x + 4
     "#;
     let modules = vec![
-        (".constants", "export val x = 123"),
+        ("./constants", "export val x = 123"),
     ];
     let chunk = interpret_with_modules(mod1, modules);
     assert_eq!(Value::Int(127), chunk);
 
     // Import aliases
     let mod1 = r#"
-      import .constants as C
+      import "./constants" as C
       C.x + 4
     "#;
     let modules = vec![
-        (".constants", "export val x = 123"),
+        ("./constants", "export val x = 123"),
     ];
     let chunk = interpret_with_modules(mod1, modules);
     assert_eq!(Value::Int(127), chunk);
 
     // Import aliases, use types & enums
     let mod1 = r#"
-      import .mod as m
+      import "./mod" as m
       val b1 = m.Baz(foo: m.Foo.Bar, bar: 24)
       val b2 = m.Baz(foo: m.Foo.Bar, bar: 12)
       val r = if b1.foo == m.Foo.Bar {
@@ -2490,7 +2490,7 @@ fn interpret_imports() {
       r
     "#;
     let modules = vec![
-        (".mod", "export enum Foo { Bar }\nexport type Baz { foo: Foo, bar: Int }"),
+        ("./mod", "export enum Foo { Bar }\nexport type Baz { foo: Foo, bar: Int }"),
     ];
     let chunk = interpret_with_modules(mod1, modules);
     assert_eq!(Value::Int(24), chunk);
@@ -2499,13 +2499,13 @@ fn interpret_imports() {
 #[test]
 fn interpret_imports_modifying_globals() {
     let mod1 = r#"
-      import addName, names from .names
+      import addName, names from "./names"
       addName("Ken")
       addName("Meg")
       names
     "#;
     let modules = vec![
-        (".names", r#"
+        ("./names", r#"
           export val names: String[] = []
           export func addName(name: String) = names.push(name)
         "#),
@@ -2519,14 +2519,14 @@ fn interpret_imports_modifying_globals() {
 
     // Bindings are scoped to modules
     let mod1 = r#"
-      import addName, getNames from .names
+      import addName, getNames from "./names"
       val names: String[] = []
       addName("Ken")
       addName("Meg")
       [getNames(), names]
     "#;
     let modules = vec![
-        (".names", r#"
+        ("./names", r#"
           export val names: String[] = []
           export func addName(name: String) = names.push(name)
           export func getNames(): String[] = names

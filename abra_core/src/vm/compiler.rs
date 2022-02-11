@@ -72,6 +72,7 @@ struct JumpHandle {
 pub struct Compiler<'a> {
     module_id: ModuleId,
     module_idx: usize,
+    module_name: String,
     code: Vec<Opcode>,
     constants: Vec<Value>,
     scopes: Vec<Scope>,
@@ -87,12 +88,13 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    pub fn new(module_id: ModuleId, module_idx: usize, globals: &'a mut HashMap<ModuleId, HashMap<String, usize>>) -> Self {
+    pub fn new(module_id: ModuleId, module_idx: usize, module_name: String, globals: &'a mut HashMap<ModuleId, HashMap<String, usize>>) -> Self {
         let root_scope = Scope { kind: ScopeKind::Root, num_locals: 0, first_local_idx: None };
 
         Self {
             module_id,
             module_idx,
+            module_name,
             code: vec![],
             constants: vec![],
             scopes: vec![root_scope],
@@ -120,16 +122,17 @@ impl<'a> Compiler<'a> {
 
     fn build_module_final(self) -> Module {
         let num_globals = self.globals.get(&self.module_id).unwrap().len();
-        Module { name: self.module_id.get_name(), is_native: false, num_globals, constants: self.constants, code: self.code }
+        Module { name: self.module_name, is_native: false, num_globals, constants: self.constants, code: self.code }
     }
 }
 
 pub fn compile(
     module: TypedModule,
     module_idx: usize,
+    module_name: String,
     globals: &mut HashMap<ModuleId, HashMap<String, usize>>,
 ) -> Result<(Module, Metadata), ()> {
-    let mut compiler = Compiler::new(module.module_id, module_idx, globals);
+    let mut compiler = Compiler::new(module.module_id, module_idx, module_name, globals);
 
     let ast = module.typed_nodes;
     compiler.hoist_fn_defs(&ast)?;
@@ -271,7 +274,7 @@ impl<'a> Compiler<'a> {
 
     fn get_global_idx<S: AsRef<str>>(&self, module_id: &ModuleId, name: S) -> Option<&usize> {
         match self.globals.get(module_id) {
-            None => unreachable!(format!("No module found for name {}", module_id)),
+            None => unreachable!(format!("No globals found for module {:?}", module_id)),
             Some(module_globals) => module_globals.get(name.as_ref())
         }
     }
@@ -280,7 +283,7 @@ impl<'a> Compiler<'a> {
         let num_globals = self.globals.values().map(|m| m.len()).sum();
 
         match self.globals.get_mut(&self.module_id) {
-            None => unreachable!(format!("No module found for name {}", self.module_id)),
+            None => unreachable!(format!("No globals found for module {:?}", self.module_id)),
             Some(module_globals) => {
                 let idx = num_globals;
                 module_globals.insert(name.as_ref().to_string(), idx);
@@ -1217,7 +1220,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let type_value = Value::Type(TypeValue {
             name: type_name.clone(),
-            module_name: self.module_id.get_name(),
+            module_name: self.module_name.clone(),
             fields: fields.iter().map(|f| Token::get_ident_name(&f.ident)).collect(),
             constructor: None,
             methods: compiled_methods,
@@ -1349,7 +1352,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
         let enum_value = Value::Enum(EnumValue {
             name: enum_name.clone(),
-            module_name: self.module_id.get_name(),
+            module_name: self.module_name.clone(),
             variants,
             methods: compiled_methods,
             static_fields: compiled_static_fields,
@@ -1786,10 +1789,10 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
             *self.get_global_idx(&self.module_id, &name)
                 .expect(&format!("There should be a designated global slot for name {}", name))
         } else if let TypedAstNode::Accessor(_, TypedAccessorNode { target, field_ident, .. }) = *target {
-            if let Type::Module(module_id) = target.get_type() {
+            if let Type::Module(module_id, _) = target.get_type() {
                 let name = Token::get_ident_name(&field_ident);
                 *self.get_global_idx(&module_id, &name)
-                    .expect(&format!("There should be a designated global slot for name {}/{}", module_id.get_name(), name))
+                    .expect(&format!("There should be a designated global slot for name {} in module {:?}", name, module_id))
             } else {
                 unimplemented!("Unsupported instantiation on line {}", line)
             }
@@ -1891,7 +1894,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let TypedAccessorNode { target, field_ident, field_idx, is_method, .. } = node;
         let field_name = Token::get_ident_name(&field_ident);
 
-        if let Type::Module(module_id) = target.get_type() {
+        if let Type::Module(module_id, _) = target.get_type() {
             let global_idx = self.get_global_idx(&module_id, &field_name);
             let global_idx = *global_idx.expect(&format!("There should be a designated global slot for name {}", field_name));
             self.write_opcode(Opcode::GLoad(global_idx), line);
@@ -2167,7 +2170,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
         let TypedImportNode { imports, module_id, alias_name } = node;
 
         if let Some(alias_name) = alias_name {
-            self.add_and_write_constant(Value::Module(module_id), line);
+            self.add_and_write_constant(Value::Module(alias_name.clone()), line);
             self.write_store_global_instr(alias_name, line);
 
             return Ok(());
@@ -2198,9 +2201,9 @@ mod tests {
     }
 
     fn test_compile(input: &str) -> Module {
-        let mock_reader = MockModuleReader::default();
+        let mut mock_reader = MockModuleReader::default();
         let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
+        let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
 
@@ -2208,9 +2211,9 @@ mod tests {
     }
 
     fn test_compile_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Module {
-        let mock_reader = MockModuleReader::new(modules);
-        let module_id = ModuleId::from_name("_test");
-        let modules = crate::compile(module_id, &input.to_string(), &mock_reader).unwrap();
+        let mut mock_reader = MockModuleReader::new(modules);
+        let module_id = ModuleId::from_name("./_test");
+        let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
 
@@ -5469,15 +5472,15 @@ mod tests {
     fn compile_imports() {
         // Importing types
         let mod1 = "\
-          import Person from .person\n\
+          import Person from \"./person\"\n\
           val p = Person(name: \"Ken\")\
         ";
         let modules = vec![
-            (".person", "export type Person { name: String }"),
+            ("./person", "export type Person { name: String }"),
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./_test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5494,15 +5497,15 @@ mod tests {
 
         // Importing enums
         let mod1 = "\
-          import Direction from .direction\n\
+          import Direction from \"./direction\"\n\
           val d = Direction.Up\
         ";
         let modules = vec![
-            (".direction", "export enum Direction { Up, Down }"),
+            ("./direction", "export enum Direction { Up, Down }"),
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./_test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5519,15 +5522,15 @@ mod tests {
 
         // Importing bindings
         let mod1 = "\
-          import x from .constants\n\
+          import x from \"./constants\"\n\
           val y = x + 4\
         ";
         let modules = vec![
-            (".constants", "export val x = 123"),
+            ("./constants", "export val x = 123"),
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./_test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5547,15 +5550,15 @@ mod tests {
     #[test]
     fn compile_import_alias() {
         let mod1 = "\
-          import .constants as constants\n\
+          import \"./constants\" as constants\n\
           val y = constants.x + 4\
         ";
         let modules = vec![
-            (".constants", "export val x = 123"),
+            ("./constants", "export val x = 123"),
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./_test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5567,7 +5570,7 @@ mod tests {
                 Opcode::GStore(global_idx(2)),
                 Opcode::Return,
             ],
-            constants: vec![Value::Module(ModuleId::from_name(".constants"))],
+            constants: vec![Value::Module("constants".to_string())],
         };
         assert_eq!(expected, chunk);
     }

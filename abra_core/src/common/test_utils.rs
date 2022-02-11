@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use crate::parser::ast::ModuleId;
+use std::path::PathBuf;
+use crate::parser::ast::{ModuleId, ModulePathSegment};
 use crate::module_loader::ModuleReader;
 
 #[derive(Debug, Default)]
@@ -15,8 +16,24 @@ impl MockModuleReader {
 }
 
 impl ModuleReader for MockModuleReader {
-    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
-        let module_name = module_id.get_name();
-        self.modules_raw.get(&module_name).map(|s| s.to_string())
+    fn resolve_module_path(&mut self, module_id: &ModuleId, _with_respect_to: &ModuleId) -> String {
+        module_id.get_path(PathBuf::from(""))
+    }
+
+    fn read_module(&mut self, _module_id: &ModuleId, module_name: &String) -> Option<String> {
+        self.modules_raw.get(module_name).map(|s| s.to_string())
+    }
+
+    fn get_module_name(&self, module_id: &ModuleId) -> String {
+        let ModuleId(is_local, path) = &module_id;
+        if !is_local {
+            path.first().map(|s| match s {
+                ModulePathSegment::Module(m) => m.to_string(),
+                _ => unreachable!()
+            })
+                .unwrap()
+        } else {
+            PathBuf::from(module_id.get_path(PathBuf::from(""))).to_str().map(|s| s.to_string()).unwrap()
+        }
     }
 }

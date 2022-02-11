@@ -16,18 +16,29 @@ pub struct LspModuleReader {
 }
 
 impl ModuleReader for LspModuleReader {
-    fn read_module(&self, module_id: &ModuleId) -> Option<String> {
-        match &self.project_root {
-            None => None,
-            Some(project_root) => {
-                let file_path = module_id.get_path(Some(project_root));
-                match std::fs::read_to_string(file_path) {
-                    Ok(contents) => Some(contents),
-                    Err(_) => None
-                }
-            }
-        }
+    fn resolve_module_path(&mut self, module_id: &ModuleId, with_respect_to: &ModuleId) -> String {
+        todo!()
     }
+
+    fn read_module(&mut self, module_id: &ModuleId, module_name: &String) -> Option<String> {
+        todo!()
+    }
+
+    fn get_module_name(&self, module_id: &ModuleId) -> String {
+        todo!()
+    }
+    // fn read_module(&self, module_id: &ModuleId) -> Option<String> {
+    //     match &self.project_root {
+    //         None => None,
+    //         Some(project_root) => {
+    //             let file_path = module_id.get_path(Some(project_root));
+    //             match std::fs::read_to_string(file_path) {
+    //                 Ok(contents) => Some(contents),
+    //                 Err(_) => None
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 #[derive(Debug)]
@@ -60,13 +71,13 @@ impl Backend {
 
         let project_root = self.project_root.lock().await;
         let project_root_path = project_root.as_ref().map(|root| PathBuf::from(root));
-        let module_reader = LspModuleReader { project_root: project_root_path };
-        let mut loader = ModuleLoader::new(&module_reader);
+        let mut module_reader = LspModuleReader { project_root: project_root_path };
+        let mut loader = ModuleLoader::new(&mut module_reader);
 
         match typecheck(module_id, &text, &mut loader) {
             Ok(_) => PublishDiagnosticsParams { uri, version, diagnostics: vec![] },
             Err(e) => {
-                let file_name = e.module_id().get_path(project_root.as_ref());
+                let file_name = e.module_id().get_path(project_root.as_ref().unwrap_or(&"".to_string()));
                 let diagnostic = abra_error_to_diagnostic(e, &file_name, &text);
 
                 let uri = Url::from_file_path(file_name).unwrap();

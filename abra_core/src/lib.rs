@@ -65,14 +65,16 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
 {
     let ParseResult { imports, nodes } = tokenize_and_parse(&module_id, input)?;
     for (import_token, import_module_id) in imports {
-        loader.load_module(&import_module_id).map_err(|e| match e {
+        loader.load_module(&module_id, &import_module_id).map_err(|e| match e {
             ModuleLoaderError::WrappedError(e) => e,
             ModuleLoaderError::NoSuchModule => {
-                let kind = TypecheckerErrorKind::InvalidModuleImport { token: import_token, module_name: import_module_id.get_name() };
+                let module_name = loader.get_module_name(&import_module_id);
+                let kind = TypecheckerErrorKind::InvalidModuleImport { token: import_token, module_name };
                 Error::TypecheckerError(TypecheckerError { module_id: module_id.clone(), kind })
             }
             ModuleLoaderError::CircularDependency => {
-                let kind = TypecheckerErrorKind::CircularModuleImport { token: import_token, module_name: import_module_id.get_name() };
+                let module_name = loader.get_module_name(&import_module_id);
+                let kind = TypecheckerErrorKind::CircularModuleImport { token: import_token, module_name };
                 Error::TypecheckerError(TypecheckerError { module_id: import_module_id, kind })
             }
         })?
@@ -84,7 +86,7 @@ pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoad
     }
 }
 
-pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: &R) -> Result<Vec<Module>, Error>
+pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: &mut R) -> Result<Vec<Module>, Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);
@@ -99,7 +101,7 @@ pub fn compile<R>(module_id: ModuleId, input: &String, module_reader: &R) -> Res
     Ok(modules)
 }
 
-pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: &R) -> Result<String, Error>
+pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_reader: &mut R) -> Result<String, Error>
     where R: ModuleReader
 {
     let mut loader = ModuleLoader::new(module_reader);
