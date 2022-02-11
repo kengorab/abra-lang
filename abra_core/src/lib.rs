@@ -7,6 +7,7 @@ extern crate strum_macros;
 use crate::vm::compiler::{Module, Metadata};
 use crate::typechecker::typechecker::TypedModule;
 use crate::common::display_error::DisplayError;
+use crate::lexer::tokens::Range;
 use crate::parser::parser::ParseResult;
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, TypecheckerError};
 use crate::module_loader::{ModuleLoader, ModuleReader, ModuleLoaderError};
@@ -34,6 +35,15 @@ impl Error {
             Error::LexerError(e) => &e.module_id,
             Error::ParseError(e) => &e.module_id,
             Error::TypecheckerError(e) => &e.module_id,
+            Error::InterpretError(_) => unreachable!()
+        }
+    }
+
+    pub fn get_range(&self) -> Range {
+        match self {
+            Error::LexerError(e) => e.get_range(),
+            Error::ParseError(e) => e.get_range(),
+            Error::TypecheckerError(e) => e.get_range(),
             Error::InterpretError(_) => unreachable!()
         }
     }

@@ -1,5 +1,5 @@
 use crate::common::display_error::DisplayError;
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Range, Token};
 use crate::typechecker::types::Type;
 use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingPattern, ModuleId};
 
@@ -82,6 +82,12 @@ pub enum TypecheckerErrorKind {
 pub struct TypecheckerError {
     pub module_id: ModuleId,
     pub kind: TypecheckerErrorKind,
+}
+
+impl TypecheckerError {
+    pub fn get_range(&self) -> Range {
+        self.get_token().get_range()
+    }
 }
 
 impl TypecheckerError {

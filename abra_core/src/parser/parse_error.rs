@@ -19,6 +19,18 @@ pub struct ParseError {
     pub kind: ParseErrorKind,
 }
 
+impl ParseError {
+    pub fn get_range(&self) -> Range {
+        match &self.kind {
+            ParseErrorKind::UnexpectedEof(r) => r.clone(),
+            ParseErrorKind::UnexpectedToken(tok) |
+            ParseErrorKind::ExpectedToken(_, tok) |
+            ParseErrorKind::ExpectedOneOf(_, tok) |
+            ParseErrorKind::InvalidImportPath(tok) => tok.get_range()
+        }
+    }
+}
+
 impl DisplayError for ParseError {
     fn message_for_error(&self, file_name: &String, lines: &Vec<&str>) -> String {
         match &self.kind {

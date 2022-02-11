@@ -4,7 +4,7 @@ extern crate serde_json;
 extern crate js_sys;
 extern crate wasm_bindgen;
 
-use serde::ser::Serializer;
+use serde::ser::{SerializeMap, Serializer, SerializeTuple};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use abra_core::{Error, typecheck, compile, compile_and_disassemble};
@@ -14,54 +14,87 @@ use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::{ModuleId, ModulePathSegment};
 use abra_core::module_loader::{ModuleReader, ModuleLoader};
 use abra_core::builtins::common::to_string;
+use abra_core::lexer::tokens::{Position, Range};
 
-pub struct RunResult(Result<(Value, String), Error>, String);
-
-impl Serialize for RunResult {
+struct WasmPosition<'a>(&'a Position);
+impl<'a> Serialize for WasmPosition<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        use serde::ser::SerializeMap;
+        let Position { line, col } = &self.0;
+        let mut arr = serializer.serialize_tuple(2)?;
+        arr.serialize_element(&line)?;
+        arr.serialize_element(&col)?;
+        arr.end()
+    }
+}
+
+struct WasmRange(Range);
+impl Serialize for WasmRange {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        let Range { start, end } = &self.0;
 
         let mut obj = serializer.serialize_map(Some(2))?;
 
-        match &self.0 {
-            Ok((_, to_str_value)) => {
-                obj.serialize_entry("success", &true)?;
-                obj.serialize_entry("dataToString", to_str_value)?;
-            }
-            Err(error) => {
-                obj.serialize_entry("success", &false)?;
-                obj.serialize_entry("errorMessage", &error.get_message(&error.module_id().get_path(""), &self.1))?;
-            }
-        };
+        obj.serialize_entry("start", &WasmPosition(start))?;
+        obj.serialize_entry("end", &WasmPosition(end))?;
 
         obj.end()
     }
 }
 
-pub struct TypecheckedResult(Result<(), Error>, String);
+struct WasmError<'a>(&'a Error, &'a String);
+impl<'a> Serialize for WasmError<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        let err = self.0;
+        let src = self.1;
 
+        let mut obj = serializer.serialize_map(Some(3))?;
+
+        obj.serialize_entry("success", &false)?;
+
+        let file_name = format!("{}.abra", &err.module_id().get_path(""));
+        obj.serialize_entry("errorMessage", &err.get_message(&file_name, &src))?;
+
+        obj.serialize_entry("range", &WasmRange(err.get_range()))?;
+
+        obj.end()
+    }
+}
+
+pub struct RunResult(Result<(Value, String), Error>, String);
+impl Serialize for RunResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        match &self.0 {
+            Ok((_, to_str_value)) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("success", &true)?;
+                obj.serialize_entry("dataToString", to_str_value)?;
+                obj.end()
+            }
+            Err(error) => WasmError(error, &self.1).serialize(serializer)
+        }
+    }
+}
+
+pub struct TypecheckedResult(Result<(), Error>, String);
 impl Serialize for TypecheckedResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        use serde::ser::SerializeMap;
-
         match &self.0 {
             Ok(_) => {
                 let mut obj = serializer.serialize_map(Some(1))?;
                 obj.serialize_entry("success", &true)?;
                 obj.end()
             }
-            Err(error) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("success", &false)?;
-
-                let file_name = format!("{}.abra", error.module_id().get_path(""));
-                obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
-                obj.end()
-            }
+            Err(error) => WasmError(error, &self.1).serialize(serializer)
         }
     }
 }
@@ -72,8 +105,6 @@ impl Serialize for DisassembleResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        use serde::ser::SerializeMap;
-
         match &self.0 {
             Ok(result) => {
                 let mut obj = serializer.serialize_map(Some(2))?;
@@ -81,14 +112,7 @@ impl Serialize for DisassembleResult {
                 obj.serialize_entry("disassembled", result)?;
                 obj.end()
             }
-            Err(error) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("success", &false)?;
-
-                let file_name = error.module_id().get_path("");
-                obj.serialize_entry("errorMessage", &error.get_message(&file_name, &self.1))?;
-                obj.end()
-            }
+            Err(error) => WasmError(error, &self.1).serialize(serializer)
         }
     }
 }
