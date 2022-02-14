@@ -118,23 +118,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let typecheck_result = typecheck(module_id, &contents, &mut loader);
     let module = match typecheck_result {
         Ok(typed_module) => typed_module,
-        Err(e) => {
-            let module_id = e.module_id();
-            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
-                .with_extension("abra")
-                .canonicalize()
-                .unwrap();
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-            let file_name = file_name.to_str().unwrap().to_string();
-
-            match e {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
-            }
-            std::process::exit(1);
-        }
+        Err(e) => report_error(e, &module_reader)
     };
     loader.add_typed_module(module.clone());
     let ast = module.typed_nodes;
@@ -185,22 +169,7 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
                 Some(out_file) => write_file(&out_file, output)?,
             }
         }
-        Err(error) => {
-            let module_id = error.module_id();
-            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
-                .with_extension("abra")
-                .canonicalize()
-                .unwrap();
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-            let file_name = file_name.to_str().unwrap().to_string();
-
-            match error {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::InterpretError(e) => eprintln!("{:?}", e),
-            }
-        }
+        Err(error) => report_error(error, &module_reader),
     };
 
     Ok(())
@@ -274,23 +243,7 @@ fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm:
     let mut module_reader = FsModuleReader::new(module_id.clone(), root_dir);
     let modules = match compile(module_id, &contents, &mut module_reader) {
         Ok(modules) => modules,
-        Err(error) => {
-            let module_id = error.module_id();
-            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
-                .with_extension("abra")
-                .canonicalize()
-                .unwrap();
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-            let file_name = file_name.to_str().unwrap().to_string();
-
-            match error {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
-            }
-            std::process::exit(1);
-        }
+        Err(error) => report_error(error, &module_reader),
     };
 
     let mut result = Value::Nil;
@@ -318,4 +271,22 @@ fn write_file(file_name: &String, output: String) -> Result<(), ()> {
         eprintln!("Could not write to file {}: {}", file_name, err);
         std::process::exit(1);
     })
+}
+
+fn report_error<R: ModuleReader>(e: Error, module_reader: &R) -> ! {
+    let module_id = e.module_id();
+    let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
+        .with_extension("abra")
+        .canonicalize()
+        .unwrap();
+    let contents = std::fs::read_to_string(&file_name).unwrap();
+    let file_name = file_name.to_str().unwrap().to_string();
+
+    match e {
+        Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
+    }
+    std::process::exit(1)
 }
