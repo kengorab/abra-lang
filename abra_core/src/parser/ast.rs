@@ -1,6 +1,4 @@
 use crate::lexer::tokens::Token;
-use itertools::Itertools;
-use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::hash::{Hash, Hasher};
 
@@ -354,71 +352,95 @@ impl MatchCaseType {
 pub enum ImportKind {
     ImportAll(/* star_token: */ Token),
     ImportList(/* imports: */ Vec<Token>),
-    Alias(/* alias_token: */ Option<Token>),
+    Alias(/* alias_token: */ Token),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportNode {
     pub kind: ImportKind,
-    pub leading_dot_token: Option<Token>,
-    pub path: Vec<Token>,
+    pub path: Vec<ModulePathSegment>,
 }
 
 impl ImportNode {
-    pub fn get_path(&self) -> (bool, String) {
-        let is_local_import = self.leading_dot_token.is_some();
-        let path = self.path.iter().map(|p| Token::get_ident_name(p)).join("/");
-        (is_local_import, path)
-    }
-
     pub fn get_module_id(&self) -> ModuleId {
-        let is_local_import = self.leading_dot_token.is_some();
-        let path = self.path.iter().map(|p| Token::get_ident_name(p)).collect();
-        ModuleId(is_local_import, path)
+        let is_local_import = match self.path.first() {
+            Some(ModulePathSegment::UpDir | ModulePathSegment::CurrentDir) => true,
+            _ => false
+        };
+        ModuleId(is_local_import, self.path.clone())
     }
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ModulePathSegment {
+    CurrentDir,
+    UpDir,
+    Directory(String),
+    Module(String)
 }
 
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
-pub struct ModuleId(pub bool, pub Vec<String>);
-
-impl Display for ModuleId {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.get_name())
-    }
-}
+pub struct ModuleId(pub /* is_local_import: */ bool, pub Vec<ModulePathSegment>);
 
 const EXTENSION: &str = "abra";
 
 impl ModuleId {
-    pub fn get_name(&self) -> String {
-        let name = self.1.join(".");
-        format!("{}{}", if self.0 { "." } else { "" }, name)
+    pub fn get_path<P: AsRef<Path>>(&self, root: P) -> String {
+        let mut path = root.as_ref().join("");
+        for seg in &self.1 {
+            match seg {
+                ModulePathSegment::CurrentDir => path = path.join("."),
+                ModulePathSegment::UpDir => path = path.join(".."),
+                ModulePathSegment::Directory(d) => path = path.join(d),
+                ModulePathSegment::Module(m) => path = path.join(m)
+            }
+        }
+        path.to_str().unwrap().to_string()
     }
 
-    pub fn get_path<P: AsRef<Path>>(&self, root: Option<P>) -> String {
-        let path = format!("{}.{}", self.1.join("/"), EXTENSION);
-        let path = path.replace("./", "");
-        match root {
-            None => path,
-            Some(root) => root.as_ref().join(path).to_str().unwrap().to_string()
+    pub fn parse_module_path<S: AsRef<str>>(module_path: S) -> Option<Vec<ModulePathSegment>> {
+        let segments = module_path.as_ref().split("/").collect::<Vec<_>>();
+
+        let num_segments = segments.len();
+        let mut path = vec![];
+        for (idx, seg) in segments.into_iter().enumerate() {
+            if seg.is_empty() { return None; }
+
+            let segment = if seg == "." {
+                ModulePathSegment::CurrentDir
+            } else if seg == ".." {
+                ModulePathSegment::UpDir
+            } else {
+                let is_valid = seg.chars().any(|ch| {
+                    ch.is_alphanumeric() || ch == '.' || ch == '_' || ch == '-'
+                });
+                if !is_valid { return None; }
+
+                if idx == num_segments - 1 {
+                    ModulePathSegment::Module(seg.replace(&format!(".{}", EXTENSION), ""))
+                } else {
+                    ModulePathSegment::Directory(seg.to_string())
+                }
+            };
+            path.push(segment);
         }
+
+        if let Some(ModulePathSegment::Module(s)) = path.last() {
+            if s.starts_with(".") { return None; }
+        }
+
+        Some(path)
     }
 
     pub fn from_path(path: &String) -> Self {
-        let segments = path.replace(&format!(".{}", EXTENSION), "")
-            .split("/")
-            .map(|s| s.to_string())
-            .collect();
-        ModuleId(true, segments)
+        let path = Self::parse_module_path(path);
+        ModuleId(true, path.unwrap())
     }
 
     pub fn from_name<S: AsRef<str>>(name: S) -> Self {
         let is_local = name.as_ref().starts_with(".");
-        let parts = name.as_ref().split(".")
-            .map(|s| s.to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        ModuleId(is_local, parts)
+        let path = Self::parse_module_path(name);
+        ModuleId(is_local, path.unwrap())
     }
 }
 

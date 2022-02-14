@@ -6,3 +6,8 @@ match a {
   A.A1(f) => f.s = "qwer"
 }
 println(a)
+
+// import b from "./example2"
+// import x from "../foo"
+//
+// println(b, x)

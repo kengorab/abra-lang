@@ -10,12 +10,25 @@ pub enum ParseErrorKind {
     UnexpectedToken(Token),
     ExpectedToken(TokenType, Token),
     ExpectedOneOf(Vec<TokenType>, Token),
+    InvalidImportPath(Token),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError {
     pub module_id: ModuleId,
     pub kind: ParseErrorKind,
+}
+
+impl ParseError {
+    pub fn get_range(&self) -> Range {
+        match &self.kind {
+            ParseErrorKind::UnexpectedEof(r) => r.clone(),
+            ParseErrorKind::UnexpectedToken(tok) |
+            ParseErrorKind::ExpectedToken(_, tok) |
+            ParseErrorKind::ExpectedOneOf(_, tok) |
+            ParseErrorKind::InvalidImportPath(tok) => tok.get_range()
+        }
+    }
 }
 
 impl DisplayError for ParseError {
@@ -67,6 +80,14 @@ impl DisplayError for ParseError {
                 format!(
                     "Error at {}:{}:{}\nExpected one of {}, saw '{}'\n{}",
                     file_name, pos.line, pos.col, expecteds, actual.to_string(), message
+                )
+            }
+            ParseErrorKind::InvalidImportPath(token) => {
+                let pos = token.get_position();
+                let message = Self::get_underlined_line(lines, token);
+                format!(
+                    "Error at {}:{}:{}\nInvalid import path\n{}",
+                    file_name, pos.line, pos.col, message
                 )
             }
         }

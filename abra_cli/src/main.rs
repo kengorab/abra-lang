@@ -5,20 +5,19 @@ extern crate dirs;
 extern crate itertools;
 extern crate rustyline;
 
-use crate::fs_module_reader::FsModuleReader;
+use abra_core::common::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
 use abra_core::{compile, compile_and_disassemble, Error, typecheck};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
-use abra_core::module_loader::ModuleReader;
-use abra_core::parser::ast::ModuleId;
+use abra_core::parser::ast::{ModuleId, ModulePathSegment};
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
 use std::process::Command;
 use abra_core::transpile::clang::clang;
+use abra_core::module_loader::{ModuleLoader, ModuleReader};
 
-mod fs_module_reader;
 mod repl;
 
 #[derive(Clap)]
@@ -90,11 +89,13 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_id = ModuleId::from_path(&opts.file_path);
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_path = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::from_path(&module_path);
 
     let env = std::env::vars().collect();
     let mut vm = VM::new(VMContext::new(opts.args, env));
-    let result = compile_and_run(module_id, contents, current_path, &mut vm)?;
+    let result = compile_and_run(module_id, contents, root, &mut vm)?;
     if result != Value::Nil {
         println!("{}", to_string(&result, &mut vm));
     }
@@ -107,18 +108,24 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_id = ModuleId::from_path(&opts.file_path);
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::from_path(&module_name);
 
-    let module_reader = fs_module_reader::FsModuleReader::new(file_path.clone());
-    let mut loader = abra_core::module_loader::ModuleLoader::new(&module_reader);
+    let mut module_reader = FsModuleReader::new(module_id.clone(), root);
+    let mut loader = ModuleLoader::new(&mut module_reader);
 
     let typecheck_result = typecheck(module_id, &contents, &mut loader);
     let module = match typecheck_result {
         Ok(typed_module) => typed_module,
         Err(e) => {
             let module_id = e.module_id();
-            let contents = module_reader.read_module(module_id).unwrap_or(contents);
-            let file_name = module_id.get_path(Some(&module_reader.project_root));
+            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
+                .with_extension("abra")
+                .canonicalize()
+                .unwrap();
+            let contents = std::fs::read_to_string(&file_name).unwrap();
+            let file_name = file_name.to_str().unwrap().to_string();
 
             match e {
                 Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
@@ -141,11 +148,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         }
     }
 
-    let module_name = file_path.strip_prefix(&working_dir).unwrap();
-    let module_name = module_name.to_str().unwrap()
-        .replace('/', "_")
-        .replace("-", "-")
-        .replace(".abra", "");
+    let module_name = module_name.replace(".abra", "");
     let gen_src_file = format!("{}.c", &module_name);
     let c_code = abra_core::transpile::genc::CCompiler::gen_c(&mut loader, &module_name, ast)?;
     std::fs::write(dotabra_dir.join(&gen_src_file), c_code).unwrap();
@@ -173,9 +176,9 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_reader = FsModuleReader::new(current_path);
     let module_id = ModuleId::from_path(&opts.file_path);
-    match compile_and_disassemble(module_id, &contents, &module_reader) {
+    let mut module_reader = FsModuleReader::new(module_id.clone(), current_path);
+    match compile_and_disassemble(module_id, &contents, &mut module_reader) {
         Ok(output) => {
             match opts.out_file {
                 None => println!("{}", output),
@@ -184,8 +187,12 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
         }
         Err(error) => {
             let module_id = error.module_id();
-            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
-            let file_name = module_id.get_path(Some(&module_reader.project_root));
+            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
+                .with_extension("abra")
+                .canonicalize()
+                .unwrap();
+            let contents = std::fs::read_to_string(&file_name).unwrap();
+            let file_name = file_name.to_str().unwrap().to_string();
 
             match error {
                 Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
@@ -247,14 +254,14 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
         (current_path, module_ids)
     };
 
-    let mut mock_file = vec!["import runTests from test\n".to_string()];
+    let mut mock_file = vec!["import runTests from \"test\"\n".to_string()];
     for m in module_ids {
-        mock_file.push(format!("import * from {}\n", m.get_name()));
+        mock_file.push(format!("import * from \"./{}\"\n", m.1.last().map(|s| if let ModulePathSegment::Module(m) = s { m.clone() } else { unreachable!() }).unwrap()));
     }
     mock_file.push(format!("\nrunTests(showPassing: {})\n", opts.show_passing));
     let mock_file = mock_file.into_iter().collect::<String>();
 
-    let mock_module_id = ModuleId::from_name(".tests");
+    let mock_module_id = ModuleId::from_name("./tests");
     let mut vm = VM::new(VMContext::default());
     let result = compile_and_run(mock_module_id, mock_file, root_dir, &mut vm)?;
     match result {
@@ -264,13 +271,17 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 }
 
 fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm: &mut VM) -> Result<Value, ()> {
-    let module_reader = FsModuleReader::new(root_dir);
-    let modules = match compile(module_id, &contents, &module_reader) {
+    let mut module_reader = FsModuleReader::new(module_id.clone(), root_dir);
+    let modules = match compile(module_id, &contents, &mut module_reader) {
         Ok(modules) => modules,
         Err(error) => {
             let module_id = error.module_id();
-            let contents = module_reader.read_module(module_id).expect("If the file couldn't be loaded, it'd have been caught earlier");
-            let file_name = module_id.get_path(Some(&module_reader.project_root));
+            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
+                .with_extension("abra")
+                .canonicalize()
+                .unwrap();
+            let contents = std::fs::read_to_string(&file_name).unwrap();
+            let file_name = file_name.to_str().unwrap().to_string();
 
             match error {
                 Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),

@@ -6,7 +6,7 @@ describe('errors', () => {
             const result = Abra.typecheck('func 1')!
             const expected = {
                 success: false,
-                errorMessage: `Error at repl.abra:1:6\nExpected token 'identifier', saw 'int'
+                errorMessage: `Error at ./_repl.abra:1:6\nExpected token 'identifier', saw 'int'
   |  func 1
           ^`
             }

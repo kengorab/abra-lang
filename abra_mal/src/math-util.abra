@@ -1,4 +1,4 @@
-import Value from .types
+import Value from "./types"
 
 export enum Op { Add, Sub, Mul, Div }
 

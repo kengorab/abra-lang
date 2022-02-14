@@ -75,7 +75,7 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
     };
 
     // Inject wildcard prelude import
-    let prelude_import_nodes = tokenize_and_parse(&typechecker.module_id, &"import * from prelude".to_string()).unwrap().nodes;
+    let prelude_import_nodes = tokenize_and_parse(&typechecker.module_id, &"import * from \"prelude\"".to_string()).unwrap().nodes;
     for node in prelude_import_nodes {
         if let Err(kind) = typechecker.visit(node) {
             return Err(TypecheckerError { module_id: typechecker.module_id, kind });
@@ -108,7 +108,7 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
     let typed_nodes = results.into_iter().chain(nodes).collect();
 
     let scope = typechecker.scopes.pop().expect("There should be a top-level scope");
-    let module_name = typechecker.module_id.get_name();
+    let module_name = typechecker.module_loader.get_module_name(&typechecker.module_id);
 
     let module = TypedModule {
         module_id: typechecker.module_id,
@@ -628,9 +628,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let variant_name = Token::get_ident_name(&variant_ident);
                     let variant_idx = enum_type.variants.iter().position(|(name, _)| name == &variant_name);
                     if variant_idx.is_none() {
-                        return Err(TypecheckerErrorKind::UnknownMember { token: variant_ident, target_type: typ, module_id: None });
+                        return Err(TypecheckerErrorKind::UnknownMember { token: variant_ident, target_type: typ, module_name: None });
                     } else if let Some(token) = idents.next() {
-                        return Err(TypecheckerErrorKind::UnknownMember { token, target_type: typ, module_id: None });
+                        return Err(TypecheckerErrorKind::UnknownMember { token, target_type: typ, module_name: None });
                     }
                     let variant_idx = variant_idx.expect("An error is raised if it's None");
 
@@ -1107,7 +1107,8 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
                     // reference we must look it up by name in self.referencable_types. This level of indirection
                     // allows for cyclic/self-referential types.
-                    let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_type_name);
+                    let module_name = self.module_loader.get_module_name(&self.module_id);
+                    let typeref_name = format!("{}/{}", module_name, &new_type_name);
                     let typeref = Type::Reference(typeref_name.clone(), vec![]);
                     let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
                     self.add_binding(&new_type_name, &name, &binding_type, false);
@@ -1816,7 +1817,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // Update the Reference type of the type's identifier to include the generics, and establish
         // that Reference as the cur_typedef
         let type_arg_names = type_args.iter().map(|name| Type::Generic(Token::get_ident_name(name))).collect();
-        let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_type_name);
+        let module_name = self.module_loader.get_module_name(&self.module_id);
+        let typeref_name = format!("{}/{}", module_name, &new_type_name);
         let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
@@ -1952,7 +1954,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // Update the Reference type of the type's identifier to include the generics, and establish
         // that Reference as the cur_typedef
         let type_arg_names = type_args.iter().map(|name| Type::Generic(Token::get_ident_name(name))).collect();
-        let typeref_name = format!("{}/{}", self.module_id.get_name(), &new_enum_name);
+        let module_name = self.module_loader.get_module_name(&self.module_id);
+        let typeref_name = format!("{}/{}", module_name, &new_enum_name);
         let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_enum_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), true);
@@ -2860,23 +2863,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 }).collect::<Result<Vec<_>, _>>()?
             }
             ImportKind::Alias(alias_token) => {
-                let alias_token = match alias_token {
-                    None => {
-                        let ModuleId(is_local_import, path) = &module_id;
-                        if *is_local_import || path.len() > 1 {
-                            return Err(TypecheckerErrorKind::ForbiddenImportAliasing { import_token: token, module_id });
-                        }
-                        node.path.first().as_ref().unwrap()
-                    }
-                    Some(tok) => tok
-                };
                 let alias_name = Token::get_ident_name(alias_token);
                 if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&alias_name) {
                     let ident = (*alias_token).clone();
                     return Err(TypecheckerErrorKind::DuplicateBinding { ident, orig_ident: Some(orig_ident.clone()) });
                 }
 
-                let typ = Type::Module(module_id.clone());
+                let typ = Type::Module(module_id.clone(), alias_name.clone());
                 self.add_binding(&alias_name, &alias_token, &typ, false);
 
                 return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id, alias_name: Some(alias_name) }));
@@ -2898,7 +2891,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 ExportedValue::Type { reference, backing_type, node } => {
                     match reference {
                         Some(typeref) => {
-                            let typeref_name = format!("{}/{}", module_id.get_name(), &import_name);
+                            let module_name = self.module_loader.get_module_name(&module_id);
+                            let typeref_name = format!("{}/{}", module_name, &import_name);
                             let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
                             self.add_imported_binding(&import_name, import_ident_token, &binding_type);
                             self.add_type(import_name.clone(), node.clone(), typeref.clone(), true);
@@ -3050,7 +3044,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         get_field_data(zelf, &enum_type, field_name, token)
                     }
                 }
-                Type::Module(module_id) => {
+                Type::Module(module_id, _) => {
                     let module = zelf.module_loader.get_module(&module_id);
                     let field_data = module.exports.get(field_name).map(|export| {
                         match export {
@@ -3058,7 +3052,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                             ExportedValue::Type { reference, backing_type, node } => {
                                 let typ = match reference {
                                     Some(typeref) => {
-                                        let typeref_name = format!("{}/{}", module_id.get_name(), &field_name);
+                                        let module_name = zelf.module_loader.get_module_name(&zelf.module_id);
+                                        let typeref_name = format!("{}/{}", module_name, &field_name);
                                         let mut backing_type = backing_type.clone();
                                         match &mut backing_type {
                                             Type::Struct(st) => st.name = typeref_name.clone(),
@@ -3117,12 +3112,12 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 (idx, Type::substitute_generics(&typ, &generics), is_method, readonly)
             }
             None => {
-                let module_id = match self.resolve_ref_type(&target_type) {
-                    Type::Module(module_id) => Some(module_id),
+                let module_name = match self.resolve_ref_type(&target_type) {
+                    Type::Module(_, module_name) => Some(module_name),
                     _ => None
                 };
 
-                return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone(), module_id });
+                return Err(TypecheckerErrorKind::UnknownMember { token: field_ident, target_type: target_type.clone(), module_name });
             }
         };
         if is_opt {

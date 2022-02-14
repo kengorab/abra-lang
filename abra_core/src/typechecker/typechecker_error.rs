@@ -1,5 +1,5 @@
 use crate::common::display_error::DisplayError;
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Range, Token};
 use crate::typechecker::types::Type;
 use crate::parser::ast::{BinaryOp, IndexingMode, AstNode, BindingPattern, ModuleId};
 
@@ -44,7 +44,7 @@ pub enum TypecheckerErrorKind {
     InvalidIndexingTarget { token: Token, target_type: Type, index_mode: IndexingMode<AstNode> },
     InvalidIndexingSelector { token: Token, target_type: Type, selector_type: Type },
     InvalidTupleIndexingSelector { token: Token, types: Vec<Type>, non_constant: bool, index: i64 },
-    UnknownMember { token: Token, target_type: Type, module_id: Option<ModuleId> },
+    UnknownMember { token: Token, target_type: Type, module_name: Option<String> },
     MissingRequiredParams { token: Token, missing_params: Vec<String> },
     InvalidMixedParamType { token: Token },
     InvalidTypeFuncInvocation { token: Token },
@@ -73,7 +73,6 @@ pub enum TypecheckerErrorKind {
     CircularModuleImport { token: Token, module_name: String },
     InvalidModuleImport { token: Token, module_name: String },
     InvalidImportValue { ident: Token },
-    ForbiddenImportAliasing { import_token: Token, module_id: ModuleId },
     InvalidTryPlacement { try_token: Token, fn_ctx: Option<(Token, Type)>  },
     InvalidTryType { try_token: Token, typ: Type },
     TryMismatch { try_token: Token, try_type: Type, return_type: Type },
@@ -83,6 +82,12 @@ pub enum TypecheckerErrorKind {
 pub struct TypecheckerError {
     pub module_id: ModuleId,
     pub kind: TypecheckerErrorKind,
+}
+
+impl TypecheckerError {
+    pub fn get_range(&self) -> Range {
+        self.get_token().get_range()
+    }
 }
 
 impl TypecheckerError {
@@ -147,7 +152,6 @@ impl TypecheckerError {
             TypecheckerErrorKind::CircularModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidModuleImport { token, .. } => token,
             TypecheckerErrorKind::InvalidImportValue { ident: token } => token,
-            TypecheckerErrorKind::ForbiddenImportAliasing { import_token, .. } => import_token,
             TypecheckerErrorKind::InvalidTryPlacement { try_token, .. } => try_token,
             TypecheckerErrorKind::InvalidTryType { try_token, .. } => try_token,
             TypecheckerErrorKind::TryMismatch { try_token, .. } => try_token,
@@ -473,15 +477,15 @@ impl DisplayError for TypecheckerError {
                     cursor_line, message
                 )
             }
-            TypecheckerErrorKind::UnknownMember { token, target_type, module_id } => {
+            TypecheckerErrorKind::UnknownMember { token, target_type, module_name } => {
                 let field_name = Token::get_ident_name(token);
 
-                if let Some(module_id) = module_id {
+                if let Some(module_name) = module_name {
                     format!(
                         "Unknown member '{}'\n{}\n\
                         Module '{}' does not have an export with name '{}'",
                         field_name, cursor_line,
-                        module_id.get_name(), field_name
+                        module_name, field_name
                     )
                 } else {
                     format!(
@@ -757,23 +761,6 @@ impl DisplayError for TypecheckerError {
                     "Invalid import\n{}\nThis module does not export any value called '{}'",
                     cursor_line, Token::get_ident_name(ident)
                 )
-            }
-            TypecheckerErrorKind::ForbiddenImportAliasing { module_id, .. } => {
-                let ModuleId(is_local_import, path) = module_id;
-                let suggestion = format!("import {} as {}", module_id.get_name(), path.last().unwrap());
-                if *is_local_import {
-                    format!(
-                        "Invalid import\n{}\n\
-                        Local imports need to be properly aliased, for example:\n  {}",
-                        cursor_line, suggestion
-                    )
-                } else {
-                    format!(
-                        "Invalid import\n{}\n\
-                        Module name '{}' is not a valid identifier, try an alias like:\n  {}",
-                        cursor_line, module_id.get_name(), suggestion
-                    )
-                }
             }
             TypecheckerErrorKind::InvalidTryPlacement { fn_ctx,.. } => {
                 if let Some((fn_token, fn_return_type)) = fn_ctx {
@@ -1382,7 +1369,7 @@ Cannot index into a target of type String, using a selector of type String"
             kind: TypecheckerErrorKind::UnknownMember {
                 token: Token::Ident(Position::new(1, 11), "size".to_string()),
                 target_type: Type::Array(Box::new(Type::Int)),
-                module_id: None,
+                module_name: None,
             },
         };
         let expected = format!("\
@@ -1410,7 +1397,7 @@ Type Int[] does not have a member with name 'size'"
                     static_fields: vec![],
                     methods: vec![],
                 }),
-                module_id: None,
+                module_name: None,
             },
         };
         let expected = format!("\
@@ -1428,8 +1415,8 @@ Type Person does not have a member with name 'nAme'"
             module_id,
             kind: TypecheckerErrorKind::UnknownMember {
                 token: Token::Ident(Position::new(2, 4), "fooBar".to_string()),
-                target_type: Type::Module(ModuleId::from_name("io")),
-                module_id: Some(ModuleId::from_name("io")),
+                target_type: Type::Module(ModuleId::from_name("io"), "io".to_string()),
+                module_name: Some("io".to_string()),
             },
         };
         let expected = format!("\

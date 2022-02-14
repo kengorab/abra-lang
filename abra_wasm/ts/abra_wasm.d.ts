@@ -5,19 +5,27 @@ export interface Context {
 }
 
 export interface ModuleReader {
+    resolveModulePath(moduleId: string, withRespectTo: string): string;
     readModule(moduleName: string): string | null;
+    getModuleName(moduleName: string): string;
+}
+
+export interface Range {
+    start: [number, number];
+    end: [number, number];
 }
 
 export interface TypecheckSuccess {
-    success: true,
+    success: true;
 }
 
 export interface TypecheckFailure {
-    success: false,
-    errorMessage: string
+    success: false;
+    errorMessage: string;
+    range: Range;
 }
 
-export type TypecheckResult = TypecheckSuccess | TypecheckFailure
+export type TypecheckResult = TypecheckSuccess | TypecheckFailure;
 
 /**
  * Reads the input string as Abra code, and typechecks it.
@@ -31,16 +39,16 @@ export function typecheck(input: string): TypecheckResult | null;
 export function typecheckModule(moduleName: string, moduleReader: ModuleReader): TypecheckResult | null;
 
 export interface RunSuccess {
-    success: true,
-    dataToString: string
+    success: true;
+    dataToString: string;
 }
 
 export interface RunFailure {
-    success: false,
-    errorMessage: string
+    success: false;
+    errorMessage: string;
 }
 
-export type RunResult = RunSuccess | RunFailure
+export type RunResult = RunSuccess | RunFailure;
 
 /**
  * Compiles and executes the input string as Abra code, returning the result. This could
@@ -57,16 +65,17 @@ export function run(input: string, context?: Context): RunResult;
 export function runModule(moduleName: string, moduleReader: ModuleReader, context?: Context): RunResult;
 
 export interface DisassembleSuccess {
-    success: true,
-    disassembled: string
+    success: true;
+    disassembled: string;
 }
 
 export interface DisassembleFailure {
-    success: false,
-    errorMessage: string
+    success: false;
+    errorMessage: string;
+    range: Range;
 }
 
-export type DisassembleResult = DisassembleSuccess | DisassembleFailure
+export type DisassembleResult = DisassembleSuccess | DisassembleFailure;
 
 /**
  * Compiles the input and returns a stringified disassembly

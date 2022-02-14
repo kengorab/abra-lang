@@ -1,4 +1,4 @@
-import * from test
+import * from "test"
 
 describe("Map", () => {
   // Fields

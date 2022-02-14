@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode, ModulePathSegment};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -761,51 +761,34 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_module(&mut self) -> Result<(Option<Token>, Vec<Token>), ParseErrorKind> {
-        let leading_dot_token = if let Token::Dot(_) = self.expect_peek()? {
-            let token = self.expect_next_token(TokenType::Dot)?; // Consume '.'
-            Some(token)
-        } else { None };
-
-        let mut path = Vec::new();
-        loop {
-            let ident = self.expect_next_token(TokenType::Ident)?;
-            path.push(ident);
-
-            if let Some(Token::Dot(_)) = self.peek() {
-                self.expect_next_token(TokenType::Dot)?; // Consume '.'
-            } else {
-                break;
-            }
+    fn parse_import_module(&mut self) -> Result<Vec<ModulePathSegment>, ParseErrorKind> {
+        let import_path_tok = self.expect_next_token(TokenType::String)?;
+        let import_path= if let Token::String(_, s) = &import_path_tok { s } else { unreachable!() };
+        match ModuleId::parse_module_path(import_path) {
+            Some(path) => Ok(path),
+            None => Err(ParseErrorKind::InvalidImportPath(import_path_tok))
         }
-
-        Ok((leading_dot_token, path))
     }
 
     fn parse_import_statement(&mut self, is_proper: bool) -> Result<AstNode, ParseErrorKind> {
         let token = self.expect_next()?; // Consume 'import' token
-        if !is_proper {
-            return Err(ParseErrorKind::UnexpectedToken(token));
-        }
+        if !is_proper { return Err(ParseErrorKind::UnexpectedToken(token)); }
 
-        if let Token::Dot(_) = self.expect_peek()? {
-            let (leading_dot_token, path) = self.parse_import_module()?;
-
-            let alias = if let Some(Token::As(_)) = self.peek() {
-                self.expect_next_token(TokenType::As)?;
-                let alias_token = self.expect_next_token(TokenType::Ident)?;
-                Some(alias_token)
-            } else { None };
-            let kind = ImportKind::Alias(alias);
-
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
-        } else if let Token::Star(_) = self.expect_peek()? {
+        if let Token::Star(_) = self.expect_peek()? {
             let star_token = self.expect_next()?; // Consume '*'
             let kind = ImportKind::ImportAll(star_token);
             self.expect_next_token(TokenType::From)?;
-            let (leading_dot_token, path) = self.parse_import_module()?;
+            let path = self.parse_import_module()?;
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
+        } else if let Token::String(_, _) = self.expect_peek()? {
+            let path = self.parse_import_module()?;
+
+            self.expect_next_token(TokenType::As)?;
+            let alias_token = self.expect_next_token(TokenType::Ident)?;
+            let kind = ImportKind::Alias(alias_token);
+
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
         } else {
             let ident = self.expect_next_token(TokenType::Ident)?;
             match self.peek() {
@@ -826,32 +809,20 @@ impl Parser {
 
                     let kind = ImportKind::ImportList(imports);
                     self.expect_next_token(TokenType::From)?;
-                    let (leading_dot_token, path) = self.parse_import_module()?;
+                    let path = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
                 }
                 Some(Token::From(_)) => {
                     let kind = ImportKind::ImportList(vec![ident]);
                     self.expect_next_token(TokenType::From)?;
-                    let (leading_dot_token, path) = self.parse_import_module()?;
+                    let path = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token, path }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
                 }
                 _ => {
-                    let path = match self.peek() {
-                        Some(Token::Dot(_)) => {
-                            let (_, path) = self.parse_import_module()?;
-                            vec![vec![ident], path].concat()
-                        }
-                        _ => vec![ident]
-                    };
-                    let alias = if let Some(Token::As(_)) = self.peek() {
-                        self.expect_next_token(TokenType::As)?;
-                        let alias_token = self.expect_next_token(TokenType::Ident)?;
-                        Some(alias_token)
-                    } else { None };
-                    let kind = ImportKind::Alias(alias);
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, leading_dot_token: None, path }))
+                    let tok = self.expect_next()?;
+                    return Err(ParseErrorKind::ExpectedOneOf(vec![TokenType::Comma, TokenType::From], tok));
                 }
             }
         }
@@ -4924,34 +4895,113 @@ mod tests {
     }
 
     #[test]
+    fn parse_import_path() -> TestResult {
+        #[inline]
+        fn parse_import_path(input: &str) -> Result<Vec<ModulePathSegment>, ParseErrorKind> {
+            let module_id = ModuleId::from_name("test");
+            let tokens = tokenize(&module_id, &input.to_string()).unwrap();
+            let mut parser = Parser::new(tokens);
+            parser.parse_import_module()
+        }
+
+        // Valid cases
+        let path = parse_import_path("\"a\"")?;
+        let expected = vec![ModulePathSegment::Module("a".to_string())];
+        assert_eq!(expected, path);
+
+        let path = parse_import_path("\"a/b\"")?;
+        let expected = vec![
+            ModulePathSegment::Directory("a".to_string()),
+            ModulePathSegment::Module("b".to_string())
+        ];
+        assert_eq!(expected, path);
+
+        let path = parse_import_path("\"../a/b\"")?;
+        let expected = vec![
+            ModulePathSegment::UpDir,
+            ModulePathSegment::Directory("a".to_string()),
+            ModulePathSegment::Module("b".to_string())
+        ];
+        assert_eq!(expected, path);
+
+        let path = parse_import_path("\"./../a/b\"")?;
+        let expected = vec![
+            ModulePathSegment::CurrentDir,
+            ModulePathSegment::UpDir,
+            ModulePathSegment::Directory("a".to_string()),
+            ModulePathSegment::Module("b".to_string())
+        ];
+        assert_eq!(expected, path);
+
+        let path = parse_import_path("\"./../a-b/c_d.e/f\"")?;
+        let expected = vec![
+            ModulePathSegment::CurrentDir,
+            ModulePathSegment::UpDir,
+            ModulePathSegment::Directory("a-b".to_string()),
+            ModulePathSegment::Directory("c_d.e".to_string()),
+            ModulePathSegment::Module("f".to_string())
+        ];
+        assert_eq!(expected, path);
+
+        // Error cases
+        let err = parse_import_path("\".//a/b\"").unwrap_err();
+        let expected = ParseErrorKind::InvalidImportPath(Token::String(Position::new(1, 1), ".//a/b".to_string()));
+        assert_eq!(expected, err);
+
+        let err = parse_import_path("\".//a/b/.\"").unwrap_err();
+        let expected = ParseErrorKind::InvalidImportPath(Token::String(Position::new(1, 1), ".//a/b/.".to_string()));
+        assert_eq!(expected, err);
+
+        let err = parse_import_path("\".//a/b/..\"").unwrap_err();
+        let expected = ParseErrorKind::InvalidImportPath(Token::String(Position::new(1, 1), ".//a/b/..".to_string()));
+        assert_eq!(expected, err);
+
+        let err = parse_import_path("\"./a/ /..\"").unwrap_err();
+        let expected = ParseErrorKind::InvalidImportPath(Token::String(Position::new(1, 1), "./a/ /..".to_string()));
+        assert_eq!(expected, err);
+
+        let err = parse_import_path("\"./a/@%/..\"").unwrap_err();
+        let expected = ParseErrorKind::InvalidImportPath(Token::String(Position::new(1, 1), "./a/@%/..".to_string()));
+        assert_eq!(expected, err);
+
+        Ok(())
+    }
+
+    #[test]
     fn parse_import_statement() -> TestResult {
-        let ast = parse("import * from abc.def")?;
+        let ast = parse("import * from \"./abc/def\"")?;
         let expected = vec![
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportAll(Token::Star(Position::new(1, 8))),
-                    leading_dot_token: None,
-                    path: vec![ident_token!((1, 15), "abc"), ident_token!((1, 19), "def")],
+                    path: vec![
+                        ModulePathSegment::CurrentDir,
+                        ModulePathSegment::Directory("abc".to_string()),
+                        ModulePathSegment::Module("def".to_string()),
+                    ],
                 },
             )
         ];
         assert_eq!(expected, ast);
 
-        let ast = parse("import Date from time.date")?;
+        let ast = parse("import Date from \"./time/date\"")?;
         let expected = vec![
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportList(vec![ident_token!((1, 8), "Date")]),
-                    leading_dot_token: None,
-                    path: vec![ident_token!((1, 18), "time"), ident_token!((1, 23), "date")],
+                    path: vec![
+                        ModulePathSegment::CurrentDir,
+                        ModulePathSegment::Directory("time".to_string()),
+                        ModulePathSegment::Module("date".to_string()),
+                    ],
                 },
             )
         ];
         assert_eq!(expected, ast);
 
-        let ast = parse("import SomeType, someFunc from .local.module")?;
+        let ast = parse("import SomeType, someFunc from \"./local/module.ext\"")?;
         let expected = vec![
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
@@ -4960,60 +5010,38 @@ mod tests {
                         ident_token!((1, 8), "SomeType"),
                         ident_token!((1, 18), "someFunc"),
                     ]),
-                    leading_dot_token: Some(Token::Dot(Position::new(1, 32))),
-                    path: vec![ident_token!((1, 33), "local"), ident_token!((1, 39), "module")],
+                    path: vec![
+                        ModulePathSegment::CurrentDir,
+                        ModulePathSegment::Directory("local".to_string()),
+                        ModulePathSegment::Module("module.ext".to_string()),
+                    ],
                 },
             )
         ];
         assert_eq!(expected, ast);
 
-        let ast = parse("import time.date")?;
+        let ast = parse("import \"time.date\" as date")?;
         let expected = vec![
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
-                    kind: ImportKind::Alias(None),
-                    leading_dot_token: None,
-                    path: vec![ident_token!((1, 8), "time"), ident_token!((1, 13), "date")],
+                    kind: ImportKind::Alias(ident_token!((1, 23), "date")),
+                    path: vec![ModulePathSegment::Module("time.date".to_string())],
                 },
             )
         ];
         assert_eq!(expected, ast);
 
-        let ast = parse("import time.date as date")?;
+        let ast = parse("import \"./local.module\" as module")?;
         let expected = vec![
             AstNode::ImportStatement(
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
-                    kind: ImportKind::Alias(Some(ident_token!((1, 21), "date"))),
-                    leading_dot_token: None,
-                    path: vec![ident_token!((1, 8), "time"), ident_token!((1, 13), "date")],
-                },
-            )
-        ];
-        assert_eq!(expected, ast);
-
-        let ast = parse("import .local.module")?;
-        let expected = vec![
-            AstNode::ImportStatement(
-                Token::Import(Position::new(1, 1)),
-                ImportNode {
-                    kind: ImportKind::Alias(None),
-                    leading_dot_token: Some(Token::Dot(Position::new(1, 8))),
-                    path: vec![ident_token!((1, 9), "local"), ident_token!((1, 15), "module")],
-                },
-            )
-        ];
-        assert_eq!(expected, ast);
-
-        let ast = parse("import .local.module as module")?;
-        let expected = vec![
-            AstNode::ImportStatement(
-                Token::Import(Position::new(1, 1)),
-                ImportNode {
-                    kind: ImportKind::Alias(Some(ident_token!((1, 25), "module"))),
-                    leading_dot_token: Some(Token::Dot(Position::new(1, 8))),
-                    path: vec![ident_token!((1, 9), "local"), ident_token!((1, 15), "module")],
+                    kind: ImportKind::Alias(ident_token!((1, 28), "module")),
+                    path: vec![
+                        ModulePathSegment::CurrentDir,
+                        ModulePathSegment::Module("local.module".to_string())
+                    ],
                 },
             )
         ];
@@ -5024,20 +5052,20 @@ mod tests {
 
     #[test]
     fn parse_import_statement_errors() {
-        let error = parse("import *, a from io").unwrap_err();
+        let error = parse("import *, a from \"io\"").unwrap_err();
         let expected = ParseErrorKind::ExpectedToken(TokenType::From, Token::Comma(Position::new(1, 9)));
         assert_eq!(expected, error);
 
-        let error = parse("import abc, from io").unwrap_err();
+        let error = parse("import abc, from \"io\"").unwrap_err();
         let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::From(Position::new(1, 13)));
         assert_eq!(expected, error);
 
         let error = parse("import abc from 123").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 17), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::String, Token::Int(Position::new(1, 17), 123));
         assert_eq!(expected, error);
 
         let error = parse("import abc from .123").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 18), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::String, Token::Dot(Position::new(1, 17)));
         assert_eq!(expected, error);
 
         let error = parse("import 123 from .123").unwrap_err();
@@ -5049,19 +5077,23 @@ mod tests {
         assert_eq!(expected, error);
 
         let error = parse("import .123").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 9), 123));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Dot(Position::new(1, 8)));
         assert_eq!(expected, error);
 
         let error = parse("import ..a").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Dot(Position::new(1, 9)));
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Dot(Position::new(1, 8)));
         assert_eq!(expected, error);
 
-        let error = parse("import abc as 123").unwrap_err();
-        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 15), 123));
+        let error = parse("import \"a\"\nimport \"b\"").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::As, Token::Import(Position::new(2, 1)));
         assert_eq!(expected, error);
 
-        let error = parse("import abc from foo as bar").unwrap_err();
-        let expected = ParseErrorKind::UnexpectedToken(Token::As(Position::new(1, 21)));
+        let error = parse("import \"abc\" as 123").unwrap_err();
+        let expected = ParseErrorKind::ExpectedToken(TokenType::Ident, Token::Int(Position::new(1, 17), 123));
+        assert_eq!(expected, error);
+
+        let error = parse("import abc from \"foo\" as bar").unwrap_err();
+        let expected = ParseErrorKind::UnexpectedToken(Token::As(Position::new(1, 23)));
         assert_eq!(expected, error);
     }
 

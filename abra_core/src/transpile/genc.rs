@@ -4,7 +4,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
 use crate::{ModuleId, ModuleLoader, ModuleReader};
-use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
+use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModulePathSegment, UnaryOp};
 use crate::typechecker::typechecker::ExportedValue;
 use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchCaseArgument, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
@@ -2004,7 +2004,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         if path.len() > 1 { unimplemented!(); }
 
         self.switch_buf(BufferType::Includes);
-        let builtin_module_name = path.first().unwrap();
+        let builtin_module_name = if let Some(ModulePathSegment::Module(name)) = path.first() {
+            name
+        } else { unreachable!() };
         self.emit_line(format!("#include \"modules/{}/_mod.h\"", builtin_module_name));
 
         self.switch_buf(BufferType::MainFn);

@@ -10,7 +10,6 @@ use std::sync::Arc;
 use crate::vm::opcode::Opcode;
 use itertools::Itertools;
 use crate::vm::vm::VM;
-use crate::parser::ast::ModuleId;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FnValue {
@@ -126,7 +125,7 @@ pub enum Value {
     NativeFn(NativeFn),
     Type(TypeValue),
     Enum(EnumValue),
-    Module(ModuleId),
+    Module(String),
     Nil,
 }
 
@@ -271,7 +270,7 @@ impl Display for Value {
             Value::NativeFn(NativeFn { name, .. }) => write!(f, "<func {}>", name),
             Value::Type(TypeValue { name, .. }) => write!(f, "<type {}>", name),
             Value::Enum(EnumValue { name, .. }) => write!(f, "<enum {}>", name),
-            Value::Module(module_id) => write!(f, "<module {}>", module_id.get_name()),
+            Value::Module(module_name) => write!(f, "<module {}>", &module_name),
             Value::Nil => write!(f, "None"),
         }
     }

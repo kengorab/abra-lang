@@ -1,4 +1,4 @@
-import Value from .types
+import Value from "./types"
 
 val whitespaceTokens = [" ", "\n", "\t", ","]
 val specialTokens = ["[", "]", "{", "}", "(", ")", "'", "`", "~", "^", "@"]

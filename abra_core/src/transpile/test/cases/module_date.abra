@@ -1,4 +1,4 @@
-import Date from date
+import Date from "date"
 
 val d = Date(year: 2022, month: 1, day: 2)
 println(d)

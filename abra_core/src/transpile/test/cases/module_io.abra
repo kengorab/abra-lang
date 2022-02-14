@@ -1,4 +1,4 @@
-import getCurrentDir, readFile from io
+import getCurrentDir, readFile from "io"
 
 // Test files should always be run from the `abra-lang/abra_core` dir
 val parts = getCurrentDir().split("/")[-2:]
