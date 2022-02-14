@@ -8,7 +8,11 @@ describe('errors', () => {
                 success: false,
                 errorMessage: `Error at ./_repl.abra:1:6\nExpected token 'identifier', saw 'int'
   |  func 1
-          ^`
+          ^`,
+                range: {
+                    start: [1, 6],
+                    end: [1, 6],
+                }
             }
             expect(result).toEqual(expected)
         })
