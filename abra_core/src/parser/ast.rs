@@ -358,17 +358,7 @@ pub enum ImportKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImportNode {
     pub kind: ImportKind,
-    pub path: Vec<ModulePathSegment>,
-}
-
-impl ImportNode {
-    pub fn get_module_id(&self) -> ModuleId {
-        let is_local_import = match self.path.first() {
-            Some(ModulePathSegment::UpDir | ModulePathSegment::CurrentDir) => true,
-            _ => false
-        };
-        ModuleId(is_local_import, self.path.clone())
-    }
+    pub module_id: ModuleId,
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -379,26 +369,35 @@ pub enum ModulePathSegment {
     Module(String)
 }
 
-#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
-pub struct ModuleId(pub /* is_local_import: */ bool, pub Vec<ModulePathSegment>);
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum ModuleId {
+    External(/* module_name: */ String),
+    Internal(/* path: */ Vec<ModulePathSegment>),
+}
 
 const EXTENSION: &str = "abra";
 
 impl ModuleId {
     pub fn get_path<P: AsRef<Path>>(&self, root: P) -> String {
         let mut path = root.as_ref().join("");
-        for seg in &self.1 {
-            match seg {
-                ModulePathSegment::CurrentDir => path = path.join("."),
-                ModulePathSegment::UpDir => path = path.join(".."),
-                ModulePathSegment::Directory(d) => path = path.join(d),
-                ModulePathSegment::Module(m) => path = path.join(m)
+        match &self {
+            ModuleId::External(n) => path = path.join(n),
+            ModuleId::Internal(segments) => {
+                for seg in segments {
+                    match seg {
+                        ModulePathSegment::CurrentDir => path = path.join("."),
+                        ModulePathSegment::UpDir => path = path.join(".."),
+                        ModulePathSegment::Directory(d) => path = path.join(d),
+                        ModulePathSegment::Module(m) => path = path.join(m)
+                    }
+                }
             }
         }
+
         path.to_str().unwrap().to_string()
     }
 
-    pub fn parse_module_path<S: AsRef<str>>(module_path: S) -> Option<Vec<ModulePathSegment>> {
+    pub fn parse_module_path<S: AsRef<str>>(module_path: S) -> Option<ModuleId> {
         let segments = module_path.as_ref().split("/").collect::<Vec<_>>();
 
         let num_segments = segments.len();
@@ -429,18 +428,29 @@ impl ModuleId {
             if s.starts_with(".") { return None; }
         }
 
-        Some(path)
+        let m = match path.first() {
+            None => return None,
+            Some(ModulePathSegment::UpDir | ModulePathSegment::CurrentDir) => ModuleId::Internal(path),
+            Some(ModulePathSegment::Directory(name) | ModulePathSegment::Module(name)) => {
+                if path.len() != 1 {
+                    // TODO: Support nested external/builtin imports (ie. time/date)?
+                    // Right now, if the first segment is a directory, the rest of the path is discarded
+                    unimplemented!()
+                }
+
+                ModuleId::External(name.clone())
+            }
+        };
+
+        Some(m)
     }
 
-    pub fn from_path(path: &String) -> Self {
-        let path = Self::parse_module_path(path);
-        ModuleId(true, path.unwrap())
+    pub fn is_prelude(&self) -> bool {
+        if let ModuleId::External(name) = &self { name == "prelude" } else { false }
     }
 
-    pub fn from_name<S: AsRef<str>>(name: S) -> Self {
-        let is_local = name.as_ref().starts_with(".");
-        let path = Self::parse_module_path(name);
-        ModuleId(is_local, path.unwrap())
+    pub fn prelude() -> Self {
+        Self::parse_module_path("prelude").unwrap()
     }
 }
 

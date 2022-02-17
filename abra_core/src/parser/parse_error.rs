@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_unexpected_token_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "-+".to_string();
         let token = Token::Plus(Position::new(1, 2));
         let err = ParseError { module_id, kind: ParseErrorKind::UnexpectedToken(token) };
@@ -119,7 +119,7 @@ Unexpected token '+'
 
     #[test]
     fn test_expected_token_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val a: = 123".to_string();
         let err = ParseError {
             module_id,
@@ -136,7 +136,7 @@ Expected token 'identifier', saw '='
 
     #[test]
     fn test_unexpected_eof_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "-".to_string();
         let err = ParseError { module_id, kind: ParseErrorKind::UnexpectedEof(Range::with_length(&Position::new(1, 1), 1)) };
 

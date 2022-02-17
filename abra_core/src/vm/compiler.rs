@@ -171,7 +171,7 @@ impl<'a> Compiler<'a> {
     fn get_type_constant_index(&self, type_name: &String) -> usize {
         match self.get_global_idx(&self.module_id.clone(), type_name) {
             Some(idx) => *idx,
-            None => *self.get_global_idx(&ModuleId::from_name("prelude"), type_name)
+            None => *self.get_global_idx(&ModuleId::prelude(), type_name)
                 .expect(&format!("There should be a designated global slot for name {}", type_name))
         }
     }
@@ -373,7 +373,7 @@ impl<'a> Compiler<'a> {
         }
 
         // Search for name among the prelude's globals
-        let global_idx = self.get_global_idx(&ModuleId::from_name("prelude"), &ident_str);
+        let global_idx = self.get_global_idx(&ModuleId::prelude(), &ident_str);
         let global_idx = *global_idx.expect(&format!("There should be a designated global slot for name {}", ident_str));
         self.write_opcode(Opcode::GLoad(global_idx), line);
     }
@@ -2187,7 +2187,7 @@ mod tests {
 
     fn test_compile(input: &str) -> Module {
         let mut mock_reader = MockModuleReader::default();
-        let module_id = ModuleId::from_name("_test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
@@ -2197,7 +2197,7 @@ mod tests {
 
     fn test_compile_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Module {
         let mut mock_reader = MockModuleReader::new(modules);
-        let module_id = ModuleId::from_name("./_test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
         let mut modules = modules.into_iter();
         assert_eq!(modules.next().unwrap().name, "prelude".to_string());
@@ -2221,7 +2221,7 @@ mod tests {
     fn compile_empty() {
         let chunk = test_compile("");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![Opcode::Return],
@@ -2234,7 +2234,7 @@ mod tests {
     fn compile_literals() {
         let chunk = test_compile("1 2.3 4 5.6 \"hello\" true false");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2266,7 +2266,7 @@ mod tests {
     fn compile_unary() {
         let chunk = test_compile("-5");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2280,7 +2280,7 @@ mod tests {
 
         let chunk = test_compile("-2.3");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2294,7 +2294,7 @@ mod tests {
 
         let chunk = test_compile("!false");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2311,7 +2311,7 @@ mod tests {
     fn compile_binary_numeric() {
         let chunk = test_compile("5 + 6");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2327,7 +2327,7 @@ mod tests {
         // Testing i2f and order of ops
         let chunk = test_compile("1 - -5 * 3.4 / 5");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2351,7 +2351,7 @@ mod tests {
         // Testing %, along with i2f
         let chunk = test_compile("3.4 % 2.4 % 5");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2370,7 +2370,7 @@ mod tests {
         // Testing **
         let chunk = test_compile("3.4 ** 5");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2388,7 +2388,7 @@ mod tests {
     fn compile_binary_grouped() {
         let chunk = test_compile("(1 + 2) * 3");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2408,7 +2408,7 @@ mod tests {
     fn compile_binary_str_concat() {
         let chunk = test_compile("\"abc\" + \"def\"");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2423,7 +2423,7 @@ mod tests {
 
         let chunk = test_compile("1 + \"a\" + 3.4");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2443,7 +2443,7 @@ mod tests {
     fn compile_binary_boolean() {
         let chunk = test_compile("true && true || false");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2465,7 +2465,7 @@ mod tests {
         // Testing xor
         let chunk = test_compile("true ^ false");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2483,7 +2483,7 @@ mod tests {
     fn compile_binary_comparisons() {
         let chunk = test_compile("1 <= 5 == 3.4 >= 5.6");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2502,7 +2502,7 @@ mod tests {
 
         let chunk = test_compile("\"a\" < \"b\" != 4");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2522,7 +2522,7 @@ mod tests {
     fn compile_binary_coalesce() {
         let chunk = test_compile("[\"a\", \"b\"][2] ?: \"c\"");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2552,7 +2552,7 @@ mod tests {
     fn compile_array_literal() {
         let chunk = test_compile("[1, 2]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2567,7 +2567,7 @@ mod tests {
 
         let chunk = test_compile("[\"a\", \"b\", \"c\"]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2586,7 +2586,7 @@ mod tests {
     fn compile_array_nested() {
         let chunk = test_compile("[[1, 2], [3, 4, 5]]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2609,7 +2609,7 @@ mod tests {
     fn compile_set_literal() {
         let chunk = test_compile("#{1, 2}");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2624,7 +2624,7 @@ mod tests {
 
         let chunk = test_compile("#{\"a\", \"b\", \"c\"}");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2643,7 +2643,7 @@ mod tests {
     fn compile_map_literal() {
         let chunk = test_compile("{ a: 1, b: \"c\", d: true }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -2670,7 +2670,7 @@ mod tests {
     fn compile_binding_decl() {
         let chunk = test_compile("val abc = 123");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -2684,7 +2684,7 @@ mod tests {
 
         let chunk = test_compile("var unset: Bool\nvar set = true");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -2700,7 +2700,7 @@ mod tests {
 
         let chunk = test_compile("val abc = \"a\" + \"b\"\nval def = 5");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -2728,7 +2728,7 @@ mod tests {
           val meg = Person(name: \"Meg\")\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -2744,7 +2744,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -2762,7 +2762,7 @@ mod tests {
           val anAdult = Person(name: \"Some Name\", age: 29)\n\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3,
             code: vec![
@@ -2783,7 +2783,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string(), "age".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -2801,7 +2801,7 @@ mod tests {
     fn compile_binding_decl_destructuring_tuples() {
         let chunk = test_compile("val (a, b) = (1, 2)");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3,
             code: vec![
@@ -2829,7 +2829,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -2873,7 +2873,7 @@ mod tests {
     fn compile_binding_decl_destructuring_arrays() {
         let chunk = test_compile("val [a, b] = [1, 2]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3, // Account for $temp_0
             code: vec![
@@ -2901,7 +2901,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -2945,7 +2945,7 @@ mod tests {
     fn compile_binding_decl_destructuring_strings() {
         let chunk = test_compile("val [a, b] = \"hello\"");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3,
             code: vec![
@@ -2970,7 +2970,7 @@ mod tests {
     fn compile_ident() {
         let chunk = test_compile("val abc = 123\nabc");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -2988,7 +2988,7 @@ mod tests {
     fn compile_ident_upvalues() {
         let chunk = test_compile("func a(i: Int) {\nval b = 3\nfunc c(): Int { b + 1 }\n}");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3046,7 +3046,7 @@ mod tests {
     fn compile_ident_upvalues_skip_level() {
         let chunk = test_compile("func a(i: Int) {\nval b = 3\nfunc c() { func d(): Int { b + 1 }\n}\n}");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3127,7 +3127,7 @@ mod tests {
     fn compile_assignment() {
         let chunk = test_compile("var a = 1\nvar b = 2\nval c = b = a = 3");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3,
             code: vec![
@@ -3156,7 +3156,7 @@ mod tests {
 
         let chunk = test_compile("var a = 1\na = 2\nval b = 3");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -3182,7 +3182,7 @@ mod tests {
     fn compile_assignment_globals() {
         let chunk = test_compile("var a = 1\nfunc abc(): Int { a = 3 }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -3215,7 +3215,7 @@ mod tests {
     fn compile_assignment_upvalues() {
         let chunk = test_compile("func outer() {\nvar a = 1\nfunc inner(): Int { a = 3 }\n}");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3272,7 +3272,7 @@ mod tests {
     fn compile_assignment_indexing() {
         let chunk = test_compile("val a = [1]\na[0] = 0");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3291,7 +3291,7 @@ mod tests {
 
         let chunk = test_compile("val a = {b:1}\na[\"b\"] = 0");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3311,7 +3311,7 @@ mod tests {
 
         let chunk = test_compile("val a = (1, 2)\na[0] = 0");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3338,7 +3338,7 @@ mod tests {
           p.name = \"Meg\"\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -3357,7 +3357,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -3374,7 +3374,7 @@ mod tests {
     fn compile_indexing() {
         let chunk = test_compile("[1, 2, 3, 4, 5][3 + 1]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3396,7 +3396,7 @@ mod tests {
 
         let chunk = test_compile("\"some string\"[1 + 1:]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3414,7 +3414,7 @@ mod tests {
 
         let chunk = test_compile("\"some string\"[-1:4]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3431,7 +3431,7 @@ mod tests {
 
         let chunk = test_compile("\"some string\"[:1 + 1]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3449,7 +3449,7 @@ mod tests {
 
         let chunk = test_compile("{ a: 1, b: 2 }[\"a\"]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3468,7 +3468,7 @@ mod tests {
 
         let chunk = test_compile("(1, true, 3)[2]");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3489,7 +3489,7 @@ mod tests {
     fn compile_if_else_statements() {
         let chunk = test_compile("if (1 == 2) 123 else 456");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3510,7 +3510,7 @@ mod tests {
 
         let chunk = test_compile("if (1 == 2) 123");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3528,7 +3528,7 @@ mod tests {
 
         let chunk = test_compile("if (1 == 2) { } else { 456 }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3547,7 +3547,7 @@ mod tests {
 
         let chunk = test_compile("if (1 == 2) 123 else if (3 < 4) 456 else 789");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3581,7 +3581,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3610,7 +3610,7 @@ mod tests {
     fn compile_if_else_statements_option_condition() {
         let chunk = test_compile("if ([1, 2][0]) 123 else 456");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3638,7 +3638,7 @@ mod tests {
     fn compile_if_else_statements_with_condition_binding() {
         let chunk = test_compile("if [1, 2][0] |item| item else 456");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -3679,7 +3679,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 4,
             code: vec![
@@ -3728,7 +3728,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3766,7 +3766,7 @@ mod tests {
     fn compile_function_declaration_default_args() {
         let chunk = test_compile("func add(a: Int, b = 2): Int = a + b\nadd(1)\nadd(1, 2)");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3822,7 +3822,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3885,7 +3885,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3898,7 +3898,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![
@@ -3938,7 +3938,7 @@ mod tests {
     fn compile_enum_decl_variants() {
         let chunk = test_compile("enum Status { On, Off }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -3951,7 +3951,7 @@ mod tests {
             constants: vec![
                 Value::Enum(EnumValue {
                     name: "Status".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     methods: vec![to_string_method()],
                     static_fields: vec![],
                     variants: vec![
@@ -3980,7 +3980,7 @@ mod tests {
           val two = inc(number: one)
         "#);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 3,
             code: vec![
@@ -4023,7 +4023,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -4048,7 +4048,7 @@ mod tests {
 
         let chunk = test_compile("while ([1, 2][0]) { 123 }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4074,7 +4074,7 @@ mod tests {
     fn compile_while_loop_with_condition_binding() {
         let chunk = test_compile("while ([1, 2][0]) |item| { item }");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4112,7 +4112,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -4148,7 +4148,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4172,7 +4172,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4204,7 +4204,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4238,7 +4238,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4273,7 +4273,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -4358,7 +4358,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -4464,7 +4464,7 @@ mod tests {
         "#;
         let chunk = test_compile(input);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             constants: vec![
@@ -4794,7 +4794,7 @@ mod tests {
             .join("\n");
         let chunk = test_compile(input.as_str());
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 150,
             constants: (0..150).into_iter()
@@ -4822,7 +4822,7 @@ mod tests {
           ken.name\n\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -4840,7 +4840,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -4854,7 +4854,7 @@ mod tests {
         // Accessing fields of structs
         let chunk = test_compile("\"hello\".length");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 0,
             code: vec![
@@ -4873,7 +4873,7 @@ mod tests {
           val abc = () => println(\"hello\")\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -4912,7 +4912,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -4952,7 +4952,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -4993,7 +4993,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5035,7 +5035,7 @@ mod tests {
             constants: vec![
                 Value::Type(TypeValue {
                     name: "Person".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     fields: vec!["name".to_string()],
                     constructor: None,
                     methods: vec![to_string_method()],
@@ -5055,7 +5055,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5091,7 +5091,7 @@ mod tests {
             constants: vec![
                 Value::Enum(EnumValue {
                     name: "Direction".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     variants: vec![
                         (
                             "Left".to_string(),
@@ -5118,7 +5118,7 @@ mod tests {
           }
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5152,7 +5152,7 @@ mod tests {
             constants: vec![
                 Value::Enum(EnumValue {
                     name: "Foo".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     variants: vec![
                         (
                             "Bar".to_string(),
@@ -5191,7 +5191,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -5246,7 +5246,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -5295,7 +5295,7 @@ mod tests {
           }\
         ");
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5377,7 +5377,7 @@ mod tests {
             constants: vec![
                 Value::Enum(EnumValue {
                     name: "Foo".to_string(),
-                    module_name: "_test".to_string(),
+                    module_name: "./test".to_string(),
                     variants: vec![
                         (
                             "Bar".to_string(),
@@ -5418,7 +5418,7 @@ mod tests {
           }
         "#);
         let expected = Module {
-            name: "_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 1,
             code: vec![
@@ -5464,7 +5464,7 @@ mod tests {
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "./_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5489,7 +5489,7 @@ mod tests {
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "./_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5514,7 +5514,7 @@ mod tests {
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "./_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![
@@ -5542,7 +5542,7 @@ mod tests {
         ];
         let chunk = test_compile_with_modules(mod1, modules);
         let expected = Module {
-            name: "./_test".to_string(),
+            name: "./test".to_string(),
             is_native: false,
             num_globals: 2,
             code: vec![

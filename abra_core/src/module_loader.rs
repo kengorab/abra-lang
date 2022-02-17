@@ -46,10 +46,9 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
     }
 
     pub fn load_module(&mut self, current_module_id: &ModuleId, import_module_id: &ModuleId) -> Result<(), ModuleLoaderError> {
-        let module_name = if !import_module_id.0 {
-            self.module_reader.get_module_name(&import_module_id)
-        } else {
-            self.module_reader.resolve_module_path(&import_module_id, &current_module_id)
+        let module_name = match import_module_id {
+            ModuleId::External(_) => self.module_reader.get_module_name(&import_module_id),
+            ModuleId::Internal(_) => self.module_reader.resolve_module_path(&import_module_id, &current_module_id)
         };
         match self.typed_module_cache.get(&module_name) {
             Some(Some(_)) => return Ok(()),
@@ -61,10 +60,9 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
             return Ok(());
         }
 
-        let contents = if !import_module_id.0 {
-            load_native_module_contents(import_module_id)
-        } else {
-            self.module_reader.read_module(&import_module_id, &module_name)
+        let contents = match &import_module_id {
+            ModuleId::External(_) => load_native_module_contents(import_module_id),
+            ModuleId::Internal(_) => self.module_reader.read_module(&import_module_id, &module_name),
         };
         let contents = contents.ok_or(ModuleLoaderError::NoSuchModule)?;
 

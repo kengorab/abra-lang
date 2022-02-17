@@ -76,7 +76,7 @@ fn run_test(working_dir: &PathBuf, case: &TestCase) -> Option<String> {
 fn compile_and_run(working_dir: &PathBuf, case: &TestCase, input: &String) -> Result<String, String> {
     let mut reader = MockModuleReader::new(vec![]);
     let mut loader = ModuleLoader::new(&mut reader);
-    let module_id = ModuleId::from_name(&case.name);
+    let module_id = ModuleId::parse_module_path(&case.name).unwrap();
     let module = crate::typecheck(module_id, &input.to_string(), &mut loader).map_err(|e|
         if let crate::Error::TypecheckerError(e) = e {
             e.get_message(&case.path.to_str().unwrap().to_string(), input)

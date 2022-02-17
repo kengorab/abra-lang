@@ -1,7 +1,7 @@
 use peekmore::{PeekMore, PeekMoreIterator};
 use std::vec::IntoIter;
 use crate::lexer::tokens::{Token, TokenType, Position, Range};
-use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode, ModulePathSegment};
+use crate::parser::ast::{ArrayNode, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, ForLoopNode, FunctionDeclNode, GroupedNode, IfNode, IndexingMode, IndexingNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode, TypeDeclNode, MapNode, AccessorNode, LambdaNode, EnumDeclNode, MatchNode, MatchCase, MatchCaseType, SetNode, BindingPattern, TypeDeclField, ImportNode, ModuleId, MatchCaseArgument, ImportKind, TryNode};
 use crate::parser::parse_error::{ParseErrorKind, ParseError};
 use crate::parser::precedence::Precedence;
 
@@ -25,8 +25,7 @@ pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, Par
                         Err(kind) => return Err(ParseError { module_id, kind })
                     };
                     if let AstNode::ImportStatement(import_tok, import_node) = &node {
-                        let module_id = import_node.get_module_id();
-                        imports.push((import_tok.clone(), module_id))
+                        imports.push((import_tok.clone(), import_node.module_id.clone()))
                     }
                     node
                 } else {
@@ -761,11 +760,11 @@ impl Parser {
         Ok(AstNode::ReturnStatement(token, expr))
     }
 
-    fn parse_import_module(&mut self) -> Result<Vec<ModulePathSegment>, ParseErrorKind> {
+    fn parse_import_module(&mut self) -> Result<ModuleId, ParseErrorKind> {
         let import_path_tok = self.expect_next_token(TokenType::String)?;
         let import_path= if let Token::String(_, s) = &import_path_tok { s } else { unreachable!() };
         match ModuleId::parse_module_path(import_path) {
-            Some(path) => Ok(path),
+            Some(module_id) => Ok(module_id),
             None => Err(ParseErrorKind::InvalidImportPath(import_path_tok))
         }
     }
@@ -778,17 +777,17 @@ impl Parser {
             let star_token = self.expect_next()?; // Consume '*'
             let kind = ImportKind::ImportAll(star_token);
             self.expect_next_token(TokenType::From)?;
-            let path = self.parse_import_module()?;
+            let module_id = self.parse_import_module()?;
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
         } else if let Token::String(_, _) = self.expect_peek()? {
-            let path = self.parse_import_module()?;
+            let module_id = self.parse_import_module()?;
 
             self.expect_next_token(TokenType::As)?;
             let alias_token = self.expect_next_token(TokenType::Ident)?;
             let kind = ImportKind::Alias(alias_token);
 
-            Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
+            Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
         } else {
             let ident = self.expect_next_token(TokenType::Ident)?;
             match self.peek() {
@@ -809,16 +808,16 @@ impl Parser {
 
                     let kind = ImportKind::ImportList(imports);
                     self.expect_next_token(TokenType::From)?;
-                    let path = self.parse_import_module()?;
+                    let module_id = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
                 }
                 Some(Token::From(_)) => {
                     let kind = ImportKind::ImportList(vec![ident]);
                     self.expect_next_token(TokenType::From)?;
-                    let path = self.parse_import_module()?;
+                    let module_id = self.parse_import_module()?;
 
-                    Ok(AstNode::ImportStatement(token, ImportNode { kind, path }))
+                    Ok(AstNode::ImportStatement(token, ImportNode { kind, module_id }))
                 }
                 _ => {
                     let tok = self.expect_next()?;
@@ -1117,8 +1116,8 @@ impl Parser {
             AstNode::Literal(first_chunk.clone(), AstLiteralNode::StringLiteral(val))
         } else { unreachable!() };
 
-        // TODO: Fix this, it's a little gross
-        let dummy_module_id = ModuleId::from_name("dummy_name");
+        // TODO: Fix this, it's disgusting
+        let dummy_module_id = ModuleId::parse_module_path("dummy_name").unwrap();
         let ParseResult { nodes: args, .. } = parse(dummy_module_id, chunks.collect())
             .map_err(|err| err.kind)?;
 
@@ -1562,13 +1561,14 @@ mod tests {
     use crate::lexer::lexer::tokenize;
     use crate::lexer::tokens::{Position, Token};
     use crate::parser::ast::AstNode::*;
+    use crate::parser::ast::ModulePathSegment;
 
     use super::*;
 
     type TestResult = Result<(), ParseErrorKind>;
 
     fn parse(input: &str) -> Result<Vec<AstNode>, ParseErrorKind> {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let tokens = tokenize(&module_id, &input.to_string()).unwrap();
         super::parse(module_id, tokens)
             .map(|ParseResult { nodes, .. }| nodes)
@@ -2536,7 +2536,7 @@ mod tests {
     fn parse_type_identifier() {
         #[inline]
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
-            let module_id = ModuleId::from_name("test");
+            let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
             let mut parser = Parser::new(tokens);
             parser.parse_type_identifier(true).unwrap()
@@ -4897,8 +4897,8 @@ mod tests {
     #[test]
     fn parse_import_path() -> TestResult {
         #[inline]
-        fn parse_import_path(input: &str) -> Result<Vec<ModulePathSegment>, ParseErrorKind> {
-            let module_id = ModuleId::from_name("test");
+        fn parse_import_path(input: &str) -> Result<ModuleId, ParseErrorKind> {
+            let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
             let mut parser = Parser::new(tokens);
             parser.parse_import_module()
@@ -4906,41 +4906,42 @@ mod tests {
 
         // Valid cases
         let path = parse_import_path("\"a\"")?;
-        let expected = vec![ModulePathSegment::Module("a".to_string())];
+        let expected = ModuleId::External("a".to_string());
         assert_eq!(expected, path);
 
-        let path = parse_import_path("\"a/b\"")?;
-        let expected = vec![
-            ModulePathSegment::Directory("a".to_string()),
-            ModulePathSegment::Module("b".to_string())
-        ];
-        assert_eq!(expected, path);
+        // TODO: Support nested external/builtin imports
+        // let path = parse_import_path("\"a/b\"")?;
+        // let expected = ModuleId::Internal(vec![
+        //     ModulePathSegment::Directory("a".to_string()),
+        //     ModulePathSegment::Module("b".to_string())
+        // ]);
+        // assert_eq!(expected, path);
 
         let path = parse_import_path("\"../a/b\"")?;
-        let expected = vec![
+        let expected = ModuleId::Internal(vec![
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a".to_string()),
             ModulePathSegment::Module("b".to_string())
-        ];
+        ]);
         assert_eq!(expected, path);
 
         let path = parse_import_path("\"./../a/b\"")?;
-        let expected = vec![
+        let expected = ModuleId::Internal(vec![
             ModulePathSegment::CurrentDir,
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a".to_string()),
             ModulePathSegment::Module("b".to_string())
-        ];
+        ]);
         assert_eq!(expected, path);
 
         let path = parse_import_path("\"./../a-b/c_d.e/f\"")?;
-        let expected = vec![
+        let expected = ModuleId::Internal(vec![
             ModulePathSegment::CurrentDir,
             ModulePathSegment::UpDir,
             ModulePathSegment::Directory("a-b".to_string()),
             ModulePathSegment::Directory("c_d.e".to_string()),
             ModulePathSegment::Module("f".to_string())
-        ];
+        ]);
         assert_eq!(expected, path);
 
         // Error cases
@@ -4975,11 +4976,11 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportAll(Token::Star(Position::new(1, 8))),
-                    path: vec![
+                    module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("abc".to_string()),
                         ModulePathSegment::Module("def".to_string()),
-                    ],
+                    ]),
                 },
             )
         ];
@@ -4991,11 +4992,11 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::ImportList(vec![ident_token!((1, 8), "Date")]),
-                    path: vec![
+                    module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("time".to_string()),
                         ModulePathSegment::Module("date".to_string()),
-                    ],
+                    ]),
                 },
             )
         ];
@@ -5010,11 +5011,11 @@ mod tests {
                         ident_token!((1, 8), "SomeType"),
                         ident_token!((1, 18), "someFunc"),
                     ]),
-                    path: vec![
+                    module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Directory("local".to_string()),
                         ModulePathSegment::Module("module.ext".to_string()),
-                    ],
+                    ]),
                 },
             )
         ];
@@ -5026,7 +5027,7 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 23), "date")),
-                    path: vec![ModulePathSegment::Module("time.date".to_string())],
+                    module_id: ModuleId::External("time.date".to_string()),
                 },
             )
         ];
@@ -5038,10 +5039,10 @@ mod tests {
                 Token::Import(Position::new(1, 1)),
                 ImportNode {
                     kind: ImportKind::Alias(ident_token!((1, 28), "module")),
-                    path: vec![
+                    module_id: ModuleId::Internal(vec![
                         ModulePathSegment::CurrentDir,
                         ModulePathSegment::Module("local.module".to_string())
-                    ],
+                    ]),
                 },
             )
         ];

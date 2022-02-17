@@ -53,7 +53,7 @@ pub enum ExportedValue {
     Type { reference: Option<Type>, backing_type: Type, node: Option<TypedAstNode> },
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TypedModule {
     pub module_id: ModuleId,
     pub typed_nodes: Vec<TypedAstNode>,
@@ -1022,7 +1022,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         // Check to see if there is already a fn binding; pre-hoisted fns use fn_bindings, not normal bindings
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_fn_binding_in_current_scope(&func_name) {
             if orig_ident != name {
-                let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+                let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                     .exports.contains_key(&func_name);
                 let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                 return Err(TypecheckerErrorKind::DuplicateBinding { ident: name.clone(), orig_ident });
@@ -1238,7 +1238,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let name = Token::get_ident_name(ident);
 
                 if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&name) {
-                    let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+                    let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                         .exports.contains_key(&name);
                     let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                     return Err(TypecheckerErrorKind::DuplicateBinding { ident: ident.clone(), orig_ident });
@@ -1664,7 +1664,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
         let func_name = Token::get_ident_name(&name);
         let is_exported = if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
-            let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+            let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                 .exports.contains_key(&func_name);
             let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
             return Err(TypecheckerErrorKind::DuplicateBinding { ident: name, orig_ident });
@@ -2844,7 +2844,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
     }
 
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
-        let module_id = node.get_module_id();
+        let module_id = &node.module_id;
         let module = self.module_loader.get_module(&module_id);
 
         let imports = match &node.kind {
@@ -2872,15 +2872,14 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 let typ = Type::Module(module_id.clone(), alias_name.clone());
                 self.add_binding(&alias_name, &alias_token, &typ, false);
 
-                return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id, alias_name: Some(alias_name) }));
+                return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id: module_id.clone(), alias_name: Some(alias_name) }));
             }
         };
 
         let mut typed_imports = Vec::new();
         for (import_name, import_ident_token, exported_value) in imports {
             if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&import_name) {
-                let is_prelude = module_id == ModuleId::from_name("prelude");
-                let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+                let orig_ident = if module_id.is_prelude() { None } else { Some(orig_ident.clone()) };
                 return Err(TypecheckerErrorKind::DuplicateBinding { ident: import_ident_token.clone(), orig_ident });
             }
 
@@ -2911,7 +2910,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             typed_imports.push(import_name);
         }
 
-        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id, alias_name: None }))
+        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id: module_id.clone(), alias_name: None }))
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerErrorKind> {

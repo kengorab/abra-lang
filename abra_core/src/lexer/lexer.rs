@@ -480,7 +480,7 @@ mod tests {
     use super::*;
 
     fn tokenize<S: AsRef<str>>(input: S) -> Result<Vec<Token>, LexerErrorKind> {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         super::tokenize(&module_id, &input.as_ref().to_string()).map_err(|err| err.kind)
     }
 

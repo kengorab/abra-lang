@@ -727,7 +727,7 @@ mod test {
     fn parse_type_ident_with_types<S: Into<std::string::String>>(input: S, base_types: &HashMap<std::string::String, super::Type>) -> super::Type {
         let type_ident: std::string::String = input.into();
         let val_stmt = format!("val a: {}", type_ident);
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let tokens = tokenize(&module_id, &val_stmt).unwrap();
         let ParseResult { nodes, .. } = parse(module_id, tokens).unwrap();
         match nodes.first().unwrap() {

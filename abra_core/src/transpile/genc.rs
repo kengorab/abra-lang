@@ -4,7 +4,7 @@ use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
 use crate::lexer::tokens::Token;
 use crate::{ModuleId, ModuleLoader, ModuleReader};
-use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModulePathSegment, UnaryOp};
+use crate::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use crate::typechecker::typechecker::ExportedValue;
 use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchCaseArgument, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use crate::typechecker::types::Type;
@@ -1997,16 +1997,21 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
 
     fn visit_import_statement(&mut self, _token: Token, node: TypedImportNode) -> Result<(), ()> {
         let TypedImportNode { module_id, imports, .. } = node;
-        let ModuleId(is_local_import, path) = &module_id;
+        // let ModuleId(is_local_import, path) = &module_id;
         let module = self.module_loader.get_module(&module_id);
 
-        if *is_local_import { unimplemented!(); }
-        if path.len() > 1 { unimplemented!(); }
+        let builtin_module_name = match module_id {
+            ModuleId::External(module_name) => module_name,
+            ModuleId::Internal(_) => unimplemented!()
+        };
+
+        // if *is_local_import { unimplemented!(); }
+        // if path.len() > 1 { unimplemented!(); }
 
         self.switch_buf(BufferType::Includes);
-        let builtin_module_name = if let Some(ModulePathSegment::Module(name)) = path.first() {
-            name
-        } else { unreachable!() };
+        // let builtin_module_name = if let Some(ModulePathSegment::Module(name)) = path.first() {
+        //     name
+        // } else { unreachable!() };
         self.emit_line(format!("#include \"modules/{}/_mod.h\"", builtin_module_name));
 
         self.switch_buf(BufferType::MainFn);

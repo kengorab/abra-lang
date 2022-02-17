@@ -10,7 +10,7 @@ use crate::repl::Repl;
 use abra_core::{compile, compile_and_disassemble, Error, typecheck};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
-use abra_core::parser::ast::{ModuleId, ModulePathSegment};
+use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
@@ -90,8 +90,8 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let contents = read_file(&file_path)?;
 
     let root = file_path.parent().unwrap().to_path_buf();
-    let module_path = file_path.file_name().unwrap().to_str().unwrap().to_string();
-    let module_id = ModuleId::from_path(&module_path);
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
     let env = std::env::vars().collect();
     let mut vm = VM::new(VMContext::new(opts.args, env));
@@ -110,7 +110,7 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
 
     let root = file_path.parent().unwrap().to_path_buf();
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
-    let module_id = ModuleId::from_path(&module_name);
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
     let mut module_reader = FsModuleReader::new(module_id.clone(), root);
     let mut loader = ModuleLoader::new(&mut module_reader);
@@ -160,7 +160,7 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_id = ModuleId::from_path(&opts.file_path);
+    let module_id = ModuleId::parse_module_path(&opts.file_path).unwrap();
     let mut module_reader = FsModuleReader::new(module_id.clone(), current_path);
     match compile_and_disassemble(module_id, &contents, &mut module_reader) {
         Ok(output) => {
@@ -197,7 +197,7 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
         let file_path = current_path.join(&file_path);
 
         let file_name = file_path.file_name().unwrap().to_str().unwrap();
-        let module_id = ModuleId::from_path(&file_name.to_string());
+        let module_id = ModuleId::parse_module_path(&file_name.to_string()).unwrap();
 
         let root_dir = file_path.to_str().unwrap().replace(file_name, "");
         let root_dir = PathBuf::from(root_dir);
@@ -217,7 +217,7 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
                 let m = m.unwrap();
                 let match_path = m.to_str().unwrap().to_string();
                 let relative_path = match_path.replace(&format!("{}/", current_path.to_str().unwrap()), "");
-                ModuleId::from_path(&relative_path)
+                ModuleId::parse_module_path(&relative_path).unwrap()
             })
             .collect();
         (current_path, module_ids)
@@ -225,12 +225,12 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 
     let mut mock_file = vec!["import runTests from \"test\"\n".to_string()];
     for m in module_ids {
-        mock_file.push(format!("import * from \"./{}\"\n", m.1.last().map(|s| if let ModulePathSegment::Module(m) = s { m.clone() } else { unreachable!() }).unwrap()));
+        mock_file.push(format!("import * from \"{}\"\n", m.get_path(".")));
     }
     mock_file.push(format!("\nrunTests(showPassing: {})\n", opts.show_passing));
     let mock_file = mock_file.into_iter().collect::<String>();
 
-    let mock_module_id = ModuleId::from_name("./tests");
+    let mock_module_id = ModuleId::parse_module_path("./tests").unwrap();
     let mut vm = VM::new(VMContext::default());
     let result = compile_and_run(mock_module_id, mock_file, root_dir, &mut vm)?;
     match result {
