@@ -26,7 +26,7 @@ pub struct ModuleLoader<'a, R: ModuleReader> {
     native_module_cache: HashMap<String, ModuleSpec>,
     typed_module_cache: HashMap<String, Option<TypedModule>>,
     pub(crate) compiled_modules: Vec<(Module, Option<Metadata>)>,
-    pub(crate) ordering: Vec<ModuleId>,
+    pub ordering: Vec<ModuleId>,
 }
 
 impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
@@ -102,10 +102,14 @@ impl<'a, R: ModuleReader> ModuleLoader<'a, R> {
 
     pub fn get_module(&self, module_id: &ModuleId) -> &TypedModule {
         let name = self.module_reader.get_module_name(&module_id);
-        self.typed_module_cache.get(&name)
-            .expect(&format!("Module '{}' should have been loaded previously", name))
+        self.get_module_by_name(&name)
+    }
+
+    pub fn get_module_by_name(&self, module_name: &String) -> &TypedModule {
+        self.typed_module_cache.get(module_name)
+            .expect(&format!("Module '{}' should have been loaded previously", module_name))
             .as_ref()
-            .expect(&format!("Module '{}' should have completed loading", name))
+            .expect(&format!("Module '{}' should have completed loading", module_name))
     }
 
     pub fn resolve_binding_type(&self, name: &String) -> Option<&Type> {

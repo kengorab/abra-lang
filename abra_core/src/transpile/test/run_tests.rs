@@ -1,20 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use crate::common::display_error::DisplayError;
-use crate::common::test_utils::MockModuleReader;
+use crate::common::fs_module_reader::FsModuleReader;
 use crate::common::util::random_string;
-use crate::module_loader::ModuleLoader;
+use crate::compile_to_c;
 use crate::parser::ast::ModuleId;
-use crate::transpile::clang::clang;
-use crate::transpile::genc::CCompiler;
 use crate::transpile::get_project_root::get_project_root;
 
 // If empty, all tests will be run. If given the name of a test (eg. `primitives`), only that
 // test will be run.
 const ONLY: &str = "";
 
-// If true, the locations of the generated c files in the tmp directory will be printed. This could
+// If true, the locations of the built executables in the tmp directory will be printed. This could
 // aid in debugging.
 const PRINT_TMP_FILES: bool = false;
 
@@ -39,8 +36,12 @@ pub fn run_tests() {
     fs::create_dir(&working_dir)
         .map_err(|_| format!("Could not create tmp dir {}", working_dir.as_path().to_str().unwrap()))
         .unwrap();
+    let dotabra_dir = PathBuf::from(&working_dir).join(".abra");
+    fs::create_dir(&dotabra_dir)
+        .map_err(|_| format!("Could not create tmp .abra dir {}", dotabra_dir.as_path().to_str().unwrap()))
+        .unwrap();
     for case in test_cases {
-        let res = run_test(&working_dir, &case);
+        let res = run_test(&working_dir, &dotabra_dir, &case);
         results.push((case.name, res));
     }
 
@@ -56,10 +57,10 @@ pub fn run_tests() {
     if has_failure { panic!("Encountered test failures for native target 'C'"); }
 }
 
-fn run_test(working_dir: &PathBuf, case: &TestCase) -> Option<String> {
+fn run_test(working_dir: &PathBuf, dotabra_dir: &PathBuf, case: &TestCase) -> Option<String> {
     match read_test_case(&case) {
         Ok((contents, assertions)) => {
-            match compile_and_run(&working_dir, &case, &contents) {
+            match compile_and_run(&working_dir, dotabra_dir, case, &contents) {
                 Ok(output) => {
                     if output != assertions {
                         let err = format!("Expected:\n{}\n    Got:\n{}", assertions, output);
@@ -73,32 +74,22 @@ fn run_test(working_dir: &PathBuf, case: &TestCase) -> Option<String> {
     }
 }
 
-fn compile_and_run(working_dir: &PathBuf, case: &TestCase, input: &String) -> Result<String, String> {
-    let mut reader = MockModuleReader::new(vec![]);
-    let mut loader = ModuleLoader::new(&mut reader);
-    let module_id = ModuleId::parse_module_path(&case.name).unwrap();
-    let module = crate::typecheck(module_id, &input.to_string(), &mut loader).map_err(|e|
-        if let crate::Error::TypecheckerError(e) = e {
-            e.get_message(&case.path.to_str().unwrap().to_string(), input)
-        } else { unreachable!() }
-    )?;
-    loader.add_typed_module(module.clone());
-    let typed_ast = module.typed_nodes;
+fn compile_and_run(working_dir: &PathBuf, dotabra_dir: &PathBuf, case: &TestCase, input: &String) -> Result<String, String> {
+    let module_id = ModuleId::parse_module_path(&format!("./{}", &case.name)).unwrap();
 
-    let module_name = &case.name;
-    let c_code = CCompiler::gen_c(&mut loader, &module_name, typed_ast).unwrap();
-    let src_file = format!("{}.c", &module_name);
-    let out_file = &module_name;
-    std::fs::write(working_dir.join(&src_file), c_code).unwrap();
+    let root = case.path.parent().unwrap().to_path_buf();
+    let mut reader = FsModuleReader::new(module_id.clone(), &root);
+
+    let exec_name = format!("{}", &case.name);
+    if let Err(e) = compile_to_c(module_id, input, &root, &mut reader, &dotabra_dir, &exec_name) {
+        return Err(format!("{:?}", e));
+    }
+
     if PRINT_TMP_FILES {
-        println!("Wrote {}", working_dir.join(&src_file).display());
+        println!("Wrote executable: {}", working_dir.join(&exec_name).display());
     }
 
-    if let Err(e) = clang(&working_dir, &src_file, &out_file) {
-        return Err(e);
-    }
-
-    let mut run_cmd = Command::new(working_dir.join(out_file).to_str().unwrap());
+    let mut run_cmd = Command::new(dotabra_dir.join(exec_name).to_str().unwrap());
     let run_output = run_cmd.output().unwrap();
     if !run_output.status.success() {
         return Err(String::from_utf8(run_output.stderr).unwrap());
@@ -132,21 +123,35 @@ fn find_test_cases() -> Vec<TestCase> {
     assert!(test_cases_dir.exists() && test_cases_dir.is_dir());
 
     let mut cases = Vec::new();
-    for file in test_cases_dir.read_dir().unwrap() {
-        let file = file.unwrap();
-        let name = file.file_name().to_str().unwrap().replace(".abra", "").to_string();
-        let path = file.path();
 
-        if !ONLY.is_empty() {
-            if ONLY == name {
-                cases.push(TestCase { name, path });
-                break;
+    fn walk(dir: PathBuf, cases: &mut Vec<TestCase>) {
+        for item in dir.read_dir().unwrap() {
+            let item = item.unwrap();
+
+            if item.file_type().unwrap().is_dir() {
+                walk(item.path(), cases);
+                continue;
             }
-            continue;
-        }
 
-        cases.push(TestCase { name, path });
+            let file = item;
+            let file_name = file.file_name().to_str().unwrap().to_string();
+            if !file_name.ends_with(".abra") || file_name.starts_with('_') {
+                continue;
+            }
+
+            let name = file_name.replace(".abra", "").to_string();
+            let path = file.path();
+
+            cases.push(TestCase { name, path });
+        }
     }
 
+    walk(test_cases_dir, &mut cases);
+
+    if !ONLY.is_empty() {
+        cases = cases.into_iter().filter(|c| c.name == ONLY).collect();
+    }
+
+    cases.sort_by(|c1, c2| c1.name.cmp(&c2.name));
     cases
 }

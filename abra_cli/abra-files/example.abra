@@ -1,13 +1,27 @@
-type Foo { s: String }
-enum A { A1(foo: Foo) }
+import b, c, d, Shirt, Size, greet from "./example2"
 
-val a = A.A1(foo: Foo(s: "asdf"))
-match a {
-  A.A1(f) => f.s = "qwer"
-}
-println(a)
+val hello = "hello"
+val world = "world"
 
-// import b from "./example2"
-// import x from "../foo"
+val sh = Shirt(color: "Red")
+val size = Size.Custom(size: "tiny")
+
+greet(greeting: hello)
+println(hello, world, b, c, d, sh, size)
+println(x)
+
+//val a = "a"
 //
-// println(b, x)
+//func q() {
+//  println(a)
+//}
+//
+//type A {
+//  x: Int = 1
+//
+//  func asdf(self) {
+//    println(a)
+//  }
+//}
+//
+//A().asdf()

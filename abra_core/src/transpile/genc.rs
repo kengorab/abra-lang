@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::PathBuf;
 use itertools::Itertools;
 use crate::common::typed_ast_visitor::TypedAstVisitor;
 use crate::common::util::random_string;
@@ -12,7 +13,6 @@ use crate::typechecker::types::Type;
 #[derive(Clone)]
 enum BufferType {
     MainFn,
-    Includes,
     FwdDecls,
     Body,
 }
@@ -33,6 +33,7 @@ pub struct CCompiler<'a, R: ModuleReader> {
     scopes: Vec<Scope>,
     c_type_names: HashMap<String, String>,
     module_loader: &'a ModuleLoader<'a, R>,
+    root_dir: &'a PathBuf,
 
     if_result_var_names_stack: Vec<VecDeque<String>>,
     match_result_var_names_stack: Vec<VecDeque<String>>,
@@ -423,8 +424,16 @@ fn extract_functions(
     seen_fns.push((path, fn_name, f, closed_over_variables))
 }
 
+pub fn normalize_module_name(abs_path: &String, root_dir: &PathBuf) -> String {
+    let non_normalized = PathBuf::from(abs_path).strip_prefix(root_dir).unwrap().to_str().unwrap().to_string();
+    non_normalized
+        .replace(".", "dot")
+        .replace("/", "__")
+        .replace("-", "_")
+}
+
 impl<'a, R: ModuleReader> CCompiler<'a, R> {
-    fn new(module_loader: &'a mut ModuleLoader<R>, module_name: String) -> Self {
+    fn new(module_loader: &'a mut ModuleLoader<R>, root_dir: &'a PathBuf, module_name: String) -> Self {
         let root_scope = Scope {
             name: module_name.clone(),
             bindings: {
@@ -460,6 +469,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 m
             },
             module_loader,
+            root_dir,
 
             if_result_var_names_stack: vec![VecDeque::new()],
             match_result_var_names_stack: vec![VecDeque::new()],
@@ -477,19 +487,15 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
         }
     }
 
-    pub fn gen_c(module_loader: &mut ModuleLoader<R>, module_name: &String, ast: Vec<TypedAstNode>) -> Result<String, ()> {
-        let mut compiler = CCompiler::new(module_loader, module_name.clone());
+    pub fn gen_c(module_loader: &mut ModuleLoader<R>, root: &PathBuf, module_name: &String, ast: Vec<TypedAstNode>) -> Result<String, ()> {
+        let mut compiler = CCompiler::new(module_loader, root, module_name.clone());
 
         let (imports, non_imports) = ast.into_iter()
             .partition(|node| if let TypedAstNode::ImportStatement(_, _) = node { true } else { false });
         let ast = non_imports;
 
-        compiler.switch_buf(BufferType::Includes);
-        compiler.emit_line("#include \"abra.h\"");
-
         compiler.switch_buf(BufferType::MainFn);
-        compiler.emit_line("int main(int argc, char** argv) {");
-        compiler.emit_line("abra_init();");
+        compiler.emit_line(format!("int init_module_{}() {{", &module_name));
 
         for import_node in imports {
             compiler.visit(import_node)?;
@@ -592,7 +598,6 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
 
     fn buf(&mut self) -> &mut String {
         match self.buf_type {
-            BufferType::Includes => &mut self.includes_buf,
             BufferType::MainFn => &mut self.main_fn_buf,
             BufferType::FwdDecls => &mut self.fwd_decls_buf,
             BufferType::Body => &mut self.body_buf,
@@ -1219,7 +1224,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
 
         self.emit_line(format!("if (!IS_FALSY(if_cond_{})) {{", salt));
         if let Some(condition_binding) = node.condition_binding {
-            self.visit_binding_pattern(&condition_binding, format!("if_cond_{}", &salt));
+            self.visit_binding_pattern(&condition_binding, format!("if_cond_{}", &salt), false);
         }
 
         if is_expr {
@@ -1366,7 +1371,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
 
                     match arg {
                         TypedMatchCaseArgument::Pattern(pat) => {
-                            self.visit_binding_pattern(&pat, arg_var_name);
+                            self.visit_binding_pattern(&pat, arg_var_name, false);
                         }
                         TypedMatchCaseArgument::Literal(ast_node) => {
                             self.lift(&ast_node)?;
@@ -1423,18 +1428,28 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
         Ok(())
     }
 
-    fn visit_binding_pattern(&mut self, pat: &BindingPattern, var_name: String) {
+    fn visit_binding_pattern(&mut self, pat: &BindingPattern, var_name: String, is_exported: bool) {
         match pat {
             BindingPattern::Variable(tok) => {
-                let c_name = self.add_c_var_name(Token::get_ident_name(&tok));
-                self.emit_line(format!("AbraValue {} = {};", c_name, var_name));
+                let name = Token::get_ident_name(&tok);
+                let c_name = self.add_c_var_name(name.clone());
+
+                if is_exported {
+                    let prev = self.switch_buf(BufferType::Body);
+                    self.emit_line(format!("AbraValue {};", &c_name));
+                    self.switch_buf(prev);
+
+                    self.emit_line(format!("{} = {};", c_name, var_name));
+                } else {
+                    self.emit_line(format!("AbraValue {} = {};", c_name, var_name));
+                }
             }
             BindingPattern::Tuple(_, pats) => {
                 let salt = random_string(10);
                 for (idx, pat) in pats.iter().enumerate() {
                     let tuple_var_name = format!("tuple_item_{}_{}", &salt, &idx);
                     self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ({}), {});", &tuple_var_name, &var_name, &idx));
-                    self.visit_binding_pattern(pat, tuple_var_name);
+                    self.visit_binding_pattern(pat, tuple_var_name, is_exported);
                 }
             }
             BindingPattern::Array(_, pats, is_string) => {
@@ -1462,7 +1477,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                             self.emit_line(format!("AbraValue {} = {}(AS_OBJ({}), {});", &array_var_name, f, &var_name, &idx));
                         }
                     }
-                    self.visit_binding_pattern(pat, array_var_name);
+                    self.visit_binding_pattern(pat, array_var_name, is_exported);
                 }
             }
         }
@@ -1683,7 +1698,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
-        let TypedBindingDeclNode { binding, expr, .. } = node;
+        let TypedBindingDeclNode { binding, expr, is_exported, .. } = node;
 
         let var_name = format!("bind_destr_{}", random_string(10));
         self.emit(format!("AbraValue {} = ", var_name));
@@ -1693,7 +1708,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
             self.emit("ABRA_NONE");
         }
         self.emit_line(";");
-        self.visit_binding_pattern(&binding, var_name);
+        self.visit_binding_pattern(&binding, var_name, is_exported);
 
         Ok(())
     }
@@ -1913,7 +1928,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
         self.emit_line(format!("AbraValue iter_item_{} = iter_items_{}[i];", &salt, &salt));
         let var_name = format!("bind_destr_{}", random_string(10));
         self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 0);", var_name, &salt));
-        self.visit_binding_pattern(&node.binding, var_name);
+        self.visit_binding_pattern(&node.binding, var_name, false);
         if let Some(index_ident) = node.index_ident {
             let c_name = self.add_c_var_name(Token::get_ident_name(&index_ident));
             self.emit_line(format!("AbraValue {} = std_tuple__index(AS_OBJ(iter_item_{}), 1);", c_name, &salt));
@@ -1997,25 +2012,15 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
 
     fn visit_import_statement(&mut self, _token: Token, node: TypedImportNode) -> Result<(), ()> {
         let TypedImportNode { module_id, imports, .. } = node;
-        // let ModuleId(is_local_import, path) = &module_id;
         let module = self.module_loader.get_module(&module_id);
 
-        let builtin_module_name = match module_id {
+        let module_name = match module_id {
             ModuleId::External(module_name) => module_name,
-            ModuleId::Internal(_) => unimplemented!()
+            ModuleId::Internal(_) => {
+                let module_name = self.module_loader.get_module_name(&module_id);
+                normalize_module_name(&module_name, &self.root_dir)
+            }
         };
-
-        // if *is_local_import { unimplemented!(); }
-        // if path.len() > 1 { unimplemented!(); }
-
-        self.switch_buf(BufferType::Includes);
-        // let builtin_module_name = if let Some(ModulePathSegment::Module(name)) = path.first() {
-        //     name
-        // } else { unreachable!() };
-        self.emit_line(format!("#include \"modules/{}/_mod.h\"", builtin_module_name));
-
-        self.switch_buf(BufferType::MainFn);
-        self.emit_line(format!("init_module_{}();", builtin_module_name));
 
         for import_name in imports {
             let export = module.exports.get(&import_name).unwrap();
@@ -2028,14 +2033,14 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
                     self.switch_buf(BufferType::MainFn);
 
                     let import_c_name = if let Type::Fn(_) = t {
-                        format!("{}__{}_val", builtin_module_name, &import_name)
+                        format!("{}__{}_val", module_name, &import_name)
                     } else {
-                        format!("{}__{}", builtin_module_name, &import_name)
+                        format!("{}__{}", module_name, &import_name)
                     };
                     self.emit_line(format!("{} = {};", c_name, import_c_name));
                 },
                 ExportedValue::Type { .. } => {
-                    let imported_type_c_name = Self::c_name_for_type_in_module(&builtin_module_name, &import_name);
+                    let imported_type_c_name = Self::c_name_for_type_in_module(&module_name, &import_name);
                     let alias_type_name = self.c_name_for_type(&import_name);
                     self.c_type_names.insert(alias_type_name, imported_type_c_name);
                 }

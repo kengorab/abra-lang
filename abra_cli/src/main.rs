@@ -7,7 +7,7 @@ extern crate rustyline;
 
 use abra_core::common::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
-use abra_core::{compile, compile_and_disassemble, Error, typecheck};
+use abra_core::{compile, compile_and_disassemble, compile_to_c, Error};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::ModuleId;
@@ -15,8 +15,7 @@ use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
 use std::process::Command;
-use abra_core::transpile::clang::clang;
-use abra_core::module_loader::{ModuleLoader, ModuleReader};
+use abra_core::module_loader::ModuleReader;
 
 mod repl;
 
@@ -77,7 +76,7 @@ fn main() -> Result<(), ()> {
 
     match opts.sub_cmd {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
-        SubCommand::Compile(opts) => cmd_compile(opts),
+        SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
         SubCommand::Repl => Ok(Repl::run()),
@@ -103,7 +102,7 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     Ok(())
 }
 
-fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
+fn cmd_compile_to_c_and_run(opts: CompileOpts) -> Result<(), ()> {
     let current_path = std::env::current_dir().unwrap();
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
@@ -111,17 +110,6 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
     let root = file_path.parent().unwrap().to_path_buf();
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
-
-    let mut module_reader = FsModuleReader::new(module_id.clone(), root);
-    let mut loader = ModuleLoader::new(&mut module_reader);
-
-    let typecheck_result = typecheck(module_id, &contents, &mut loader);
-    let module = match typecheck_result {
-        Ok(typed_module) => typed_module,
-        Err(e) => report_error(e, &module_reader)
-    };
-    loader.add_typed_module(module.clone());
-    let ast = module.typed_nodes;
 
     let working_dir = file_path.parent().unwrap();
     let dotabra_dir = working_dir.join(".abra");
@@ -132,18 +120,13 @@ fn cmd_compile(opts: CompileOpts) -> Result<(), ()> {
         }
     }
 
-    let module_name = module_name.replace(".abra", "");
-    let gen_src_file = format!("{}.c", &module_name);
-    let c_code = abra_core::transpile::genc::CCompiler::gen_c(&mut loader, &module_name, ast)?;
-    std::fs::write(dotabra_dir.join(&gen_src_file), c_code).unwrap();
-
-    let out_bin_file = module_name;
-    if let Err(e) = clang(&dotabra_dir, &gen_src_file, &out_bin_file) {
-        eprintln!("{}", e);
-        std::process::exit(1);
+    let exec_name = format!("main_{}", module_name.replace(".abra", ""));
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
+    if let Err(e) = compile_to_c(module_id, &contents, &root, &mut module_reader, &dotabra_dir, &exec_name) {
+        report_error(e, &module_reader);
     }
 
-    let mut run_cmd = Command::new(dotabra_dir.join(out_bin_file).to_str().unwrap());
+    let mut run_cmd = Command::new(dotabra_dir.join(exec_name).to_str().unwrap());
     let run_output = run_cmd.output().unwrap();
     if !run_output.status.success() {
         eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
@@ -161,7 +144,7 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let contents = read_file(&file_path)?;
 
     let module_id = ModuleId::parse_module_path(&opts.file_path).unwrap();
-    let mut module_reader = FsModuleReader::new(module_id.clone(), current_path);
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &current_path);
     match compile_and_disassemble(module_id, &contents, &mut module_reader) {
         Ok(output) => {
             match opts.out_file {
@@ -240,7 +223,7 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 }
 
 fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm: &mut VM) -> Result<Value, ()> {
-    let mut module_reader = FsModuleReader::new(module_id.clone(), root_dir);
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &root_dir);
     let modules = match compile(module_id, &contents, &mut module_reader) {
         Ok(modules) => modules,
         Err(error) => report_error(error, &module_reader),

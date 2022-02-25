@@ -10,10 +10,10 @@ pub struct FsModuleReader {
 }
 
 impl FsModuleReader {
-    pub fn new(entrypoint_module_id: ModuleId, project_root: PathBuf) -> Self {
+    pub fn new(entrypoint_module_id: ModuleId, project_root: &PathBuf) -> Self {
         let mut module_id_paths = HashMap::new();
 
-        let entrypoint_path = PathBuf::from(entrypoint_module_id.get_path(&project_root));
+        let entrypoint_path = PathBuf::from(entrypoint_module_id.get_path(project_root));
         module_id_paths.insert(entrypoint_module_id, entrypoint_path);
 
         Self { module_id_paths }
