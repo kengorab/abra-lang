@@ -682,13 +682,20 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     let c_name = self.add_c_var_name(&type_name);
                     self.c_type_names.insert(c_name.clone(), c_name.clone()); // A type defined within the current module "aliases" to itself
 
-                    self.emit_line(format!(
-                        "ABRA_DEFINE_TYPE({}, {}, {});",
-                        &self.module_name, &type_name,
-                        node.fields.iter()
-                            .map(|f| Token::get_ident_name(&f.ident))
-                            .join(","),
-                    ));
+                    if node.fields.is_empty() {
+                        self.emit_line(format!(
+                            "ABRA_DEFINE_TYPE_0({}, {});",
+                            &self.module_name, &type_name,
+                        ));
+                    } else {
+                        self.emit_line(format!(
+                            "ABRA_DEFINE_TYPE({}, {}, {});",
+                            &self.module_name, &type_name,
+                            node.fields.iter()
+                                .map(|f| Token::get_ident_name(&f.ident))
+                                .join(","),
+                        ));
+                    }
 
                     format!("TYPE_SETUP({}, {});", &self.module_name, &type_name)
                 },

@@ -203,6 +203,33 @@
   GEN_METHOD_TOSTRING(mod, type, __VA_ARGS__) \
   GEN_METHOD_HASH(mod, type, __VA_ARGS__)
 
+#define ABRA_DEFINE_TYPE_0(mod, typ) \
+  typedef struct mod##__##typ { Obj _header; } mod##__##typ; \
+  size_t mod##__##typ##__type_id; \
+  AbraValue mod##__##typ##__new() { \
+    mod##__##typ* self = GC_MALLOC(sizeof(mod##__##typ)); \
+      self->_header.type = OBJ_INSTANCE; \
+      self->_header.type_id = mod##__##typ##__type_id; \
+      return (AbraValue) {.type=ABRA_TYPE_OBJ, .as={.obj=((Obj*) self)}}; \
+  } \
+  bool mod##__##typ##__eq(Obj* _self, Obj* _other) { return true; } \
+  char const* mod##__##typ##__to_string(Obj* _obj) { \
+      char* format_str = #typ "()"; \
+      size_t str_len = sizeof(char) * sizeof(#typ "()"); \
+      char* str = GC_MALLOC(str_len); \
+      sprintf(str, format_str); \
+      str[str_len] = 0; \
+      return str; \
+  } \
+  AbraValue mod##__##typ##__method_toString(void* _env, AbraValue _self) { \
+      char* str = (char*) mod##__##typ##__to_string((_self.as.obj)); \
+      return alloc_string(str, strlen(str)); \
+  } \
+  size_t mod##__##typ##__hash(Obj* _self) { \
+      size_t hash = 31; \
+      return hash; \
+  }
+
 /* End type-generation macros */
 
 /*

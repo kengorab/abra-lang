@@ -1,27 +1,15 @@
-import b, c, d, Shirt, Size, greet from "./example2"
+val a = "a"
 
-val hello = "hello"
-val world = "world"
+// func q() {
+//   println(a)
+// }
 
-val sh = Shirt(color: "Red")
-val size = Size.Custom(size: "tiny")
-
-greet(greeting: hello)
-println(hello, world, b, c, d, sh, size)
-println(x)
-
-//val a = "a"
-//
-//func q() {
-//  println(a)
-//}
-//
-//type A {
-//  x: Int = 1
-//
+type A {
 //  func asdf(self) {
 //    println(a)
 //  }
-//}
-//
-//A().asdf()
+}
+
+val q = A()
+println(q)
+//z.asdf()
