@@ -1,15 +1,27 @@
-val a = "a"
-
-// func q() {
-//   println(a)
-// }
-
-type A {
-//  func asdf(self) {
-//    println(a)
-//  }
-}
-
-val q = A()
-println(q)
-//z.asdf()
+//val a = "a"
+//
+//// func q() {
+////   println(a)
+//// }
+//
+//type A {
+//  func asdf(self) = println(a)
+//  func qwer() = println(a)
+//}
+//
+//A().asdf()
+//A.qwer()
+//
+//func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
+//func f2(n: Int): String = "." + f1(n)
+//println(f1(5))
+//
+//
+////type A {
+////  func asdf() = println(b)
+////}
+////
+////func asdf() = println(b)
+////
+////val b = "adsf"
+//

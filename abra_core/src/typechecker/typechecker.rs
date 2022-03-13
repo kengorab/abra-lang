@@ -1640,7 +1640,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         }
 
         let binding_idents = self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
-        let is_exported = export_token.is_some();
         if let Some(token) = export_token {
             if self.scopes.len() != 1 {
                 return Err(TypecheckerErrorKind::InvalidExportDepth { token });
@@ -1653,7 +1652,6 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let scope_depth = self.scopes.len() - 1;
         let node = TypedBindingDeclNode {
             is_mutable,
-            is_exported,
             binding,
             expr: typed_expr.map(Box::new),
             scope_depth,

@@ -938,7 +938,6 @@ fn typecheck_binding_decl() -> TestResult {
         TypedBindingDeclNode {
             binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
             is_mutable: false,
-            is_exported: false,
             expr: Some(Box::new(int_literal!((1, 11), 123))),
             scope_depth: 0,
         },
@@ -958,7 +957,6 @@ fn typecheck_binding_decl() -> TestResult {
         TypedBindingDeclNode {
             binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
             is_mutable: true,
-            is_exported: false,
             expr: None,
             scope_depth: 0,
         },
@@ -1036,7 +1034,6 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 ],
             ),
             is_mutable: false,
-            is_exported: false,
             expr: Some(Box::new(TypedAstNode::Tuple(
                 Token::LParen(Position::new(1, 17), false),
                 TypedTupleNode {
@@ -1087,7 +1084,6 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 false,
             ),
             is_mutable: false,
-            is_exported: false,
             expr: Some(Box::new(TypedAstNode::Array(
                 Token::LBrack(Position::new(1, 18), false),
                 TypedArrayNode {
@@ -1128,7 +1124,6 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 true,
             ),
             is_mutable: false,
-            is_exported: false,
             expr: Some(Box::new(string_literal!((1, 18), "hello"))),
             scope_depth: 0,
         },
@@ -1176,7 +1171,6 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 false,
             ),
             is_mutable: false,
-            is_exported: false,
             expr: Some(Box::new(TypedAstNode::Array(
                 Token::LBrack(Position::new(1, 28), false),
                 TypedArrayNode {
@@ -1358,7 +1352,6 @@ fn typecheck_function_decl() -> TestResult {
                     TypedBindingDeclNode {
                         binding: BindingPattern::Variable(ident_token!((1, 25), "a")),
                         is_mutable: false,
-                        is_exported: false,
                         expr: Some(Box::new(
                             TypedAstNode::Array(
                                 Token::LBrack(Position::new(1, 29), false),
@@ -2826,7 +2819,6 @@ fn typecheck_ident() -> TestResult {
             TypedBindingDeclNode {
                 binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                 is_mutable: false,
-                is_exported: false,
                 expr: Some(Box::new(int_literal!((1, 11), 123))),
                 scope_depth: 0,
             },
@@ -2868,7 +2860,6 @@ fn typecheck_assignment_identifier() -> TestResult {
             TypedBindingDeclNode {
                 binding: BindingPattern::Variable(ident_token!((1, 5), "abc")),
                 is_mutable: true,
-                is_exported: false,
                 expr: Some(Box::new(int_literal!((1, 11), 123))),
                 scope_depth: 0,
             },
@@ -3444,7 +3435,6 @@ fn typecheck_if_statement_scopes() -> TestResult {
                     TypedBindingDeclNode {
                         binding: BindingPattern::Variable(ident_token!((1, 16), "a")),
                         is_mutable: false,
-                        is_exported: false,
                         expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         scope_depth: 1,
                     },
@@ -3481,7 +3471,6 @@ fn typecheck_if_statement_scopes() -> TestResult {
                     TypedBindingDeclNode {
                         binding: BindingPattern::Variable(ident_token!((2, 16), "b")),
                         is_mutable: false,
-                        is_exported: false,
                         expr: Some(Box::new(string_literal!((2, 20), "world"))),
                         scope_depth: 1,
                     },
@@ -3998,7 +3987,6 @@ fn typecheck_while_loop() -> TestResult {
                         binding: BindingPattern::Variable(ident_token!((2, 5), "a")),
                         scope_depth: 1,
                         is_mutable: false,
-                        is_exported: false,
                         expr: Some(Box::new(int_literal!((2, 9), 1))),
                     },
                 ),

@@ -95,11 +95,11 @@ println() // Spacer for test readability
 
 // Test persistence of closed-over values of recursive fns
 func newCountdown(n: Int): () => Unit {
-  var count = n
+  var _count = n // TODO(#350): If this were `var count = n` it wouldn't be properly closed-over due to the global above
   func rec() {
-    print(count)
-    if count > 0 {
-      count -= 1
+    print(_count)
+    if _count > 0 {
+      _count -= 1
       rec()
     } else {
       println()

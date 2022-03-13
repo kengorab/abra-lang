@@ -501,6 +501,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             compiler.visit(import_node)?;
         }
 
+        compiler.preregister_global_bindings(&ast);
         compiler.lift_types(&ast)?;
 
         compiler.switch_buf(BufferType::Body);
@@ -632,6 +633,31 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             }
         }
         self.emit_line(format!("{}_val = alloc_function(\"{}\", \"{}\", (void*) {}_env_ctx);", &c_name, &fn_name, &c_name, &c_name));
+    }
+
+    fn preregister_global_bindings(&mut self, ast: &Vec<TypedAstNode>) {
+        #[inline]
+        fn extract_binding_names(pat: &BindingPattern, names: &mut Vec<String>) {
+            match pat {
+                BindingPattern::Variable(t) => names.push(Token::get_ident_name(t)),
+                BindingPattern::Tuple(_, pats) => {
+                    pats.iter().for_each(|pat| extract_binding_names(pat, names))
+                }
+                BindingPattern::Array(_, pats, _) => {
+                    pats.iter().for_each(|(pat, _)| extract_binding_names(pat, names))
+                }
+            }
+        }
+
+        for node in ast {
+            if let TypedAstNode::BindingDecl(_, n) = &node {
+                let mut names = vec![];
+                extract_binding_names(&n.binding, &mut names);
+                for name in names {
+                    self.add_c_var_name(name);
+                }
+            }
+        }
     }
 
     fn lift_types(&mut self, ast: &Vec<TypedAstNode>) -> Result<(), ()> {
@@ -1442,7 +1468,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                 let c_name = self.add_c_var_name(name.clone());
 
                 if is_exported {
-                    let prev = self.switch_buf(BufferType::Body);
+                    let prev = self.switch_buf(BufferType::FwdDecls);
                     self.emit_line(format!("AbraValue {};", &c_name));
                     self.switch_buf(prev);
 
@@ -1705,7 +1731,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<(), ()> {
-        let TypedBindingDeclNode { binding, expr, is_exported, .. } = node;
+        let TypedBindingDeclNode { binding, expr, .. } = node;
 
         let var_name = format!("bind_destr_{}", random_string(10));
         self.emit(format!("AbraValue {} = ", var_name));
@@ -1715,7 +1741,9 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
             self.emit("ABRA_NONE");
         }
         self.emit_line(";");
-        self.visit_binding_pattern(&binding, var_name, is_exported);
+
+        let is_top_level = self.scopes.len() == 1;
+        self.visit_binding_pattern(&binding, var_name, is_top_level);
 
         Ok(())
     }

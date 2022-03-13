@@ -243,7 +243,6 @@ pub struct TypedBindingDeclNode {
     pub binding: BindingPattern,
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
-    pub is_exported: bool,
     pub scope_depth: usize,
 }
 
