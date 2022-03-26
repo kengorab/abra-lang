@@ -77,17 +77,11 @@
 #define _COND_VARIANT_ARITY_10 1
 #define _COND_VARIANT_ARITY_11 1
 #define _COND_VARIANT_ARITY_12 1
-#define _ENUM_VARIANT_SETUP(mod, name, var_name, arity) \
+#define ENUM_VARIANT_SETUP(mod, name, var_name, arity) \
   IF( \
     CONC(_COND_VARIANT_ARITY, arity), \
     FN_SETUP(name.var_name, arity, mod##__##name##__new_##var_name);, \
   )
-#define _EXPAND_TUPLE(...) __VA_ARGS__
-#define _EXPAND_TUPLES(a, b) (_EXPAND_TUPLE a, _EXPAND_TUPLE b)
-#define _ENUM_VARIANT_SETUP_THUNK(a, b) EVAL0(_ENUM_VARIANT_SETUP _EXPAND_TUPLES(a, b))
-#define ENUM_SETUP(mod, name, ...) \
-  TYPE_SETUP(mod, name);           \
-  MAP_EXTRA(_ENUM_VARIANT_SETUP_THUNK, (mod, name), __VA_ARGS__)
 
 #define ABRA_MODULE(mod) void init_module_##mod()
 

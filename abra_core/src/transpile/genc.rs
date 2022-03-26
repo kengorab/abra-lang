@@ -664,7 +664,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
         let prev_buf = self.switch_buf(BufferType::Body);
 
         for node in ast {
-            let type_setup_code = match &node {
+            match &node {
                 TypedAstNode::EnumDecl(_, n) => {
                     let enum_name = Token::get_ident_name(&n.name);
                     let c_name = self.add_c_var_name(&enum_name);
@@ -693,15 +693,17 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     }
                     self.emit_line(format!("// End declare {}\n", &c_name));
 
-                    format!(
-                        "ENUM_SETUP({}, {}, {});",
-                        &self.module_name, &enum_name,
-                        n.variants.iter().map(|(var_name, (var_type, _))| {
-                            let var_name = Token::get_ident_name(var_name);
-                            let arity = if let Type::Fn(fn_type) = var_type { fn_type.arg_types.len() } else { 0 };
-                            format!("({}, {})", var_name, arity)
-                        }).join(",")
-                    )
+                    self.switch_buf(BufferType::MainFn);
+                    self.emit_line(format!("TYPE_SETUP({}, {});", &self.module_name, &enum_name));
+                    for (var_name, (var_type, _)) in &n.variants {
+                        let var_name = Token::get_ident_name(var_name);
+                        let arity = if let Type::Fn(fn_type) = var_type { fn_type.arg_types.len() } else { 0 };
+                        self.emit_line(format!(
+                           "ENUM_VARIANT_SETUP({}, {}, {}, {})",
+                            &self.module_name, &enum_name, var_name, arity
+                        ));
+                    }
+                    self.switch_buf(BufferType::Body);
                 }
                 TypedAstNode::TypeDecl(_, node) => {
                     let type_name = Token::get_ident_name(&node.name);
@@ -723,14 +725,12 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                         ));
                     }
 
-                    format!("TYPE_SETUP({}, {});", &self.module_name, &type_name)
+                    self.switch_buf(BufferType::MainFn);
+                    self.emit_line(format!("TYPE_SETUP({}, {});", &self.module_name, &type_name));
+                    self.switch_buf(BufferType::Body);
                 },
                 _ => continue,
-            };
-
-            self.switch_buf(BufferType::MainFn);
-            self.emit_line(type_setup_code);
-            self.switch_buf(BufferType::Body);
+            }
         }
 
         self.switch_buf(prev_buf);
@@ -1147,8 +1147,12 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                     }
                     Type::Reference(t, _) => {
                         let type_name = t.split("/").last().unwrap();
-                        let type_c_name = self.c_name_for_type(&type_name);
-                        let c_name = self.c_type_names.get(&type_c_name).unwrap();
+                        let type_c_name = if type_name == "Result" {
+                            Self::c_name_for_type_in_module("std", &type_name)
+                        } else {
+                            self.c_name_for_type(&type_name)
+                        };
+                        let c_name = self.c_type_names.get(&type_c_name).expect(&format!("{}", type_c_name));
                         is_typeref = true;
                         c_name.clone()
                     }
@@ -1284,7 +1288,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             let len = else_block.len();
             for (idx, node) in else_block.into_iter().enumerate() {
                 self.lift(&node)?;
-                if idx == len - 1 && is_expr {
+                if idx == len - 1 && is_expr && node.all_branches_terminate().is_none() {
                     self.emit(format!("{} = ", if_expr_res_ident_name));
                 }
                 self.visit(node)?;
@@ -1395,8 +1399,12 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             }
             if let Some((enum_name, variant_name, args)) = enum_variant_match_case_ctx {
                 for (arg_idx, (arg_name, arg)) in args.into_iter().enumerate() {
-                    let type_c_name = self.c_name_for_type(&enum_name);
-                    let c_name = self.c_type_names.get(&type_c_name).unwrap();
+                    let type_c_name = if &enum_name == "Result" {
+                        Self::c_name_for_type_in_module("std", &enum_name)
+                    } else {
+                        self.c_name_for_type(&enum_name)
+                    };
+                    let c_name = self.c_type_names.get(&type_c_name).expect(&format!("{}, {:#?}", type_c_name, &self.scopes));
                     let arg_var_name = format!(
                         "(({}*)AS_OBJ({}))->{}.{}",
                         &c_name, &match_target_ident, &variant_name, &arg_name
@@ -2077,6 +2085,7 @@ impl<'a, R: ModuleReader> TypedAstVisitor<(), ()> for CCompiler<'a, R> {
                 ExportedValue::Type { .. } => {
                     let imported_type_c_name = Self::c_name_for_type_in_module(&module_name, &import_name);
                     let alias_type_name = self.c_name_for_type(&import_name);
+                    self.insert_binding(&import_name, &alias_type_name);
                     self.c_type_names.insert(alias_type_name, imported_type_c_name);
                 }
             };

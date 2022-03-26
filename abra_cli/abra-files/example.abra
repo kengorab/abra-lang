@@ -1,27 +1,34 @@
-//val a = "a"
+//export enum Value {
+//  Nil
+//  Int(value: Int)
+//  Str(value: String)
+//  Bool(value: Bool)
+//  Symbol(value: String)
+//  Keyword(value: String)
+//  Atom(value: String)
+//  List(values: Value[])
+//  Vector(values: Value[])
+//  Hash(values: Map<Value, Value>)
+//  BuiltinFn(value: (Value[]) => Result<Value, String>)
+//  Fn(value: String)
+//}
+
+//val s = Result.Ok("asdf")
+//println(s)
+
+//import Size from "./example2"
 //
-//// func q() {
-////   println(a)
-//// }
-//
-//type A {
-//  func asdf(self) = println(a)
-//  func qwer() = println(a)
+//enum Foo {
+//  Bar(fn: () => Unit)
 //}
 //
-//A().asdf()
-//A.qwer()
-//
-//func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
-//func f2(n: Int): String = "." + f1(n)
-//println(f1(5))
-//
-//
-////type A {
-////  func asdf() = println(b)
-////}
-////
-////func asdf() = println(b)
-////
-////val b = "adsf"
-//
+//Foo.Bar(fn: () => println(Size.M))
+
+enum Value {
+  BuiltinFn(fn: (String[]) => Unit)
+}
+
+Value.BuiltinFn(args => {
+  val strs = args.map(arg => arg.toUpper()).join("*")
+  println(strs)
+})
