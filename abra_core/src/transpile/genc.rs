@@ -219,9 +219,15 @@ fn extract_functions(
             }
             return;
         }
-        TypedAstNode::Literal(_, _) |
-        TypedAstNode::Unary(_, _) |
-        TypedAstNode::Binary(_, _) => { return; }
+        TypedAstNode::Unary(_, n) => {
+            extract_functions(&n.expr, known_vars, path, FnKind::Fn, seen_fns);
+            return;
+        }
+        TypedAstNode::Binary(_, n) => {
+            extract_functions(&n.left, known_vars, path.clone(), FnKind::Fn, seen_fns);
+            extract_functions(&n.right, known_vars, path, FnKind::Fn, seen_fns);
+            return;
+        }
         TypedAstNode::Grouped(_, n) => {
             extract_functions(&n.expr, known_vars, path, FnKind::Fn, seen_fns);
             return;
@@ -330,14 +336,37 @@ fn extract_functions(
             }
             return;
         }
-        TypedAstNode::Instantiation(_, _) |
+        TypedAstNode::Accessor(_, n) => {
+            extract_functions(&n.target, known_vars, path, FnKind::Fn, seen_fns);
+            return;
+        }
+        TypedAstNode::MatchStatement(_, n) |
+        TypedAstNode::MatchExpression(_, n) => {
+            extract_functions(&n.target, known_vars, path.clone(), FnKind::Fn, seen_fns);
+            for (_kind, _, body) in &n.branches {
+                for n in body {
+                    extract_functions(&n, known_vars, path.clone(), FnKind::Fn, seen_fns);
+                }
+            }
+            return;
+        }
+        TypedAstNode::WhileLoop(_, n) => {
+            extract_functions(&n.condition, known_vars, path.clone(), FnKind::Fn, seen_fns);
+            for n in &n.body {
+                extract_functions(&n, known_vars, path.clone(), FnKind::Fn, seen_fns);
+            }
+            return;
+        }
+        TypedAstNode::Instantiation(_, n) => {
+            for (_, n) in &n.fields {
+                extract_functions(&n, known_vars, path.clone(), FnKind::Fn, seen_fns);
+            }
+            return;
+        }
         TypedAstNode::ForLoop(_, _) |
-        TypedAstNode::WhileLoop(_, _) |
+        TypedAstNode::Literal(_, _) |
         TypedAstNode::Break(_) |
         TypedAstNode::Continue(_) |
-        TypedAstNode::Accessor(_, _) |
-        TypedAstNode::MatchStatement(_, _) |
-        TypedAstNode::MatchExpression(_, _) |
         TypedAstNode::ImportStatement(_, _) |
         TypedAstNode::_Nil(_) => return
     };
@@ -624,7 +653,7 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
             Some(upvalues) if !upvalues.is_empty() => {
                 self.emit_line(format!("{}_env_t* {}_env = GC_MALLOC(sizeof({}_env_t));", &c_name, &c_name, &c_name));
                 for upvalue_name in upvalues.iter() {
-                    self.emit_line(format!("{}_env->{} = {};", &c_name, upvalue_name, self.find_c_var_name(&upvalue_name).unwrap()));
+                    self.emit_line(format!("{}_env->{} = {};", &c_name, upvalue_name, self.find_c_var_name(&upvalue_name).expect(&format!("{}", upvalue_name))));
                 }
                 self.emit_line(format!("{}_env_ctx->env = {}_env;", &c_name, &c_name));
             }
@@ -1162,7 +1191,10 @@ impl<'a, R: ModuleReader> CCompiler<'a, R> {
                         let c_name = self.c_type_names.get(&type_c_name).unwrap();
                         c_name.clone()
                     }
-                    _ => todo!(),
+                    t => {
+                        dbg!(&t);
+                        todo!()
+                    },
                 };
 
                 self.lift(&node.target)?;

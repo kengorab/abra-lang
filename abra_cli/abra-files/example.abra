@@ -1,34 +1,4 @@
-//export enum Value {
-//  Nil
-//  Int(value: Int)
-//  Str(value: String)
-//  Bool(value: Bool)
-//  Symbol(value: String)
-//  Keyword(value: String)
-//  Atom(value: String)
-//  List(values: Value[])
-//  Vector(values: Value[])
-//  Hash(values: Map<Value, Value>)
-//  BuiltinFn(value: (Value[]) => Result<Value, String>)
-//  Fn(value: String)
-//}
+import prompt from "io"
 
-//val s = Result.Ok("asdf")
-//println(s)
-
-//import Size from "./example2"
-//
-//enum Foo {
-//  Bar(fn: () => Unit)
-//}
-//
-//Foo.Bar(fn: () => println(Size.M))
-
-enum Value {
-  BuiltinFn(fn: (String[]) => Unit)
-}
-
-Value.BuiltinFn(args => {
-  val strs = args.map(arg => arg.toUpper()).join("*")
-  println(strs)
-})
+val msg = prompt("Name > ")
+println("message:", msg)

@@ -6,6 +6,7 @@
 ABRA_MODULE(io) {
   FN_SETUP(getCurrentDir, 0, io__getCurrentDir);
   FN_SETUP(readFile, 1, io__readFile);
+  FN_SETUP(prompt, 1, io__prompt);
 }
 
 #endif

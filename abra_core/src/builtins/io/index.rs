@@ -20,10 +20,10 @@ fn get_current_dir() -> Value {
     Value::new_string_obj(cwd)
 }
 
-#[abra_function(signature = "prompt(path: String?): String")]
+#[abra_function(signature = "prompt(msg: String?): String")]
 fn prompt(mut args: Arguments, vm: &mut VM) -> Value {
-    let prompt = args.next_string_or_default("");
-    let resp = (vm.ctx.prompt)(&prompt);
+    let msg = args.next_string_or_default("");
+    let resp = (vm.ctx.prompt)(&msg);
     Value::new_string_obj(resp)
 }
 

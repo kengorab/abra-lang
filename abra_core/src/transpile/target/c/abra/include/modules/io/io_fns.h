@@ -10,6 +10,7 @@
 #include "sys/stat.h"
 #include "unistd.h"
 
+// getCurrentDir(): String
 ABRA_DEFINE_FN_0(io, getCurrentDir) {
   char cwd[PATH_MAX];
   if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -19,6 +20,7 @@ ABRA_DEFINE_FN_0(io, getCurrentDir) {
   return alloc_string("", 0);
 }
 
+// readFile(path: String): String?
 ABRA_DEFINE_FN(io, readFile, _path) {
   AbraString* path = (AbraString*) AS_OBJ(_path);
   char* path_str = path->data;
@@ -48,6 +50,32 @@ ABRA_DEFINE_FN(io, readFile, _path) {
   free(buf);
   fclose(f);
   return ret;
+}
+
+// prompt(msg: String?): String
+ABRA_DEFINE_FN(io, prompt, _msg) {
+    if (!IS_NONE(_msg)) {
+        AbraString* msg = (AbraString*)AS_OBJ(_msg);
+        printf("%s", msg->data);
+    }
+
+    int capacity = 16;
+    int size = 0;
+    char* str = malloc(sizeof(char) * capacity);
+
+    char c = getchar();
+    while (c && c != '\n') {
+        str[size++] = c;
+        if (size == capacity) {
+            capacity *= 2;
+            str = realloc(str, sizeof(char) * capacity);
+        }
+        c = getchar();
+    }
+
+    AbraValue ret = alloc_string(str, size);
+    free(str);
+    return ret;
 }
 
 #endif

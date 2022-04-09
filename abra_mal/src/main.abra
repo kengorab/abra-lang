@@ -199,9 +199,10 @@ func eval(_input: Value, _env: Env): Result<Value, Error> {
               env: env,
               isMacro: false,
               fn: args => {
-                val fnEnv = Env(outer: env)
-                fnEnv.initFnEnv(paramNames, args)
-                eval(body ?: Value.Nil, fnEnv)
+                // val fnEnv = Env(outer: env)
+                // fnEnv.initFnEnv(paramNames, args)
+                // eval(body ?: Value.Nil, fnEnv)
+                Result.Ok(Value.Nil)
               }
             ))
             return Result.Ok(f)
@@ -357,21 +358,24 @@ replEnv.set("eval", Value.BuiltinFn(args => {
   }
 }))
 
+println("here 1")
 rep("(def! not (fn* (a) (if a false true)))", replEnv)
+println("here 2")
 rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\")))))", replEnv)
 
-val [fileName, *args] = process.args
-replEnv.set("*ARGV*", Value.List(
-  args.map(arg => Value.Str(arg))
-))
+//val [fileName, *args] = process.args
+//replEnv.set("*ARGV*", Value.List(
+//  args.map(arg => Value.Str(arg))
+//))
 
+println("here 3")
 rep("(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))", replEnv)
 
-if fileName |fileName| {
-  rep("(load-file \"$fileName\")", replEnv)
-} else {
-  while true {
-    val input = prompt("user> ")
-    println(rep(input, replEnv))
-  }
-}
+//if fileName |fileName| {
+//  rep("(load-file \"$fileName\")", replEnv)
+//} else {
+//  while true {
+//    val input = prompt("user> ")
+//    println(rep(input, replEnv))
+//  }
+//}
