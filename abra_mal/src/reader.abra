@@ -18,9 +18,7 @@ type Tokenizer {
     // Skip whitespace
     while whitespaceTokens.contains(self.input[self.pos]) { self.pos += 1 }
 
-    val p = self.pos
-    val l = self.input.length
-    if p >= l {
+    if self.pos >= self.input.length {
       return None
     }
 

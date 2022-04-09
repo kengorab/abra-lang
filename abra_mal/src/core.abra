@@ -283,9 +283,8 @@ ns["cons"] = Value.BuiltinFn(args => {
   }
 
   if args[0] |arg| {
-    // val newItems = [arg].concat(items)
-    // Result.Ok(Value.List(newItems))
-    Result.Ok(Value.List([arg].concat(items)))
+    val newItems = [arg].concat(items)
+    Result.Ok(Value.List(newItems))
   } else {
     Result.Err(Error(error: "cons expects 2 arguments"))
   }
