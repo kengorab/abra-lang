@@ -1,0 +1,12 @@
+export val array = [(1, 2), (3, 4)]
+
+export val [(a, b), c] = array
+
+export func abc(a: Int, b: Int, c: Int): Int = a + b + c
+
+export enum Size { S, M, L }
+
+export type Shirt {
+  size: Size
+  color: String
+}

@@ -53,7 +53,7 @@ pub enum ExportedValue {
     Type { reference: Option<Type>, backing_type: Type, node: Option<TypedAstNode> },
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TypedModule {
     pub module_id: ModuleId,
     pub typed_nodes: Vec<TypedAstNode>,
@@ -68,6 +68,7 @@ pub fn typecheck<R: ModuleReader>(module_id: ModuleId, ast: Vec<AstNode>, loader
         module_id,
         cur_typedef: None,
         scopes: vec![Scope::new(ScopeKind::Root)],
+        num_lambdas: 0,
         referencable_types: HashMap::new(),
         exports: HashMap::new(),
         module_loader: loader,
@@ -131,6 +132,7 @@ pub struct Typechecker<'a, R: ModuleReader> {
     module_id: ModuleId,
     cur_typedef: Option<Type>,
     scopes: Vec<Scope>,
+    num_lambdas: usize,
     referencable_types: HashMap<String, Type>,
     exports: HashMap<String, ExportedValue>,
     module_loader: &'a ModuleLoader<'a, R>,
@@ -339,7 +341,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let mut scopes = orig_scopes;
                     std::mem::swap(&mut self.scopes, &mut scopes);
 
-                    let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some(retyped_args))?;
+                    let retyped_lambda = self.visit_lambda(token.clone(), orig_node, Some((retyped_args, lambda_node.idx)))?;
                     let lambda_type = retyped_lambda.get_type();
 
                     // After re-typechecking, it _is_ possible that some of the scopes may have been modified, and those modifications
@@ -467,7 +469,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 }
                 let typed_node = self.visit(node)?;
-                has_terminated = Self::all_branches_terminate(&typed_node).is_some();
+                has_terminated = typed_node.all_branches_terminate().is_some();
 
                 Ok(typed_node)
             })
@@ -613,7 +615,9 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 }
                 MatchCaseType::Compound(idents, args) => {
                     let mut idents = idents.into_iter();
-                    let type_ident = TypeIdentifier::Normal { ident: idents.next().expect("There should be at least one ident"), type_args: None };
+                    let ident = idents.next().expect("There should be at least one ident");
+                    let enum_name = Token::get_ident_name(&ident);
+                    let type_ident = TypeIdentifier::Normal { ident, type_args: None };
                     let typ = self.type_from_type_ident(&type_ident, true)?;
                     let enum_type = match self.resolve_ref_type(&typ) {
                         Type::Enum(enum_type) => enum_type,
@@ -720,7 +724,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                 }
 
                                 let mut args = Vec::new();
-                                for ((_, arg_type, _), pat) in arg_types.iter().zip(destructured_args.into_iter()) {
+                                for ((arg_name, arg_type, _), pat) in arg_types.iter().zip(destructured_args.into_iter()) {
                                     let arg_type = match &arg_type {
                                         Type::Generic(g) => generics.get(g).unwrap(),
                                         t => t
@@ -738,7 +742,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                                             TypedMatchCaseArgument::Literal(typed_node)
                                         }
                                     };
-                                    args.push(arg);
+                                    args.push((arg_name.clone(), arg));
                                 }
                                 Some(args)
                             }
@@ -749,7 +753,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     } else { None };
 
-                    TypedMatchKind::EnumVariant { variant_idx, args }
+                    TypedMatchKind::EnumVariant { enum_name, variant_idx, variant_name, args }
                 }
                 MatchCaseType::Wildcard(token) => {
                     if seen_wildcard {
@@ -929,50 +933,6 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         Ok(typed_args)
     }
 
-    // The usage of Option<bool> here is weird:
-    //   - if None, then no termination (break/continue/return) occurred
-    //   - if Some(false), then a non-return occurred; Some(true) means a return occurred
-    fn all_branches_terminate(node: &TypedAstNode) -> Option<bool> {
-        match node {
-            TypedAstNode::IfStatement(_, TypedIfNode { if_block, else_block, .. }) |
-            TypedAstNode::IfExpression(_, TypedIfNode { if_block, else_block, .. }) => {
-                let if_block_terminator = if_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                if if_block_terminator.is_none() {
-                    None
-                } else if let Some(else_block) = else_block {
-                    let else_block_terminator = else_block.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                    match (&if_block_terminator, &else_block_terminator) {
-                        (Some(true), Some(true)) => Some(true),
-                        (Some(_), Some(_)) => Some(false),
-                        (None, _) | (_, None) => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
-            TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
-                branches.iter().fold(Some(true), |acc, (_, _, body)| {
-                    let terminator = body.last().map(|n| Self::all_branches_terminate(n)).unwrap_or(None);
-                    match (acc, terminator) {
-                        (Some(true), Some(true)) => Some(true),
-                        (Some(_), Some(_)) => Some(false),
-                        (None, _) | (_, None) => None,
-                    }
-                })
-            }
-            TypedAstNode::ForLoop(_, TypedForLoopNode { body, .. }) |
-            TypedAstNode::WhileLoop(_, TypedWhileLoopNode { body, .. }) => {
-                // A loop can only be guaranteed to terminate if all branches terminate in a return
-                body.iter().find(|n| Self::all_branches_terminate(n) == Some(true))
-                    .map(|_| true)
-            }
-            TypedAstNode::ReturnStatement(_, _) => Some(true),
-            TypedAstNode::Break(_) | TypedAstNode::Continue(_) => Some(false),
-            _ => None
-        }
-    }
-
     fn visit_fn_body(&mut self, body: Vec<AstNode>) -> Result<Vec<TypedAstNode>, TypecheckerErrorKind> {
         self.hoist_declarations_in_scope(&body)?;
 
@@ -1044,7 +1004,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     }
                 } else {
                     let typed_node = self.visit(node)?;
-                    has_terminated = Self::all_branches_terminate(&typed_node).is_some();
+                    has_terminated = typed_node.all_branches_terminate().is_some();
 
                     Ok(typed_node)
                 }
@@ -1062,7 +1022,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
         // Check to see if there is already a fn binding; pre-hoisted fns use fn_bindings, not normal bindings
         if let Some(ScopeBinding(orig_ident, _, _)) = self.get_fn_binding_in_current_scope(&func_name) {
             if orig_ident != name {
-                let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+                let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                     .exports.contains_key(&func_name);
                 let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                 return Err(TypecheckerErrorKind::DuplicateBinding { ident: name.clone(), orig_ident });
@@ -1278,7 +1238,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                 let name = Token::get_ident_name(ident);
 
                 if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&name) {
-                    let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+                    let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                         .exports.contains_key(&name);
                     let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
                     return Err(TypecheckerErrorKind::DuplicateBinding { ident: ident.clone(), orig_ident });
@@ -1704,7 +1664,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
         let func_name = Token::get_ident_name(&name);
         let is_exported = if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&func_name) {
-            let is_prelude = self.module_loader.get_module(&ModuleId::from_name("prelude"))
+            let is_prelude = self.module_loader.get_module(&ModuleId::prelude())
                 .exports.contains_key(&func_name);
             let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
             return Err(TypecheckerErrorKind::DuplicateBinding { ident: name, orig_ident });
@@ -1802,7 +1762,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             Type::Unit => body.push(TypedAstNode::_Nil(Token::None(Position::new(0, 0)))),
             typ => {
                 if let Some(mut node) = body.last_mut() {
-                    if Self::all_branches_terminate(node).is_none() {
+                    if node.all_branches_terminate().is_none() {
                         let node_type = node.get_type();
 
                         if !self.are_types_equivalent(&mut node, &typ)? {
@@ -2390,7 +2350,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let if_block_type = match &node.if_block.last() {
             None => Err(TypecheckerErrorKind::MissingIfExprBranch { if_token: token.clone(), is_if_branch: true }),
             Some(expr) => {
-                if_block_terminates = Self::all_branches_terminate(expr).is_some();
+                if_block_terminates = expr.all_branches_terminate().is_some();
                 Ok(expr.get_type())
             }
         }?;
@@ -2402,13 +2362,13 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                     let else_block_type = expr.get_type();
 
                     if if_block_terminates {
-                        if Self::all_branches_terminate(expr).is_some() {
+                        if expr.all_branches_terminate().is_some() {
                             node.typ = Type::Unit;
                             return Ok(TypedAstNode::IfExpression(token.clone(), node));
                         } else {
                             Ok(else_block_type)
                         }
-                    } else if Self::all_branches_terminate(expr).is_some() {
+                    } else if expr.all_branches_terminate().is_some() {
                         node.typ = if_block_type;
                         return Ok(TypedAstNode::IfExpression(token.clone(), node));
                     } else {
@@ -2448,7 +2408,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
 
         let mut typ = None;
         for (_, _, ref mut block) in &mut node.branches {
-            if block.last().as_ref().map_or(false, |n| Self::all_branches_terminate(n).is_some()) {
+            if block.last().as_ref().map_or(false, |n| n.all_branches_terminate().is_some()) {
                 continue;
             }
 
@@ -2857,7 +2817,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 Some(ScopeKind::Function(s)) => break Some((s.name.clone(), s.return_type.clone())),
                 Some(ScopeKind::Lambda(_)) => {
                     // TODO: Fix this when we do #336
-                    break Some(("lambda".to_string(), Type::Unknown))
+                    break Some(("lambda".to_string(), Type::Unknown));
                 }
                 Some(ScopeKind::Root) => break None,
                 _ => continue
@@ -2884,7 +2844,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
     }
 
     fn visit_import(&mut self, token: Token, node: ImportNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
-        let module_id = node.get_module_id();
+        let module_id = &node.module_id;
         let module = self.module_loader.get_module(&module_id);
 
         let imports = match &node.kind {
@@ -2912,15 +2872,14 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 let typ = Type::Module(module_id.clone(), alias_name.clone());
                 self.add_binding(&alias_name, &alias_token, &typ, false);
 
-                return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id, alias_name: Some(alias_name) }));
+                return Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: vec![], module_id: module_id.clone(), alias_name: Some(alias_name) }));
             }
         };
 
         let mut typed_imports = Vec::new();
         for (import_name, import_ident_token, exported_value) in imports {
             if let Some(ScopeBinding(orig_ident, _, _)) = self.get_binding_in_current_scope(&import_name) {
-                let is_prelude = module_id == ModuleId::from_name("prelude");
-                let orig_ident = if is_prelude { None } else { Some(orig_ident.clone()) };
+                let orig_ident = if module_id.is_prelude() { None } else { Some(orig_ident.clone()) };
                 return Err(TypecheckerErrorKind::DuplicateBinding { ident: import_ident_token.clone(), orig_ident });
             }
 
@@ -2951,7 +2910,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             typed_imports.push(import_name);
         }
 
-        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id, alias_name: None }))
+        Ok(TypedAstNode::ImportStatement(token, TypedImportNode { imports: typed_imports, module_id: module_id.clone(), alias_name: None }))
     }
 
     fn visit_accessor(&mut self, token: Token, node: AccessorNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
@@ -3225,19 +3184,23 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 branches: vec![
                     (
                         TypedMatchKind::EnumVariant {
+                            enum_name: "Result".to_string(),
                             variant_idx: 0,
-                            args: Some(vec![TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string())))])
+                            variant_name: "Ok".to_string(),
+                            args: Some(vec![
+                                ("value".to_string(), TypedMatchCaseArgument::Pattern(BindingPattern::Variable(Token::Ident(token.get_position(), "v".to_string()))))
+                            ]),
                         },
                         None,
                         vec![
                             TypedAstNode::Identifier(
                                 token.clone(),
-                                TypedIdentifierNode { typ: unwrapped_type.clone(), name: "v".to_string(), is_mutable: false, scope_depth: 1 }
+                                TypedIdentifierNode { typ: unwrapped_type.clone(), name: "v".to_string(), is_mutable: false, scope_depth: 1 },
                             )
                         ]
                     ),
                     (
-                        TypedMatchKind::EnumVariant { variant_idx: 1, args: None },
+                        TypedMatchKind::EnumVariant { enum_name: "Result".to_string(), variant_idx: 1, variant_name: "Err".to_string(), args: None },
                         Some("e".to_string()),
                         vec![
                             TypedAstNode::ReturnStatement(
@@ -3247,15 +3210,15 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                                     target: Some(Box::new(
                                         TypedAstNode::Identifier(
                                             token.clone(),
-                                            TypedIdentifierNode { typ: expr_type.clone(), name: "e".to_string(), is_mutable: false, scope_depth: 1 }
+                                            TypedIdentifierNode { typ: expr_type.clone(), name: "e".to_string(), is_mutable: false, scope_depth: 1 },
                                         )
-                                    ))
-                                }
+                                    )),
+                                },
                             )
                         ]
-                    )
-                ]
-            }
+                    ),
+                ],
+            },
         );
         Ok(res)
     }
@@ -3264,7 +3227,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         &mut self,
         token: Token,
         node: LambdaNode,
-        args_override: Option<Vec<(Token, Type, Option<TypedAstNode>)>>,
+        retyping_override: Option<( /* retyped_args */ Vec<(Token, Type, Option<TypedAstNode>)>, /* lambda_idx: */ usize)>,
     ) -> Result<TypedAstNode, TypecheckerErrorKind> {
         let orig_node = node.clone();
         let LambdaNode { args, body } = node;
@@ -3272,7 +3235,16 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let orig_scopes = self.scopes.clone();
         self.scopes.push(Scope::new(ScopeKind::Lambda(token.clone())));
 
-        let typed_args = if let Some(args) = args_override {
+
+        let lambda_idx = if let Some((_, lambda_idx)) = retyping_override {
+            lambda_idx
+        } else {
+            let lambda_idx = self.num_lambdas;
+            self.num_lambdas += 1;
+            lambda_idx
+        };
+
+        let typed_args = if let Some((args, _)) = retyping_override {
             for (arg_tok, arg_type, _) in &args {
                 let arg_name = Token::get_ident_name(arg_tok);
                 self.add_binding(&arg_name, arg_tok, arg_type, false);
@@ -3285,6 +3257,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                 .collect()
         };
 
+        // TODO: Filter out anon args (args named `_`), since we don't care about those
         let has_unknown = typed_args.iter().any(|(_, typ, _)| typ == &Type::Unknown);
 
         let arg_types = typed_args.iter()
@@ -3296,7 +3269,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let typed_node = if has_unknown {
             let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false });
             let orig_node = Some((orig_node, orig_scopes));
-            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: None, orig_node };
+            let node = TypedLambdaNode { idx: lambda_idx, typ: fn_type, args: typed_args, typed_body: None, orig_node };
             TypedAstNode::Lambda(token, node)
         } else {
             let mut typed_body = self.visit_fn_body(body)?;
@@ -3307,7 +3280,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             }
 
             let fn_type = Type::Fn(FnType { arg_types, type_args: vec![], ret_type: Box::new(body_type), is_variadic: false, is_enum_constructor: false });
-            let node = TypedLambdaNode { typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };
+            let node = TypedLambdaNode { idx: lambda_idx, typ: fn_type, args: typed_args, typed_body: Some(typed_body), orig_node: None };
             TypedAstNode::Lambda(token, node)
         };
 

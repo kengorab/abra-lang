@@ -112,6 +112,68 @@ impl TypedAstNode {
             TypedAstNode::_Nil(_) => Type::Any,
         }
     }
+
+
+    pub fn is_expression(&self) -> bool {
+        match self {
+            TypedAstNode::BindingDecl(_, _) |
+            TypedAstNode::FunctionDecl(_, _) |
+            TypedAstNode::TypeDecl(_, _) |
+            TypedAstNode::EnumDecl(_, _) |
+            TypedAstNode::IfStatement(_, _) |
+            TypedAstNode::MatchStatement(_, _) |
+            TypedAstNode::Break(_) | // This is here for completeness; the type for this node should never matter
+            TypedAstNode::ForLoop(_, _) |
+            TypedAstNode::WhileLoop(_, _) |
+            TypedAstNode::ReturnStatement(_, _) |
+            TypedAstNode::ImportStatement(_, _) => false,
+            _ => true
+        }
+    }
+
+    // The usage of Option<bool> here is weird:
+    //   - if None, then no termination (break/continue/return) occurred
+    //   - if Some(false), then a non-return occurred; Some(true) means a return occurred
+    pub fn all_branches_terminate(&self) -> Option<bool> {
+        match self {
+            TypedAstNode::IfStatement(_, TypedIfNode { if_block, else_block, .. }) |
+            TypedAstNode::IfExpression(_, TypedIfNode { if_block, else_block, .. }) => {
+                let if_block_terminator = if_block.last().map(|n| n.all_branches_terminate()).unwrap_or(None);
+                if if_block_terminator.is_none() {
+                    None
+                } else if let Some(else_block) = else_block {
+                    let else_block_terminator = else_block.last().map(|n| n.all_branches_terminate()).unwrap_or(None);
+                    match (&if_block_terminator, &else_block_terminator) {
+                        (Some(true), Some(true)) => Some(true),
+                        (Some(_), Some(_)) => Some(false),
+                        (None, _) | (_, None) => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            TypedAstNode::MatchStatement(_, TypedMatchNode { branches, .. }) |
+            TypedAstNode::MatchExpression(_, TypedMatchNode { branches, .. }) => {
+                branches.iter().fold(Some(true), |acc, (_, _, body)| {
+                    let terminator = body.last().map(|n| n.all_branches_terminate()).unwrap_or(None);
+                    match (acc, terminator) {
+                        (Some(true), Some(true)) => Some(true),
+                        (Some(_), Some(_)) => Some(false),
+                        (None, _) | (_, None) => None,
+                    }
+                })
+            }
+            TypedAstNode::ForLoop(_, TypedForLoopNode { body, .. }) |
+            TypedAstNode::WhileLoop(_, TypedWhileLoopNode { body, .. }) => {
+                // A loop can only be guaranteed to terminate if all branches terminate in a return
+                body.iter().find(|n| n.all_branches_terminate() == Some(true))
+                    .map(|_| true)
+            }
+            TypedAstNode::ReturnStatement(_, _) => Some(true),
+            TypedAstNode::Break(_) | TypedAstNode::Continue(_) => Some(false),
+            _ => None
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -169,6 +231,7 @@ pub struct TypedTupleNode {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedLambdaNode {
+    pub idx: usize,
     pub typ: Type,
     pub args: Vec<(Token, Type, Option<TypedAstNode>)>,
     pub typed_body: Option<Vec<TypedAstNode>>,
@@ -327,7 +390,7 @@ pub enum TypedMatchKind {
     Wildcard,
     None,
     Type { type_name: String, args: Option<Vec<TypedMatchCaseArgument>> },
-    EnumVariant { variant_idx: usize, args: Option<Vec<TypedMatchCaseArgument>> },
+    EnumVariant { enum_name: String, variant_idx: usize, variant_name: String, args: Option<Vec<(String, TypedMatchCaseArgument)>> },
     Constant { node: TypedAstNode },
     Tuple { nodes: Vec<TypedAstNode> },
 }

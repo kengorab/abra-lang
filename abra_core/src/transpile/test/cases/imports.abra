@@ -1,0 +1,15 @@
+import array, a, b, c, abc, Size, Shirt from "./_exports"
+import y, z from "./nested/_exports"
+
+println(array, a, b, c)
+println(abc(1, 2, 3))
+println(Shirt(size: Size.M, color: "purple"))
+
+println(y, z)
+
+/* assert(stdout):
+[(1, 2), (3, 4)] 1 2 (3, 4)
+6
+Shirt(size: Size.M, color: purple)
+24 6
+*/

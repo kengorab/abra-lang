@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn test_unexpected_char_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "1..23".to_string();
         let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedChar(Position::new(1, 3), ".".to_string()) };
 
@@ -109,7 +109,7 @@ Unexpected character '.':
 
     #[test]
     fn test_unterminated_string_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "\"this is a string\n".to_string();
         let err = LexerError { module_id, kind: LexerErrorKind::UnterminatedString(Position::new(1, 1), Position::new(1, 18)) };
 
@@ -127,7 +127,7 @@ Unterminated string:
 
     #[test]
     fn test_unexpected_eof_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "1.".to_string();
         let err = LexerError { module_id, kind: LexerErrorKind::UnexpectedEof(Position::new(1, 3)) };
 
@@ -141,7 +141,7 @@ Unexpected end of file:
 
     #[test]
     fn test_unsupported_escape_sequence() {
-        let module_id = ModuleId::from_name("./test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "\"a\\qb\"".to_string();
         let err = LexerError { module_id, kind: LexerErrorKind::UnsupportedEscapeSequence(Position::new(1, 2), "\\q".to_string(), false) };
 

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
-use crate::parser::ast::{ModuleId, ModulePathSegment};
+use crate::parser::ast::ModuleId;
 use crate::module_loader::ModuleReader;
 
 #[derive(Debug, Default)]
@@ -25,15 +24,6 @@ impl ModuleReader for MockModuleReader {
     }
 
     fn get_module_name(&self, module_id: &ModuleId) -> String {
-        let ModuleId(is_local, path) = &module_id;
-        if !is_local {
-            path.first().map(|s| match s {
-                ModulePathSegment::Module(m) => m.to_string(),
-                _ => unreachable!()
-            })
-                .unwrap()
-        } else {
-            PathBuf::from(module_id.get_path("")).to_str().map(|s| s.to_string()).unwrap()
-        }
+        module_id.get_path("")
     }
 }

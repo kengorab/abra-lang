@@ -1,0 +1,103 @@
+// Tuples: for-loops
+(() => {
+  val items = [(1, 2), (3, 4), (5, 6)]
+  for (a, b) in items print(a + b)
+  println()
+})()
+
+// Tuples: ifs
+(() => {
+  val items = [(1, 2)]
+  if items[0] |(a, b)| println(a, b)
+})()
+
+// Tuples: destructuring
+(() => {
+  val (a, b, c) = (1, "two", 3)
+  println(a, b, c)
+
+  val (d, (e, f), (g, h, i)) = (1, (2, 3), (4, 5, 6))
+  println(d, e, f, g, h, i)
+})()
+
+// Arrays: for-loops
+(() => {
+  val items = [[1, 2], [3, 4], [5, 6]]
+  for [a, b] in items print(a ?: 0 + b ?: 0)
+  println()
+})()
+
+// Arrays: ifs
+(() => {
+  val items = [[1, 2]]
+  if items[0] |[a, b]| println(a, b)
+})()
+
+// Arrays: destructuring
+(() => {
+  val [a, b, c, x] = [1, 2, 3]
+  println(a, b, c, x)
+
+  val [d, [e, f], [g, h, i]] = [[1, 2], [3, 4], [5, 6, 7]]
+  println(d, e, f, g, h, i)
+})()
+
+// Arrays: splats
+(() => {
+  val arr = [1, 2, 3, 4, 5, 6, 7]
+  val [a1, *b1] = arr
+  println(a1, b1)
+
+  val [a2, b2, *c1, d1, e1] = arr
+  println(a2, b2, c1, d1, e1)
+
+  val [a3, b3, *c2, d2, e2, f, g, h, i, j] = arr
+  println(a3, b3, c2, d2, e2, f, g, h, i, j)
+})()
+
+// Tuples & Arrays
+(() => {
+  val items = [[(1, 2), (3, 4)], [(5, 6), (7, 8)]]
+  for [(a, b), (c, d)] in items print(a ?: 0 + b ?: 0 + c ?: 0 + d ?: 0)
+  println()
+  if items[0] |[(a, b)]| println(a, b)
+  val [[(a, b), c]] = items
+  println(a, b, c)
+})()
+
+// Strings
+(() => {
+  val str = "hello"
+  val [a1, b1, c1] = str
+  println(a1, b1, c1)
+
+  val [a2, *b2] = str
+  println(a2, b2)
+
+  val [a3, *b3, c2] = str
+  println(a3, b3, c2)
+
+  val [a4, *b4, c3, d1, e1, f1, g1] = str
+  println(a4, b4, c3, d1, e1, f1, g1)
+})()
+
+/* assert(stdout):
+3711
+1 2
+1 two 3
+1 2 3 4 5 6
+3711
+1 2
+1 2 3 None
+[1, 2] 3 4 5 6 7
+1 [2, 3, 4, 5, 6, 7]
+1 2 [3, 4, 5] 6 7
+1 2 [] 3 4 5 6 7 None None
+1026
+1 2
+1 2 (3, 4)
+h e l
+h ello
+h ell o
+h  e l l o None
+*/

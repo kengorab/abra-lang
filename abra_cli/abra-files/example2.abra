@@ -2,8 +2,12 @@ val a = [1, 2, 3]
 
 export val b = a.toString()
 
+export val [c, d] = a
+
 export enum Size { S, M, L, XL, Custom(size: String) }
 
 export type Shirt {
   color: String
 }
+
+export func greet(greeting: String) = println("$greeting world")

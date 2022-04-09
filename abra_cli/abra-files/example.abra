@@ -1,4 +1,4 @@
-import b from "./example2"
-import x from "../foo"
+import prompt from "io"
 
-println(b, x)
+val msg = prompt("Name > ")
+println("message:", msg)

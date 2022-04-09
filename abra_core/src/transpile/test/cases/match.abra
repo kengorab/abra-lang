@@ -1,0 +1,181 @@
+// Test None & builtin type matching
+println("Test None & builtin type matching:")
+(() => {
+  val items: (Int | Float | Bool | String)[] = [1234, 12.34, true, "hello"]
+  for i in range(0, items.length + 1) {
+    match items[i] {
+      Int i => println("Int:", i)
+      Float f => println("Float:", f)
+      Bool b => println("Bool:", b)
+      String s => println("String:", s)
+      None => println("None")
+    }
+  }
+})()
+
+// Test literal & wildcard matching
+println("Test literal & wildcard matching:")
+(() => {
+  val items: (Int | Float | Bool | String)[] = [
+    1234, 5678,
+    12.34, 56.78,
+    true, false,
+    "hello", "goodbye"
+  ]
+  for i in range(0, items.length + 1) {
+    match items[i] {
+      1234 i => println("Int:", i)
+      12.34 f => println("Float:", f)
+      true b => println("Bool:", b)
+      "hello" s => println("String:", s)
+      _ e => println("Else:", e)
+    }
+  }
+})()
+
+// Test tuple matching
+println("Test tuple matching:")
+(() => {
+  val tuple: (Int, Int) | (String, String) | (Int, String) = (1, "2")
+  match tuple {
+    (1, 2) => println("wrong 1")
+    ("1", "2") => println("wrong 2")
+    (1, "2") => println("right!")
+    _ => println("wrong 3")
+  }
+})()
+
+// Match expressions
+println("Test match expression:")
+(() => {
+  val nums = [1233, 1234]
+  for i in range(0, nums.length + 1) {
+    println(match nums[i] {
+      Int i => match i {
+        1234 => 5678
+        _ => i + 1
+      }
+      None => 0
+    })
+  }
+})()
+
+// Matching on user-defined types
+println("Test matching on user-defined types:")
+type Foo { foo: String }
+val foos = [Foo(foo: "asdf")]
+match foos[0] {
+  Foo f => println(f.foo)
+  None => println("nothing")
+}
+match foos[1] {
+  Foo f => println(f.foo)
+  None => println("nothing")
+}
+
+// Matching on enum variants
+enum A { A1, A2 }
+enum B { B1, B2 }
+println("Test matching on enum variants:")
+(() => {
+  val v1 = A.A1
+  match v1 {
+    A.A2 => println("A2")
+    A.A1 => println("A1")
+  }
+
+  val v2 = B.B2
+  match v2 {
+    B.B1 => println("B1")
+    B.B2 => println("B2")
+  }
+
+  val v3: A | B = B.B1
+  match v3 {
+    A.A1 => println("A1")
+    A.A2 => println("A2")
+    B.B1 => println("B1")
+    B.B2 => println("B2")
+  }
+
+  val r = Result.Ok("asdf")
+  match r {
+    Result.Ok => println("ok")
+    Result.Err => println("err")
+  }
+})()
+
+// Matching on constants in enum variants
+println("Test matching on constants in enum variants:")
+enum C { C1(c1: Int, c2: Int) }
+(() => {
+  val cases = [
+    C.C1(c1: 2, c2: 3),
+    C.C1(c1: 1, c2: 4),
+    C.C1(c1: 3, c2: 4),
+    C.C1(c1: 3, c2: 3),
+  ]
+  for v in cases {
+    match v {
+      C.C1(2, b) => println("case 1: b=$b")
+      C.C1(1, 4) => println("case 2")
+      C.C1(a, 4) => println("case 3: a=$a")
+      C.C1(a, b) => println("case 4: a=$a, b=$b")
+    }
+  }
+})()
+
+// Destructuring in enum variant match cases
+println("Test destructuring in enum variant match cases:")
+enum D { D1(d: Int[]) }
+(() => {
+  val v = D.D1(d: [1, 2, 3])
+  match v {
+    D.D1([a, b, c]) => println("a=$a, b=$b, c=$c")
+  }
+
+  match v {
+    D.D1([a, *b]) => println("a=$a, b=$b")
+  }
+})()
+
+/* assert(stdout):
+Test None & builtin type matching:
+Int: 1234
+Float: 12.34
+Bool: true
+String: hello
+None
+Test literal & wildcard matching:
+Int: 1234
+Else: 5678
+Float: 12.34
+Else: 56.78
+Bool: true
+Else: false
+String: hello
+Else: goodbye
+Else: None
+Test tuple matching:
+right!
+Test match expression:
+1234
+5678
+0
+Test matching on user-defined types:
+asdf
+nothing
+Test matching on enum variants:
+A1
+B2
+B1
+ok
+Test matching on constants in enum variants:
+case 1: b=3
+case 2
+case 3: a=3
+case 4: a=3, b=3
+Test destructuring in enum variant match cases:
+a=1, b=2, c=3
+a=1, b=[2, 3]
+*/

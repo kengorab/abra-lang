@@ -17,7 +17,7 @@ fn test_typecheck(input: &str) -> Result<TypedModule, TypecheckerErrorKind> {
 fn test_typecheck_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Result<TypedModule, TypecheckerErrorKind> {
     let mut mock_reader = MockModuleReader::new(modules);
     let mut mock_loader = ModuleLoader::new(&mut mock_reader);
-    let module_id = ModuleId::from_name("_test");
+    let module_id = ModuleId::parse_module_path("./test").unwrap();
     let module = crate::typecheck(module_id, &input.to_string(), &mut mock_loader)
         .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!() })?;
     Ok(module)
@@ -1824,7 +1824,7 @@ fn typecheck_type_decl() -> TestResult {
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
-    assert_eq!(Type::Reference("_test/Person".to_string(), vec![]), module.types["Person"]);
+    assert_eq!(Type::Reference("./test/Person".to_string(), vec![]), module.types["Person"]);
     let expected_type = Type::Struct(StructType {
         name: "Person".to_string(),
         type_args: vec![],
@@ -1833,7 +1833,7 @@ fn typecheck_type_decl() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     let module = test_typecheck("type Person { name: String, age: Int = 0 }")?;
     let expected = TypedAstNode::TypeDecl(
@@ -1857,7 +1857,7 @@ fn typecheck_type_decl() -> TestResult {
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
-    assert_eq!(Type::Reference("_test/Person".to_string(), vec![]), module.types["Person"]);
+    assert_eq!(Type::Reference("./test/Person".to_string(), vec![]), module.types["Person"]);
     let expected_type = Type::Struct(StructType {
         name: "Person".to_string(),
         type_args: vec![],
@@ -1869,7 +1869,7 @@ fn typecheck_type_decl() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     Ok(())
 }
@@ -1885,7 +1885,7 @@ fn typecheck_type_decl_self_referencing() -> TestResult {
           node\n\
         ")?;
 
-    let expected = identifier!((6, 1), "node", Type::Reference("_test/Node".to_string(), vec![]), 0);
+    let expected = identifier!((6, 1), "node", Type::Reference("./test/Node".to_string(), vec![]), 0);
     assert_eq!(expected, module.typed_nodes[2]);
     let expected_type = Type::Struct(StructType {
         name: "Node".to_string(),
@@ -1895,7 +1895,7 @@ fn typecheck_type_decl_self_referencing() -> TestResult {
             StructTypeField { name: "value".to_string(), typ: Type::Int, has_default_value: false, readonly: false },
             StructTypeField {
                 name: "next".to_string(),
-                typ: Type::Option(Box::new(Type::Reference("_test/Node".to_string(), vec![]))),
+                typ: Type::Option(Box::new(Type::Reference("./test/Node".to_string(), vec![]))),
                 has_default_value: true,
                 readonly: false,
             },
@@ -1903,7 +1903,7 @@ fn typecheck_type_decl_self_referencing() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Node"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Node"]);
 
     Ok(())
 }
@@ -1927,7 +1927,7 @@ fn typecheck_type_decl_readonly_fields() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Foo"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Foo"]);
 
     Ok(())
 }
@@ -1988,7 +1988,7 @@ fn typecheck_type_decl_methods() -> TestResult {
           }
         ";
     let module = test_typecheck(input)?;
-    let person_type = Type::Reference("_test/Person".to_string(), vec![]);
+    let person_type = Type::Reference("./test/Person".to_string(), vec![]);
     let expected = TypedAstNode::TypeDecl(
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
@@ -2103,7 +2103,7 @@ fn typecheck_type_decl_methods() -> TestResult {
             ("getName2".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false })),
         ],
     });
-    Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
+    Ok(assert_eq!(expected_type, module.referencable_types["./test/Person"]))
 }
 
 #[test]
@@ -2161,7 +2161,7 @@ fn typecheck_type_decl_static_methods() -> TestResult {
         ],
         methods: vec![to_string_method_type()],
     });
-    Ok(assert_eq!(expected_type, module.referencable_types["_test/Person"]))
+    Ok(assert_eq!(expected_type, module.referencable_types["./test/Person"]))
 }
 
 #[test]
@@ -2222,7 +2222,7 @@ fn typecheck_type_decl_generics() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/List"]);
+    assert_eq!(expected_type, module.referencable_types["./test/List"]);
 
     let input = r#"
           type List<T> { items: T[] }
@@ -2231,7 +2231,7 @@ fn typecheck_type_decl_generics() -> TestResult {
         "#;
     let module = test_typecheck(input)?;
     let actual_type = module.typed_nodes.last().unwrap().get_type();
-    let expected_type = Type::Reference("_test/List".to_string(), vec![Type::Int]);
+    let expected_type = Type::Reference("./test/List".to_string(), vec![Type::Int]);
     assert_eq!(expected_type, actual_type);
 
     let input = r#"
@@ -2290,8 +2290,8 @@ fn typecheck_type_decl_generics_errors() {
     let error = test_typecheck(input).unwrap_err();
     let expected = TypecheckerErrorKind::Mismatch {
         token: Token::LParen(Position::new(2, 27), false),
-        expected: Type::Reference("_test/List".to_string(), vec![Type::String]),
-        actual: Type::Reference("_test/List".to_string(), vec![Type::Int]),
+        expected: Type::Reference("./test/List".to_string(), vec![Type::String]),
+        actual: Type::Reference("./test/List".to_string(), vec![Type::Int]),
     };
     assert_eq!(expected, error);
 
@@ -2484,11 +2484,11 @@ fn typecheck_enum_decl() -> TestResult {
             variants: vec![
                 (
                     ident_token!((1, 13), "Hot"),
-                    (Type::Reference("_test/Temp".to_string(), vec![]), None)
+                    (Type::Reference("./test/Temp".to_string(), vec![]), None)
                 ),
                 (
                     ident_token!((1, 18), "Cold"),
-                    (Type::Reference("_test/Temp".to_string(), vec![]), None)
+                    (Type::Reference("./test/Temp".to_string(), vec![]), None)
                 ),
             ],
         },
@@ -2511,7 +2511,7 @@ fn typecheck_enum_decl() -> TestResult {
                         Type::Fn(FnType {
                             arg_types: vec![("rads".to_string(), Type::Float, false)],
                             type_args: vec![],
-                            ret_type: Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
+                            ret_type: Box::new(Type::Reference("./test/AngleMode".to_string(), vec![])),
                             is_variadic: false,
                             is_enum_constructor: true,
                         }),
@@ -2524,7 +2524,7 @@ fn typecheck_enum_decl() -> TestResult {
                         Type::Fn(FnType {
                             arg_types: vec![("degs".to_string(), Type::Float, false)],
                             type_args: vec![],
-                            ret_type: Box::new(Type::Reference("_test/AngleMode".to_string(), vec![])),
+                            ret_type: Box::new(Type::Reference("./test/AngleMode".to_string(), vec![])),
                             is_variadic: false,
                             is_enum_constructor: true,
                         }),
@@ -2549,18 +2549,18 @@ fn typecheck_enum_decl() -> TestResult {
             variants: vec![
                 (
                     ident_token!((1, 14), "Red"),
-                    (Type::Reference("_test/Color".to_string(), vec![]), None)
+                    (Type::Reference("./test/Color".to_string(), vec![]), None)
                 ),
                 (
                     ident_token!((1, 19), "Darken"),
                     (
                         Type::Fn(FnType {
                             arg_types: vec![
-                                ("base".to_string(), Type::Reference("_test/Color".to_string(), vec![]), false),
+                                ("base".to_string(), Type::Reference("./test/Color".to_string(), vec![]), false),
                                 ("amount".to_string(), Type::Float, false),
                             ],
                             type_args: vec![],
-                            ret_type: Box::new(Type::Reference("_test/Color".to_string(), vec![])),
+                            ret_type: Box::new(Type::Reference("./test/Color".to_string(), vec![])),
                             is_variadic: false,
                             is_enum_constructor: true,
                         }),
@@ -2568,13 +2568,13 @@ fn typecheck_enum_decl() -> TestResult {
                             Some(TypedAstNode::Accessor(
                                 Token::Dot(Position::new(1, 45)),
                                 TypedAccessorNode {
-                                    typ: Type::Reference("_test/Color".to_string(), vec![]),
+                                    typ: Type::Reference("./test/Color".to_string(), vec![]),
                                     target: Box::new(identifier!(
                                             (1, 40),
                                             "Color",
                                             Type::Type(
-                                                "_test/Color".to_string(),
-                                                Box::new(Type::Reference("_test/Color".to_string(), vec![])),
+                                                "./test/Color".to_string(),
+                                                Box::new(Type::Reference("./test/Color".to_string(), vec![])),
                                                 true,
                                             ),
                                             0
@@ -2679,7 +2679,7 @@ fn typecheck_enum_decl_variants_errors() {
     let expected = TypecheckerErrorKind::Mismatch {
         token: Token::Int(Position::new(2, 46), 123),
         actual: Type::Int,
-        expected: Type::Reference("_test/Scale".to_string(), vec![]),
+        expected: Type::Reference("./test/Scale".to_string(), vec![]),
     };
     assert_eq!(expected, error);
 
@@ -2719,8 +2719,8 @@ fn typecheck_enum_decl_variants_generics_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::Mismatch {
         token: Token::LParen(Position::new(5, 19), false),
-        expected: Type::Reference("_test/LL".to_string(), vec![Type::Int]),
-        actual: Type::Reference("_test/LL".to_string(), vec![Type::String]),
+        expected: Type::Reference("./test/LL".to_string(), vec![Type::Int]),
+        actual: Type::Reference("./test/LL".to_string(), vec![Type::String]),
     };
     assert_eq!(expected, err);
 }
@@ -2761,7 +2761,7 @@ fn typecheck_enum_decl_methods_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((6, 11), "hex"),
-        target_type: Type::Reference("_test/Color".to_string(), vec![]),
+        target_type: Type::Reference("./test/Color".to_string(), vec![]),
         module_name: None,
     };
     assert_eq!(expected, error);
@@ -2777,8 +2777,8 @@ fn typecheck_enum_decl_methods_errors() {
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((6, 7), "white"),
         target_type: Type::Type(
-            "_test/Color".to_string(),
-            Box::new(Type::Reference("_test/Color".to_string(), vec![])),
+            "./test/Color".to_string(),
+            Box::new(Type::Reference("./test/Color".to_string(), vec![])),
             true,
         ),
         module_name: None,
@@ -2943,7 +2943,7 @@ fn typecheck_assignment_field() -> TestResult {
                 Token::Dot(Position::new(3, 2)),
                 TypedAccessorNode {
                     typ: Type::String,
-                    target: Box::new(identifier!((3, 1), "a", Type::Reference("_test/Person".to_string(), vec![]), 0)),
+                    target: Box::new(identifier!((3, 1), "a", Type::Reference("./test/Person".to_string(), vec![]), 0)),
                     field_idx: 0,
                     field_ident: ident_token!((3, 3), "name"),
                     is_opt_safe: false,
@@ -2965,7 +2965,7 @@ fn typecheck_assignment_field() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     // Test setting inner property of readonly field
     let res = test_typecheck("\
@@ -3023,7 +3023,7 @@ fn typecheck_assignment_errors_with_target() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((3, 3), "bogusField"),
-        target_type: Type::Reference("_test/Person".to_string(), vec![]),
+        target_type: Type::Reference("./test/Person".to_string(), vec![]),
         module_name: None,
     };
     assert_eq!(expected, err);
@@ -3697,9 +3697,9 @@ fn typecheck_invocation_instantiation() -> TestResult {
     let expected = TypedAstNode::Instantiation(
         Token::LParen(Position::new(2, 7), false),
         TypedInstantiationNode {
-            typ: Type::Reference("_test/Person".to_string(), vec![]),
+            typ: Type::Reference("./test/Person".to_string(), vec![]),
             target: Box::new(
-                identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)
+                identifier!((2, 1), "Person", Type::Type("./test/Person".to_string(), Box::new(Type::Reference("./test/Person".to_string(), vec![])), false), 0)
             ),
             fields: vec![
                 ("name".to_string(), string_literal!((2, 14), "Ken"))
@@ -3717,7 +3717,7 @@ fn typecheck_invocation_instantiation() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     // Test with default parameters
     let module = test_typecheck("\
@@ -3727,9 +3727,9 @@ fn typecheck_invocation_instantiation() -> TestResult {
     let expected = TypedAstNode::Instantiation(
         Token::LParen(Position::new(2, 7), false),
         TypedInstantiationNode {
-            typ: Type::Reference("_test/Person".to_string(), vec![]),
+            typ: Type::Reference("./test/Person".to_string(), vec![]),
             target: Box::new(
-                identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)
+                identifier!((2, 1), "Person", Type::Type("./test/Person".to_string(), Box::new(Type::Reference("./test/Person".to_string(), vec![])), false), 0)
             ),
             fields: vec![
                 ("name".to_string(), string_literal!((2, 14), "Ken")),
@@ -3749,7 +3749,7 @@ fn typecheck_invocation_instantiation() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     Ok(())
 }
@@ -3920,7 +3920,7 @@ fn typecheck_invocation_primitive_instantiation_error() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::InvalidInstantiation {
         token: ident_token!((2, 1), "Foo"),
-        typ: Type::Reference("_test/Foo".to_string(), vec![]),
+        typ: Type::Reference("./test/Foo".to_string(), vec![]),
     };
     assert_eq!(expected, error);
 }
@@ -4360,7 +4360,7 @@ fn typecheck_accessor_instance() -> TestResult {
         Token::Dot(Position::new(3, 2)),
         TypedAccessorNode {
             typ: Type::String,
-            target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
+            target: Box::new(identifier!((3, 1), "p", Type::Reference("./test/Person".to_string(), vec![]), 0)),
             field_ident: ident_token!((3, 3), "name"),
             field_idx: 0,
             is_opt_safe: false,
@@ -4379,7 +4379,7 @@ fn typecheck_accessor_instance() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_typ, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_typ, module.referencable_types["./test/Person"]);
 
     // Getting fields off structs with default field values
     let module = test_typecheck("\
@@ -4391,7 +4391,7 @@ fn typecheck_accessor_instance() -> TestResult {
         Token::Dot(Position::new(3, 2)),
         TypedAccessorNode {
             typ: Type::Int,
-            target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
+            target: Box::new(identifier!((3, 1), "p", Type::Reference("./test/Person".to_string(), vec![]), 0)),
             field_ident: ident_token!((3, 3), "age"),
             field_idx: 1,
             is_opt_safe: false,
@@ -4411,7 +4411,7 @@ fn typecheck_accessor_instance() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     // Getting field of builtin Array type
     let module = test_typecheck("[1, 2, 3].length")?;
@@ -4477,7 +4477,7 @@ fn typecheck_accessor_static() -> TestResult {
         Token::Dot(Position::new(2, 7)),
         TypedAccessorNode {
             typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
-            target: Box::new(identifier!((2, 1), "Person", Type::Type("_test/Person".to_string(), Box::new(Type::Reference("_test/Person".to_string(), vec![])), false), 0)),
+            target: Box::new(identifier!((2, 1), "Person", Type::Type("./test/Person".to_string(), Box::new(Type::Reference("./test/Person".to_string(), vec![])), false), 0)),
             field_ident: ident_token!((2, 8), "getName"),
             field_idx: 0,
             is_opt_safe: false,
@@ -4494,7 +4494,7 @@ fn typecheck_accessor_static() -> TestResult {
         static_fields: vec![("getName".to_string(), Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }), true)],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     Ok(())
 }
@@ -4514,7 +4514,7 @@ fn typecheck_accessor_optional_safe() -> TestResult {
                 Token::Dot(Position::new(3, 2)),
                 TypedAccessorNode {
                     typ: Type::Option(Box::new(Type::String)),
-                    target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
+                    target: Box::new(identifier!((3, 1), "p", Type::Reference("./test/Person".to_string(), vec![]), 0)),
                     field_ident: ident_token!((3, 3), "name"),
                     field_idx: 0,
                     is_opt_safe: false,
@@ -4540,7 +4540,7 @@ fn typecheck_accessor_optional_safe() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     // Verify that it also works for non-optional fields, converting QuestionDot to just Dot
     let module = test_typecheck("\
@@ -4552,7 +4552,7 @@ fn typecheck_accessor_optional_safe() -> TestResult {
         Token::Dot(Position::new(3, 2)),
         TypedAccessorNode {
             typ: Type::String,
-            target: Box::new(identifier!((3, 1), "p", Type::Reference("_test/Person".to_string(), vec![]), 0)),
+            target: Box::new(identifier!((3, 1), "p", Type::Reference("./test/Person".to_string(), vec![]), 0)),
             field_ident: ident_token!((3, 4), "name"),
             field_idx: 0,
             is_opt_safe: false,
@@ -4571,7 +4571,7 @@ fn typecheck_accessor_optional_safe() -> TestResult {
         static_fields: vec![],
         methods: vec![to_string_method_type()],
     });
-    assert_eq!(expected_type, module.referencable_types["_test/Person"]);
+    assert_eq!(expected_type, module.referencable_types["./test/Person"]);
 
     Ok(())
 }
@@ -4585,7 +4585,7 @@ fn typecheck_accessor_error() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((3, 3), "firstName"),
-        target_type: Type::Reference("_test/Person".to_string(), vec![]),
+        target_type: Type::Reference("./test/Person".to_string(), vec![]),
         module_name: None,
     };
     assert_eq!(expected, error);
@@ -4605,6 +4605,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 4)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
             args: vec![],
             typed_body: Some(vec![string_literal!((1, 7), "hello")]),
@@ -4622,6 +4623,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 3)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
             args: vec![(ident_token!((1, 1), "a"), Type::Unknown, None)],
             typed_body: None,
@@ -4650,6 +4652,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 14)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::Unknown, false), ("b".to_string(), Type::String, true)], type_args: vec![], ret_type: Box::new(Type::Unknown), is_variadic: false, is_enum_constructor: false }),
             args: vec![
                 (ident_token!((1, 2), "a"), Type::Unknown, None),
@@ -4687,6 +4690,7 @@ fn typecheck_lambda() -> TestResult {
     let expected = TypedAstNode::Lambda(
         Token::Arrow(Position::new(1, 13)),
         TypedLambdaNode {
+            idx: 0,
             typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
             args: vec![
                 (ident_token!((1, 2), "a"), Type::String, None),
@@ -4721,6 +4725,7 @@ fn typecheck_lambda_closure() -> TestResult {
                 TypedAstNode::Lambda(
                     Token::Arrow(Position::new(2, 3)),
                     TypedLambdaNode {
+                        idx: 0,
                         typ: Type::Fn(FnType {
                             arg_types: vec![("y".to_string(), Type::Int, false)],
                             type_args: vec![],
@@ -4791,6 +4796,7 @@ fn typecheck_lambda_inference() -> TestResult {
             expr: Box::new(TypedAstNode::Lambda(
                 Token::Arrow(Position::new(2, 8)),
                 TypedLambdaNode {
+                    idx: 1,
                     typ: Type::Fn(FnType { arg_types: vec![("a".to_string(), Type::String, false)], type_args: vec![], ret_type: Box::new(Type::String), is_variadic: false, is_enum_constructor: false }),
                     args: vec![
                         (ident_token!((2, 6), "a"), Type::String, None)
@@ -4818,6 +4824,7 @@ fn typecheck_lambda_inference() -> TestResult {
             expr: Box::new(TypedAstNode::Lambda(
                 Token::Arrow(Position::new(2, 19)),
                 TypedLambdaNode {
+                    idx: 1,
                     typ: Type::Fn(FnType {
                         arg_types: vec![("a".to_string(), Type::String, false), ("b".to_string(), Type::String, true)],
                         type_args: vec![],
@@ -4967,7 +4974,7 @@ fn typecheck_match_statements() -> TestResult {
             Direction.Down => 3\n\
           }
         ")?;
-    let enum_ref_type = Type::Reference("_test/Direction".to_string(), vec![]);
+    let enum_ref_type = Type::Reference("./test/Direction".to_string(), vec![]);
     let expected = TypedAstNode::MatchStatement(
         Token::Match(Position::new(3, 1)),
         TypedMatchNode {
@@ -4975,22 +4982,22 @@ fn typecheck_match_statements() -> TestResult {
             target: Box::new(identifier!((3, 7), "d", enum_ref_type.clone(), 0)),
             branches: vec![
                 (
-                    TypedMatchKind::EnumVariant { variant_idx: 0, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 0, variant_name: "Left".to_string(), args: None },
                     None,
                     vec![int_literal!((4, 19), 0)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { variant_idx: 1, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 1, variant_name: "Right".to_string(), args: None },
                     None,
                     vec![int_literal!((5, 20), 1)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { variant_idx: 2, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 2, variant_name: "Up".to_string(), args: None },
                     None,
                     vec![int_literal!((6, 17), 2)],
                 ),
                 (
-                    TypedMatchKind::EnumVariant { variant_idx: 3, args: None },
+                    TypedMatchKind::EnumVariant { enum_name: "Direction".to_string(), variant_idx: 3, variant_name: "Down".to_string(), args: None },
                     None,
                     vec![int_literal!((7, 19), 3)],
                 ),
@@ -5198,7 +5205,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((4, 11), "Sideways"),
-        target_type: Type::Reference("_test/Direction".to_string(), vec![]),
+        target_type: Type::Reference("./test/Direction".to_string(), vec![]),
         module_name: None,
     };
     assert_eq!(expected, err);
@@ -5213,7 +5220,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((4, 16), "A"),
-        target_type: Type::Reference("_test/Direction".to_string(), vec![]),
+        target_type: Type::Reference("./test/Direction".to_string(), vec![]),
         module_name: None,
     };
     assert_eq!(expected, err);
@@ -5241,7 +5248,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuringArity {
         token: Token::LParen(Position::new(4, 8), false),
-        typ: Type::Reference("_test/Foo".to_string(), vec![]),
+        typ: Type::Reference("./test/Foo".to_string(), vec![]),
         enum_variant: Some("Bar".to_string()),
         expected: 1,
         actual: 2,
@@ -5257,7 +5264,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuringArity {
         token: Token::LParen(Position::new(4, 8), false),
-        typ: Type::Reference("_test/Foo".to_string(), vec![]),
+        typ: Type::Reference("./test/Foo".to_string(), vec![]),
         enum_variant: Some("Bar".to_string()),
         expected: 2,
         actual: 1,
@@ -5273,7 +5280,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::InvalidMatchCaseDestructuring {
         token: ident_token!((4, 5), "Bar"),
-        typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
+        typ: Some(Type::Reference("./test/Foo".to_string(), vec![])),
         enum_variant: Some("Bar".to_string()),
     };
     assert_eq!(expected, err);
@@ -5349,7 +5356,7 @@ fn typecheck_match_statements_errors() {
         ").unwrap_err();
     let expected = TypecheckerErrorKind::UnreachableMatchCase {
         token: ident_token!((4, 5), "Bar"),
-        typ: Some(Type::Reference("_test/Foo".to_string(), vec![])),
+        typ: Some(Type::Reference("./test/Foo".to_string(), vec![])),
         is_unreachable_none: false,
         prior_covering_case_tok: None,
     };
@@ -5875,12 +5882,12 @@ fn typecheck_import_dependency_order() {
     ];
     let mut reader = MockModuleReader::new(modules);
     let mut loader = ModuleLoader::new(&mut reader);
-    crate::typecheck(ModuleId::from_name("_test"), &mod1.to_string(), &mut loader).unwrap();
+    crate::typecheck(ModuleId::parse_module_path("./test").unwrap(), &mod1.to_string(), &mut loader).unwrap();
     let expected = vec![
-        ModuleId::from_name("prelude"),
-        ModuleId::from_name("./mod4"),
-        ModuleId::from_name("./mod3"),
-        ModuleId::from_name("./mod2"),
+        ModuleId::parse_module_path("prelude").unwrap(),
+        ModuleId::parse_module_path("./mod4").unwrap(),
+        ModuleId::parse_module_path("./mod3").unwrap(),
+        ModuleId::parse_module_path("./mod2").unwrap(),
     ];
     assert_eq!(expected, loader.ordering);
 }
@@ -5944,7 +5951,7 @@ fn typecheck_import_alias_errors() {
     let res = test_typecheck_with_modules(mod1, modules);
     let expected = TypecheckerErrorKind::UnknownMember {
         token: ident_token!((2, 14), "z"),
-        target_type: Type::Module(ModuleId::from_name("./mod2"), "mod2".to_string()),
+        target_type: Type::Module(ModuleId::parse_module_path("./mod2").unwrap(), "mod2".to_string()),
         module_name: Some("mod2".to_string()),
     };
     assert_eq!(expected, res.unwrap_err());

@@ -464,7 +464,7 @@ impl DisplayError for TypecheckerError {
             }
             TypecheckerErrorKind::InvalidTupleIndexingSelector { types, non_constant, index, .. } => {
                 let message = if *non_constant {
-                    "\nIndex values for tuples must be constant integers".to_string()
+                    "\nIndex values for tuples must be constant non-negative integers".to_string()
                 } else if *index != -1 {
                     format!(
                         "\nNo value at index {} for tuple {}",
@@ -810,7 +810,7 @@ mod tests {
 
     #[test]
     fn test_mismatch_error() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "1 + 4.4".to_string();
         let token = Token::Float(Position::new(1, 5), 4.4);
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::Mismatch { token, expected: Type::Int, actual: Type::Float } };
@@ -824,7 +824,7 @@ Expected Int, got Float"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "1 + 4.4".to_string();
         let token = Token::Float(Position::new(1, 5), 4.4);
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::Mismatch { token, expected: Type::Union(vec![Type::Int, Type::Float]), actual: Type::Int } };
@@ -841,7 +841,7 @@ Expected Int | Float, got Int"
 
     #[test]
     fn test_invalid_operator() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "1 - \"some string\"".to_string();
         let token = Token::Minus(Position::new(1, 3));
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidOperator { token, op: BinaryOp::Sub, ltype: Type::Int, rtype: Type::String } };
@@ -858,7 +858,7 @@ No operator exists to satisfy Int - String"
 
     #[test]
     fn test_missing_required_assignment() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val abc".to_string();
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::MissingRequiredAssignment { ident: ident_token!((1, 5), "abc") } };
 
@@ -874,7 +874,7 @@ Variables declared with 'val' must be initialized"
 
     #[test]
     fn test_duplicate_binding() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val abc = 123\nval abc = 5".to_string();
         let err = TypecheckerError {
             module_id,
@@ -895,7 +895,7 @@ Duplicate variable 'abc'
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         // Test with prelude
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "func println() {}".to_string();
         let err = TypecheckerError {
             module_id,
@@ -916,7 +916,7 @@ Duplicate variable 'println'
 
     #[test]
     fn test_duplicate_type() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "type Abc {}\ntype Abc { a: Int }".to_string();
         let err = TypecheckerError {
             module_id,
@@ -938,7 +938,7 @@ Type already declared in scope at (1:6)
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
         // Test builtin type
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "type Int {}".to_string();
         let err = TypecheckerError {
             module_id,
@@ -960,7 +960,7 @@ Duplicate type 'Int'
 
     #[test]
     fn test_unknown_identifier() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "abcd".to_string();
         let err = TypecheckerError {
             module_id,
@@ -978,7 +978,7 @@ No variable with that name is visible in current scope"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "println(_)".to_string();
         let err = TypecheckerError {
             module_id,
@@ -999,7 +999,7 @@ The _ represents an anonymous identifier; please give the variable a name if you
 
     #[test]
     fn test_unannotated_and_uninitialized() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "var abcd".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1018,7 +1018,7 @@ Since it's a 'var', you can either provide an initial value or a type annotation
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val abcd".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1040,7 +1040,7 @@ Since it's a 'val', you must provide an initial value"
 
     #[test]
     fn test_invalid_assignment_target() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "true = \"abc\"".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1064,7 +1064,7 @@ Left-hand side of assignment must be a valid identifier"
 
     #[test]
     fn test_assignment_to_immutable() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val abc = 1\n\nabc = 3".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1090,7 +1090,7 @@ Use 'var' instead of 'val' to create a mutable variable"
 
     #[test]
     fn test_unknown_type() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val abcd: NonExistentType = 432".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1111,7 +1111,7 @@ No type with that name is visible in current scope"
 
     #[test]
     fn test_missing_if_expr_branch() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val a = if (true) {} else 123".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1130,7 +1130,7 @@ Both branches must have some value when used as an expression"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val a = if (true) 123 else {}".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1152,7 +1152,7 @@ Both branches must have some value when used as an expression"
 
     #[test]
     fn test_if_expr_branch_mismatch() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val a = if (true) \"hello\" else 123".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1175,7 +1175,7 @@ The if-branch had type String, but the else-branch had type Int"
 
     #[test]
     fn test_invalid_invocation_target() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "\"hello\"(a: 1, b: 4)".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1197,7 +1197,7 @@ Type String is not invokeable"
 
     #[test]
     fn test_incorrect_arity() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "func abc(a: Int) { a }\nabc(1, 2, 3)".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1220,7 +1220,7 @@ Expected 1 required argument, but 3 were passed"
 
     #[test]
     fn test_invalid_terminator() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "func abc() { break }".to_string();
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Break(Position::new(1, 14))) };
 
@@ -1233,7 +1233,7 @@ A break keyword cannot appear outside of a loop"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "func abc() { continue }".to_string();
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Continue(Position::new(1, 14))) };
 
@@ -1246,7 +1246,7 @@ A continue keyword cannot appear outside of a loop"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "while true { return }".to_string();
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidTerminatorPlacement(Token::Return(Position::new(1, 14), false)) };
 
@@ -1262,7 +1262,7 @@ A return keyword cannot appear outside of a function"
 
     #[test]
     fn test_invalid_required_arg_position() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "func abc(a = 3, b: Int) = a + b".to_string();
         let err = TypecheckerError { module_id, kind: TypecheckerErrorKind::InvalidRequiredArgPosition(Token::Ident(Position::new(1, 17), "b".to_string())) };
 
@@ -1278,7 +1278,7 @@ Required parameters must all be listed before any optional parameters"
 
     #[test]
     fn test_invalid_indexing_target() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "123[1]".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1303,7 +1303,7 @@ Type Int is not indexable"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "123[1:2]".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1339,7 +1339,7 @@ Type Int is not indexable as a range"
 
     #[test]
     fn test_invalid_indexing_selector() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "\"abc\"[\"d\"]".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1362,7 +1362,7 @@ Cannot index into a target of type String, using a selector of type String"
 
     #[test]
     fn test_unknown_member() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "[1, 2, 3].size".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1381,7 +1381,7 @@ Type Int[] does not have a member with name 'size'"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "type P { name: String}\nval p = Person({ nAme: \"hello\" })".to_string();
         let err = TypecheckerError {
             module_id,
@@ -1409,13 +1409,13 @@ Type Person does not have a member with name 'nAme'"
         );
         assert_eq!(expected, err.get_message(&"/tests/test.abra".to_string(), &src));
 
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "import io\nio.fooBar()".to_string();
         let err = TypecheckerError {
             module_id,
             kind: TypecheckerErrorKind::UnknownMember {
                 token: Token::Ident(Position::new(2, 4), "fooBar".to_string()),
-                target_type: Type::Module(ModuleId::from_name("io"), "io".to_string()),
+                target_type: Type::Module(ModuleId::parse_module_path("io").unwrap(), "io".to_string()),
                 module_name: Some("io".to_string()),
             },
         };
@@ -1431,7 +1431,7 @@ Module 'io' does not have an export with name 'fooBar'"
 
     #[test]
     fn test_invalid_instantiation() {
-        let module_id = ModuleId::from_name("test");
+        let module_id = ModuleId::parse_module_path("./test").unwrap();
         let src = "val u = Unit()".to_string();
         let err = TypecheckerError {
             module_id,

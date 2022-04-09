@@ -821,6 +821,7 @@ impl VM {
                     let target = self.pop_expect()?;
                     match &target {
                         Value::ArrayObj(o) => {
+                            let value = value.clone();
                             let values = &mut (*o.borrow_mut())._inner;
                             if idx < 0 {
                                 if -(values.len() as i64) <= idx {
@@ -843,6 +844,7 @@ impl VM {
                             }
                         }
                         Value::TupleObj(o) => {
+                            let value = value.clone();
                             let idx = idx as usize;
                             let values = &mut *o.borrow_mut();
                             if values.len() < (idx as usize) {
@@ -859,7 +861,7 @@ impl VM {
                         }
                         _ => unreachable!()
                     }
-                    self.push(target);
+                    self.push(value);
                 }
                 Opcode::ArrSlc => {
                     #[inline]

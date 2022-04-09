@@ -1,0 +1,44 @@
+// Test binary operators
+println(true && true)
+println(true && false)
+println(false && true)
+println(false && false)
+
+println(true || true)
+println(true || false)
+println(false || true)
+println(false || false)
+
+println(true ^ true)
+println(true ^ false)
+println(false ^ true)
+println(false ^ false)
+
+// Test unary operator
+println(!true)
+println(!false)
+println(!(true && false))
+
+// Test equality operators
+println(true == true, true == false)
+println(true != true, true != false)
+
+/* assert(stdout):
+true
+false
+false
+false
+true
+true
+true
+false
+false
+true
+true
+false
+false
+true
+true
+true false
+false true
+*/

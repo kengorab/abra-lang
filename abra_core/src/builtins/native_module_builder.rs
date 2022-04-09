@@ -28,9 +28,16 @@ impl ModuleSpecBuilder {
     }
 
     pub fn build(self) -> ModuleSpec {
-        let module_id = ModuleId::from_name(self.name.as_str());
+        let module_id = ModuleId::parse_module_path(self.name.as_str()).unwrap();
         ModuleSpec {
-            typed_module: TypedModule { module_id, exports: self.exports, referencable_types: self.referencable_types, ..TypedModule::default() },
+            typed_module: TypedModule {
+                module_id,
+                exports: self.exports,
+                referencable_types: self.referencable_types,
+                global_bindings: HashMap::new(),
+                typed_nodes: Vec::new(),
+                types: HashMap::new()
+            },
             compiled_module: Module { name: self.name, is_native: true, num_globals: self.constants.len(), constants: self.constants, code: vec![] },
             constant_names: self.constant_names,
         }

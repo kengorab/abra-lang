@@ -40,7 +40,7 @@ impl<'a> Repl<'a> {
     }
 
     fn module_id() -> ModuleId {
-        ModuleId::from_name(".repl")
+        ModuleId::parse_module_path("./_repl").unwrap()
     }
 
     fn new() -> Self {

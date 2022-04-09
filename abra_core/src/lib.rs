@@ -4,6 +4,7 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
+use std::path::PathBuf;
 use crate::vm::compiler::{Module, Metadata};
 use crate::typechecker::typechecker::TypedModule;
 use crate::common::display_error::DisplayError;
@@ -12,12 +13,15 @@ use crate::parser::parser::ParseResult;
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, TypecheckerError};
 use crate::module_loader::{ModuleLoader, ModuleReader, ModuleLoaderError};
 use crate::parser::ast::ModuleId;
+use crate::transpile::clang::clang;
+use crate::transpile::genc::{CCompiler, normalize_module_name};
 
 pub mod builtins;
 pub mod common;
 pub mod lexer;
 pub mod module_loader;
 pub mod parser;
+pub mod transpile;
 pub mod typechecker;
 pub mod vm;
 
@@ -125,4 +129,67 @@ pub fn compile_and_disassemble<R>(module_id: ModuleId, input: &String, module_re
         .collect();
     let dis = vm::disassembler::disassemble(modules);
     Ok(dis)
+}
+
+pub fn compile_to_c<R>(
+    module_id: ModuleId,
+    contents: &String,
+    root: &PathBuf,
+    module_reader: &mut R,
+    dotabra_dir: &PathBuf,
+    exec_name: &String,
+) -> Result<(), Error>
+    where R: ModuleReader
+{
+    let mut loader = ModuleLoader::new(module_reader);
+
+    let module = typecheck(module_id, contents, &mut loader)?;
+    loader.add_typed_module(module);
+
+    let mut main_file_buf = vec!["#include \"abra.h\"".to_string()];
+    let dependencies = loader.ordering.clone();
+    for m in &dependencies {
+        let include_line = match m {
+            ModuleId::External(n) => format!("#include \"modules/{}/_mod.h\"", n),
+            ModuleId::Internal(_) => {
+                let name = loader.get_module_name(&m);
+                let module_name = normalize_module_name(&name, &root);
+
+                let typed_module = loader.get_module_by_name(&name);
+                let ast = typed_module.typed_nodes.clone();
+
+                let gen_src_file = format!("{}.c", &module_name);
+                let c_code = CCompiler::gen_c(&mut loader, &root, &module_name, ast).unwrap();
+                std::fs::write(dotabra_dir.join(&gen_src_file), c_code).unwrap();
+
+                format!("#include \"./{}\"", gen_src_file)
+            }
+        };
+        main_file_buf.push(include_line);
+    }
+
+    main_file_buf.push("int main(int argc, char** argv) {".to_string());
+    main_file_buf.push("abra_init();".to_string());
+
+    for m in &dependencies {
+        let normalized_module_name = match m {
+            ModuleId::External(n) => n.clone(),
+            ModuleId::Internal(_) => {
+                let name = loader.get_module_name(&m);
+                normalize_module_name(&name, &root)
+            }
+        };
+        main_file_buf.push(format!("init_module_{}();", normalized_module_name));
+    }
+    main_file_buf.push("return 0;\n}".to_string());
+
+    let main_src_file_name = format!("__{}__.c", exec_name);
+    std::fs::write(dotabra_dir.join(&main_src_file_name), main_file_buf.join("\n")).unwrap();
+
+    if let Err(e) = clang(&dotabra_dir, &main_src_file_name, &exec_name) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+
+    Ok(())
 }

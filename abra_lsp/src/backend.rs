@@ -23,9 +23,9 @@ impl Backend {
         let path = uri.to_file_path().unwrap();
         let parent = path.parent().unwrap().to_path_buf();
         let module_path = path.file_name().unwrap().to_str().unwrap().to_string();
-        let module_id = ModuleId::from_path(&module_path);
+        let module_id = ModuleId::parse_module_path(&format!("./{}", module_path)).unwrap();
 
-        let mut module_reader = FsModuleReader::new(module_id.clone(), parent);
+        let mut module_reader = FsModuleReader::new(module_id.clone(), &parent);
         let mut loader = ModuleLoader::new(&mut module_reader);
 
         match typecheck(module_id, &text, &mut loader) {

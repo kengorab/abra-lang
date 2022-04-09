@@ -7,13 +7,14 @@ extern crate rustyline;
 
 use abra_core::common::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
-use abra_core::{compile, compile_and_disassemble, Error};
+use abra_core::{compile, compile_and_disassemble, compile_to_c, Error};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
-use abra_core::parser::ast::{ModuleId, ModulePathSegment};
+use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
 use std::path::PathBuf;
+use std::process::Command;
 use abra_core::module_loader::ModuleReader;
 
 mod repl;
@@ -28,6 +29,7 @@ struct Opts {
 #[derive(Clap)]
 enum SubCommand {
     Run(RunOpts),
+    Compile(CompileOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
     Repl,
@@ -40,6 +42,12 @@ struct RunOpts {
 
     #[clap(last = true, help = "Arguments to pass to the abra program")]
     args: Vec<String>,
+}
+
+#[derive(Clap)]
+struct CompileOpts {
+    #[clap(help = "Path to an abra file to compile")]
+    file_path: String,
 }
 
 #[derive(Clap)]
@@ -68,6 +76,7 @@ fn main() -> Result<(), ()> {
 
     match opts.sub_cmd {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
+        SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
         SubCommand::Repl => Ok(Repl::run()),
@@ -80,8 +89,8 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     let contents = read_file(&file_path)?;
 
     let root = file_path.parent().unwrap().to_path_buf();
-    let module_path = file_path.file_name().unwrap().to_str().unwrap().to_string();
-    let module_id = ModuleId::from_path(&module_path);
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
     let env = std::env::vars().collect();
     let mut vm = VM::new(VMContext::new(opts.args, env));
@@ -93,13 +102,49 @@ fn cmd_compile_and_run(opts: RunOpts) -> Result<(), ()> {
     Ok(())
 }
 
+fn cmd_compile_to_c_and_run(opts: CompileOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+    let contents = read_file(&file_path)?;
+
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
+
+    let working_dir = file_path.parent().unwrap();
+    let dotabra_dir = working_dir.join(".abra");
+    if !dotabra_dir.exists() {
+        if std::fs::create_dir(&dotabra_dir).is_err() {
+            eprintln!("{}", format!("Could not create .abra directory at {}", dotabra_dir.to_str().unwrap()));
+            std::process::exit(1);
+        }
+    }
+
+    let exec_name = format!("main_{}", module_name.replace(".abra", ""));
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
+    if let Err(e) = compile_to_c(module_id, &contents, &root, &mut module_reader, &dotabra_dir, &exec_name) {
+        report_error(e, &module_reader);
+    }
+
+    let mut run_cmd = Command::new(dotabra_dir.join(exec_name).to_str().unwrap());
+    let run_output = run_cmd.output().unwrap();
+    if !run_output.status.success() {
+        eprintln!("Error: {}", String::from_utf8(run_output.stderr).unwrap());
+    }
+    if !run_output.stdout.is_empty() {
+        print!("{}", String::from_utf8(run_output.stdout).unwrap());
+    }
+
+    Ok(())
+}
+
 fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
     let current_path = std::env::current_dir().unwrap();
     let file_path = current_path.join(&opts.file_path);
     let contents = read_file(&file_path)?;
 
-    let module_id = ModuleId::from_path(&opts.file_path);
-    let mut module_reader = FsModuleReader::new(module_id.clone(), current_path);
+    let module_id = ModuleId::parse_module_path(&opts.file_path).unwrap();
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &current_path);
     match compile_and_disassemble(module_id, &contents, &mut module_reader) {
         Ok(output) => {
             match opts.out_file {
@@ -107,22 +152,7 @@ fn cmd_disassemble(opts: DisassembleOpts) -> Result<(), ()> {
                 Some(out_file) => write_file(&out_file, output)?,
             }
         }
-        Err(error) => {
-            let module_id = error.module_id();
-            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
-                .with_extension("abra")
-                .canonicalize()
-                .unwrap();
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-            let file_name = file_name.to_str().unwrap().to_string();
-
-            match error {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::InterpretError(e) => eprintln!("{:?}", e),
-            }
-        }
+        Err(error) => report_error(error, &module_reader),
     };
 
     Ok(())
@@ -150,7 +180,7 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
         let file_path = current_path.join(&file_path);
 
         let file_name = file_path.file_name().unwrap().to_str().unwrap();
-        let module_id = ModuleId::from_path(&file_name.to_string());
+        let module_id = ModuleId::parse_module_path(&file_name.to_string()).unwrap();
 
         let root_dir = file_path.to_str().unwrap().replace(file_name, "");
         let root_dir = PathBuf::from(root_dir);
@@ -170,7 +200,7 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
                 let m = m.unwrap();
                 let match_path = m.to_str().unwrap().to_string();
                 let relative_path = match_path.replace(&format!("{}/", current_path.to_str().unwrap()), "");
-                ModuleId::from_path(&relative_path)
+                ModuleId::parse_module_path(&relative_path).unwrap()
             })
             .collect();
         (current_path, module_ids)
@@ -178,12 +208,12 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 
     let mut mock_file = vec!["import runTests from \"test\"\n".to_string()];
     for m in module_ids {
-        mock_file.push(format!("import * from \"./{}\"\n", m.1.last().map(|s| if let ModulePathSegment::Module(m) = s { m.clone() } else { unreachable!() }).unwrap()));
+        mock_file.push(format!("import * from \"{}\"\n", m.get_path(".")));
     }
     mock_file.push(format!("\nrunTests(showPassing: {})\n", opts.show_passing));
     let mock_file = mock_file.into_iter().collect::<String>();
 
-    let mock_module_id = ModuleId::from_name("./tests");
+    let mock_module_id = ModuleId::parse_module_path("./tests").unwrap();
     let mut vm = VM::new(VMContext::default());
     let result = compile_and_run(mock_module_id, mock_file, root_dir, &mut vm)?;
     match result {
@@ -193,26 +223,10 @@ fn cmd_test(opts: TestOpts) -> Result<(), ()> {
 }
 
 fn compile_and_run(module_id: ModuleId, contents: String, root_dir: PathBuf, vm: &mut VM) -> Result<Value, ()> {
-    let mut module_reader = FsModuleReader::new(module_id.clone(), root_dir);
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &root_dir);
     let modules = match compile(module_id, &contents, &mut module_reader) {
         Ok(modules) => modules,
-        Err(error) => {
-            let module_id = error.module_id();
-            let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
-                .with_extension("abra")
-                .canonicalize()
-                .unwrap();
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-            let file_name = file_name.to_str().unwrap().to_string();
-
-            match error {
-                Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
-            }
-            std::process::exit(1);
-        }
+        Err(error) => report_error(error, &module_reader),
     };
 
     let mut result = Value::Nil;
@@ -240,4 +254,22 @@ fn write_file(file_name: &String, output: String) -> Result<(), ()> {
         eprintln!("Could not write to file {}: {}", file_name, err);
         std::process::exit(1);
     })
+}
+
+fn report_error<R: ModuleReader>(e: Error, module_reader: &R) -> ! {
+    let module_id = e.module_id();
+    let file_name = PathBuf::from(module_reader.get_module_name(&module_id))
+        .with_extension("abra")
+        .canonicalize()
+        .unwrap();
+    let contents = std::fs::read_to_string(&file_name).unwrap();
+    let file_name = file_name.to_str().unwrap().to_string();
+
+    match e {
+        Error::LexerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::ParseError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::TypecheckerError(e) => eprintln!("{}", e.get_message(&file_name, &contents)),
+        Error::InterpretError(_) => unreachable!("Compilation should not raise an InterpretError")
+    }
+    std::process::exit(1)
 }

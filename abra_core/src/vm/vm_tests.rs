@@ -11,7 +11,7 @@ fn new_string_obj(string: &str) -> Value {
 
 fn interpret(input: &str) -> Value {
     let mut mock_reader = MockModuleReader::default();
-    let module_id = ModuleId::from_name("_test");
+    let module_id = ModuleId::parse_module_path("./test").unwrap();
     let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
 
     let ctx = VMContext::default();
@@ -25,7 +25,7 @@ fn interpret(input: &str) -> Value {
 
 fn interpret_with_modules(input: &str, modules: Vec<(&str, &str)>) -> Value {
     let mut mock_reader = MockModuleReader::new(modules);
-    let module_id = ModuleId::from_name("_test");
+    let module_id = ModuleId::parse_module_path("./test").unwrap();
     let modules = crate::compile(module_id, &input.to_string(), &mut mock_reader).unwrap();
 
     let ctx = VMContext::default();

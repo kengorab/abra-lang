@@ -1,0 +1,67 @@
+// Basic expression
+val seven = if true { 6 + 1 } else { 14 }
+println(seven)
+
+// Mid-expression
+println((if true 12 else 3) - (if true 1 else 4))
+
+// Nested mid-expression
+println(
+  (if true {
+    if true 12 else 1
+  } else 3)
+  -
+  (if true 1 else 4)
+)
+
+// "Lifted" expression in condition
+println(
+  if (if true true else false) 7 else 8
+)
+
+// Nesting "lifted" expressions
+println(
+  if true { [1, 2, 3, if true 4 else 5] } else [4, 5]
+)
+
+// If-expression with no `else`
+println(if false 123)
+
+// If statements
+if true {
+  println("true")
+} else {
+  println("false")
+}
+if false {
+  println("false")
+} else if true {
+  println("true")
+} else {
+  println("false")
+}
+
+// If statements with condition binding
+if 1 + 1 >= 2 |v| print(v, "")
+if [1, 2, 3][2] |v| print(v, "")
+if [1, 2, 3][3] |v| print(v, "") else println("nothing")
+
+// If expressions with condition binding
+println(
+  if 1 + 1 >= 2 |v| v else false,
+  if [1, 2, 3][2] |v| v else -1,
+  if [1, 2, 3][3] |v| v else -1
+)
+
+/* assert(stdout):
+7
+11
+11
+7
+[1, 2, 3, 4]
+None
+true
+true
+true 3 nothing
+true 3 -1
+*/

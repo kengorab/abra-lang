@@ -38,7 +38,7 @@ pub fn interpret(input: &str) -> Value {
 
 pub fn interpret_get_result<S: AsRef<str>>(input: S) -> Result<Value, Error> {
     let mut mock_reader = MockModuleReader::default();
-    let module_id = ModuleId::from_name("_test");
+    let module_id = ModuleId::parse_module_path("./test").unwrap();
     let modules = match compile(module_id, &input.as_ref().to_string(), &mut mock_reader) {
         Ok(modules) => modules,
         Err(error) => return Err(error)

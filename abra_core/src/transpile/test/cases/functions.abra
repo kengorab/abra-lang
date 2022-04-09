@@ -1,0 +1,211 @@
+func helloWorld() {
+  println("hello world")
+}
+helloWorld()
+
+func returnOne(): Int {
+  if true { 1 } else { 2 }
+}
+println(returnOne())
+
+func defaultArgs(a: String, b = "!"): String = a + b
+println(defaultArgs("hello"), defaultArgs("hello", " world"))
+
+func makeMap<K, V>(key: K, value: V): Map<K, V> = { (key): value }
+println(makeMap("hello", { targets: ["world"] }))
+
+func withVarargs(a: Int, *b: Int[]) = println(a, b)
+withVarargs(1, 2, 3, 4, 5)
+
+func withNamedArguments(prefix: String, suffix = "!"): String = prefix + suffix
+println(withNamedArguments(prefix: "hello"), withNamedArguments(suffix: "!!", prefix: "Hello"))
+
+// Test recursion
+func fib(n: Int): Int = if n < 2 1 else fib(n - 2) + fib(n - 1)
+println(fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7))
+
+// Test (needlessly complex) mutual recursion
+func f1(n: Int): String = if n <= 0 "" else f2(n - 1)
+func f2(n: Int): String = "." + f1(n)
+println(f1(5))
+
+// Nested functions, make sure functions with same name aren't overwritten
+func inner2() = println("initial inner2")
+func outer() {
+  func inner() {
+    func inner2() = println("inner2")
+    inner2()
+    foo() // Make sure function is pre-defined for access here
+    println("inner")
+  }
+  func foo() {}
+  inner()
+  println("outer")
+}
+outer()
+inner2()
+
+// Closures
+func hello1(h: String) {
+  func sayHi() = println("hello " + h)
+  sayHi()
+}
+hello1("world")
+
+func hello2(h: String): () => Unit {
+  func sayHi() = println("hello " + h)
+  sayHi
+}
+hello2("world")()
+
+func hello3(): (String) => Unit {
+  func sayHi(h: String) {
+    println("hello " + h)
+  }
+  sayHi
+}
+hello3()("world")
+
+val H = "hello"
+func hello4(h: String) {
+  func sayHi(H: String) = println(H + " " + h)
+  val outerH = H
+  sayHi(outerH)
+}
+hello4("world")
+
+func hello5(h: String): () => Unit {
+  func sayHi() = println(H + " " + h)
+  sayHi
+}
+hello5("world")()
+
+// Test persistence of closed-over values
+func newCounter(start: Int): () => Unit {
+  var counter = start
+  func inc() {
+    counter += 1
+    print(counter)
+  }
+  inc
+}
+val count = newCounter(0)
+count() count() count()
+println() // Spacer for test readability
+
+// Test persistence of closed-over values of recursive fns
+func newCountdown(n: Int): () => Unit {
+  var _count = n // TODO(#350): If this were `var count = n` it wouldn't be properly closed-over due to the global above
+  func rec() {
+    print(_count)
+    if _count > 0 {
+      _count -= 1
+      rec()
+    } else {
+      println()
+    }
+  }
+  rec
+}
+val countdown = newCountdown(5)
+countdown()
+
+// Test passing closures as arguments
+func newGreeter(greeting: String): () => String {
+  func greet(): String = greeting
+  greet
+}
+func callAndExclaim(fn: () => String): String = fn() + "!"
+val sayHi = newGreeter("hi")
+val sayHello = newGreeter("hello")
+val sayBonjour = newGreeter("bonjour")
+println(callAndExclaim(sayHi), callAndExclaim(sayHello), callAndExclaim(sayBonjour))
+
+// Test equality operators
+func func1() = println()
+func func2() = println()
+func func3(): () => Unit = func1
+println(func1 != func2, func3() == func1)
+
+// Test toString
+println(func1, func2, func3, func3())
+
+// Test methods
+val toUpper = "asdf".toUpper
+println(toUpper())
+
+// Returns
+func simpleReturn(): Int {
+  return 24
+}
+println(simpleReturn())
+func conditionalReturn(cond: Bool): Int {
+  if cond return 6
+  else return 24
+}
+println(conditionalReturn(true), conditionalReturn(false))
+func conditionalReturn2(cond: Bool): Int {
+  if cond return 6
+  return 24
+}
+println(conditionalReturn2(true), conditionalReturn2(false))
+func conditionalReturn3(cond: Bool): Int {
+  if cond return 6
+  24
+}
+println(conditionalReturn3(true), conditionalReturn3(false))
+func returnInIfExpr(cond: Bool): Int {
+  val x = if cond return 6 else 23
+  x + 1
+}
+println(returnInIfExpr(true), returnInIfExpr(false))
+func returnInNestedIfExpr(cond: Bool): Int {
+  val x = if cond {
+    if true return 6
+    0
+  } else 23
+  x + 1
+}
+println(returnInNestedIfExpr(true), returnInNestedIfExpr(false))
+func returnFromForLoop(): Int {
+  for _ in range(0, 2) return 24
+}
+println(returnFromForLoop())
+func returnFromWhileLoop(): Int {
+  while true return 24
+}
+println(returnFromWhileLoop())
+
+/* assert(stdout):
+hello world
+1
+hello! hello world
+{ hello: { targets: [world] } }
+1 [2, 3, 4, 5]
+hello! Hello!!
+1 1 2 3 5 8 13 21
+.....
+inner2
+inner
+outer
+initial inner2
+hello world
+hello world
+hello world
+hello world
+hello world
+123
+543210
+hi! hello! bonjour!
+true true
+<func func1> <func func2> <func func3> <func func1>
+ASDF
+24
+6 24
+6 24
+6 24
+6 24
+6 24
+24
+24
+*/
