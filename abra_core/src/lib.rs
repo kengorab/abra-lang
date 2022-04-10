@@ -5,10 +5,14 @@ extern crate strum;
 extern crate strum_macros;
 
 use std::path::PathBuf;
+use inkwell::context::Context;
+use inkwell::execution_engine::JitFunction;
+use inkwell::OptimizationLevel;
 use crate::vm::compiler::{Module, Metadata};
 use crate::typechecker::typechecker::TypedModule;
 use crate::common::display_error::DisplayError;
 use crate::lexer::tokens::Range;
+use crate::llvm::compiler::{ENTRY_FN_NAME, ModEntryFn};
 use crate::parser::parser::ParseResult;
 use crate::typechecker::typechecker_error::{TypecheckerErrorKind, TypecheckerError};
 use crate::module_loader::{ModuleLoader, ModuleReader, ModuleLoaderError};
@@ -19,6 +23,7 @@ use crate::transpile::genc::{CCompiler, normalize_module_name};
 pub mod builtins;
 pub mod common;
 pub mod lexer;
+pub mod llvm;
 pub mod module_loader;
 pub mod parser;
 pub mod transpile;
@@ -190,6 +195,26 @@ pub fn compile_to_c<R>(
         eprintln!("{}", e);
         std::process::exit(1);
     }
+
+    Ok(())
+}
+
+pub fn compile_to_llvm<R>(module_id: ModuleId, contents: &String, module_reader: &mut R) -> Result<(), Error>
+    where R: ModuleReader
+{
+    let mut loader = ModuleLoader::new(module_reader);
+
+    let module = typecheck(module_id, contents, &mut loader)?;
+    loader.add_typed_module(module.clone());
+
+    let context = Context::create();
+    let llvm_module = llvm::compiler::Compiler::compile_module(&context, module).unwrap();
+
+    let execution_engine = llvm_module.create_jit_execution_engine(OptimizationLevel::None).expect("Failed to initialize native target");
+    unsafe {
+        let entry_fn: JitFunction<'_, ModEntryFn> = execution_engine.get_function(ENTRY_FN_NAME).ok().unwrap();
+        println!("{}", entry_fn.call());
+    };
 
     Ok(())
 }

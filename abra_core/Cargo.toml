@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 abra_native = { path = "../abra_native" }
 downcast-rs = "1.2.0"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }
 itertools = "0.9.0"
 peekmore = "0.5.2"
 strum = "0.15.0"

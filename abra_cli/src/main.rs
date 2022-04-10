@@ -7,7 +7,7 @@ extern crate rustyline;
 
 use abra_core::common::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
-use abra_core::{compile, compile_and_disassemble, compile_to_c, Error};
+use abra_core::{compile, compile_and_disassemble, compile_to_c, compile_to_llvm, Error};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
 use abra_core::parser::ast::ModuleId;
@@ -30,6 +30,7 @@ struct Opts {
 enum SubCommand {
     Run(RunOpts),
     Compile(CompileOpts),
+    Jit(JitOpts),
     Disassemble(DisassembleOpts),
     Test(TestOpts),
     Repl,
@@ -46,6 +47,12 @@ struct RunOpts {
 
 #[derive(Clap)]
 struct CompileOpts {
+    #[clap(help = "Path to an abra file to compile")]
+    file_path: String,
+}
+
+#[derive(Clap)]
+struct JitOpts {
     #[clap(help = "Path to an abra file to compile")]
     file_path: String,
 }
@@ -77,6 +84,7 @@ fn main() -> Result<(), ()> {
     match opts.sub_cmd {
         SubCommand::Run(opts) => cmd_compile_and_run(opts),
         SubCommand::Compile(opts) => cmd_compile_to_c_and_run(opts),
+        SubCommand::Jit(opts) => cmd_compile_llvm_and_run(opts),
         SubCommand::Disassemble(opts) => cmd_disassemble(opts),
         SubCommand::Test(opts) => cmd_test(opts),
         SubCommand::Repl => Ok(Repl::run()),
@@ -134,6 +142,21 @@ fn cmd_compile_to_c_and_run(opts: CompileOpts) -> Result<(), ()> {
     if !run_output.stdout.is_empty() {
         print!("{}", String::from_utf8(run_output.stdout).unwrap());
     }
+
+    Ok(())
+}
+
+fn cmd_compile_llvm_and_run(opts: JitOpts) -> Result<(), ()> {
+    let current_path = std::env::current_dir().unwrap();
+    let file_path = current_path.join(&opts.file_path);
+    let contents = read_file(&file_path)?;
+
+    let root = file_path.parent().unwrap().to_path_buf();
+    let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
+    let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
+
+    let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
+    compile_to_llvm(module_id, &contents, &mut module_reader).unwrap();
 
     Ok(())
 }
