@@ -1,0 +1,8 @@
+[package]
+name = "abra_llvm"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+abra_core = { path = "../abra_core" }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }

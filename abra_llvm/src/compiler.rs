@@ -2,10 +2,14 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::values::{BasicValue, FunctionValue};
-use crate::common::typed_ast_visitor::TypedAstVisitor;
-use crate::lexer::tokens::Token;
-use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
-use crate::TypedModule;
+use abra_core::common::typed_ast_visitor::TypedAstVisitor;
+use abra_core::lexer::tokens::Token;
+use abra_core::typechecker::typechecker::TypedModule;
+use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+// use crate::common::typed_ast_visitor::TypedAstVisitor;
+// use crate::lexer::tokens::Token;
+// use crate::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+// use crate::TypedModule;
 
 #[derive(Debug)]
 pub enum CompilerError {}
@@ -37,7 +41,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
 
         for _node in typed_module.typed_nodes {
-        //     compiler.visit(node)?;
+            //     compiler.visit(node)?;
         }
 
         builder.build_return(Some(&context.i64_type().const_int(69, false).as_basic_value_enum()));

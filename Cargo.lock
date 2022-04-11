@@ -7,6 +7,7 @@ name = "abra"
 version = "0.2.1"
 dependencies = [
  "abra_core",
+ "abra_llvm",
  "ansi_term",
  "clap",
  "dirs",
@@ -32,12 +33,19 @@ version = "0.5.7"
 dependencies = [
  "abra_native",
  "downcast-rs",
- "inkwell",
  "itertools",
  "peekmore",
  "rand",
  "strum",
  "strum_macros",
+]
+
+[[package]]
+name = "abra_llvm"
+version = "0.1.0"
+dependencies = [
+ "abra_core",
+ "inkwell",
 ]
 
 [[package]]

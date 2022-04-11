@@ -5,17 +5,18 @@ extern crate dirs;
 extern crate itertools;
 extern crate rustyline;
 
-use abra_core::common::fs_module_reader::FsModuleReader;
 use crate::repl::Repl;
-use abra_core::{compile, compile_and_disassemble, compile_to_c, compile_to_llvm, Error};
+use abra_core::common::fs_module_reader::FsModuleReader;
+use abra_core::{compile, compile_and_disassemble, compile_to_c, Error};
 use abra_core::builtins::common::to_string;
 use abra_core::common::display_error::DisplayError;
+use abra_core::module_loader::ModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
+use abra_llvm::compile_to_llvm;
 use std::path::PathBuf;
 use std::process::Command;
-use abra_core::module_loader::ModuleReader;
 
 mod repl;
 

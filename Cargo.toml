@@ -2,6 +2,7 @@
 members = [
     "abra_cli",
     "abra_core",
+    "abra_llvm",
     "abra_lsp",
     "abra_native",
     "abra_wasm",
