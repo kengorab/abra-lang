@@ -1,4 +1,1 @@
-import prompt from "io"
-
-val msg = prompt("Name > ")
-println("message:", msg)
+24

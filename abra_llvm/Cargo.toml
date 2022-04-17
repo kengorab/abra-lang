@@ -5,4 +5,5 @@ edition = "2018"
 
 [dependencies]
 abra_core = { path = "../abra_core" }
+cty = "0.2.2"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm11-0"] }

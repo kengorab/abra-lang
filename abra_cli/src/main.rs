@@ -14,7 +14,7 @@ use abra_core::module_loader::ModuleReader;
 use abra_core::parser::ast::ModuleId;
 use abra_core::vm::value::Value;
 use abra_core::vm::vm::{VM, VMContext};
-use abra_llvm::compile_to_llvm;
+use abra_llvm::compile_to_llvm_and_run;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -157,7 +157,7 @@ fn cmd_compile_llvm_and_run(opts: JitOpts) -> Result<(), ()> {
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
     let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
-    compile_to_llvm(module_id, &contents, &mut module_reader).unwrap();
+    compile_to_llvm_and_run(module_id, &contents, &mut module_reader).unwrap();
 
     Ok(())
 }
