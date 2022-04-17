@@ -16,7 +16,7 @@ pub enum CompilerError {}
 
 pub struct Compiler<'a, 'ctx> {
     context: &'ctx Context,
-    _builder: &'a Builder<'ctx>,
+    builder: &'a Builder<'ctx>,
     _module: &'a Module<'ctx>,
     _cur_fn: FunctionValue<'ctx>,
 }
@@ -29,11 +29,18 @@ pub type ModEntryFn = unsafe extern "C" fn() -> *const cty::c_char;
 pub const ENTRY_FN_NAME: &str = "__mod_entry";
 
 #[no_mangle]
-pub extern "C" fn int_to_str(int: cty::int64_t) -> *const cty::c_char {
-    CString::new(int.to_string()).unwrap().into_raw()
+pub extern "C" fn int_to_str(v: cty::int64_t) -> *const cty::c_char {
+    CString::new(v.to_string()).unwrap().into_raw()
 }
 #[used]
 static INT_TO_STR: [extern fn(cty::int64_t) -> *const cty::c_char; 1] = [int_to_str];
+
+#[no_mangle]
+pub extern "C" fn float_to_str(v: cty::c_double) -> *const cty::c_char {
+    CString::new(v.to_string()).unwrap().into_raw()
+}
+#[used]
+static FLOAT_TO_STR: [extern fn(cty::c_double) -> *const cty::c_char; 1] = [float_to_str];
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
     // If `test_mode` is true, the entrypoint function will return the last value in the module as
@@ -56,25 +63,39 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let mut compiler = Compiler {
             context: &context,
-            _builder: &builder,
+            builder: &builder,
             _module: &module,
             _cur_fn: entry_fn,
         };
 
         let mut last_item = context.i64_type().const_int(0, false).as_basic_value_enum();
+        let mut last_item_type = Type::Unit;
         for node in typed_module.typed_nodes {
+            last_item_type = node.get_type();
             last_item = compiler.visit(node)?;
         }
 
         let ret_val = if test_mode {
-            let int_to_str_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.i64_type().into()], false);
-            module.add_function("int_to_str", int_to_str_type, None);
+            let int_to_str_fn_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.i64_type().into()], false);
+            module.add_function("int_to_str", int_to_str_fn_type, None);
 
-            let int_to_str_fn = module.get_function("int_to_str").unwrap();
-            builder.build_call(int_to_str_fn, &[last_item.into()], "").try_as_basic_value().left().unwrap()
+            let float_to_str_fn_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.f64_type().into()], false);
+            module.add_function("float_to_str", float_to_str_fn_type, None);
+
+            let tostr_fn = match last_item_type {
+                Type::Int => module.get_function("int_to_str").unwrap(),
+                Type::Float => module.get_function("float_to_str").unwrap(),
+                _ => todo!()
+            };
+            builder.build_call(tostr_fn, &[last_item.into()], "").try_as_basic_value().left().unwrap()
         } else {
             let printf = module.get_function("printf").unwrap();
-            builder.build_call(printf, &[builder.build_global_string_ptr("%lld\n", "fmt").as_basic_value_enum().into(), last_item.into()], "");
+            let fmt_str = match last_item_type {
+                Type::Int => "%lld\n",
+                Type::Float => "%f\n",
+                _ => todo!()
+            };
+            builder.build_call(printf, &[builder.build_global_string_ptr(fmt_str, "fmt").as_basic_value_enum().into(), last_item.into()], "");
             context.i8_type().const_int(0, false).into()
         };
 
@@ -88,7 +109,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     fn visit_literal(&mut self, _token: Token, node: TypedLiteralNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let value = match node {
             TypedLiteralNode::IntLiteral(v) => self.context.i64_type().const_int(v as u64, false).into(),
-            TypedLiteralNode::FloatLiteral(_) |
+            TypedLiteralNode::FloatLiteral(v) => self.context.f64_type().const_float(v).into(),
             TypedLiteralNode::StringLiteral(_) |
             TypedLiteralNode::BoolLiteral(_) => todo!()
         };
@@ -102,9 +123,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let is_int = if node.expr.get_type() == Type::Int { true } else { false };
                 let value = self.visit(*node.expr)?;
                 if is_int {
-                    self._builder.build_int_neg(value.into_int_value(), "").into()
+                    self.builder.build_int_neg(value.into_int_value(), "").into()
                 } else {
-                    todo!()
+                    self.builder.build_float_neg(value.into_float_value(), "").into()
                 }
             }
             UnaryOp::Negate => todo!()

@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 use inkwell::context::Context;
 use inkwell::execution_engine::JitFunction;
 use inkwell::OptimizationLevel;
@@ -37,6 +36,8 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
 pub fn compile_to_llvm_and_run<'ctx, R>(module_id: ModuleId, contents: &String, module_reader: &mut R, context: &'ctx Context) -> Result<String, Error>
     where R: ModuleReader
 {
+    use std::ffi::CStr;
+
     let mut loader = ModuleLoader::new(module_reader);
 
     let module = typecheck(module_id, contents, &mut loader)?;

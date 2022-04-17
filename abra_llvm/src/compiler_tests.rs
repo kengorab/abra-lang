@@ -20,12 +20,18 @@ fn test_run_with_modules(input: &str, modules: Vec<(&str, &str)>) -> String {
 
 #[test]
 fn test_literals() {
-    let r = test_run_with_modules("24", vec![]);
-    assert_eq!(r, "24");
+    let res = test_run_with_modules("24", vec![]);
+    assert_eq!(res, "24");
+
+    let res = test_run_with_modules("24.6", vec![]);
+    assert_eq!(res, "24.6");
 }
 
 #[test]
 fn test_negation() {
-    let r = test_run_with_modules("-24", vec![]);
-    assert_eq!(r, "-24");
+    let res = test_run_with_modules("-24", vec![]);
+    assert_eq!(res, "-24");
+
+    let res = test_run_with_modules("-24.6", vec![]);
+    assert_eq!(res, "-24.6");
 }
