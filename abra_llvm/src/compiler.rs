@@ -84,12 +84,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             let float_to_str_fn_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.f64_type().into()], false);
             module.add_function("float_to_str", float_to_str_fn_type, None);
 
-            let tostr_fn = match last_item_type {
-                Type::Int => module.get_function("int_to_str").unwrap(),
-                Type::Float => module.get_function("float_to_str").unwrap(),
-                _ => todo!()
-            };
-            builder.build_call(tostr_fn, &[last_item.into()], "").try_as_basic_value().left().unwrap()
+            // let tostr_fn = match last_item_type {
+            //     Type::Int => module.get_function("int_to_str").unwrap(),
+            //     Type::Float => module.get_function("float_to_str").unwrap(),
+            //     _ => todo!()
+            // };
+            // builder.build_call(tostr_fn, &[last_item.into()], "").try_as_basic_value().left().unwrap()
+            builder.build_global_string_ptr("foobar", "").as_basic_value_enum()
         } else {
             let printf = module.get_function("printf").unwrap();
             let fmt_str = match last_item_type {
