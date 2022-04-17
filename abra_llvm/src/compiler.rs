@@ -30,6 +30,7 @@ pub const ENTRY_FN_NAME: &str = "__mod_entry";
 
 #[no_mangle]
 pub extern "C" fn int_to_str(v: cty::int64_t) -> *const cty::c_char {
+    println!("int_to_str");
     CString::new(v.to_string()).unwrap().into_raw()
 }
 #[used]
@@ -37,6 +38,7 @@ static INT_TO_STR: [extern fn(cty::int64_t) -> *const cty::c_char; 1] = [int_to_
 
 #[no_mangle]
 pub extern "C" fn float_to_str(v: cty::c_double) -> *const cty::c_char {
+    println!("float_to_str");
     CString::new(v.to_string()).unwrap().into_raw()
 }
 #[used]
