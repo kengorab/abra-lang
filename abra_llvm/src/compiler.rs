@@ -1,9 +1,9 @@
-use std::ffi::CString;
 use inkwell::AddressSpace;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue};
+use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue};
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::UnaryOp;
@@ -28,31 +28,12 @@ pub type ModEntryFn = unsafe extern "C" fn() -> *const cty::c_char;
 
 pub const ENTRY_FN_NAME: &str = "__mod_entry";
 
-#[no_mangle]
-pub extern "C" fn int_to_str(v: cty::int64_t) -> *const cty::c_char {
-    println!("int_to_str");
-    CString::new(v.to_string()).unwrap().into_raw()
-}
-#[used]
-static INT_TO_STR: [extern fn(cty::int64_t) -> *const cty::c_char; 1] = [int_to_str];
-
-#[no_mangle]
-pub extern "C" fn float_to_str(v: cty::c_double) -> *const cty::c_char {
-    println!("float_to_str");
-    CString::new(v.to_string()).unwrap().into_raw()
-}
-#[used]
-static FLOAT_TO_STR: [extern fn(cty::c_double) -> *const cty::c_char; 1] = [float_to_str];
-
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
     // If `test_mode` is true, the entrypoint function will return the last value in the module as
     // a string, rather than printing that string to stdout.
     pub fn compile_module(context: &'ctx Context, typed_module: TypedModule, test_mode: bool) -> Result<Module<'ctx>, CompilerError> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
-
-        let printf_type = context.i64_type().fn_type(&[context.i8_type().ptr_type(AddressSpace::Generic).into()], false);
-        module.add_function("printf", printf_type, None);
 
         let entry_fn_type = if test_mode {
             context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[], false)
@@ -70,41 +51,59 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             _cur_fn: entry_fn,
         };
 
-        let mut last_item = context.i64_type().const_int(0, false).as_basic_value_enum();
+        let snprintf_type = context.i64_type().fn_type(&[compiler.str_type().into(), context.i8_type().into(), compiler.str_type().into()], true);
+        let snprintf_fn = module.add_function("snprintf", snprintf_type, None);
+        let malloc_type = compiler.str_type().fn_type(&[context.i64_type().into()], false);
+        let malloc_fn = module.add_function("malloc", malloc_type, None);
+        let printf_type = context.i64_type().fn_type(&[compiler.str_type().into()], false);
+        let printf_fn = module.add_function("printf", printf_type, None);
+
+        let mut last_item = compiler.const0().as_basic_value_enum();
         let mut last_item_type = Type::Unit;
         for node in typed_module.typed_nodes {
             last_item_type = node.get_type();
             last_item = compiler.visit(node)?;
         }
 
-        let ret_val = if test_mode {
-            let int_to_str_fn_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.i64_type().into()], false);
-            module.add_function("int_to_str", int_to_str_fn_type, None);
-
-            let float_to_str_fn_type = context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[context.f64_type().into()], false);
-            module.add_function("float_to_str", float_to_str_fn_type, None);
-
-            // let tostr_fn = match last_item_type {
-            //     Type::Int => module.get_function("int_to_str").unwrap(),
-            //     Type::Float => module.get_function("float_to_str").unwrap(),
-            //     _ => todo!()
-            // };
-            // builder.build_call(tostr_fn, &[last_item.into()], "").try_as_basic_value().left().unwrap()
-            builder.build_global_string_ptr("foobar", "").as_basic_value_enum()
-        } else {
-            let printf = module.get_function("printf").unwrap();
-            let fmt_str = match last_item_type {
-                Type::Int => "%lld\n",
-                Type::Float => "%f\n",
-                _ => todo!()
-            };
-            builder.build_call(printf, &[builder.build_global_string_ptr(fmt_str, "fmt").as_basic_value_enum().into(), last_item.into()], "");
-            context.i8_type().const_int(0, false).into()
+        let fmt = match last_item_type {
+            Type::Int => "%lld",
+            Type::Float => "%f",
+            _ => todo!()
         };
+        let fmt_str = builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
+        let len = builder.build_call(snprintf_fn, &[compiler.null_ptr().into(), compiler.const0().into(), fmt_str.into(), last_item.into()], "len")
+            .try_as_basic_value().left().unwrap();
+        let len_plus_1 = builder.build_int_add(len.into_int_value(), compiler.const_int(1).into(), "len");
+        let result = builder.build_call(malloc_fn, &[len_plus_1.into()], "result").try_as_basic_value().left().unwrap();
+        let result = builder.build_pointer_cast(result.into_pointer_value(), compiler.str_type().into_pointer_type(), "result");
+        builder.build_call(snprintf_fn, &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()], "")
+            .try_as_basic_value().left().unwrap();
 
+        let ret_val = if test_mode {
+            result.as_basic_value_enum()
+        } else {
+            builder.build_call(printf_fn, &[builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()], "");
+            compiler.const0().as_basic_value_enum()
+        };
         builder.build_return(Some(&ret_val));
 
         Ok(module)
+    }
+
+    fn null_ptr(&self) -> BasicValueEnum {
+        self.str_type().const_zero()
+    }
+
+    fn const0(&self) -> IntValue<'ctx> {
+        self.context.i64_type().const_int(0, false)
+    }
+
+    fn const_int(&self, int: i64) -> IntValue<'ctx> {
+        self.context.i64_type().const_int(int as u64, false)
+    }
+
+    fn str_type(&self) -> BasicTypeEnum<'ctx> {
+        self.context.i8_type().ptr_type(AddressSpace::Generic).as_basic_type_enum()
     }
 }
 

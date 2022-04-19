@@ -24,7 +24,7 @@ fn test_literals() {
     assert_eq!(res, "24");
 
     let res = test_run_with_modules("24.6", vec![]);
-    assert_eq!(res, "24.6");
+    assert_eq!(res, "24.600000");
 }
 
 #[test]
@@ -33,5 +33,5 @@ fn test_negation() {
     assert_eq!(res, "-24");
 
     let res = test_run_with_modules("-24.6", vec![]);
-    assert_eq!(res, "-24.6");
+    assert_eq!(res, "-24.600000");
 }
