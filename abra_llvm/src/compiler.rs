@@ -17,8 +17,8 @@ pub enum CompilerError {}
 pub struct Compiler<'a, 'ctx> {
     context: &'ctx Context,
     builder: &'a Builder<'ctx>,
-    _module: &'a Module<'ctx>,
-    _cur_fn: FunctionValue<'ctx>,
+    module: &'a Module<'ctx>,
+    cur_fn: Option<FunctionValue<'ctx>>,
 }
 
 #[cfg(not(test))]
@@ -29,34 +29,17 @@ pub type ModEntryFn = unsafe extern "C" fn() -> *const cty::c_char;
 pub const ENTRY_FN_NAME: &str = "__mod_entry";
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    // If `test_mode` is true, the entrypoint function will return the last value in the module as
-    // a string, rather than printing that string to stdout.
     pub fn compile_module(context: &'ctx Context, typed_module: TypedModule, test_mode: bool) -> Result<Module<'ctx>, CompilerError> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
 
-        let entry_fn_type = if test_mode {
-            context.i8_type().ptr_type(AddressSpace::Generic).fn_type(&[], false)
-        } else {
-            context.void_type().fn_type(&[], false)
-        };
-        let entry_fn = module.add_function( ENTRY_FN_NAME, entry_fn_type, None );
-        let entry_fn_bb = context.append_basic_block(entry_fn, "entry_fn_bb");
-        builder.position_at_end(entry_fn_bb);
-
         let mut compiler = Compiler {
             context: &context,
             builder: &builder,
-            _module: &module,
-            _cur_fn: entry_fn,
+            module: &module,
+            cur_fn: None,
         };
-
-        let snprintf_type = context.i64_type().fn_type(&[compiler.str_type().into(), context.i8_type().into(), compiler.str_type().into()], true);
-        let snprintf_fn = module.add_function("snprintf", snprintf_type, None);
-        let malloc_type = compiler.str_type().fn_type(&[context.i64_type().into()], false);
-        let malloc_fn = module.add_function("malloc", malloc_type, None);
-        let printf_type = context.i64_type().fn_type(&[compiler.str_type().into()], false);
-        let printf_fn = module.add_function("printf", printf_type, None);
+        compiler.init(test_mode);
 
         let mut last_item = compiler.const0().as_basic_value_enum();
         let mut last_item_type = Type::Unit;
@@ -65,29 +48,78 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             last_item = compiler.visit(node)?;
         }
 
+        compiler.finalize(test_mode, last_item_type, last_item);
+
+        Ok(module)
+    }
+
+    fn init(&mut self, test_mode: bool) {
+        let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i8_type().into(), self.str_type().into()], true);
+        self.module.add_function("snprintf", snprintf_type, None);
+        let malloc_type = self.str_type().fn_type(&[self.context.i64_type().into()], false);
+        self.module.add_function("malloc", malloc_type, None);
+        let printf_type = self.context.i64_type().fn_type(&[self.str_type().into()], false);
+        self.module.add_function("printf", printf_type, None);
+
+        // If `test_mode` is true, the entrypoint function will return the last value in the module
+        // as a string, rather than only printing that string to stdout.
+        let entry_fn_type = if test_mode {
+            self.str_type().fn_type(&[], false)
+        } else {
+            self.context.void_type().fn_type(&[], false)
+        };
+        let entry_fn = self.module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
+        let entry_fn_bb = self.context.append_basic_block(entry_fn, "entry_fn_bb");
+        self.builder.position_at_end(entry_fn_bb);
+        self.cur_fn = Some(entry_fn);
+    }
+
+    fn finalize(&self, test_mode: bool, last_item_type: Type, last_item: BasicValueEnum) {
         let fmt = match last_item_type {
             Type::Int => "%lld",
             Type::Float => "%f",
             _ => todo!()
         };
-        let fmt_str = builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
-        let len = builder.build_call(snprintf_fn, &[compiler.null_ptr().into(), compiler.const0().into(), fmt_str.into(), last_item.into()], "len")
-            .try_as_basic_value().left().unwrap();
-        let len_plus_1 = builder.build_int_add(len.into_int_value(), compiler.const_int(1).into(), "len");
-        let result = builder.build_call(malloc_fn, &[len_plus_1.into()], "result").try_as_basic_value().left().unwrap();
-        let result = builder.build_pointer_cast(result.into_pointer_value(), compiler.str_type().into_pointer_type(), "result");
-        builder.build_call(snprintf_fn, &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()], "")
-            .try_as_basic_value().left().unwrap();
+        let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
 
+        // Print formatted value, using extra snprintf to determine required buffer length
+        //   int len = snprintf(NULL, 0, fmt, value);
+        //   char *result = malloc(len + 1);
+        //   snprintf(result, len + 1, fmt, value);
+        let snprintf_fn = self.get_function("snprintf");
+        let len = self.builder.build_call(
+            snprintf_fn,
+            &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), last_item.into()],
+            "len",
+        ).try_as_basic_value().left().unwrap();
+        let len_plus_1 = self.builder.build_int_add(len.into_int_value(), self.const_int(1).into(), "len");
+        let result = self.builder.build_call(
+            self.get_function("malloc"),
+            &[len_plus_1.into()],
+            "result",
+        ).try_as_basic_value().left().unwrap();
+        let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
+        self.builder.build_call(
+            snprintf_fn,
+            &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()],
+            "",
+        ).try_as_basic_value().left().unwrap();
+
+        // If `test_mode` is true, the entrypoint function will return the last value in the module
+        // as a string, rather than only printing that string to stdout.
         let ret_val = if test_mode {
             result.as_basic_value_enum()
         } else {
-            builder.build_call(printf_fn, &[builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()], "");
-            compiler.const0().as_basic_value_enum()
-        };
-        builder.build_return(Some(&ret_val));
+            let printf_fn = self.get_function("printf");
 
-        Ok(module)
+            self.builder.build_call(
+                printf_fn,
+                &[self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()],
+                "",
+            );
+            self.const0().as_basic_value_enum()
+        };
+        self.builder.build_return(Some(&ret_val));
     }
 
     fn null_ptr(&self) -> BasicValueEnum {
@@ -104,6 +136,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn str_type(&self) -> BasicTypeEnum<'ctx> {
         self.context.i8_type().ptr_type(AddressSpace::Generic).as_basic_type_enum()
+    }
+
+    fn get_function<S: AsRef<str>>(&self, name: S) -> FunctionValue<'ctx> {
+        self.module.get_function(name.as_ref()).expect(&format!("Expected function {} to exist", name.as_ref()))
     }
 }
 
