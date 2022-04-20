@@ -1,4 +1,4 @@
-use inkwell::AddressSpace;
+use inkwell::{AddressSpace, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -50,6 +50,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         compiler.finalize(test_mode, last_item_type, last_item);
 
+        // module.print_to_stderr();
         Ok(module)
     }
 
@@ -75,35 +76,65 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn finalize(&self, test_mode: bool, last_item_type: Type, last_item: BasicValueEnum) {
-        let fmt = match last_item_type {
-            Type::Int => "%lld",
-            Type::Float => "%f",
+        let result = match last_item_type {
+            Type::Int | Type::Float => {
+                let fmt = match last_item_type {
+                    Type::Int => "%lld",
+                    Type::Float => "%f",
+                    _ => unreachable!()
+                };
+                let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
+
+                // Print formatted value, using extra snprintf to determine required buffer length
+                //   int len = snprintf(NULL, 0, fmt, value);
+                //   char *result = malloc(len + 1);
+                //   snprintf(result, len + 1, fmt, value);
+                let snprintf_fn = self.get_function("snprintf");
+                let len = self.builder.build_call(
+                    snprintf_fn,
+                    &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), last_item.into()],
+                    "len",
+                ).try_as_basic_value().left().unwrap();
+                let len_plus_1 = self.builder.build_int_add(len.into_int_value(), self.const_int(1).into(), "len");
+                let result = self.builder.build_call(
+                    self.get_function("malloc"),
+                    &[len_plus_1.into()],
+                    "result",
+                ).try_as_basic_value().left().unwrap();
+                let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
+                self.builder.build_call(
+                    snprintf_fn,
+                    &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()],
+                    "",
+                ).try_as_basic_value().left().unwrap();
+                result.as_basic_value_enum()
+            }
+            Type::Bool => {
+                let cond = self.builder.build_int_compare(IntPredicate::EQ, last_item.into_int_value(), self.const0().into(), "cond");
+
+                let function = self.cur_fn.unwrap();
+                let then_bb = self.context.append_basic_block(function, "then");
+                let else_bb = self.context.append_basic_block(function, "else");
+                let cont_bb = self.context.append_basic_block(function, "cont");
+                self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                self.builder.position_at_end(then_bb);
+                let then_val = self.builder.build_global_string_ptr("false", "");
+                self.builder.build_unconditional_branch(cont_bb);
+                let then_bb = self.builder.get_insert_block().unwrap();
+
+                self.builder.position_at_end(else_bb);
+                let else_val = self.builder.build_global_string_ptr("true", "");
+                self.builder.build_unconditional_branch(cont_bb);
+                let else_bb = self.builder.get_insert_block().unwrap();
+
+                self.builder.position_at_end(cont_bb);
+                let phi = self.builder.build_phi(self.str_type(), "");
+                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                phi.as_basic_value()
+            }
             _ => todo!()
         };
-        let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
-
-        // Print formatted value, using extra snprintf to determine required buffer length
-        //   int len = snprintf(NULL, 0, fmt, value);
-        //   char *result = malloc(len + 1);
-        //   snprintf(result, len + 1, fmt, value);
-        let snprintf_fn = self.get_function("snprintf");
-        let len = self.builder.build_call(
-            snprintf_fn,
-            &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), last_item.into()],
-            "len",
-        ).try_as_basic_value().left().unwrap();
-        let len_plus_1 = self.builder.build_int_add(len.into_int_value(), self.const_int(1).into(), "len");
-        let result = self.builder.build_call(
-            self.get_function("malloc"),
-            &[len_plus_1.into()],
-            "result",
-        ).try_as_basic_value().left().unwrap();
-        let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
-        self.builder.build_call(
-            snprintf_fn,
-            &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()],
-            "",
-        ).try_as_basic_value().left().unwrap();
 
         // If `test_mode` is true, the entrypoint function will return the last value in the module
         // as a string, rather than only printing that string to stdout.
@@ -148,8 +179,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let value = match node {
             TypedLiteralNode::IntLiteral(v) => self.context.i64_type().const_int(v as u64, false).into(),
             TypedLiteralNode::FloatLiteral(v) => self.context.f64_type().const_float(v).into(),
-            TypedLiteralNode::StringLiteral(_) |
-            TypedLiteralNode::BoolLiteral(_) => todo!()
+            TypedLiteralNode::StringLiteral(_) => todo!(),
+            TypedLiteralNode::BoolLiteral(v) => self.context.bool_type().const_int(if v { 1 } else { 0 }, false).into(),
         };
 
         Ok(value)
@@ -166,7 +197,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     self.builder.build_float_neg(value.into_float_value(), "").into()
                 }
             }
-            UnaryOp::Negate => todo!()
+            UnaryOp::Negate => {
+                debug_assert!(node.typ == Type::Bool);
+                let value = self.visit(*node.expr)?;
+                self.builder.build_not(value.into_int_value(), "").into()
+            }
         };
 
         Ok(value)

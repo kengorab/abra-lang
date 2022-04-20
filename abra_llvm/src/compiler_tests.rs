@@ -25,6 +25,12 @@ fn test_literals() {
 
     let res = test_run_with_modules("24.6", vec![]);
     assert_eq!(res, "24.600000");
+
+    let res = test_run_with_modules("true", vec![]);
+    assert_eq!(res, "true");
+
+    let res = test_run_with_modules("false", vec![]);
+    assert_eq!(res, "false");
 }
 
 #[test]
@@ -34,4 +40,14 @@ fn test_negation() {
 
     let res = test_run_with_modules("-24.6", vec![]);
     assert_eq!(res, "-24.600000");
+
+    let res = test_run_with_modules("!true", vec![]);
+    assert_eq!(res, "false");
+    let res = test_run_with_modules("!!true", vec![]);
+    assert_eq!(res, "true");
+
+    let res = test_run_with_modules("!false", vec![]);
+    assert_eq!(res, "true");
+    let res = test_run_with_modules("!!false", vec![]);
+    assert_eq!(res, "false");
 }
