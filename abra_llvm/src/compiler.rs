@@ -1,4 +1,4 @@
-use inkwell::{AddressSpace, IntPredicate};
+use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -6,7 +6,7 @@ use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue};
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
-use abra_core::parser::ast::UnaryOp;
+use abra_core::parser::ast::{BinaryOp, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::Type;
@@ -61,6 +61,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function("malloc", malloc_type, None);
         let printf_type = self.context.i64_type().fn_type(&[self.str_type().into()], false);
         self.module.add_function("printf", printf_type, None);
+        let powf64_type = self.context.f64_type().fn_type(&[self.context.f64_type().into(), self.context.f64_type().into()], false);
+        self.module.add_function("llvm.pow.f64", powf64_type, None);
 
         // If `test_mode` is true, the entrypoint function will return the last value in the module
         // as a string, rather than only printing that string to stdout.
@@ -198,7 +200,6 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 }
             }
             UnaryOp::Negate => {
-                debug_assert!(node.typ == Type::Bool);
                 let value = self.visit(*node.expr)?;
                 self.builder.build_not(value.into_int_value(), "").into()
             }
@@ -207,12 +208,126 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(value)
     }
 
-    fn visit_binary(&mut self, _token: Token, _node: TypedBinaryNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_binary(&mut self, _token: Token, node: TypedBinaryNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let ltype = node.left.get_type();
+        let rtype = node.right.get_type();
+
+        let value = match (ltype, rtype, &node.op) {
+            (Type::Int, Type::Int, op) => {
+                let left = self.visit(*node.left)?;
+                let right = self.visit(*node.right)?;
+
+                match op {
+                    BinaryOp::Add => self.builder.build_int_add(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Sub => self.builder.build_int_sub(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Mul => self.builder.build_int_mul(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Div => {
+                        let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left");
+                        let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "right");
+
+                        self.builder.build_float_div(left, right, "").into()
+                    },
+                    BinaryOp::Mod => self.builder.build_int_signed_rem(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Pow => {
+                        let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left");
+                        let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "right");
+
+                        let powf64_fn = self.get_function("llvm.pow.f64");
+                        self.builder.build_call(powf64_fn, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap()
+                    }
+                    BinaryOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Neq => self.builder.build_int_compare(IntPredicate::NE, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Gt => self.builder.build_int_compare(IntPredicate::SGT, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Gte => self.builder.build_int_compare(IntPredicate::SGE, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Lt => self.builder.build_int_compare(IntPredicate::SLT, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Lte => self.builder.build_int_compare(IntPredicate::SLE, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
+                }
+            }
+            (ltype @ Type::Float, rtype @ Type::Int, op) |
+            (ltype @ Type::Int, rtype @ Type::Float, op) |
+            (ltype @ Type::Float, rtype @ Type::Float, op) => {
+                let left = self.visit(*node.left)?;
+                let right = self.visit(*node.right)?;
+
+                let left = if ltype == Type::Int {
+                    self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left")
+                } else { left.into_float_value() };
+                let right = if rtype == Type::Int {
+                    self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "left")
+                } else { right.into_float_value() };
+
+                match op {
+                    BinaryOp::Add => self.builder.build_float_add(left, right, "").into(),
+                    BinaryOp::Sub => self.builder.build_float_sub(left, right, "").into(),
+                    BinaryOp::Mul => self.builder.build_float_mul(left, right, "").into(),
+                    BinaryOp::Div => self.builder.build_float_div(left, right, "").into(),
+                    BinaryOp::Mod => self.builder.build_float_rem(left, right, "").into(),
+                    BinaryOp::Pow => {
+                        let powf64_fn = self.get_function("llvm.pow.f64");
+
+                        // if a < 0 { -(-a ** b) } else { a ** b }
+                        let cond = self.builder.build_float_compare(FloatPredicate::OLT, left, self.context.f64_type().const_float(0.0).into(), "cond");
+                        let function = self.cur_fn.unwrap();
+                        let then_bb = self.context.append_basic_block(function, "then");
+                        let else_bb = self.context.append_basic_block(function, "else");
+                        let cont_bb = self.context.append_basic_block(function, "cont");
+                        self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                        self.builder.position_at_end(then_bb);
+                        let then_val = {
+                            let left = self.builder.build_float_mul(left, self.context.f64_type().const_float(-1.0), "");
+                            let left = self.builder.build_call(powf64_fn, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap().into_float_value();
+                            self.builder.build_float_mul(left, self.context.f64_type().const_float(-1.0), "")
+                        };
+                        self.builder.build_unconditional_branch(cont_bb);
+                        let then_bb = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(else_bb);
+                        let else_val = self.builder.build_call(powf64_fn, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap();
+                        self.builder.build_unconditional_branch(cont_bb);
+                        let else_bb = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(cont_bb);
+                        let phi = self.builder.build_phi(self.context.f64_type(), "");
+                        phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                        phi.as_basic_value()
+                    }
+                    BinaryOp::Eq => self.builder.build_float_compare(FloatPredicate::OEQ, left, right, "").into(),
+                    BinaryOp::Neq => self.builder.build_float_compare(FloatPredicate::ONE, left, right, "").into(),
+                    BinaryOp::Gt => self.builder.build_float_compare(FloatPredicate::OGT, left, right, "").into(),
+                    BinaryOp::Gte => self.builder.build_float_compare(FloatPredicate::OGE, left, right, "").into(),
+                    BinaryOp::Lt => self.builder.build_float_compare(FloatPredicate::OLT, left, right, "").into(),
+                    BinaryOp::Lte => self.builder.build_float_compare(FloatPredicate::OLE, left, right, "").into(),
+                    BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
+                }
+            }
+            (Type::Bool, Type::Bool, op) => {
+                let left = self.visit(*node.left)?;
+                let right = self.visit(*node.right)?;
+
+                match op {
+                    BinaryOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Neq => self.builder.build_int_compare(IntPredicate::NE, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::And | BinaryOp::Or => unreachable!("`and` & `or` handled as if-expressions for short-circuiting"),
+                    BinaryOp::Xor => self.builder.build_xor(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
+                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte | BinaryOp::Pow => unreachable!("No arithmetic ops apply to boolean values"),
+                }
+            }
+            _ => todo!()
+        };
+
+        Ok(value)
     }
 
-    fn visit_grouped(&mut self, _token: Token, _node: TypedGroupedNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_grouped(&mut self, _token: Token, node: TypedGroupedNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        self.visit(*node.expr)
     }
 
     fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
