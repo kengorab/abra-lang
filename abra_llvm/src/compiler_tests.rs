@@ -31,6 +31,12 @@ fn test_literals() {
 
     let res = test_run_with_modules("false", vec![]);
     assert_eq!(res, "false");
+
+    let res = test_run_with_modules("\"hello world\"", vec![]);
+    assert_eq!(res, "hello world");
+
+    let res = test_run_with_modules("\"hello 👋\"", vec![]);
+    assert_eq!(res, "hello 👋");
 }
 
 #[test]
