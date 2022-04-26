@@ -193,3 +193,21 @@ fn test_binary_operations_booleans() {
         assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
     }
 }
+
+#[test]
+fn test_binary_operations_string_concat() {
+    let cases = [
+        (r#""hello " + "world""#, "hello world"),
+        (r#""a" + 1"#, "a1"),
+        (r#""a" + 1.2"#, "a1.200000"),
+        (r#""a" + true"#, "atrue"),
+        (r#"1 + "b""#, "1b"),
+        (r#"1.2 + "b""#, "1.200000b"),
+        (r#"false + "b""#, "falseb"),
+    ];
+
+    for (input, expected) in cases {
+        let res = test_run_with_modules(input, vec![]);
+        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
+    }
+}

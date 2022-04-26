@@ -3,7 +3,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::{BasicType, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue};
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, UnaryOp};
@@ -24,23 +24,27 @@ pub const PLACEHOLDER_TYPE_NAME: &str = "__placeholder";
 pub enum CompilerError {}
 
 struct KnownFns<'ctx> {
+    snprintf: FunctionValue<'ctx>,
     printf: FunctionValue<'ctx>,
     powf64: FunctionValue<'ctx>,
     malloc: FunctionValue<'ctx>,
+    memcpy: FunctionValue<'ctx>,
 }
 
 impl<'ctx> KnownFns<'ctx> {
     fn initial_value(placeholder: FunctionValue<'ctx>) -> Self {
         KnownFns {
+            snprintf: placeholder,
             printf: placeholder,
             powf64: placeholder,
             malloc: placeholder,
+            memcpy: placeholder,
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { printf, powf64, malloc} = self;
-        [printf, powf64, malloc].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy} = self;
+        [snprintf, printf, powf64, malloc, memcpy].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -106,10 +110,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn init(&mut self, test_mode: bool) {
         let malloc_type = self.str_type().fn_type(&[self.context.i64_type().into()], false);
         self.known_fns.malloc = self.module.add_function("malloc", malloc_type, None);
+        let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i64_type().into(), self.str_type().into()], true);
+        self.known_fns.snprintf = self.module.add_function("snprintf", snprintf_type, None);
         let printf_type = self.context.i64_type().fn_type(&[self.str_type().into()], true);
         self.known_fns.printf = self.module.add_function("printf", printf_type, None);
         let powf64_type = self.context.f64_type().fn_type(&[self.context.f64_type().into(), self.context.f64_type().into()], false);
         self.known_fns.powf64 = self.module.add_function("llvm.pow.f64", powf64_type, None);
+        let memcpy_type = self.str_type().fn_type(&[self.str_type().into(), self.str_type().into(), self.context.i32_type().into()], false);
+        self.known_fns.memcpy = self.module.add_function("memcpy", memcpy_type, None);
 
         let string_type = self.context.opaque_struct_type("String");
         string_type.set_body(&[
@@ -139,73 +147,75 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
-    fn finalize(&self, test_mode: bool, last_item_type: Type, last_item: BasicValueEnum) {
-        let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i64_type().into(), self.str_type().into()], true);
-        let snprintf = self.module.add_function("snprintf", snprintf_type, None);
+    fn gen_num_to_string(&self, is_float: bool, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
+        let fmt = if is_float { "%f" } else { "%lld" };
+        let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
 
-        let result = match last_item_type {
-            Type::Int | Type::Float => {
-                let fmt = match last_item_type {
-                    Type::Int => "%lld",
-                    Type::Float => "%f",
-                    _ => unreachable!()
-                };
-                let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
+        // Print formatted value, using extra snprintf to determine required buffer length
+        //   int len = snprintf(NULL, 0, fmt, value);
+        //   char *result = malloc(len + 1);
+        //   snprintf(result, len + 1, fmt, value);
+        let len = self.builder.build_call(
+            self.known_fns.snprintf,
+            &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), value.into()],
+            "len",
+        ).try_as_basic_value().left().unwrap();
+        let len = len.into_int_value();
+        let len_plus_1 = self.builder.build_int_add(len, self.const_int(1).into(), "len");
+        let result = self.builder.build_call(
+            self.known_fns.malloc,
+            &[len_plus_1.into()],
+            "result",
+        ).try_as_basic_value().left().unwrap();
+        let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
+        self.builder.build_call(
+            self.known_fns.snprintf,
+            &[result.into(), len_plus_1.into(), fmt_str.into(), value.into()],
+            "",
+        ).try_as_basic_value().left().unwrap();
 
-                // Print formatted value, using extra snprintf to determine required buffer length
-                //   int len = snprintf(NULL, 0, fmt, value);
-                //   char *result = malloc(len + 1);
-                //   snprintf(result, len + 1, fmt, value);
-                let len = self.builder.build_call(
-                    snprintf,
-                    &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), last_item.into()],
-                    "len",
-                ).try_as_basic_value().left().unwrap();
-                let len_plus_1 = self.builder.build_int_add(len.into_int_value(), self.const_int(1).into(), "len");
-                let result = self.builder.build_call(
-                    self.known_fns.malloc,
-                    &[len_plus_1.into()],
-                    "result",
-                ).try_as_basic_value().left().unwrap();
-                let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
-                self.builder.build_call(
-                    snprintf,
-                    &[result.into(), len_plus_1.into(), fmt_str.into(), last_item.into()],
-                    "",
-                ).try_as_basic_value().left().unwrap();
-                result.as_basic_value_enum()
-            }
-            Type::Bool => {
-                let cond = self.builder.build_int_compare(IntPredicate::EQ, last_item.into_int_value(), self.const0().into(), "cond");
+        self.alloc_string_obj(len, result)
+    }
 
-                let function = self.cur_fn;
-                let then_bb = self.context.append_basic_block(function, "then");
-                let else_bb = self.context.append_basic_block(function, "else");
-                let cont_bb = self.context.append_basic_block(function, "cont");
-                self.builder.build_conditional_branch(cond, then_bb, else_bb);
+    fn gen_bool_to_str(&self, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
+        let cond = self.builder.build_int_compare(IntPredicate::EQ, value.into_int_value(), self.const0().into(), "cond");
 
-                self.builder.position_at_end(then_bb);
-                let then_val = self.builder.build_global_string_ptr("false", "");
-                self.builder.build_unconditional_branch(cont_bb);
-                let then_bb = self.builder.get_insert_block().unwrap();
+        let function = self.cur_fn;
+        let then_bb = self.context.append_basic_block(function, "then");
+        let else_bb = self.context.append_basic_block(function, "else");
+        let cont_bb = self.context.append_basic_block(function, "cont");
+        self.builder.build_conditional_branch(cond, then_bb, else_bb);
 
-                self.builder.position_at_end(else_bb);
-                let else_val = self.builder.build_global_string_ptr("true", "");
-                self.builder.build_unconditional_branch(cont_bb);
-                let else_bb = self.builder.get_insert_block().unwrap();
+        self.builder.position_at_end(then_bb);
+        let then_val = self.alloc_const_string_obj("false");
+        self.builder.build_unconditional_branch(cont_bb);
+        let then_bb = self.builder.get_insert_block().unwrap();
 
-                self.builder.position_at_end(cont_bb);
-                let phi = self.builder.build_phi(self.str_type(), "");
-                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
-                phi.as_basic_value()
-            }
-            Type::String => {
-                let str = self.builder.build_pointer_cast(last_item.into_pointer_value(), self.known_types.string.ptr_type(AddressSpace::Generic), "");
-                let str_chars = self.builder.build_struct_gep(str, 1, "str_chars").unwrap();
-                self.builder.build_load(str_chars, "str_chars").into()
-            }
+        self.builder.position_at_end(else_bb);
+        let else_val = self.alloc_const_string_obj("true");
+        self.builder.build_unconditional_branch(cont_bb);
+        let else_bb = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(cont_bb);
+        let phi = self.builder.build_phi(self.known_types.string.ptr_type(AddressSpace::Generic), "");
+        phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+        phi.as_basic_value().into_pointer_value()
+    }
+
+    fn gen_value_to_str(&self, typ: Type, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
+        match typ {
+            Type::Int => self.gen_num_to_string(false, value),
+            Type::Float => self.gen_num_to_string(true, value),
+            Type::Bool => self.gen_bool_to_str(value),
+            Type::String => value.into_pointer_value(),
             _ => todo!()
-        };
+        }
+    }
+
+    fn finalize(&self, test_mode: bool, last_item_type: Type, last_item: BasicValueEnum<'ctx>) {
+        let result_string= self.gen_value_to_str(last_item_type, last_item);
+        let result_string_chars = self.builder.build_struct_gep(result_string, 1, "").unwrap();
+        let result = self.builder.build_load(result_string_chars, "res");
 
         // If `test_mode` is true, the entrypoint function will return the last value in the module
         // as a string, rather than only printing that string to stdout.
@@ -221,7 +231,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
     }
 
-    fn null_ptr(&self) -> BasicValueEnum {
+    fn null_ptr(&self) -> BasicValueEnum<'ctx> {
         self.str_type().const_zero()
     }
 
@@ -236,6 +246,34 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn str_type(&self) -> BasicTypeEnum<'ctx> {
         self.context.i8_type().ptr_type(AddressSpace::Generic).as_basic_type_enum()
     }
+
+    fn alloc_string_obj(&self, length_val: IntValue<'ctx>, chars_val: PointerValue<'ctx>) -> PointerValue<'ctx> {
+        // String* str = (String*) malloc(sizeof(String));
+        // str->length = <length_val>;
+        // str->chars = <chars_val>;
+        let str_mem = self.builder.build_call(
+            self.known_fns.malloc,
+            &[self.known_types.string.size_of().unwrap().into()],
+            "str_mem",
+        ).try_as_basic_value().left().unwrap().into_pointer_value();
+        let str = self.builder.build_pointer_cast(str_mem, self.known_types.string.ptr_type(AddressSpace::Generic), "str");
+        let str_length = self.builder.build_struct_gep(str, 0, "str_length").unwrap();
+        self.builder.build_store(str_length, length_val);
+        let str_chars = self.builder.build_struct_gep(str, 1, "str_chars").unwrap();
+        self.builder.build_store(str_chars, chars_val);
+
+        str
+    }
+
+    fn alloc_const_string_obj<S: AsRef<str>>(&self, s: S) -> PointerValue<'ctx> {
+        let str = s.as_ref();
+        let len = str.len();
+
+        self.alloc_string_obj(
+            self.context.i64_type().const_int(len as u64, false),
+            self.builder.build_global_string_ptr(str, "").as_pointer_value(),
+        )
+    }
 }
 
 impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'a, 'ctx> {
@@ -243,23 +281,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let value = match node {
             TypedLiteralNode::IntLiteral(v) => self.context.i64_type().const_int(v as u64, false).into(),
             TypedLiteralNode::FloatLiteral(v) => self.context.f64_type().const_float(v).into(),
-            TypedLiteralNode::StringLiteral(v) => {
-                // String* str = (String*) malloc(sizeof(String));
-                // str->length = <literal.length>;
-                // str->chars = <literal.chars>;
-                let str_mem = self.builder.build_call(
-                    self.known_fns.malloc,
-                    &[self.known_types.string.size_of().unwrap().into()],
-                    "str_mem",
-                ).try_as_basic_value().left().unwrap().into_pointer_value();
-                let str = self.builder.build_pointer_cast(str_mem, self.known_types.string.ptr_type(AddressSpace::Generic), "str");
-                let str_length = self.builder.build_struct_gep(str, 0, "str_length").unwrap();
-                self.builder.build_store(str_length, self.context.i64_type().const_int(v.len() as u64, false));
-                let str_chars = self.builder.build_struct_gep(str, 1, "str_chars").unwrap();
-                self.builder.build_store(str_chars, self.builder.build_global_string_ptr(v.as_str(), ""));
-
-                str.into()
-            },
+            TypedLiteralNode::StringLiteral(v) => self.alloc_const_string_obj(v.as_str()).into(),
             TypedLiteralNode::BoolLiteral(v) => self.context.bool_type().const_int(if v { 1 } else { 0 }, false).into(),
         };
 
@@ -406,6 +428,38 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte | BinaryOp::Pow => unreachable!("No arithmetic ops apply to boolean values"),
                 }
+            }
+            (ltype @ Type::String, rtype @ Type::Int, BinaryOp::Add) |
+            (ltype @ Type::String, rtype @ Type::Float, BinaryOp::Add) |
+            (ltype @ Type::String, rtype @ Type::Bool, BinaryOp::Add) |
+            (ltype @ Type::Int, rtype @ Type::String, BinaryOp::Add) |
+            (ltype @ Type::Float, rtype @ Type::String, BinaryOp::Add) |
+            (ltype @ Type::Bool, rtype @ Type::String, BinaryOp::Add) |
+            (ltype @ Type::String, rtype @ Type::String, BinaryOp::Add) => {
+                let left = self.visit(*node.left)?;
+                let right = self.visit(*node.right)?;
+
+                let left_string = self.gen_value_to_str(ltype, left);
+                let left_len = self.builder.build_load(self.builder.build_struct_gep(left_string, 0, "left_len").unwrap(), "left_len").into_int_value();
+                let left_chars = self.builder.build_load(self.builder.build_struct_gep(left_string, 1, "left_chars").unwrap(), "").into_pointer_value();
+                let right_string = self.gen_value_to_str(rtype, right);
+                let right_len = self.builder.build_load(self.builder.build_struct_gep(right_string, 0, "right_len").unwrap(), "right_len").into_int_value();
+                let right_chars = self.builder.build_load(self.builder.build_struct_gep(right_string, 1, "right_chars").unwrap(), "").into_pointer_value();
+
+                let length = self.builder.build_int_add(left_len, right_len, "length");
+                let length_plus_1 = self.builder.build_int_add(length, self.const_int(1).into(), "");
+                let mem = self.builder.build_call(self.known_fns.malloc, &[length_plus_1.into()], "mem")
+                    .try_as_basic_value().left().unwrap()
+                    .into_pointer_value();
+                self.builder.build_call(self.known_fns.memcpy, &[mem.into(), left_chars.into(), left_len.into()], "")
+                    .try_as_basic_value().left().unwrap();
+                let mem_offset = unsafe { mem.const_gep(&[left_len]) };
+                self.builder.build_call(self.known_fns.memcpy, &[mem_offset.into(), right_chars.into(), right_len.into()], "")
+                    .try_as_basic_value().left().unwrap();
+                let mem_offset = unsafe { mem.const_gep(&[length]) };
+                self.builder.build_store(mem_offset, self.context.i8_type().const_zero());
+
+                self.alloc_string_obj(length, mem).into()
             }
             _ => todo!()
         };
