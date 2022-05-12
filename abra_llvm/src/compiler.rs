@@ -11,14 +11,9 @@ use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::Type;
 
-#[cfg(not(test))]
-pub type ModEntryFn = unsafe extern "C" fn() -> ();
-#[cfg(test)]
-pub type ModEntryFn = unsafe extern "C" fn() -> *const cty::c_char;
-
-pub const ENTRY_FN_NAME: &str = "__mod_entry";
-pub const PLACEHOLDER_FN_NAME: &str = "__placeholder";
-pub const PLACEHOLDER_TYPE_NAME: &str = "__placeholder";
+const ENTRY_FN_NAME: &str = "__mod_entry";
+const PLACEHOLDER_FN_NAME: &str = "__placeholder";
+const PLACEHOLDER_TYPE_NAME: &str = "__placeholder";
 
 #[derive(Debug)]
 pub enum CompilerError {}
@@ -51,18 +46,20 @@ impl<'ctx> KnownFns<'ctx> {
 
 struct KnownTypes<'ctx> {
     string: StructType<'ctx>,
+    array: StructType<'ctx>,
 }
 
 impl<'ctx> KnownTypes<'ctx> {
     fn initial_value(placeholder: StructType<'ctx>) -> Self {
         KnownTypes {
             string: placeholder,
+            array: placeholder,
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownTypes { string } = self;
-        [string].iter()
+        let KnownTypes { string, array } = self;
+        [string, array].iter()
             .all(|f| f.get_name().unwrap().to_str().unwrap().ne(PLACEHOLDER_TYPE_NAME))
     }
 }
@@ -109,7 +106,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn init(&mut self, test_mode: bool) {
         let malloc_type = self.str_type().fn_type(&[self.context.i64_type().into()], false);
-        self.known_fns.malloc = self.module.add_function("malloc", malloc_type, None);
+        self.known_fns.malloc = self.module.add_function("GC_malloc", malloc_type, None);
         let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i64_type().into(), self.str_type().into()], true);
         self.known_fns.snprintf = self.module.add_function("snprintf", snprintf_type, None);
         let printf_type = self.context.i64_type().fn_type(&[self.str_type().into()], true);
@@ -121,10 +118,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let string_type = self.context.opaque_struct_type("String");
         string_type.set_body(&[
-            self.context.i64_type().into(), // int64_t length
+            self.context.i32_type().into(), // int64_t length
             self.str_type(), // char* chars
         ], false);
         self.known_types.string = string_type;
+        let array_type = self.context.opaque_struct_type("Array");
+        array_type.set_body(&[
+            self.context.i32_type().into(), // int64_t length
+            self.context.i32_type().into(), // int64_t _capacity
+            self.context.i64_type().ptr_type(AddressSpace::Generic).into(), // void** items
+        ], false);
+        self.known_types.array = array_type;
 
         // If `test_mode` is true, the entrypoint function will return the last value in the module
         // as a string, rather than only printing that string to stdout.
@@ -159,8 +163,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.known_fns.snprintf,
             &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), value.into()],
             "len",
-        ).try_as_basic_value().left().unwrap();
-        let len = len.into_int_value();
+        ).try_as_basic_value().left().unwrap().into_int_value();
         let len_plus_1 = self.builder.build_int_add(len, self.const_int(1).into(), "len");
         let result = self.builder.build_call(
             self.known_fns.malloc,
@@ -174,11 +177,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             "",
         ).try_as_basic_value().left().unwrap();
 
-        self.alloc_string_obj(len, result)
+        self.alloc_string_obj(self.builder.build_int_cast(len, self.context.i32_type(), ""), result)
     }
 
     fn gen_bool_to_str(&self, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let cond = self.builder.build_int_compare(IntPredicate::EQ, value.into_int_value(), self.const0().into(), "cond");
+        let cond = self.builder.build_int_compare(IntPredicate::EQ, value.into_int_value(), self.context.bool_type().const_zero(), "cond");
 
         let function = self.cur_fn;
         let then_bb = self.context.append_basic_block(function, "then");
@@ -202,13 +205,117 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         phi.as_basic_value().into_pointer_value()
     }
 
+    fn gen_array_to_str(&self, inner_type: Type, array: PointerValue<'ctx>) -> PointerValue<'ctx> {
+        let function = self.cur_fn;
+
+        let arr_len = self.builder.build_load(self.builder.build_struct_gep(array, 0, "").unwrap(), "array_length").into_int_value();
+        let arr_len = self.builder.build_int_cast(arr_len, self.context.i32_type(), "");
+
+        let cond_bb = self.context.append_basic_block(function, "if_cond_bb");
+        let if_then_bb = self.context.append_basic_block(function, "if_then_bb");
+        let if_else_bb = self.context.append_basic_block(function, "if_else_bb");
+        let if_end_bb = self.context.append_basic_block(function, "if_end_bb");
+
+        self.builder.build_unconditional_branch(cond_bb);
+        self.builder.position_at_end(cond_bb);
+        let if_cond = self.builder.build_int_compare(IntPredicate::EQ, arr_len, self.context.i32_type().const_zero(), "");
+        self.builder.build_conditional_branch(if_cond.into(), if_then_bb, if_else_bb);
+
+        self.builder.position_at_end(if_then_bb);
+        let if_then_val = self.alloc_const_string_obj("[]");
+        self.builder.build_unconditional_branch(if_end_bb);
+        let if_then_bb = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(if_else_bb);
+        let if_else_val = {
+            let lbrack_ch = self.context.i8_type().const_int(0x5B, false);
+            let rbrack_ch = self.context.i8_type().const_int(0x5D, false);
+            let comma_ch = self.context.i8_type().const_int(0x2C, false);
+            let space_ch = self.context.i8_type().const_int(0x20, false);
+
+            let idx_ptr = self.builder.build_alloca(self.context.i32_type(), "idx");
+            self.builder.build_store(idx_ptr, self.context.i32_type().const_int(0, false));
+
+            let str_size_ptr = self.builder.build_alloca(self.context.i32_type(), "str_size");
+            self.builder.build_store(str_size_ptr, self.builder.build_int_add(self.context.i32_type().const_int(3, false), self.builder.build_int_mul(self.context.i32_type().const_int(2, false), arr_len, ""), ""));
+            let insert_idx_ptr = self.builder.build_alloca(self.context.i32_type(), "insert_idx");
+            self.builder.build_store(insert_idx_ptr, self.context.i32_type().const_int(1, false));
+
+            let str_chars_mem = self.builder.build_call(
+                self.known_fns.malloc,
+                &[self.context.i64_type().const_int(100, false).into()], // TODO: Fix arbitrary limiting of array's string repr length
+                "str_chars_mem",
+            ).try_as_basic_value().left().unwrap().into_pointer_value();
+            self.builder.build_store(
+                unsafe { self.builder.build_gep(str_chars_mem, &[self.const_int(0)], "") },
+                lbrack_ch
+            );
+
+            let cond_bb = self.context.append_basic_block(function, "loop_cond_bb");
+            let body_bb = self.context.append_basic_block(function, "loop_body_bb");
+            let after_bb = self.context.append_basic_block(function, "loop_after_bb");
+
+            self.builder.build_unconditional_branch(cond_bb);
+            self.builder.position_at_end(cond_bb);
+
+            let idx = self.builder.build_load(idx_ptr, "idx").into_int_value();
+            let cond = self.builder.build_int_compare(IntPredicate::SLT, idx, arr_len, "loop_cond");
+            self.builder.build_conditional_branch(cond.into(), body_bb, after_bb);
+
+            self.builder.position_at_end(body_bb);
+            let arr_items = self.builder.build_struct_gep(array, 2, "arr_items").unwrap();
+            let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[idx], "") };
+            let arr_item = self.builder.build_load(arr_item_slot, "");
+            let arr_item_str = self.gen_value_to_str(inner_type, arr_item);
+
+            let arr_item_str_len = self.builder.build_struct_gep(arr_item_str, 0, "").unwrap();
+            let arr_item_str_len = self.builder.build_int_cast(self.builder.build_load(arr_item_str_len, "item_len").into_int_value(), self.context.i32_type(), "");
+            self.builder.build_store(str_size_ptr, self.builder.build_int_add(self.builder.build_load(str_size_ptr, "").into_int_value(), arr_item_str_len, ""));
+            let arr_item_str_chars = self.builder.build_struct_gep(arr_item_str, 1, "").unwrap();
+            let arr_item_str_chars = self.builder.build_load(arr_item_str_chars, "");
+
+            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
+            self.builder.build_call(
+                self.known_fns.memcpy,
+                &[cursor.into(), arr_item_str_chars.into(), arr_item_str_len.into()],
+                "",
+            ).try_as_basic_value().left().unwrap();
+            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), arr_item_str_len, ""));
+            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
+            self.builder.build_store(cursor, comma_ch);
+            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
+            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
+            self.builder.build_store( cursor, space_ch );
+            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
+
+            self.builder.build_store(idx_ptr, self.builder.build_int_add(idx, self.context.i32_type().const_int(1, false).into(), ""));
+            self.builder.build_unconditional_branch(cond_bb);
+
+            self.builder.position_at_end(after_bb);
+            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_int_sub(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(2, false), "")], "cursor") };
+            self.builder.build_store( cursor, rbrack_ch );
+            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_int_sub(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), "")], "cursor") };
+            self.builder.build_store( cursor, self.context.i8_type().const_zero() );
+
+            self.alloc_string_obj(self.builder.build_load(str_size_ptr, "").into_int_value(), str_chars_mem)
+        };
+        self.builder.build_unconditional_branch(if_end_bb);
+        let if_else_bb = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(if_end_bb);
+        let phi = self.builder.build_phi(self.known_types.string.ptr_type(AddressSpace::Generic), "");
+        phi.add_incoming(&[(&if_then_val, if_then_bb), (&if_else_val, if_else_bb)]);
+        phi.as_basic_value().into_pointer_value()
+    }
+
     fn gen_value_to_str(&self, typ: Type, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
         match typ {
             Type::Int => self.gen_num_to_string(false, value),
             Type::Float => self.gen_num_to_string(true, value),
             Type::Bool => self.gen_bool_to_str(value),
             Type::String => value.into_pointer_value(),
-            _ => todo!()
+            Type::Array(inner) => self.gen_array_to_str(*inner, value.into_pointer_value()),
+            _ => self.alloc_const_string_obj("todo")
         }
     }
 
@@ -224,11 +331,20 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         } else {
             self.builder.build_call(
                 self.known_fns.printf,
-                &[self.builder.build_global_string_ptr("\"%s\"\n", "fmt").as_basic_value_enum().into(), result.into()],
+                &[self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()],
                 "",
             );
             self.builder.build_return(None);
         };
+    }
+
+    #[allow(dead_code)]
+    fn println_debug(&self, fmt_str: &str, value: BasicValueEnum<'ctx>) {
+        self.builder.build_call(
+            self.known_fns.printf,
+            &[self.builder.build_global_string_ptr(fmt_str, "fmt").as_basic_value_enum().into(), value.into()],
+            "",
+        );
     }
 
     fn null_ptr(&self) -> BasicValueEnum<'ctx> {
@@ -270,9 +386,45 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let len = str.len();
 
         self.alloc_string_obj(
-            self.context.i64_type().const_int(len as u64, false),
+            self.context.i32_type().const_int(len as u64, false),
             self.builder.build_global_string_ptr(str, "").as_pointer_value(),
         )
+    }
+
+    fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> PointerValue<'ctx> {
+        let arr_mem = self.builder.build_call(
+            self.known_fns.malloc,
+            &[self.known_types.array.size_of().unwrap().into()],
+            "arr_mem",
+        ).try_as_basic_value().left().unwrap().into_pointer_value();
+        let arr = self.builder.build_pointer_cast(arr_mem, self.known_types.array.ptr_type(AddressSpace::Generic), "arr");
+
+        let item_size_val = self.context.i64_type().size_of();
+        let items_len = self.builder.build_int_mul(
+            item_size_val,
+            self.builder.build_int_cast(length_val, self.context.i64_type(), ""),
+            "items_len"
+        );
+        let items_mem = self.builder.build_call(self.known_fns.malloc, &[items_len.into()], "items_mem")
+            .try_as_basic_value().left().unwrap().into_pointer_value();
+        let items_mem = self.builder.build_pointer_cast(items_mem, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
+
+        let arr_length = self.builder.build_struct_gep(arr, 0, "arr_length").unwrap();
+        self.builder.build_store(arr_length, length_val);
+        let arr_capacity = self.builder.build_struct_gep(arr, 1, "arr_capacity").unwrap();
+        self.builder.build_store(arr_capacity, length_val);
+        let arr_items = self.builder.build_struct_gep(arr, 2, "arr_items").unwrap();
+        self.builder.build_store(arr_items, items_mem);
+
+        arr
+    }
+
+    fn array_obj_insert(&self, array_val: PointerValue<'ctx>, index_val: IntValue<'ctx>, item_val: BasicValueEnum<'ctx>) {
+        let arr_items = self.builder.build_struct_gep(array_val, 2, "arr_items").unwrap();
+
+        let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[index_val], "") };
+        let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
+        self.builder.build_store(arr_item_slot.into(), item_val);
     }
 }
 
@@ -447,16 +599,22 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let right_chars = self.builder.build_load(self.builder.build_struct_gep(right_string, 1, "right_chars").unwrap(), "").into_pointer_value();
 
                 let length = self.builder.build_int_add(left_len, right_len, "length");
-                let length_plus_1 = self.builder.build_int_add(length, self.const_int(1).into(), "");
-                let mem = self.builder.build_call(self.known_fns.malloc, &[length_plus_1.into()], "mem")
-                    .try_as_basic_value().left().unwrap()
-                    .into_pointer_value();
+                let length_plus_1 = self.builder.build_int_cast(
+                    self.builder.build_int_add(length, self.context.i32_type().const_int(1, false).into(), ""),
+                    self.context.i64_type(),
+                    ""
+                );
+                let mem = self.builder.build_call(
+                    self.known_fns.malloc,
+                    &[length_plus_1.into()],
+                    "mem"
+                ).try_as_basic_value().left().unwrap().into_pointer_value();
                 self.builder.build_call(self.known_fns.memcpy, &[mem.into(), left_chars.into(), left_len.into()], "")
                     .try_as_basic_value().left().unwrap();
-                let mem_offset = unsafe { mem.const_gep(&[left_len]) };
+                let mem_offset = unsafe { self.builder.build_gep(mem, &[left_len], "") };
                 self.builder.build_call(self.known_fns.memcpy, &[mem_offset.into(), right_chars.into(), right_len.into()], "")
                     .try_as_basic_value().left().unwrap();
-                let mem_offset = unsafe { mem.const_gep(&[length]) };
+                let mem_offset = unsafe { self.builder.build_gep(mem, &[length], "") };
                 self.builder.build_store(mem_offset, self.context.i8_type().const_zero());
 
                 self.alloc_string_obj(length, mem).into()
@@ -471,8 +629,18 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         self.visit(*node.expr)
     }
 
-    fn visit_array(&mut self, _token: Token, _node: TypedArrayNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_array(&mut self, _token: Token, node: TypedArrayNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let len = node.items.len();
+        let length_val = self.context.i32_type().const_int(len as u64, false);
+        let arr = self.alloc_array_obj_with_length(length_val);
+
+        for (idx, item) in node.items.into_iter().enumerate() {
+            let index_val = self.context.i32_type().const_int(idx as u64, false);
+            let item_val = self.visit(item)?;
+            self.array_obj_insert(arr, index_val, item_val);
+        }
+
+        Ok(arr.into())
     }
 
     fn visit_tuple(&mut self, _token: Token, _node: TypedTupleNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

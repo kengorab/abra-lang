@@ -15,7 +15,8 @@ fn test_run_with_modules(input: &str, modules: Vec<(&str, &str)>) -> String {
     mock_loader.add_typed_module(module);
 
     let context = Context::create();
-    compile_to_llvm_and_run(module_id, &input.to_string(), &mut mock_reader, &context).unwrap()
+    let result = compile_to_llvm_and_run(module_id, &input.to_string(), &mut mock_reader, &context).unwrap();
+    result.trim().to_string()
 }
 
 #[test]
@@ -37,6 +38,15 @@ fn test_literals() {
 
     let res = test_run_with_modules("\"hello 👋\"", vec![]);
     assert_eq!(res, "hello 👋");
+}
+
+#[test]
+fn test_array_literals() {
+    let res = test_run_with_modules("[]", vec![]);
+    assert_eq!(res, "[]");
+
+    let res = test_run_with_modules("[7, 8, 9]", vec![]);
+    assert_eq!(res, "[7, 8, 9]");
 }
 
 #[test]
