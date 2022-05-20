@@ -19,7 +19,7 @@ mod compiler;
 pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module_reader: &mut R) -> Result<(), Error>
     where R: ModuleReader
 {
-    use std::io::{Stdout, Write};
+    use std::io::Write;
 
     let mut loader = ModuleLoader::new(module_reader);
 
@@ -27,7 +27,7 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
     loader.add_typed_module(module.clone());
 
     let context = Context::create();
-    let llvm_module = compiler::Compiler::compile_module(&context, module, false).unwrap();
+    let llvm_module = compiler::Compiler::compile_module(&context, module).unwrap();
 
     match compile_and_run(&llvm_module) {
         Err(e) => {
@@ -51,7 +51,7 @@ pub fn compile_to_llvm_and_run<'ctx, R>(module_id: ModuleId, contents: &String, 
     let module = typecheck(module_id, contents, &mut loader)?;
     loader.add_typed_module(module.clone());
 
-    let llvm_module = compiler::Compiler::compile_module(&context, module, false).unwrap();
+    let llvm_module = compiler::Compiler::compile_module(&context, module).unwrap();
 
     let output = compile_and_run(&llvm_module).unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();

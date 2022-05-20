@@ -1748,9 +1748,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // ...we pop off the scope, add the function there, and then push the scope back on. We also add the
         // return type to the fn's scope (this is used when visiting returns later on).
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
-        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false });
+        let fn_type = FnType { arg_types, type_args, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false };
         let mut scope = self.scopes.pop().unwrap();
-        self.add_binding(&func_name, &name, &func_type, false);
+        self.add_binding(&func_name, &name, &Type::Fn(fn_type.clone()), false);
         if let ScopeKind::Function(fn_scope_kind) = &mut scope.kind {
             fn_scope_kind.return_type = ret_type.clone();
         } else { unreachable!(); }
@@ -1786,7 +1786,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             self.exports.insert(func_name.clone(), export);
         }
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, fn_type }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {

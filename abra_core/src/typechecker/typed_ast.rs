@@ -1,4 +1,4 @@
-use crate::typechecker::types::Type;
+use crate::typechecker::types::{FnType, Type};
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, BindingPattern, ModuleId};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
@@ -251,11 +251,12 @@ pub struct TypedFunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub args: Vec<(Token, Type, bool, Option<TypedAstNode>)>,
+    pub args: Vec<(/* token: */ Token, /* type: */ Type, /* is_vararg: */ bool, /* default_value: */ Option<TypedAstNode>)>,
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
     pub is_recursive: bool,
+    pub fn_type: FnType,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1309,6 +1309,13 @@ fn typecheck_function_decl() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Int),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1335,6 +1342,13 @@ fn typecheck_function_decl() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![("a".to_string(), Type::Int, false)],
+                type_args: vec![],
+                ret_type: Box::new(Type::Int),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1371,6 +1385,13 @@ fn typecheck_function_decl() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Array(Box::new(Type::Int))),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -2036,6 +2057,13 @@ fn typecheck_type_decl_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
                         },
                     ),
                 ),
@@ -2082,6 +2110,13 @@ fn typecheck_type_decl_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
                         },
                     ),
                 ),
@@ -2141,6 +2176,13 @@ fn typecheck_type_decl_static_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
                         },
                     )),
                 ),
@@ -3570,6 +3612,13 @@ fn typecheck_if_expression_conversion_to_statement() -> TestResult {
             ret_type: Type::Unit,
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Unit),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -4753,6 +4802,13 @@ fn typecheck_lambda_closure() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![("x".to_string(), Type::Int, false)],
+                type_args: vec![],
+                ret_type: Box::new(Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false })),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);

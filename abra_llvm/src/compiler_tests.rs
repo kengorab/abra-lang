@@ -42,11 +42,20 @@ fn test_literals() {
 
 #[test]
 fn test_array_literals() {
-    let res = test_run_with_modules("[]", vec![]);
-    assert_eq!(res, "[]");
+    let cases = [
+        ("[]", "[]"),
+        ("[1]", "[1]"),
+        ("[7, 8, 9]", "[7, 8, 9]"),
+        ("[1.2, 3.4, -5.0]", "[1.200000, 3.400000, -5.000000]"),
+        ("[\"a\", \"b\"]", "[a, b]"),
+        ("[true, false]", "[true, false]"),
+        ("[[1, 2], [3, 4], [5, 6]]", "[[1, 2], [3, 4], [5, 6]]"),
+    ];
 
-    let res = test_run_with_modules("[7, 8, 9]", vec![]);
-    assert_eq!(res, "[7, 8, 9]");
+    for (input, expected) in cases {
+        let res = test_run_with_modules(input, vec![]);
+        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
+    }
 }
 
 #[test]
@@ -218,6 +227,22 @@ fn test_binary_operations_string_concat() {
 
     for (input, expected) in cases {
         let res = test_run_with_modules(input, vec![]);
+        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
+    }
+}
+
+#[test]
+fn test_functions() {
+    let cases = [
+        ("func abc(): Int = 6 + 24", "30"),
+        ("func abc(): String = \"hello\"", "hello"),
+        ("func abc(): Int[] = [6, 24]", "[6, 24]"),
+        ("func abc(): String[] = [\"a\", \"b\"]", "[a, b]")
+    ];
+
+    for (decl, expected) in cases {
+        let input = format!("{}\nabc()", decl);
+        let res = test_run_with_modules(&input, vec![]);
         assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
     }
 }

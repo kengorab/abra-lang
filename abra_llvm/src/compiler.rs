@@ -1,15 +1,17 @@
+use std::collections::{HashMap, HashSet};
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::{BasicType, BasicTypeEnum, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType};
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue, PointerValue};
+use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
-use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
-use abra_core::typechecker::types::Type;
+use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use abra_core::typechecker::types::{FnType, Type};
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
 const PLACEHOLDER_FN_NAME: &str = "__placeholder";
@@ -24,6 +26,8 @@ struct KnownFns<'ctx> {
     powf64: FunctionValue<'ctx>,
     malloc: FunctionValue<'ctx>,
     memcpy: FunctionValue<'ctx>,
+    transmute_double_int64: FunctionValue<'ctx>,
+    transmute_int64_double: FunctionValue<'ctx>,
 }
 
 impl<'ctx> KnownFns<'ctx> {
@@ -34,12 +38,14 @@ impl<'ctx> KnownFns<'ctx> {
             powf64: placeholder,
             malloc: placeholder,
             memcpy: placeholder,
+            transmute_double_int64: placeholder,
+            transmute_int64_double: placeholder
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy} = self;
-        [snprintf, printf, powf64, malloc, memcpy].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, transmute_double_int64, transmute_int64_double } = self;
+        [snprintf, printf, powf64, malloc, memcpy, transmute_double_int64, transmute_int64_double].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -64,6 +70,12 @@ impl<'ctx> KnownTypes<'ctx> {
     }
 }
 
+struct Scope {
+    name: String,
+    fns: HashMap<String, String>,
+    _bindings: HashSet<String>,
+}
+
 pub struct Compiler<'a, 'ctx> {
     context: &'ctx Context,
     builder: &'a Builder<'ctx>,
@@ -71,10 +83,11 @@ pub struct Compiler<'a, 'ctx> {
     cur_fn: FunctionValue<'ctx>,
     known_fns: KnownFns<'ctx>,
     known_types: KnownTypes<'ctx>,
+    scopes: Vec<Scope>,
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn compile_module(context: &'ctx Context, typed_module: TypedModule, test_mode: bool) -> Result<Module<'ctx>, CompilerError> {
+    pub fn compile_module(context: &'ctx Context, typed_module: TypedModule) -> Result<Module<'ctx>, CompilerError> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
 
@@ -88,8 +101,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             cur_fn: placeholder_fn,
             known_fns: KnownFns::initial_value(placeholder_fn),
             known_types: KnownTypes::initial_value(placeholder_type),
+            scopes: vec![Scope { name: "$root".to_string(), fns: HashMap::new(), _bindings: HashSet::new() }],
         };
-        compiler.init(test_mode);
+        compiler.init();
 
         let mut last_item = compiler.const0().as_basic_value_enum();
         let mut last_item_type = Type::Unit;
@@ -98,13 +112,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             last_item = compiler.visit(node)?;
         }
 
-        compiler.finalize(test_mode, last_item_type, last_item);
+        compiler.finalize(&last_item_type, last_item);
 
         // module.print_to_stderr();
         Ok(module)
     }
 
-    fn init(&mut self, test_mode: bool) {
+    fn init(&mut self) {
         let malloc_type = self.str_type().fn_type(&[self.context.i64_type().into()], false);
         self.known_fns.malloc = self.module.add_function("GC_malloc", malloc_type, None);
         let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i64_type().into(), self.str_type().into()], true);
@@ -115,6 +129,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.powf64 = self.module.add_function("llvm.pow.f64", powf64_type, None);
         let memcpy_type = self.str_type().fn_type(&[self.str_type().into(), self.str_type().into(), self.context.i32_type().into()], false);
         self.known_fns.memcpy = self.module.add_function("memcpy", memcpy_type, None);
+        let transmute_double_int64_type = self.context.i64_type().fn_type(&[self.context.f64_type().into()], false);
+        self.known_fns.transmute_double_int64 = self.module.add_function("transmute_double_int64", transmute_double_int64_type, None);
+        let transmute_int64_double_type = self.context.f64_type().fn_type(&[self.context.i64_type().into()], false);
+        self.known_fns.transmute_int64_double = self.module.add_function("transmute_int64_double", transmute_int64_double_type, None);
 
         let string_type = self.context.opaque_struct_type("String");
         string_type.set_body(&[
@@ -130,13 +148,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         ], false);
         self.known_types.array = array_type;
 
-        // If `test_mode` is true, the entrypoint function will return the last value in the module
-        // as a string, rather than only printing that string to stdout.
-        let entry_fn_type = if test_mode {
-            self.str_type().fn_type(&[], false)
-        } else {
-            self.context.void_type().fn_type(&[], false)
-        };
+        let entry_fn_type = self.context.void_type().fn_type(&[], false);
         let entry_fn = self.module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
         let entry_fn_bb = self.context.append_basic_block(entry_fn, "entry_fn_bb");
         self.builder.position_at_end(entry_fn_bb);
@@ -205,7 +217,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         phi.as_basic_value().into_pointer_value()
     }
 
-    fn gen_array_to_str(&self, inner_type: Type, array: PointerValue<'ctx>) -> PointerValue<'ctx> {
+    fn gen_array_to_str(&self, inner_type: &Type, array: PointerValue<'ctx>) -> PointerValue<'ctx> {
         let function = self.cur_fn;
 
         let arr_len = self.builder.build_load(self.builder.build_struct_gep(array, 0, "").unwrap(), "array_length").into_int_value();
@@ -237,7 +249,19 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.builder.build_store(idx_ptr, self.context.i32_type().const_int(0, false));
 
             let str_size_ptr = self.builder.build_alloca(self.context.i32_type(), "str_size");
-            self.builder.build_store(str_size_ptr, self.builder.build_int_add(self.context.i32_type().const_int(3, false), self.builder.build_int_mul(self.context.i32_type().const_int(2, false), arr_len, ""), ""));
+            // Account for '[', ']', '\0', and ", " for all but last item
+            self.builder.build_store(
+                str_size_ptr,
+                self.builder.build_int_add(
+                    self.context.i32_type().const_int(3, false),
+                    self.builder.build_int_mul(
+                        self.context.i32_type().const_int(2, false),
+                        self.builder.build_int_sub(arr_len, self.context.i32_type().const_int(1, false), ""),
+                        "",
+                    ),
+                    "",
+                ),
+            );
             let insert_idx_ptr = self.builder.build_alloca(self.context.i32_type(), "insert_idx");
             self.builder.build_store(insert_idx_ptr, self.context.i32_type().const_int(1, false));
 
@@ -263,10 +287,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.builder.build_conditional_branch(cond.into(), body_bb, after_bb);
 
             self.builder.position_at_end(body_bb);
-            let arr_items = self.builder.build_struct_gep(array, 2, "arr_items").unwrap();
-            let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[idx], "") };
-            let arr_item = self.builder.build_load(arr_item_slot, "");
-            let arr_item_str = self.gen_value_to_str(inner_type, arr_item);
+            let arr_item = self.array_obj_get(inner_type, array, idx);
+            let arr_item_str = self.gen_value_to_str(inner_type, arr_item.into());
 
             let arr_item_str_len = self.builder.build_struct_gep(arr_item_str, 0, "").unwrap();
             let arr_item_str_len = self.builder.build_int_cast(self.builder.build_load(arr_item_str_len, "item_len").into_int_value(), self.context.i32_type(), "");
@@ -285,7 +307,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.builder.build_store(cursor, comma_ch);
             self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
             let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
-            self.builder.build_store( cursor, space_ch );
+            self.builder.build_store( cursor, space_ch);
             self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
 
             self.builder.build_store(idx_ptr, self.builder.build_int_add(idx, self.context.i32_type().const_int(1, false).into(), ""));
@@ -297,7 +319,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_int_sub(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), "")], "cursor") };
             self.builder.build_store( cursor, self.context.i8_type().const_zero() );
 
-            self.alloc_string_obj(self.builder.build_load(str_size_ptr, "").into_int_value(), str_chars_mem)
+            // The length passed to alloc_string_obj should not account for the the null terminator
+            let str_len_val = self.builder.build_int_sub(
+                self.builder.build_load(str_size_ptr, "").into_int_value(),
+                self.context.i32_type().const_int(1, false),
+                "",
+            );
+            self.alloc_string_obj(str_len_val, str_chars_mem)
         };
         self.builder.build_unconditional_branch(if_end_bb);
         let if_else_bb = self.builder.get_insert_block().unwrap();
@@ -308,34 +336,31 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         phi.as_basic_value().into_pointer_value()
     }
 
-    fn gen_value_to_str(&self, typ: Type, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
+    fn gen_value_to_str(&self, typ: &Type, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
         match typ {
             Type::Int => self.gen_num_to_string(false, value),
             Type::Float => self.gen_num_to_string(true, value),
             Type::Bool => self.gen_bool_to_str(value),
             Type::String => value.into_pointer_value(),
-            Type::Array(inner) => self.gen_array_to_str(*inner, value.into_pointer_value()),
+            Type::Array(inner) => self.gen_array_to_str(&inner, value.into_pointer_value()),
             _ => self.alloc_const_string_obj("todo")
         }
     }
 
-    fn finalize(&self, test_mode: bool, last_item_type: Type, last_item: BasicValueEnum<'ctx>) {
-        let result_string= self.gen_value_to_str(last_item_type, last_item);
-        let result_string_chars = self.builder.build_struct_gep(result_string, 1, "").unwrap();
-        let result = self.builder.build_load(result_string_chars, "res");
+    fn finalize(&self,  last_item_type: &Type, last_item: BasicValueEnum<'ctx>) {
+        if *last_item_type != Type::Unit {
+            let result_string= self.gen_value_to_str(last_item_type, last_item);
+            let result_string_chars = self.builder.build_struct_gep(result_string, 1, "").unwrap();
+            let result = self.builder.build_load(result_string_chars, "res");
 
-        // If `test_mode` is true, the entrypoint function will return the last value in the module
-        // as a string, rather than only printing that string to stdout.
-        if test_mode {
-            self.builder.build_return(Some(&result.as_basic_value_enum()));
-        } else {
             self.builder.build_call(
                 self.known_fns.printf,
                 &[self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()],
                 "",
             );
-            self.builder.build_return(None);
-        };
+        }
+
+        self.builder.build_return(None);
     }
 
     #[allow(dead_code)]
@@ -345,6 +370,31 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             &[self.builder.build_global_string_ptr(fmt_str, "fmt").as_basic_value_enum().into(), value.into()],
             "",
         );
+    }
+
+    fn current_scope_mut(&mut self) -> &mut Scope {
+        self.scopes.last_mut().expect("There should always be at least 1 scope")
+    }
+
+    fn llvm_type(&self, typ: &Type) -> BasicTypeEnum<'ctx> {
+        match typ {
+            Type::Int => self.context.i64_type().into(),
+            Type::Float => self.context.f64_type().into(),
+            Type::Bool => self.context.bool_type().into(),
+            Type::String => self.known_types.string.ptr_type(AddressSpace::Generic).into(),
+            Type::Array(_) => self.known_types.array.ptr_type(AddressSpace::Generic).into(),
+            Type::Fn(_) => todo!(),
+            _ => todo!()
+        }
+    }
+
+    fn llvm_fn_type(&self, fn_type: &FnType) -> FunctionType<'ctx> {
+        let ret_type = self.llvm_type(&fn_type.ret_type);
+        let arg_types = fn_type.arg_types.iter()
+            .map(|(_, t, _)| self.llvm_type(t).into())
+            .collect::<Vec<BasicMetadataTypeEnum<'ctx>>>();
+
+        ret_type.fn_type(arg_types.as_slice(), false)
     }
 
     fn null_ptr(&self) -> BasicValueEnum<'ctx> {
@@ -424,7 +474,41 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[index_val], "") };
         let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
-        self.builder.build_store(arr_item_slot.into(), item_val);
+        let cast_item_val = if item_val.is_float_value() {
+            self.builder.build_call(
+                self.known_fns.transmute_double_int64,
+                &[item_val.into()],
+                ""
+            ).try_as_basic_value().left().unwrap()
+        } else if item_val.get_type() == self.context.bool_type().into() {
+            self.builder.build_int_cast(item_val.into_int_value(), self.context.i64_type(), "").into()
+        } else if item_val.is_int_value() {
+            item_val
+        } else {
+            self.builder.build_cast(InstructionOpcode::PtrToInt, item_val, self.context.i64_type(), "")
+        };
+        self.builder.build_store(arr_item_slot.into(), cast_item_val);
+    }
+
+    fn array_obj_get(&self, inner_type: &Type, array_val: PointerValue<'ctx>, index_val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
+        let arr_items = self.builder.build_struct_gep(array_val, 2, "arr_items").unwrap();
+        let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[index_val], "") };
+        let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
+        let arr_item = self.builder.build_load(arr_item_slot, "");
+        match inner_type {
+            Type::Int | Type::Unknown => arr_item,
+            Type::Bool => self.builder.build_int_cast(arr_item.into_int_value(), self.context.bool_type(), "").into(),
+            Type::Float => {
+                self.builder.build_call(
+                    self.known_fns.transmute_int64_double,
+                    &[arr_item.into()],
+                    ""
+                ).try_as_basic_value().left().unwrap()
+            }
+            Type::String => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.string.ptr_type(AddressSpace::Generic), ""),
+            Type::Array(_) => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.array.ptr_type(AddressSpace::Generic), ""),
+            _ => todo!(),
+        }
     }
 }
 
@@ -591,10 +675,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let left = self.visit(*node.left)?;
                 let right = self.visit(*node.right)?;
 
-                let left_string = self.gen_value_to_str(ltype, left);
+                let left_string = self.gen_value_to_str(&ltype, left);
                 let left_len = self.builder.build_load(self.builder.build_struct_gep(left_string, 0, "left_len").unwrap(), "left_len").into_int_value();
                 let left_chars = self.builder.build_load(self.builder.build_struct_gep(left_string, 1, "left_chars").unwrap(), "").into_pointer_value();
-                let right_string = self.gen_value_to_str(rtype, right);
+                let right_string = self.gen_value_to_str(&rtype, right);
                 let right_len = self.builder.build_load(self.builder.build_struct_gep(right_string, 0, "right_len").unwrap(), "right_len").into_int_value();
                 let right_chars = self.builder.build_load(self.builder.build_struct_gep(right_string, 1, "right_chars").unwrap(), "").into_pointer_value();
 
@@ -663,8 +747,34 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         todo!()
     }
 
-    fn visit_function_decl(&mut self, _token: Token, _node: TypedFunctionDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let old_fn = self.cur_fn;
+
+        let namespace = self.scopes.iter().map(|s| &s.name).join("::");
+        let fn_name = Token::get_ident_name(&node.name);
+        let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
+        self.current_scope_mut().fns.insert(fn_name, fully_qualified_fn_name.clone());
+
+        let fn_type = self.llvm_fn_type(&node.fn_type);
+        let func = self.module.add_function(&fully_qualified_fn_name, fn_type, None);
+        let fn_bb = self.context.append_basic_block(func, "fn_body");
+        self.builder.position_at_end(fn_bb);
+        self.cur_fn = func;
+
+        let body_len = node.body.len();
+        for (idx, node) in node.body.into_iter().enumerate() {
+            let value = self.visit(node)?;
+
+            if idx == body_len - 1 {
+                self.builder.build_return(Some(&value.as_basic_value_enum()));
+            }
+        }
+
+        self.cur_fn = old_fn;
+        self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+        let res = self.const0();
+        Ok(res.into())
     }
 
     fn visit_type_decl(&mut self, _token: Token, _node: TypedTypeDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -695,8 +805,24 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         todo!()
     }
 
-    fn visit_invocation(&mut self, _token: Token, _node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let fn_value = if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = &*node.target {
+            self.scopes.iter()
+                .rev()
+                .find_map(|s| s.fns.get(name))
+                .and_then(|name| self.module.get_function(name))
+        } else { unimplemented!() };
+        let fn_value = fn_value.unwrap();
+
+        let mut args = vec![];
+        for arg in node.args {
+            let arg = arg.unwrap();
+            let arg = self.visit(arg)?;
+            args.push(arg.into());
+        }
+
+        let res = self.builder.build_call(fn_value, args.as_slice(), "");
+        Ok(res.try_as_basic_value().left().unwrap())
     }
 
     fn visit_instantiation(&mut self, _token: Token, _node: TypedInstantiationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -740,6 +866,6 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+        Ok(self.const0().into())
     }
 }

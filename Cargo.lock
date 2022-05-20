@@ -47,6 +47,7 @@ dependencies = [
  "abra_core",
  "cty",
  "inkwell",
+ "itertools",
 ]
 
 [[package]]
