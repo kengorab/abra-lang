@@ -1,11 +1,1 @@
-// func abc(): String[] = ["6", "24"]
-// abc()
-//["a"]
-//[6, 24]
-//[false, true, false]
-//[[1, 2], [3, 4]]
-//[1, 2]
-[1.2, 3.4]
-
-//"asdfzxcv"
-
+"asdf".toUpper() + (123).toString() + (12.3).toString() + "!"

@@ -50,23 +50,48 @@ impl<'ctx> KnownFns<'ctx> {
     }
 }
 
-struct KnownTypes<'ctx> {
-    string: StructType<'ctx>,
-    array: StructType<'ctx>,
+enum RTType<'ctx> {
+    Primitive {
+        typ: BasicTypeEnum<'ctx>,
+        methods: HashMap<String, FunctionValue<'ctx>>
+    },
+    Struct {
+        struct_type: StructType<'ctx>,
+        methods: HashMap<String, FunctionValue<'ctx>>
+    }
 }
 
-impl<'ctx> KnownTypes<'ctx> {
-    fn initial_value(placeholder: StructType<'ctx>) -> Self {
-        KnownTypes {
-            string: placeholder,
-            array: placeholder,
+impl<'ctx> RTType<'ctx> {
+    fn get_type(&self) -> BasicTypeEnum<'ctx> {
+        match self {
+            RTType::Primitive {typ,..} => typ.clone(),
+            RTType::Struct { struct_type, .. } => struct_type.as_basic_type_enum(),
         }
     }
 
+    fn methods(&self) -> &HashMap<String, FunctionValue<'ctx>> {
+        match self {
+            RTType::Primitive { methods, .. } |
+            RTType::Struct { methods, .. } => methods,
+        }
+    }
+}
+
+struct KnownTypes<'ctx> {
+    int: RTType<'ctx>,
+    float: RTType<'ctx>,
+    string: RTType<'ctx>,
+    array: RTType<'ctx>,
+}
+
+impl<'ctx> KnownTypes<'ctx> {
     fn is_initialized(&self) -> bool {
-        let KnownTypes { string, array } = self;
+        let KnownTypes { int: _, float: _, string, array } = self;
         [string, array].iter()
-            .all(|f| f.get_name().unwrap().to_str().unwrap().ne(PLACEHOLDER_TYPE_NAME))
+            .all(|t| match t {
+                RTType::Primitive { .. } => unreachable!(),
+                RTType::Struct { struct_type, .. } => struct_type.get_name().unwrap().to_str().unwrap().ne(PLACEHOLDER_TYPE_NAME)
+            })
     }
 }
 
@@ -100,7 +125,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             module: &module,
             cur_fn: placeholder_fn,
             known_fns: KnownFns::initial_value(placeholder_fn),
-            known_types: KnownTypes::initial_value(placeholder_type),
+            known_types: KnownTypes {
+                int: RTType::Primitive { typ: context.i64_type().into(), methods: HashMap::new() },
+                float: RTType::Primitive { typ: context.f64_type().into(), methods: HashMap::new() },
+                string: RTType::Struct { struct_type: placeholder_type, methods: HashMap::new() },
+                array: RTType::Struct { struct_type: placeholder_type, methods: HashMap::new() },
+            },
             scopes: vec![Scope { name: "$root".to_string(), fns: HashMap::new(), _bindings: HashSet::new() }],
         };
         compiler.init();
@@ -116,6 +146,63 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         // module.print_to_stderr();
         Ok(module)
+    }
+
+    fn build_int_type(&self) -> RTType<'ctx> {
+        let int_type = self.context.i64_type();
+
+        let mut methods = HashMap::new();
+        methods.insert("toString".to_string(), {
+            let t = self.known_types.string.get_type().ptr_type(AddressSpace::Generic).fn_type(&[int_type.into()], false);
+            self.module.add_function("prelude__Int__toString", t, None)
+        });
+
+        RTType::Primitive { typ: int_type.into(), methods }
+    }
+
+    fn build_float_type(&self) -> RTType<'ctx> {
+        let float_type = self.context.f64_type();
+
+        let mut methods = HashMap::new();
+        methods.insert("toString".to_string(), {
+            let t = self.known_types.string.get_type().ptr_type(AddressSpace::Generic).fn_type(&[float_type.into()], false);
+            self.module.add_function("prelude__Float__toString", t, None)
+        });
+
+        RTType::Primitive { typ: float_type.into(), methods }
+    }
+
+    fn build_string_type(&self) -> RTType<'ctx> {
+        let string_type = self.context.opaque_struct_type("String");
+        string_type.set_body(&[
+            self.context.i32_type().into(), // int32_t length
+            self.str_type(), // char* chars
+        ], false);
+
+        let mut methods = HashMap::new();
+        methods.insert("toString".to_string(), {
+            let t = string_type.ptr_type(AddressSpace::Generic).fn_type(&[string_type.ptr_type(AddressSpace::Generic).into()], false);
+            self.module.add_function("prelude__String__toString", t, None)
+        });
+        methods.insert("toUpper".to_string(), {
+            let t = string_type.ptr_type(AddressSpace::Generic).fn_type(&[string_type.ptr_type(AddressSpace::Generic).into()], false);
+            self.module.add_function("prelude__String__toUpper", t, None)
+        });
+
+        RTType::Struct { struct_type: string_type, methods }
+    }
+
+    fn build_array_type(&self) -> RTType<'ctx> {
+        let array_type = self.context.opaque_struct_type("Array");
+        array_type.set_body(&[
+            self.context.i32_type().into(), // int64_t length
+            self.context.i32_type().into(), // int64_t _capacity
+            self.context.i64_type().ptr_type(AddressSpace::Generic).into(), // void** items
+        ], false);
+
+        let methods = HashMap::new();
+
+        RTType::Struct { struct_type: array_type, methods }
     }
 
     fn init(&mut self) {
@@ -134,19 +221,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let transmute_int64_double_type = self.context.f64_type().fn_type(&[self.context.i64_type().into()], false);
         self.known_fns.transmute_int64_double = self.module.add_function("transmute_int64_double", transmute_int64_double_type, None);
 
-        let string_type = self.context.opaque_struct_type("String");
-        string_type.set_body(&[
-            self.context.i32_type().into(), // int64_t length
-            self.str_type(), // char* chars
-        ], false);
-        self.known_types.string = string_type;
-        let array_type = self.context.opaque_struct_type("Array");
-        array_type.set_body(&[
-            self.context.i32_type().into(), // int64_t length
-            self.context.i32_type().into(), // int64_t _capacity
-            self.context.i64_type().ptr_type(AddressSpace::Generic).into(), // void** items
-        ], false);
-        self.known_types.array = array_type;
+        self.known_types.string = self.build_string_type();
+        self.known_types.int = self.build_int_type();
+        self.known_types.float = self.build_float_type();
+        self.known_types.array = self.build_array_type();
 
         let entry_fn_type = self.context.void_type().fn_type(&[], false);
         let entry_fn = self.module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
@@ -212,7 +290,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let else_bb = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(cont_bb);
-        let phi = self.builder.build_phi(self.known_types.string.ptr_type(AddressSpace::Generic), "");
+        let phi = self.builder.build_phi(self.known_types.string.get_type().ptr_type(AddressSpace::Generic), "");
         phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
         phi.as_basic_value().into_pointer_value()
     }
@@ -331,7 +409,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let if_else_bb = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(if_end_bb);
-        let phi = self.builder.build_phi(self.known_types.string.ptr_type(AddressSpace::Generic), "");
+        let phi = self.builder.build_phi(self.known_types.string.get_type().ptr_type(AddressSpace::Generic), "");
         phi.add_incoming(&[(&if_then_val, if_then_bb), (&if_else_val, if_else_bb)]);
         phi.as_basic_value().into_pointer_value()
     }
@@ -381,8 +459,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Type::Int => self.context.i64_type().into(),
             Type::Float => self.context.f64_type().into(),
             Type::Bool => self.context.bool_type().into(),
-            Type::String => self.known_types.string.ptr_type(AddressSpace::Generic).into(),
-            Type::Array(_) => self.known_types.array.ptr_type(AddressSpace::Generic).into(),
+            Type::String => self.known_types.string.get_type().ptr_type(AddressSpace::Generic).into(),
+            Type::Array(_) => self.known_types.array.get_type().ptr_type(AddressSpace::Generic).into(),
             Type::Fn(_) => todo!(),
             _ => todo!()
         }
@@ -419,10 +497,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         // str->chars = <chars_val>;
         let str_mem = self.builder.build_call(
             self.known_fns.malloc,
-            &[self.known_types.string.size_of().unwrap().into()],
+            &[self.known_types.string.get_type().size_of().unwrap().into()],
             "str_mem",
         ).try_as_basic_value().left().unwrap().into_pointer_value();
-        let str = self.builder.build_pointer_cast(str_mem, self.known_types.string.ptr_type(AddressSpace::Generic), "str");
+        let str = self.builder.build_pointer_cast(str_mem, self.known_types.string.get_type().ptr_type(AddressSpace::Generic), "str");
         let str_length = self.builder.build_struct_gep(str, 0, "str_length").unwrap();
         self.builder.build_store(str_length, length_val);
         let str_chars = self.builder.build_struct_gep(str, 1, "str_chars").unwrap();
@@ -444,10 +522,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> PointerValue<'ctx> {
         let arr_mem = self.builder.build_call(
             self.known_fns.malloc,
-            &[self.known_types.array.size_of().unwrap().into()],
+            &[self.known_types.array.get_type().size_of().unwrap().into()],
             "arr_mem",
         ).try_as_basic_value().left().unwrap().into_pointer_value();
-        let arr = self.builder.build_pointer_cast(arr_mem, self.known_types.array.ptr_type(AddressSpace::Generic), "arr");
+        let arr = self.builder.build_pointer_cast(arr_mem, self.known_types.array.get_type().ptr_type(AddressSpace::Generic), "arr");
 
         let item_size_val = self.context.i64_type().size_of();
         let items_len = self.builder.build_int_mul(
@@ -505,8 +583,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     ""
                 ).try_as_basic_value().left().unwrap()
             }
-            Type::String => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.string.ptr_type(AddressSpace::Generic), ""),
-            Type::Array(_) => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.array.ptr_type(AddressSpace::Generic), ""),
+            Type::String => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.string.get_type().ptr_type(AddressSpace::Generic), ""),
+            Type::Array(_) => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.array.get_type().ptr_type(AddressSpace::Generic), ""),
             _ => todo!(),
         }
     }
@@ -806,15 +884,34 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let fn_value = if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = &*node.target {
-            self.scopes.iter()
-                .rev()
-                .find_map(|s| s.fns.get(name))
-                .and_then(|name| self.module.get_function(name))
-        } else { unimplemented!() };
+        let mut args = vec![];
+
+        let fn_value = match *node.target {
+            TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => {
+                self.scopes.iter()
+                    .rev()
+                    .find_map(|s| s.fns.get(&name))
+                    .and_then(|name| self.module.get_function(name))
+            }
+            TypedAstNode::Accessor(_, TypedAccessorNode { target, field_ident, is_method, .. }) if is_method => {
+                let target_type = target.get_type();
+                let method_name = Token::get_ident_name(&field_ident);
+                let fn_value = match target_type {
+                    Type::Int => self.known_types.int.methods().get(&method_name),
+                    Type::Float => self.known_types.float.methods().get(&method_name),
+                    Type::String => self.known_types.string.methods().get(&method_name),
+                    _ => unimplemented!()
+                };
+                let fn_value = fn_value.map(|f| f.clone());
+                let rcv = self.visit(*target)?;
+                args.push(rcv.into());
+
+                fn_value
+            }
+            _ => todo!()
+        };
         let fn_value = fn_value.unwrap();
 
-        let mut args = vec![];
         for arg in node.args {
             let arg = arg.unwrap();
             let arg = self.visit(arg)?;

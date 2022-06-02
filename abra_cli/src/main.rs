@@ -157,7 +157,9 @@ fn cmd_compile_llvm_and_run(opts: JitOpts) -> Result<(), ()> {
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
     let mut module_reader = FsModuleReader::new(module_id.clone(), &root);
-    compile_to_llvm_and_run(module_id, &contents, &mut module_reader).unwrap();
+    if let Err(e) = compile_to_llvm_and_run(module_id, &contents, &mut module_reader) {
+        report_error(e, &module_reader);
+    }
 
     Ok(())
 }

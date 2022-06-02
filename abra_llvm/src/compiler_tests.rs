@@ -246,3 +246,16 @@ fn test_functions() {
         assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
     }
 }
+
+#[test]
+fn test_method_calls() {
+    let cases = [
+        ("\"asdf\".toUpper() + \"!\"", "ASDF!"),
+        ("(123).toString() + (45.6).toString()", "12345.600000"),
+    ];
+
+    for (input, expected) in cases {
+        let res = test_run_with_modules(input, vec![]);
+        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
+    }
+}
