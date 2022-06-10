@@ -7,33 +7,40 @@
 #include "stdbool.h"
 #include "math.h"
 
-typedef union {
-    long long i64;
-    double d;
-} double_int64_transmute;
+// NaN-tagging
+//
+// Treat double/uint64_t as 64-bit array
+//
+// 63          51 48
+// v           v  v
+// SEEEEEEEEEEEMMMMMMMMMMMMMMMMMM...
+//
 
-long long transmute_double_int64(double value) {
-    double_int64_transmute t = {.d = value};
-    return t.i64;
+typedef uint64_t value_t;
+
+typedef union {
+    value_t raw;
+    double d;
+} value_t_transmute;
+
+long long double_to_value_t(double value) {
+    value_t_transmute t = {.d = value};
+    return t.raw;
 }
 
-double transmute_int64_double(long long value) {
-    double_int64_transmute t = {.i64 = value};
+double value_t_to_double(long long value) {
+    value_t_transmute t = {.raw = value};
     return t.d;
 }
 
-//// NaN-tagging
+
+//const uint64_t MASK_NAN  =            (uint64_t)0x7ffc000000000000;
+//const uint64_t VAL_NONE  = MASK_NAN | (uint64_t)0x0001000000000000;
+//const uint64_t VAL_FALSE = MASK_NAN | (uint64_t)0x0001000000000001;
+//const uint64_t VAL_TRUE  = MASK_NAN | (uint64_t)0x0001000000000002;
 //
-//typedef uint64_t value_t;
-//
-//const uint64_t mask_nan = ((uint64_t)0x7ffc000000000000);
-//const uint64_t val_none = mask_nan | (uint64_t)0x0001000000000000;
-//const uint64_t val_false = mask_nan | (uint64_t)0x0001000000000001;
-//const uint64_t val_true = mask_nan | (uint64_t)0x0001000000000002;
-//
-//
-//inline value_t val_num(double v) { return (value_t) transmute_double_int64(v); }
-//inline bool val_is_num(value_t v) { return (v & mask_nan) != mask_nan; }
+//value_t val_num(double d) { return (value_t) double_to_value_t(d); }
+//bool val_is_num(value_t v) { return (v & MASK_NAN) != MASK_NAN; }
 
 
 

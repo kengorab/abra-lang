@@ -26,8 +26,8 @@ struct KnownFns<'ctx> {
     powf64: FunctionValue<'ctx>,
     malloc: FunctionValue<'ctx>,
     memcpy: FunctionValue<'ctx>,
-    transmute_double_int64: FunctionValue<'ctx>,
-    transmute_int64_double: FunctionValue<'ctx>,
+    double_to_value_t: FunctionValue<'ctx>,
+    value_t_to_double: FunctionValue<'ctx>,
 }
 
 impl<'ctx> KnownFns<'ctx> {
@@ -38,14 +38,14 @@ impl<'ctx> KnownFns<'ctx> {
             powf64: placeholder,
             malloc: placeholder,
             memcpy: placeholder,
-            transmute_double_int64: placeholder,
-            transmute_int64_double: placeholder
+            double_to_value_t: placeholder,
+            value_t_to_double: placeholder
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, transmute_double_int64, transmute_int64_double } = self;
-        [snprintf, printf, powf64, malloc, memcpy, transmute_double_int64, transmute_int64_double].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -216,10 +216,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.powf64 = self.module.add_function("llvm.pow.f64", powf64_type, None);
         let memcpy_type = self.str_type().fn_type(&[self.str_type().into(), self.str_type().into(), self.context.i32_type().into()], false);
         self.known_fns.memcpy = self.module.add_function("memcpy", memcpy_type, None);
-        let transmute_double_int64_type = self.context.i64_type().fn_type(&[self.context.f64_type().into()], false);
-        self.known_fns.transmute_double_int64 = self.module.add_function("transmute_double_int64", transmute_double_int64_type, None);
-        let transmute_int64_double_type = self.context.f64_type().fn_type(&[self.context.i64_type().into()], false);
-        self.known_fns.transmute_int64_double = self.module.add_function("transmute_int64_double", transmute_int64_double_type, None);
+        let double_to_value_t_type = self.context.i64_type().fn_type(&[self.context.f64_type().into()], false);
+        self.known_fns.double_to_value_t = self.module.add_function("double_to_value_t", double_to_value_t_type, None);
+        let value_t_to_double_type = self.context.f64_type().fn_type(&[self.context.i64_type().into()], false);
+        self.known_fns.value_t_to_double = self.module.add_function("value_t_to_double", value_t_to_double_type, None);
 
         self.known_types.string = self.build_string_type();
         self.known_types.int = self.build_int_type();
@@ -554,7 +554,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
         let cast_item_val = if item_val.is_float_value() {
             self.builder.build_call(
-                self.known_fns.transmute_double_int64,
+                self.known_fns.double_to_value_t,
                 &[item_val.into()],
                 ""
             ).try_as_basic_value().left().unwrap()
@@ -578,7 +578,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Type::Bool => self.builder.build_int_cast(arr_item.into_int_value(), self.context.bool_type(), "").into(),
             Type::Float => {
                 self.builder.build_call(
-                    self.known_fns.transmute_int64_double,
+                    self.known_fns.value_t_to_double,
                     &[arr_item.into()],
                     ""
                 ).try_as_basic_value().left().unwrap()
