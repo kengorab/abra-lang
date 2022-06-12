@@ -1,17 +1,18 @@
 use std::collections::{HashMap, HashSet};
+use std::iter::repeat;
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, InstructionOpcode, IntValue, PointerValue};
+use inkwell::types::{BasicType, BasicTypeEnum, IntType, StructType};
+use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
 use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
-use abra_core::typechecker::types::{FnType, Type};
+use abra_core::typechecker::types::Type;
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
 const PLACEHOLDER_FN_NAME: &str = "__placeholder";
@@ -28,6 +29,9 @@ struct KnownFns<'ctx> {
     memcpy: FunctionValue<'ctx>,
     double_to_value_t: FunctionValue<'ctx>,
     value_t_to_double: FunctionValue<'ctx>,
+    alloc_array: FunctionValue<'ctx>,
+    array_insert: FunctionValue<'ctx>,
+    array_get: FunctionValue<'ctx>,
 }
 
 impl<'ctx> KnownFns<'ctx> {
@@ -39,13 +43,16 @@ impl<'ctx> KnownFns<'ctx> {
             malloc: placeholder,
             memcpy: placeholder,
             double_to_value_t: placeholder,
-            value_t_to_double: placeholder
+            value_t_to_double: placeholder,
+            alloc_array: placeholder,
+            array_insert: placeholder,
+            array_get: placeholder,
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, alloc_array, array_insert, array_get } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, alloc_array, array_insert, array_get].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -95,6 +102,19 @@ impl<'ctx> KnownTypes<'ctx> {
     }
 }
 
+// IMPORTANT! These must stay in sync with the constants in `rt.h`
+
+const MASK_NAN: u64 = 0x7ffc000000000000;
+const MASK_INT: u64 = MASK_NAN | 0x7ffc000000000000;
+const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
+
+// const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
+const VAL_FALSE: u64 = MASK_NAN | 0x0001000000000001;
+const VAL_TRUE: u64  = MASK_NAN | 0x0001000000000002;
+
+const PAYLOAD_MASK_INT: u64 = 0x00000000ffffffff;
+const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
+
 struct Scope {
     name: String,
     fns: HashMap<String, String>,
@@ -135,7 +155,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
         compiler.init();
 
-        let mut last_item = compiler.const0().as_basic_value_enum();
+        let mut last_item = context.i64_type().const_zero().as_basic_value_enum();
         let mut last_item_type = Type::Unit;
         for node in typed_module.typed_nodes {
             last_item_type = node.get_type();
@@ -153,7 +173,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let mut methods = HashMap::new();
         methods.insert("toString".to_string(), {
-            let t = self.known_types.string.get_type().ptr_type(AddressSpace::Generic).fn_type(&[int_type.into()], false);
+            let t = self.value_t().fn_type(&[self.value_t().into()], false);
             self.module.add_function("prelude__Int__toString", t, None)
         });
 
@@ -165,7 +185,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let mut methods = HashMap::new();
         methods.insert("toString".to_string(), {
-            let t = self.known_types.string.get_type().ptr_type(AddressSpace::Generic).fn_type(&[float_type.into()], false);
+            let t = self.value_t().fn_type(&[self.value_t().into()], false);
             self.module.add_function("prelude__Float__toString", t, None)
         });
 
@@ -181,11 +201,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let mut methods = HashMap::new();
         methods.insert("toString".to_string(), {
-            let t = string_type.ptr_type(AddressSpace::Generic).fn_type(&[string_type.ptr_type(AddressSpace::Generic).into()], false);
+            let t = self.value_t().fn_type(&[self.value_t().into()], false);
             self.module.add_function("prelude__String__toString", t, None)
         });
         methods.insert("toUpper".to_string(), {
-            let t = string_type.ptr_type(AddressSpace::Generic).fn_type(&[string_type.ptr_type(AddressSpace::Generic).into()], false);
+            let t = self.value_t().fn_type(&[self.value_t().into()], false);
             self.module.add_function("prelude__String__toUpper", t, None)
         });
 
@@ -197,7 +217,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         array_type.set_body(&[
             self.context.i32_type().into(), // int64_t length
             self.context.i32_type().into(), // int64_t _capacity
-            self.context.i64_type().ptr_type(AddressSpace::Generic).into(), // void** items
+            self.value_t().ptr_type(AddressSpace::Generic).into(), // void** items
         ], false);
 
         let methods = HashMap::new();
@@ -216,10 +236,16 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.powf64 = self.module.add_function("llvm.pow.f64", powf64_type, None);
         let memcpy_type = self.str_type().fn_type(&[self.str_type().into(), self.str_type().into(), self.context.i32_type().into()], false);
         self.known_fns.memcpy = self.module.add_function("memcpy", memcpy_type, None);
-        let double_to_value_t_type = self.context.i64_type().fn_type(&[self.context.f64_type().into()], false);
+        let double_to_value_t_type = self.value_t().fn_type(&[self.context.f64_type().into()], false);
         self.known_fns.double_to_value_t = self.module.add_function("double_to_value_t", double_to_value_t_type, None);
-        let value_t_to_double_type = self.context.f64_type().fn_type(&[self.context.i64_type().into()], false);
+        let value_t_to_double_type = self.context.f64_type().fn_type(&[self.value_t().into()], false);
         self.known_fns.value_t_to_double = self.module.add_function("value_t_to_double", value_t_to_double_type, None);
+        let alloc_array_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
+        self.known_fns.alloc_array = self.module.add_function("alloc_array", alloc_array_type, None);
+        let array_insert_type = self.context.void_type().fn_type(&[self.value_t().into(), self.context.i32_type().into(), self.value_t().into()], false);
+        self.known_fns.array_insert = self.module.add_function("array_insert", array_insert_type, None);
+        let array_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
+        self.known_fns.array_get = self.module.add_function("array_get", array_get_type, None);
 
         self.known_types.string = self.build_string_type();
         self.known_types.int = self.build_int_type();
@@ -242,8 +268,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn gen_num_to_string(&self, is_float: bool, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let fmt = if is_float { "%f" } else { "%lld" };
+        let fmt = if is_float { "%f" } else { "%d" };
         let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
+
+        let value = if is_float {
+            self.emit_extract_nan_tagged_float(value.into_int_value()).as_basic_value_enum()
+        } else {
+            self.emit_extract_nan_tagged_int(value.into_int_value()).as_basic_value_enum()
+        };
 
         // Print formatted value, using extra snprintf to determine required buffer length
         //   int len = snprintf(NULL, 0, fmt, value);
@@ -251,10 +283,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         //   snprintf(result, len + 1, fmt, value);
         let len = self.builder.build_call(
             self.known_fns.snprintf,
-            &[self.null_ptr().into(), self.const0().into(), fmt_str.into(), value.into()],
+            &[self.null_ptr().into(), self.context.i64_type().const_zero().into(), fmt_str.into(), value.into()],
             "len",
         ).try_as_basic_value().left().unwrap().into_int_value();
-        let len_plus_1 = self.builder.build_int_add(len, self.const_int(1).into(), "len");
+        let len_plus_1 = self.builder.build_int_add(len, self.context.i64_type().const_int(1, false).into(), "len");
         let result = self.builder.build_call(
             self.known_fns.malloc,
             &[len_plus_1.into()],
@@ -271,7 +303,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn gen_bool_to_str(&self, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let cond = self.builder.build_int_compare(IntPredicate::EQ, value.into_int_value(), self.context.bool_type().const_zero(), "cond");
+        let value = self.emit_extract_nan_tagged_bool(value.into_int_value());
+        let cond = self.builder.build_int_compare(
+            IntPredicate::EQ,
+            value,
+            self.builder.build_int_cast(self.context.bool_type().const_zero(), self.context.i64_type(), ""),
+            "cond"
+        );
 
         let function = self.cur_fn;
         let then_bb = self.context.append_basic_block(function, "then");
@@ -349,7 +387,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 "str_chars_mem",
             ).try_as_basic_value().left().unwrap().into_pointer_value();
             self.builder.build_store(
-                unsafe { self.builder.build_gep(str_chars_mem, &[self.const_int(0)], "") },
+                unsafe { self.builder.build_gep(str_chars_mem, &[self.context.i64_type().const_zero()], "") },
                 lbrack_ch
             );
 
@@ -365,7 +403,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.builder.build_conditional_branch(cond.into(), body_bb, after_bb);
 
             self.builder.position_at_end(body_bb);
-            let arr_item = self.array_obj_get(inner_type, array, idx);
+            let arr_item = self.array_obj_get(self.emit_nan_tagged_obj(array), idx);
             let arr_item_str = self.gen_value_to_str(inner_type, arr_item.into());
 
             let arr_item_str_len = self.builder.build_struct_gep(arr_item_str, 0, "").unwrap();
@@ -419,8 +457,15 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Type::Int => self.gen_num_to_string(false, value),
             Type::Float => self.gen_num_to_string(true, value),
             Type::Bool => self.gen_bool_to_str(value),
-            Type::String => value.into_pointer_value(),
-            Type::Array(inner) => self.gen_array_to_str(&inner, value.into_pointer_value()),
+            Type::String => {
+                let ptr = self.emit_extract_nan_tagged_obj(value.into_int_value());
+                self.builder.build_cast(InstructionOpcode::BitCast, ptr, self.known_types.string.get_type().ptr_type(AddressSpace::Generic), "").into_pointer_value()
+            },
+            Type::Array(inner) => {
+                let ptr = self.emit_extract_nan_tagged_obj(value.into_int_value());
+                let ptr = self.builder.build_cast(InstructionOpcode::BitCast, ptr, self.known_types.array.get_type().ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                self.gen_array_to_str(&inner, ptr)
+            },
             _ => self.alloc_const_string_obj("todo")
         }
     }
@@ -454,37 +499,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.scopes.last_mut().expect("There should always be at least 1 scope")
     }
 
-    fn llvm_type(&self, typ: &Type) -> BasicTypeEnum<'ctx> {
-        match typ {
-            Type::Int => self.context.i64_type().into(),
-            Type::Float => self.context.f64_type().into(),
-            Type::Bool => self.context.bool_type().into(),
-            Type::String => self.known_types.string.get_type().ptr_type(AddressSpace::Generic).into(),
-            Type::Array(_) => self.known_types.array.get_type().ptr_type(AddressSpace::Generic).into(),
-            Type::Fn(_) => todo!(),
-            _ => todo!()
-        }
-    }
-
-    fn llvm_fn_type(&self, fn_type: &FnType) -> FunctionType<'ctx> {
-        let ret_type = self.llvm_type(&fn_type.ret_type);
-        let arg_types = fn_type.arg_types.iter()
-            .map(|(_, t, _)| self.llvm_type(t).into())
-            .collect::<Vec<BasicMetadataTypeEnum<'ctx>>>();
-
-        ret_type.fn_type(arg_types.as_slice(), false)
-    }
-
     fn null_ptr(&self) -> BasicValueEnum<'ctx> {
         self.str_type().const_zero()
-    }
-
-    fn const0(&self) -> IntValue<'ctx> {
-        self.context.i64_type().const_int(0, false)
-    }
-
-    fn const_int(&self, int: i64) -> IntValue<'ctx> {
-        self.context.i64_type().const_int(int as u64, false)
     }
 
     fn str_type(&self) -> BasicTypeEnum<'ctx> {
@@ -519,84 +535,105 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         )
     }
 
-    fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> PointerValue<'ctx> {
-        let arr_mem = self.builder.build_call(
-            self.known_fns.malloc,
-            &[self.known_types.array.get_type().size_of().unwrap().into()],
-            "arr_mem",
-        ).try_as_basic_value().left().unwrap().into_pointer_value();
-        let arr = self.builder.build_pointer_cast(arr_mem, self.known_types.array.get_type().ptr_type(AddressSpace::Generic), "arr");
-
-        let item_size_val = self.context.i64_type().size_of();
-        let items_len = self.builder.build_int_mul(
-            item_size_val,
-            self.builder.build_int_cast(length_val, self.context.i64_type(), ""),
-            "items_len"
-        );
-        let items_mem = self.builder.build_call(self.known_fns.malloc, &[items_len.into()], "items_mem")
-            .try_as_basic_value().left().unwrap().into_pointer_value();
-        let items_mem = self.builder.build_pointer_cast(items_mem, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
-
-        let arr_length = self.builder.build_struct_gep(arr, 0, "arr_length").unwrap();
-        self.builder.build_store(arr_length, length_val);
-        let arr_capacity = self.builder.build_struct_gep(arr, 1, "arr_capacity").unwrap();
-        self.builder.build_store(arr_capacity, length_val);
-        let arr_items = self.builder.build_struct_gep(arr, 2, "arr_items").unwrap();
-        self.builder.build_store(arr_items, items_mem);
-
-        arr
+    fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> IntValue<'ctx> {
+        self.builder.build_call(self.known_fns.alloc_array, &[length_val.into()], "").try_as_basic_value().left().unwrap().into_int_value()
     }
 
-    fn array_obj_insert(&self, array_val: PointerValue<'ctx>, index_val: IntValue<'ctx>, item_val: BasicValueEnum<'ctx>) {
-        let arr_items = self.builder.build_struct_gep(array_val, 2, "arr_items").unwrap();
+    fn array_obj_insert(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>, item_val: IntValue<'ctx>) {
+        self.builder.build_call(self.known_fns.array_insert, &[array_val.into(), index_val.into(), item_val.into()], "");
+    }
 
-        let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[index_val], "") };
-        let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
-        let cast_item_val = if item_val.is_float_value() {
-            self.builder.build_call(
-                self.known_fns.double_to_value_t,
-                &[item_val.into()],
+    fn array_obj_get(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
+        self.builder.build_call(self.known_fns.array_get, &[array_val.into(), index_val.into()], "").try_as_basic_value().left().unwrap()
+    }
+
+    fn value_t(&self) -> IntType<'ctx> {
+        self.context.i64_type()
+    }
+
+    fn emit_nan_tagged_int_const(&self, int: i32) -> IntValue<'ctx> {
+        self.emit_nan_tagged_int(self.context.i64_type().const_int(int as u64, false))
+    }
+
+    fn emit_nan_tagged_int(&self, int_val: IntValue<'ctx>) -> IntValue<'ctx> {
+        let mask = self.context.i64_type().const_int(MASK_INT, false);
+        self.builder.build_or(mask, int_val, "")
+    }
+
+    fn emit_nan_tagged_float_const(&self, float: f64) -> IntValue<'ctx> {
+        self.emit_nan_tagged_float(self.context.f64_type().const_float(float))
+    }
+
+    fn emit_nan_tagged_float(&self, float_val: FloatValue<'ctx>) -> IntValue<'ctx> {
+        self.builder.build_call(
+            self.known_fns.double_to_value_t,
+            &[float_val.into()],
+            ""
+        ).try_as_basic_value().left().unwrap().into_int_value()
+    }
+
+    fn emit_nan_tagged_bool_const(&self, b: bool) -> IntValue<'ctx> {
+        self.context.i64_type().const_int(if b { VAL_TRUE } else { VAL_FALSE }, false)
+    }
+
+    fn emit_nan_tagged_bool(&self, bool_val: IntValue<'ctx>) -> IntValue<'ctx> {
+        self.builder.build_int_add(
+            self.builder.build_int_sub(
+                self.context.i64_type().const_int(VAL_TRUE, false),
+                self.context.i64_type().const_int(1, false),
                 ""
-            ).try_as_basic_value().left().unwrap()
-        } else if item_val.get_type() == self.context.bool_type().into() {
-            self.builder.build_int_cast(item_val.into_int_value(), self.context.i64_type(), "").into()
-        } else if item_val.is_int_value() {
-            item_val
-        } else {
-            self.builder.build_cast(InstructionOpcode::PtrToInt, item_val, self.context.i64_type(), "")
-        };
-        self.builder.build_store(arr_item_slot.into(), cast_item_val);
+            ),
+            self.builder.build_int_cast(bool_val, self.context.i64_type(), ""),
+            ""
+        )
     }
 
-    fn array_obj_get(&self, inner_type: &Type, array_val: PointerValue<'ctx>, index_val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
-        let arr_items = self.builder.build_struct_gep(array_val, 2, "arr_items").unwrap();
-        let arr_item_slot = unsafe { self.builder.build_gep(arr_items, &[index_val], "") };
-        let arr_item_slot = self.builder.build_pointer_cast(arr_item_slot, self.context.i64_type().ptr_type(AddressSpace::Generic), "");
-        let arr_item = self.builder.build_load(arr_item_slot, "");
-        match inner_type {
-            Type::Int | Type::Unknown => arr_item,
-            Type::Bool => self.builder.build_int_cast(arr_item.into_int_value(), self.context.bool_type(), "").into(),
-            Type::Float => {
-                self.builder.build_call(
-                    self.known_fns.value_t_to_double,
-                    &[arr_item.into()],
-                    ""
-                ).try_as_basic_value().left().unwrap()
-            }
-            Type::String => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.string.get_type().ptr_type(AddressSpace::Generic), ""),
-            Type::Array(_) => self.builder.build_cast(InstructionOpcode::IntToPtr, arr_item, self.known_types.array.get_type().ptr_type(AddressSpace::Generic), ""),
-            _ => todo!(),
-        }
+    fn emit_nan_tagged_obj(&self, ptr: PointerValue<'ctx>) -> IntValue<'ctx> {
+        let ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, ptr, self.context.i64_type(), "");
+        let mask = self.context.i64_type().const_int(MASK_OBJ, false);
+        self.builder.build_or(mask, ptr.into_int_value(), "")
+    }
+
+    fn emit_extract_nan_tagged_int(&self, value: IntValue<'ctx>) -> IntValue<'ctx> {
+        let payload_mask_int = self.context.i64_type().const_int(PAYLOAD_MASK_INT, false);
+        let res = self.builder.build_and(payload_mask_int, value, "");
+        self.builder.build_int_cast_sign_flag(res, self.context.i32_type(), true, "")
+    }
+
+    fn emit_extract_nan_tagged_float(&self, value: IntValue<'ctx>) -> FloatValue<'ctx> {
+        self.builder.build_call(
+            self.known_fns.value_t_to_double,
+            &[value.into()],
+            ""
+        ).try_as_basic_value().left().unwrap().into_float_value()
+    }
+
+    fn emit_extract_nan_tagged_bool(&self, value: IntValue<'ctx>) -> IntValue<'ctx> {
+        self.builder.build_int_sub(value, self.context.i64_type().const_int(VAL_FALSE, false), "")
+    }
+
+    fn emit_extract_nan_tagged_obj(&self, value: IntValue<'ctx>) -> PointerValue<'ctx> {
+        let payload_mask_obj = self.context.i64_type().const_int(PAYLOAD_MASK_OBJ, false);
+        let ptr = self.builder.build_and(payload_mask_obj, value, "");
+        self.builder.build_cast(InstructionOpcode::IntToPtr, ptr, self.context.i8_type().ptr_type(AddressSpace::Generic), "").into_pointer_value()
     }
 }
 
 impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'a, 'ctx> {
     fn visit_literal(&mut self, _token: Token, node: TypedLiteralNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let value = match node {
-            TypedLiteralNode::IntLiteral(v) => self.context.i64_type().const_int(v as u64, false).into(),
-            TypedLiteralNode::FloatLiteral(v) => self.context.f64_type().const_float(v).into(),
-            TypedLiteralNode::StringLiteral(v) => self.alloc_const_string_obj(v.as_str()).into(),
-            TypedLiteralNode::BoolLiteral(v) => self.context.bool_type().const_int(if v { 1 } else { 0 }, false).into(),
+            TypedLiteralNode::IntLiteral(v) => {
+                if v > (i32::MAX as i64) || v < (i32::MIN as i64) {
+                    unimplemented!()
+                }
+                self.emit_nan_tagged_int_const(v as i32).as_basic_value_enum()
+            },
+            TypedLiteralNode::FloatLiteral(v) => self.emit_nan_tagged_float_const(v).as_basic_value_enum(),
+            TypedLiteralNode::StringLiteral(v) => {
+                let ptr = self.alloc_const_string_obj(v.as_str());
+                self.emit_nan_tagged_obj(ptr).as_basic_value_enum()
+            },
+            TypedLiteralNode::BoolLiteral(v) => self.emit_nan_tagged_bool_const(v).as_basic_value_enum(),
         };
 
         Ok(value)
@@ -608,14 +645,24 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let is_int = if node.expr.get_type() == Type::Int { true } else { false };
                 let value = self.visit(*node.expr)?;
                 if is_int {
-                    self.builder.build_int_neg(value.into_int_value(), "").into()
+                    let value = self.emit_extract_nan_tagged_int(value.into_int_value());
+                    let res = self.builder.build_int_neg(value, "");
+                    self.emit_nan_tagged_int(res).as_basic_value_enum()
                 } else {
-                    self.builder.build_float_neg(value.into_float_value(), "").into()
+                    let value = self.emit_extract_nan_tagged_float(value.into_int_value());
+                    let res = self.builder.build_float_neg(value, "");
+                    self.emit_nan_tagged_float(res).as_basic_value_enum()
                 }
             }
             UnaryOp::Negate => {
                 let value = self.visit(*node.expr)?;
-                self.builder.build_not(value.into_int_value(), "").into()
+                let value = self.emit_extract_nan_tagged_bool(value.into_int_value());
+                let res = self.builder.build_int_unsigned_rem(
+                    self.builder.build_int_add(value, self.context.i64_type().const_int(1, false), ""),
+                    self.context.i64_type().const_int(2, false),
+                    ""
+                );
+                self.emit_nan_tagged_bool(res).as_basic_value_enum()
             }
         };
 
@@ -629,35 +676,39 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let value = match (ltype, rtype, &node.op) {
             (Type::Int, Type::Int, op) => {
                 let left = self.visit(*node.left)?;
+                let left = self.emit_extract_nan_tagged_int(left.into_int_value());
                 let right = self.visit(*node.right)?;
+                let right = self.emit_extract_nan_tagged_int(right.into_int_value());
 
                 match op {
-                    BinaryOp::Add => self.builder.build_int_add(left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Sub => self.builder.build_int_sub(left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Mul => self.builder.build_int_mul(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Add => self.emit_nan_tagged_int(self.builder.build_int_add(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Sub => self.emit_nan_tagged_int(self.builder.build_int_sub(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Mul => self.emit_nan_tagged_int(self.builder.build_int_mul(left, right, "")).as_basic_value_enum(),
                     BinaryOp::Div => {
-                        let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left");
-                        let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "right");
+                        let left = self.builder.build_signed_int_to_float(left, self.context.f64_type(), "left");
+                        let right = self.builder.build_signed_int_to_float(right, self.context.f64_type(), "right");
 
-                        self.builder.build_float_div(left, right, "").into()
+                        let res = self.builder.build_float_div(left, right, "");
+                        self.emit_nan_tagged_float(res).as_basic_value_enum()
                     },
-                    BinaryOp::Mod => self.builder.build_int_signed_rem(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Mod => self.emit_nan_tagged_int(self.builder.build_int_signed_rem(left, right, "")).as_basic_value_enum(),
                     BinaryOp::Pow => {
-                        let left = self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left");
-                        let right = self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "right");
+                        let left = self.builder.build_signed_int_to_float(left, self.context.f64_type(), "left");
+                        let right = self.builder.build_signed_int_to_float(right, self.context.f64_type(), "right");
 
-                        self.builder.build_call(
+                        let res = self.builder.build_call(
                             self.known_fns.powf64,
                             &[left.into(), right.into()],
                             "",
-                        ).try_as_basic_value().left().unwrap()
+                        ).try_as_basic_value().left().unwrap().into_float_value();
+                        self.emit_nan_tagged_float(res).as_basic_value_enum()
                     }
-                    BinaryOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Neq => self.builder.build_int_compare(IntPredicate::NE, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Gt => self.builder.build_int_compare(IntPredicate::SGT, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Gte => self.builder.build_int_compare(IntPredicate::SGE, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Lt => self.builder.build_int_compare(IntPredicate::SLT, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Lte => self.builder.build_int_compare(IntPredicate::SLE, left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Eq => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::EQ, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Neq => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::NE, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Gt => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::SGT, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Gte => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::SGE, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Lt => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::SLT, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Lte => self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::SLE, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
@@ -670,18 +721,20 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let right = self.visit(*node.right)?;
 
                 let left = if ltype == Type::Int {
-                    self.builder.build_signed_int_to_float(left.into_int_value(), self.context.f64_type(), "left")
-                } else { left.into_float_value() };
+                    let left = self.emit_extract_nan_tagged_int(left.into_int_value());
+                    self.builder.build_signed_int_to_float(left, self.context.f64_type(), "left")
+                } else { self.emit_extract_nan_tagged_float(left.into_int_value()) };
                 let right = if rtype == Type::Int {
-                    self.builder.build_signed_int_to_float(right.into_int_value(), self.context.f64_type(), "left")
-                } else { right.into_float_value() };
+                    let right = self.emit_extract_nan_tagged_int(right.into_int_value());
+                    self.builder.build_signed_int_to_float(right, self.context.f64_type(), "right")
+                } else { self.emit_extract_nan_tagged_float(right.into_int_value()) };
 
                 match op {
-                    BinaryOp::Add => self.builder.build_float_add(left, right, "").into(),
-                    BinaryOp::Sub => self.builder.build_float_sub(left, right, "").into(),
-                    BinaryOp::Mul => self.builder.build_float_mul(left, right, "").into(),
-                    BinaryOp::Div => self.builder.build_float_div(left, right, "").into(),
-                    BinaryOp::Mod => self.builder.build_float_rem(left, right, "").into(),
+                    BinaryOp::Add => self.emit_nan_tagged_float(self.builder.build_float_add(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Sub => self.emit_nan_tagged_float(self.builder.build_float_sub(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Mul => self.emit_nan_tagged_float(self.builder.build_float_mul(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Div => self.emit_nan_tagged_float(self.builder.build_float_div(left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Mod => self.emit_nan_tagged_float(self.builder.build_float_rem(left, right, "")).as_basic_value_enum(),
                     BinaryOp::Pow => {
                         // if a < 0 { -(-a ** b) } else { a ** b }
                         let cond = self.builder.build_float_compare(FloatPredicate::OLT, left, self.context.f64_type().const_float(0.0).into(), "cond");
@@ -716,14 +769,14 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                         self.builder.position_at_end(cont_bb);
                         let phi = self.builder.build_phi(self.context.f64_type(), "");
                         phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
-                        phi.as_basic_value()
+                        self.emit_nan_tagged_float(phi.as_basic_value().into_float_value()).as_basic_value_enum()
                     }
-                    BinaryOp::Eq => self.builder.build_float_compare(FloatPredicate::OEQ, left, right, "").into(),
-                    BinaryOp::Neq => self.builder.build_float_compare(FloatPredicate::ONE, left, right, "").into(),
-                    BinaryOp::Gt => self.builder.build_float_compare(FloatPredicate::OGT, left, right, "").into(),
-                    BinaryOp::Gte => self.builder.build_float_compare(FloatPredicate::OGE, left, right, "").into(),
-                    BinaryOp::Lt => self.builder.build_float_compare(FloatPredicate::OLT, left, right, "").into(),
-                    BinaryOp::Lte => self.builder.build_float_compare(FloatPredicate::OLE, left, right, "").into(),
+                    BinaryOp::Eq =>  self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OEQ, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Neq => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::ONE, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Gt =>  self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OGT, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Gte => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OGE, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Lt => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OLT, left, right, "")).as_basic_value_enum(),
+                    BinaryOp::Lte => self.emit_nan_tagged_bool(self.builder.build_float_compare(FloatPredicate::OLE, left, right, "")).as_basic_value_enum(),
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::AndEq | BinaryOp::OrEq => unreachable!("No boolean ops apply to numbers"),
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately")
@@ -731,17 +784,20 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             }
             (Type::Bool, Type::Bool, op) => {
                 let left = self.visit(*node.left)?;
+                let left = self.emit_extract_nan_tagged_bool(left.into_int_value());
                 let right = self.visit(*node.right)?;
+                let right = self.emit_extract_nan_tagged_bool(right.into_int_value());
 
-                match op {
-                    BinaryOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, left.into_int_value(), right.into_int_value(), "").into(),
-                    BinaryOp::Neq => self.builder.build_int_compare(IntPredicate::NE, left.into_int_value(), right.into_int_value(), "").into(),
+                let res = match op {
+                    BinaryOp::Eq => self.builder.build_int_compare(IntPredicate::EQ, left, right, "").into(),
+                    BinaryOp::Neq => self.builder.build_int_compare(IntPredicate::NE, left, right, "").into(),
                     BinaryOp::And | BinaryOp::Or => unreachable!("`and` & `or` handled as if-expressions for short-circuiting"),
-                    BinaryOp::Xor => self.builder.build_xor(left.into_int_value(), right.into_int_value(), "").into(),
+                    BinaryOp::Xor => self.builder.build_xor(left, right, "").into(),
                     BinaryOp::Coalesce => unreachable!("Coalesce op does not apply to 2 non-optionals"),
                     BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!("Assign ops are handled separately"),
                     BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte | BinaryOp::Pow => unreachable!("No arithmetic ops apply to boolean values"),
-                }
+                };
+                self.emit_nan_tagged_bool(res).as_basic_value_enum()
             }
             (ltype @ Type::String, rtype @ Type::Int, BinaryOp::Add) |
             (ltype @ Type::String, rtype @ Type::Float, BinaryOp::Add) |
@@ -779,7 +835,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let mem_offset = unsafe { self.builder.build_gep(mem, &[length], "") };
                 self.builder.build_store(mem_offset, self.context.i8_type().const_zero());
 
-                self.alloc_string_obj(length, mem).into()
+                self.emit_nan_tagged_obj(self.alloc_string_obj(length, mem)).as_basic_value_enum()
             }
             _ => todo!()
         };
@@ -794,15 +850,15 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     fn visit_array(&mut self, _token: Token, node: TypedArrayNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let len = node.items.len();
         let length_val = self.context.i32_type().const_int(len as u64, false);
-        let arr = self.alloc_array_obj_with_length(length_val);
+        let arr_value = self.alloc_array_obj_with_length(length_val);
 
         for (idx, item) in node.items.into_iter().enumerate() {
             let index_val = self.context.i32_type().const_int(idx as u64, false);
             let item_val = self.visit(item)?;
-            self.array_obj_insert(arr, index_val, item_val);
+            self.array_obj_insert(arr_value, index_val, item_val.into_int_value());
         }
 
-        Ok(arr.into())
+        Ok(arr_value.into())
     }
 
     fn visit_tuple(&mut self, _token: Token, _node: TypedTupleNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -833,7 +889,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
         self.current_scope_mut().fns.insert(fn_name, fully_qualified_fn_name.clone());
 
-        let fn_type = self.llvm_fn_type(&node.fn_type);
+        let fn_type = self.value_t().fn_type(repeat(self.value_t().into()).take(node.args.len()).collect_vec().as_slice(), false);
         let func = self.module.add_function(&fully_qualified_fn_name, fn_type, None);
         let fn_bb = self.context.append_basic_block(func, "fn_body");
         self.builder.position_at_end(fn_bb);
@@ -851,7 +907,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         self.cur_fn = old_fn;
         self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
 
-        let res = self.const0();
+        let res = self.emit_nan_tagged_int_const(0);
         Ok(res.into())
     }
 
@@ -963,6 +1019,6 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        Ok(self.const0().into())
+        Ok(self.context.i64_type().const_zero().into())
     }
 }
