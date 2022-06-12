@@ -578,13 +578,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn emit_nan_tagged_bool(&self, bool_val: IntValue<'ctx>) -> IntValue<'ctx> {
         self.builder.build_int_add(
-            self.builder.build_int_sub(
-                self.context.i64_type().const_int(VAL_TRUE, false),
-                self.context.i64_type().const_int(1, false),
-                ""
-            ),
+            self.context.i64_type().const_int(VAL_FALSE, false),
             self.builder.build_int_cast(bool_val, self.context.i64_type(), ""),
-            ""
+            "",
         )
     }
 
