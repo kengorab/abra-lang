@@ -48,18 +48,74 @@ const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
 #define AS_INT(val)    ((int32_t) (val & PAYLOAD_MASK_INT))
 #define AS_DOUBLE(val) ((double) (value_t_to_double(val)))
 
-#define AS_OBJ(val, typ) ((typ*)(val & PAYLOAD_MASK_OBJ))
-#define MK_OBJ(val)      (MASK_OBJ | (uint64_t)val)
+#define AS_OBJ(val, typ)  ((typ*)(val & PAYLOAD_MASK_OBJ))
+#define TAG_OBJ(val)      (MASK_OBJ | (uint64_t)val)
 
 // ------------------------------------------------------------------------
 
+value_t* v_table[256];
+uint32_t next_type_id = 0;
+
+value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
+  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
+  v_table[type_id] = entry;
+  return entry;
+}
+
+value_t vtable_lookup(uint32_t type_id, uint32_t idx) {
+  return v_table[type_id][idx];
+}
+
+typedef struct obj_header_t {
+  uint32_t type_id;
+} obj_header_t;
+
+uint32_t type_id_Int;
+uint32_t type_id_Float;
+//uint32_t type_id_Bool;
+
+uint32_t type_id_for_val(value_t value) {
+  if (((value & MASK_INT) == MASK_INT)) {
+    return type_id_Int;
+  }
+  if (((value & MASK_NAN) != MASK_NAN)) {
+    return type_id_Float;
+  }
+  obj_header_t* header = AS_OBJ(value, obj_header_t);
+  return header->type_id;
+}
+
+uint32_t type_id_String;
 typedef struct String {
+  obj_header_t h;
   int32_t size;
   char* chars;
 } String;
 
+value_t string_alloc(int32_t length, char* chars) {
+  String* string = GC_MALLOC(sizeof(String));
+
+  string->h.type_id = type_id_String;
+  string->size = length;
+  string->chars = chars;
+  return TAG_OBJ(string);
+}
+
 value_t prelude__String__toString(value_t self) {
   return self;
+}
+
+value_t prelude__String__toLower(value_t _self) {
+  String* self = AS_OBJ(_self, String);
+
+  char* chars = strdup(self->chars);
+  for (int i = 0; i < self->size; ++i) {
+    if (chars[i] >= 'A' && chars[i] <= 'Z') {
+      chars[i] = chars[i] + 32;
+    }
+  }
+
+  return string_alloc(self->size, chars);
 }
 
 value_t prelude__String__toUpper(value_t _self) {
@@ -72,10 +128,7 @@ value_t prelude__String__toUpper(value_t _self) {
     }
   }
 
-  String* s = GC_MALLOC(sizeof(String));
-  s->size = self->size;
-  s->chars = chars;
-  return MK_OBJ(s);
+  return string_alloc(self->size, chars);
 }
 
 value_t prelude__Int__toString(value_t _self) {
@@ -85,10 +138,7 @@ value_t prelude__Int__toString(value_t _self) {
   char *result = GC_MALLOC(len + 1);
   snprintf(result, len + 1, "%d", self);
 
-  String* s = GC_MALLOC(sizeof(String));
-  s->size = len;
-  s->chars = result;
-  return MK_OBJ(s);
+  return string_alloc(len, result);
 }
 
 value_t prelude__Float__toString(value_t _self) {
@@ -98,26 +148,24 @@ value_t prelude__Float__toString(value_t _self) {
   char *result = GC_MALLOC(len + 1);
   snprintf(result, len + 1, "%f", self);
 
-  String* s = GC_MALLOC(sizeof(String));
-  s->size = len;
-  s->chars = result;
-  return MK_OBJ(s);
+  return string_alloc(len, result);
 }
 
+uint32_t type_id_Array;
 typedef struct Array {
   int32_t length;
   int32_t capacity;
   value_t* items;
 } Array;
 
-value_t alloc_array(int32_t length) {
+value_t array_alloc(int32_t length) {
   Array* array = GC_MALLOC(sizeof(Array));
   value_t* array_items = GC_MALLOC(sizeof(value_t) * length);
 
   array->length = length;
   array->capacity = length;
   array->items = array_items;
-  return MK_OBJ(array);
+  return TAG_OBJ(array);
 }
 
 void array_insert(value_t _self, value_t _idx, value_t item) {

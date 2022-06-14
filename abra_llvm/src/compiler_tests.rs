@@ -250,7 +250,8 @@ fn test_functions() {
 #[test]
 fn test_method_calls() {
     let cases = [
-        ("\"asdf\".toUpper() + \"!\"", "ASDF!"),
+        ("\"ASDF\".toLower() + \"!\"", "asdf!"),
+        ("\"aSdF\".toUpper() + \"!\"", "ASDF!"),
         ("(123).toString() + (45.6).toString()", "12345.600000"),
     ];
 
