@@ -97,9 +97,9 @@ const VAL_TRUE: u64  = MASK_NAN | 0x0001000000000002;
 const PAYLOAD_MASK_INT: u64 = 0x00000000ffffffff;
 const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
 
-struct Scope {
+struct Scope<'ctx> {
     name: String,
-    fns: HashMap<String, String>,
+    fns: HashMap<String, FunctionValue<'ctx>>,
     _bindings: HashSet<String>,
 }
 
@@ -110,7 +110,7 @@ pub struct Compiler<'a, 'ctx> {
     cur_fn: FunctionValue<'ctx>,
     known_fns: KnownFns<'ctx>,
     known_types: KnownTypes<'ctx>,
-    scopes: Vec<Scope>,
+    scopes: Vec<Scope<'ctx>>,
 }
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
@@ -172,6 +172,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let slot = unsafe { self.builder.build_gep(vtable_ptr, &[self.context.i32_type().const_int(method_idx as u64, false)], "") };
         let fn_ptr = self.module.add_function(method_name.as_ref(), method_type, None).as_global_value().as_pointer_value();
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+    }
+
+    fn init_prelude(&mut self) {
+        let println = self.module.add_function("prelude__println", self.value_t().fn_type(&[self.value_t().into()], false), None);
+        self.current_scope_mut().fns.insert("println".to_string(), println);
+
+        self.init_int_type();
+        self.init_float_type();
+        self.init_bool_type();
+        self.init_string_type();
+        self.init_array_type();
     }
 
     fn init_int_type(&self)  {
@@ -281,11 +292,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.builder.position_at_end(entry_fn_bb);
         self.cur_fn = entry_fn;
 
-        self.init_int_type();
-        self.init_float_type();
-        self.init_bool_type();
-        self.init_string_type();
-        self.init_array_type();
+        self.init_prelude();
 
         // The placeholder values were only used during initialization for convenience. They can
         // be disposed of now that all known_fns, known_types, and self.cur_fn are initialized.
@@ -327,7 +334,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         );
     }
 
-    fn current_scope_mut(&mut self) -> &mut Scope {
+    fn current_scope_mut(&mut self) -> &mut Scope<'ctx> {
         self.scopes.last_mut().expect("There should always be at least 1 scope")
     }
 
@@ -658,10 +665,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let namespace = self.scopes.iter().map(|s| &s.name).join("::");
         let fn_name = Token::get_ident_name(&node.name);
         let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
-        self.current_scope_mut().fns.insert(fn_name, fully_qualified_fn_name.clone());
 
         let fn_type = self.value_t().fn_type(repeat(self.value_t().into()).take(node.args.len()).collect_vec().as_slice(), false);
         let func = self.module.add_function(&fully_qualified_fn_name, fn_type, None);
+        self.current_scope_mut().fns.insert(fn_name, func);
         let fn_bb = self.context.append_basic_block(func, "fn_body");
         self.builder.position_at_end(fn_bb);
         self.cur_fn = func;
@@ -718,8 +725,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 self.scopes.iter()
                     .rev()
                     .find_map(|s| s.fns.get(&name))
-                    .and_then(|name| self.module.get_function(name))
-                    .map(|f| CallableValue::from(f))
+                    .map(|f| CallableValue::from(f.clone()))
             }
             TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, .. }) if is_method => {
                 let rcv = self.visit(*target)?;

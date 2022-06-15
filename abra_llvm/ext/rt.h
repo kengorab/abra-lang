@@ -221,7 +221,6 @@ value_t prelude__Array__toString(value_t _self) {
         String* s = AS_OBJ(str_val, String);
         strings[i] = s;
         total_length += s->size;
-
         if (i != self->length - 1) {
             total_length += 2; // ', '
         }
@@ -242,6 +241,35 @@ value_t prelude__Array__toString(value_t _self) {
     chars[offset] = ']';
 
     return string_alloc(total_length, chars);
+}
+
+void prelude__println(value_t varargs) {
+  Array* args = AS_OBJ(varargs, Array);
+
+  String** strings = GC_MALLOC(sizeof(String*) * args->length);
+  int32_t total_length = 0;
+  for (int i = 0; i < args->length; i++) {
+    value_t str_val = value_to_string(args->items[i]);
+    String* s = AS_OBJ(str_val, String);
+    strings[i] = s;
+    if (i != args->length - 1) {
+      total_length += 1; // ' '
+    }
+  }
+
+  char* chars = GC_MALLOC(sizeof(char) * total_length);
+  int32_t offset = 0;
+  for (int i = 0; i < args->length; i++) {
+    memcpy(chars + offset, strings[i]->chars, strings[i]->size);
+    offset += strings[i]->size;
+
+    if (i != args->length - 1) {
+      memcpy(chars + offset, " ", 1);
+      offset += 1;
+    }
+  }
+
+  printf("%s\n", chars);
 }
 
 #endif

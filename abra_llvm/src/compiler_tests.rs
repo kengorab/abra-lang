@@ -1,4 +1,5 @@
 use inkwell::context::Context;
+use itertools::Itertools;
 use abra_core::common::test_utils::MockModuleReader;
 use abra_core::module_loader::ModuleLoader;
 use abra_core::parser::ast::ModuleId;
@@ -19,30 +20,58 @@ fn test_run_with_modules(input: &str, modules: Vec<(&str, &str)>) -> String {
     result.trim().to_string()
 }
 
+struct TestCase {
+    setup: &'static str,
+    input: &'static str,
+    expected: &'static str,
+}
+
+impl From<(&'static str, &'static str)> for TestCase {
+    fn from((input, expected): (&'static str, &'static str)) -> Self {
+        TestCase { setup: "", input, expected }
+    }
+}
+
+impl From<(&'static str, &'static str, &'static str)> for TestCase {
+    fn from((setup, input, expected): (&'static str, &'static str, &'static str)) -> Self {
+        TestCase { setup, input, expected }
+    }
+}
+
+fn run_test_cases<T: Into<TestCase>>(cases: Vec<T>) {
+    let mut inputs = vec![];
+    let mut expecteds = vec![];
+    for case in cases {
+        let TestCase { setup, input, expected } = case.into();
+        inputs.push((setup, input));
+        expecteds.push(expected);
+    }
+
+    let input = inputs.iter().map(|(setup, line)| format!("{}\nprintln({})", setup, line)).join("\n");
+    let res = test_run_with_modules(&input, vec![]);
+
+    for (line_num, (output, expected)) in res.lines().zip(expecteds).enumerate() {
+        assert_eq!(expected, output, "Expected '{}' but saw '{}' (test case {})", expected, output, line_num + 1);
+    }
+}
+
 #[test]
 fn test_literals() {
-    let res = test_run_with_modules("24", vec![]);
-    assert_eq!(res, "24");
+    let cases = vec![
+        ("24", "24"),
+        ("24.6", "24.600000"),
+        ("true", "true"),
+        ("false", "false"),
+        ("\"hello world\"", "hello world"),
+        ("\"hello 👋\"", "hello 👋"),
+    ];
 
-    let res = test_run_with_modules("24.6", vec![]);
-    assert_eq!(res, "24.600000");
-
-    let res = test_run_with_modules("true", vec![]);
-    assert_eq!(res, "true");
-
-    let res = test_run_with_modules("false", vec![]);
-    assert_eq!(res, "false");
-
-    let res = test_run_with_modules("\"hello world\"", vec![]);
-    assert_eq!(res, "hello world");
-
-    let res = test_run_with_modules("\"hello 👋\"", vec![]);
-    assert_eq!(res, "hello 👋");
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_array_literals() {
-    let cases = [
+    let cases = vec![
         ("[]", "[]"),
         ("[1]", "[1]"),
         ("[7, 10 - 18, 9]", "[7, -8, 9]"),
@@ -52,34 +81,26 @@ fn test_array_literals() {
         ("[[1, 2], [3, 4], [5, 6]]", "[[1, 2], [3, 4], [5, 6]]"),
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_unary_operations() {
-    let res = test_run_with_modules("-24", vec![]);
-    assert_eq!(res, "-24");
+    let cases = vec![
+        ("-24", "-24"),
+        ("-24.6", "-24.600000"),
+        ("!true", "false"),
+        ("!!true", "true"),
+        ("!false", "true"),
+        ("!!false", "false"),
+    ];
 
-    let res = test_run_with_modules("-24.6", vec![]);
-    assert_eq!(res, "-24.600000");
-
-    let res = test_run_with_modules("!true", vec![]);
-    assert_eq!(res, "false");
-    let res = test_run_with_modules("!!true", vec![]);
-    assert_eq!(res, "true");
-
-    let res = test_run_with_modules("!false", vec![]);
-    assert_eq!(res, "true");
-    let res = test_run_with_modules("!!false", vec![]);
-    assert_eq!(res, "false");
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_binary_operations_arithmetic() {
-    let cases = [
+    let cases = vec![
         // Integer arithmetic
         ("1 + 1", "2"),
         ("24 + -6", "18"),
@@ -125,15 +146,12 @@ fn test_binary_operations_arithmetic() {
         ("2.1 ** -5", "0.024485"),
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_binary_operations_comparisons() {
-    let cases = [
+    let cases = vec![
         // Integer comparisons
         ("1 < 1", "false"),
         ("1 < 2", "true"),
@@ -188,15 +206,12 @@ fn test_binary_operations_comparisons() {
         ("1 != 2.0", "true"),
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_binary_operations_booleans() {
-    let cases = [
+    let cases = vec![
         // exclusive-or
         ("true ^ true", "false"),
         ("false ^ true", "true"),
@@ -207,15 +222,12 @@ fn test_binary_operations_booleans() {
         ("(1 >= 2) != (3 < 4)", "true")
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_binary_operations_string_concat() {
-    let cases = [
+    let cases = vec![
         (r#""hello " + "world""#, "hello world"),
         (r#""a" + 1"#, "a1"),
         (r#""a" + 1.2"#, "a1.200000"),
@@ -225,38 +237,28 @@ fn test_binary_operations_string_concat() {
         (r#"false + "b""#, "falseb"),
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_functions() {
-    let cases = [
-        ("func abc(): Int = 6 + 24", "30"),
-        ("func abc(): String = \"hello\"", "hello"),
-        ("func abc(): Int[] = [6, 24]", "[6, 24]"),
-        ("func abc(): String[] = [\"a\", \"b\"]", "[a, b]")
+    let cases = vec![
+        ("func a(): Int = 6 + 24", "a()", "30"),
+        ("func b(): String = \"hello\"", "b()", "hello"),
+        ("func c(): Int[] = [6, 24]", "c()", "[6, 24]"),
+        ("func d(): String[] = [\"a\", \"b\"]", "d()", "[a, b]")
     ];
 
-    for (decl, expected) in cases {
-        let input = format!("{}\nabc()", decl);
-        let res = test_run_with_modules(&input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
 
 #[test]
 fn test_method_calls() {
-    let cases = [
+    let cases = vec![
         ("\"ASDF\".toLower() + \"!\"", "asdf!"),
         ("\"aSdF\".toUpper() + \"!\"", "ASDF!"),
         ("(123).toString() + (45.6).toString()", "12345.600000"),
     ];
 
-    for (input, expected) in cases {
-        let res = test_run_with_modules(input, vec![]);
-        assert_eq!(res, expected, "expected '{}' to output '{}'", input, expected);
-    }
+    run_test_cases(cases);
 }
