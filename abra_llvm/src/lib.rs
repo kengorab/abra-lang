@@ -93,6 +93,8 @@ fn compile_and_run(llvm_module: &Module) -> Result<Output, String> {
     let libgc_lib_path = join_path(&ext_base_path.join("libgc").join("lib"), "libgc.a");
     let libgc_header_path = join_path(&ext_base_path.join("libgc"), "include");
 
+    // println!("{}", &out_file_path);
+
     let output = Command::new("clang")
         .arg(src_file_path)
         .arg(wrapper_file_path)

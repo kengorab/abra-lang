@@ -72,17 +72,27 @@ typedef struct obj_header_t {
 
 uint32_t type_id_Int;
 uint32_t type_id_Float;
-//uint32_t type_id_Bool;
+uint32_t type_id_Bool;
 
 uint32_t type_id_for_val(value_t value) {
-  if (((value & MASK_INT) == MASK_INT)) {
+  if ((value & MASK_INT) == MASK_INT) {
     return type_id_Int;
   }
-  if (((value & MASK_NAN) != MASK_NAN)) {
+  if ((value & MASK_NAN) != MASK_NAN) {
     return type_id_Float;
   }
+  if (value == VAL_TRUE || value == VAL_FALSE) {
+    return type_id_Bool;
+  }
+
   obj_header_t* header = AS_OBJ(value, obj_header_t);
   return header->type_id;
+}
+
+value_t value_to_string(value_t value) {
+  uint32_t type_id = type_id_for_val(value);
+  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(type_id, 0);
+  return tostring_method(value);
 }
 
 uint32_t type_id_String;
@@ -101,6 +111,16 @@ value_t string_alloc(int32_t length, char* chars) {
   return TAG_OBJ(string);
 }
 
+value_t string_concat(value_t _s1, value_t _s2) {
+    String* s1 = AS_OBJ(value_to_string(_s1), String);
+    String* s2 = AS_OBJ(value_to_string(_s2), String);
+
+    char* chars = GC_MALLOC(sizeof(char) * (s1->size + s2->size));
+    memcpy(chars, s1->chars, s1->size);
+    memcpy(chars + s1->size, s2->chars, s2->size);
+    return string_alloc(s1->size + s2->size, chars);
+}
+
 value_t prelude__String__toString(value_t self) {
   return self;
 }
@@ -108,11 +128,10 @@ value_t prelude__String__toString(value_t self) {
 value_t prelude__String__toLower(value_t _self) {
   String* self = AS_OBJ(_self, String);
 
-  char* chars = strdup(self->chars);
+  char* chars = GC_MALLOC(sizeof(char) * self->size);
   for (int i = 0; i < self->size; ++i) {
-    if (chars[i] >= 'A' && chars[i] <= 'Z') {
-      chars[i] = chars[i] + 32;
-    }
+    char ch = self->chars[i];
+    chars[i] = (ch >= 'A' && ch <= 'Z') ? ch + 32 : ch;
   }
 
   return string_alloc(self->size, chars);
@@ -121,11 +140,10 @@ value_t prelude__String__toLower(value_t _self) {
 value_t prelude__String__toUpper(value_t _self) {
   String* self = AS_OBJ(_self, String);
 
-  char* chars = strdup(self->chars);
+  char* chars = GC_MALLOC(sizeof(char) * self->size);
   for (int i = 0; i < self->size; ++i) {
-    if (chars[i] >= 'a' && chars[i] <= 'z') {
-      chars[i] = chars[i] - 32;
-    }
+    char ch = self->chars[i];
+    chars[i] = (ch >= 'a' && ch <= 'z') ? ch - 32 : ch;
   }
 
   return string_alloc(self->size, chars);
@@ -151,8 +169,16 @@ value_t prelude__Float__toString(value_t _self) {
   return string_alloc(len, result);
 }
 
+value_t prelude__Bool__toString(value_t self) {
+  if (self == VAL_TRUE) {
+    return string_alloc(4, "true");
+  }
+  return string_alloc(5, "false");
+}
+
 uint32_t type_id_Array;
 typedef struct Array {
+  obj_header_t h;
   int32_t length;
   int32_t capacity;
   value_t* items;
@@ -162,6 +188,7 @@ value_t array_alloc(int32_t length) {
   Array* array = GC_MALLOC(sizeof(Array));
   value_t* array_items = GC_MALLOC(sizeof(value_t) * length);
 
+  array->h.type_id = type_id_Array;
   array->length = length;
   array->capacity = length;
   array->items = array_items;
@@ -179,6 +206,42 @@ value_t array_get(value_t _self, int32_t idx) {
   Array* self = AS_OBJ(_self, Array);
 
   return self->items[idx];
+}
+
+value_t prelude__Array__toString(value_t _self) {
+    Array* self = AS_OBJ(_self, Array);
+    if (self->length == 0) {
+        return string_alloc(2, "[]");
+    }
+
+    String** strings = GC_MALLOC(sizeof(String*) * self->length);
+    int32_t total_length = 2;
+    for (int i = 0; i < self->length; i++) {
+        value_t str_val = value_to_string(self->items[i]);
+        String* s = AS_OBJ(str_val, String);
+        strings[i] = s;
+        total_length += s->size;
+
+        if (i != self->length - 1) {
+            total_length += 2; // ', '
+        }
+    }
+
+    char* chars = GC_MALLOC(sizeof(char) * total_length);
+    chars[0] = '[';
+    int32_t offset = 1;
+    for (int i = 0; i < self->length; i++) {
+        memcpy(chars + offset, strings[i]->chars, strings[i]->size);
+        offset += strings[i]->size;
+
+        if (i != self->length - 1) {
+            memcpy(chars + offset, ", ", 2);
+            offset += 2;
+        }
+    }
+    chars[offset] = ']';
+
+    return string_alloc(total_length, chars);
 }
 
 #endif

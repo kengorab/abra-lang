@@ -31,12 +31,14 @@ struct KnownFns<'ctx> {
     double_to_value_t: FunctionValue<'ctx>,
     value_t_to_double: FunctionValue<'ctx>,
     string_alloc: FunctionValue<'ctx>,
+    string_concat: FunctionValue<'ctx>,
     array_alloc: FunctionValue<'ctx>,
     array_insert: FunctionValue<'ctx>,
     array_get: FunctionValue<'ctx>,
     vtable_alloc_entry: FunctionValue<'ctx>,
     vtable_lookup: FunctionValue<'ctx>,
     type_id_for_val: FunctionValue<'ctx>,
+    value_to_string: FunctionValue<'ctx>,
 }
 
 impl<'ctx> KnownFns<'ctx> {
@@ -50,18 +52,20 @@ impl<'ctx> KnownFns<'ctx> {
             double_to_value_t: placeholder,
             value_t_to_double: placeholder,
             string_alloc: placeholder,
+            string_concat: placeholder,
             array_alloc: placeholder,
             array_insert: placeholder,
             array_get: placeholder,
             vtable_alloc_entry: placeholder,
             vtable_lookup: placeholder,
             type_id_for_val: placeholder,
+            value_to_string: placeholder,
         }
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -84,7 +88,7 @@ impl<'ctx> KnownTypes<'ctx> {
 
 const MASK_NAN: u64 = 0x7ffc000000000000;
 const MASK_INT: u64 = MASK_NAN | 0x0002000000000000;
-const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
+// const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
 
 // const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
 const VAL_FALSE: u64 = MASK_NAN | 0x0001000000000001;
@@ -180,6 +184,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.add_vtable_fn(vtable_entry, 0, "prelude__Float__toString", self.value_t().fn_type(&[self.value_t().into()], false));
     }
 
+    fn init_bool_type(&self)  {
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Bool", 1);
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Bool__toString", self.value_t().fn_type(&[self.value_t().into()], false));
+    }
+
     fn init_string_type(&self)  {
         let vtable_entry = self.add_type_id_and_vtable("type_id_String", 3);
         self.add_vtable_fn(vtable_entry, 0, "prelude__String__toString", self.value_t().fn_type(&[self.value_t().into()], false));
@@ -188,7 +197,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn init_array_type(&self) {
-        let _vtable_entry = self.add_type_id_and_vtable("type_id_Array", 0);
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Array", 0);
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.value_t().fn_type(&[self.value_t().into()], false));
     }
 
     fn init(&mut self) {
@@ -210,6 +220,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.value_t_to_double = self.module.add_function("value_t_to_double", value_t_to_double_type, None);
         let string_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into(), self.str_type().into()], false);
         self.known_fns.string_alloc = self.module.add_function("string_alloc", string_alloc_type, None);
+        let string_concat_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into()], false);
+        self.known_fns.string_concat = self.module.add_function("string_concat", string_concat_type, None);
         let array_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
         self.known_fns.array_alloc = self.module.add_function("array_alloc", array_alloc_type, None);
         let array_insert_type = self.context.void_type().fn_type(&[self.value_t().into(), self.context.i32_type().into(), self.value_t().into()], false);
@@ -229,6 +241,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.type_id_for_val = self.module.add_function(
             "type_id_for_val",
             self.context.i32_type().fn_type(&[self.value_t().into()], false),
+            None
+        );
+        self.known_fns.value_to_string = self.module.add_function(
+            "value_to_string",
+            self.value_t().fn_type(&[self.value_t().into()], false),
             None
         );
 
@@ -266,6 +283,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         self.init_int_type();
         self.init_float_type();
+        self.init_bool_type();
         self.init_string_type();
         self.init_array_type();
 
@@ -278,214 +296,15 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
-    fn gen_num_to_string(&self, is_float: bool, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let fmt = if is_float { "%f" } else { "%d" };
-        let fmt_str = self.builder.build_global_string_ptr(fmt, "fmt").as_basic_value_enum();
-
-        let value = if is_float {
-            self.emit_extract_nan_tagged_float(value.into_int_value()).as_basic_value_enum()
-        } else {
-            self.emit_extract_nan_tagged_int(value.into_int_value()).as_basic_value_enum()
-        };
-
-        // Print formatted value, using extra snprintf to determine required buffer length
-        //   int len = snprintf(NULL, 0, fmt, value);
-        //   char *result = malloc(len + 1);
-        //   snprintf(result, len + 1, fmt, value);
-        let len = self.builder.build_call(
-            self.known_fns.snprintf,
-            &[self.null_ptr().into(), self.context.i64_type().const_zero().into(), fmt_str.into(), value.into()],
-            "len",
-        ).try_as_basic_value().left().unwrap().into_int_value();
-        let len_plus_1 = self.builder.build_int_add(len, self.context.i64_type().const_int(1, false).into(), "len");
-        let result = self.builder.build_call(
-            self.known_fns.malloc,
-            &[len_plus_1.into()],
-            "result",
-        ).try_as_basic_value().left().unwrap();
-        let result = self.builder.build_pointer_cast(result.into_pointer_value(), self.str_type().into_pointer_type(), "result");
-        self.builder.build_call(
-            self.known_fns.snprintf,
-            &[result.into(), len_plus_1.into(), fmt_str.into(), value.into()],
-            "",
-        ).try_as_basic_value().left().unwrap();
-
-        let value = self.alloc_string_obj(self.builder.build_int_cast(len, self.context.i32_type(), ""), result);
-        self.emit_extract_nan_tagged_obj(value)
-    }
-
-    fn gen_bool_to_str(&self, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let value = self.emit_extract_nan_tagged_bool(value.into_int_value());
-        let cond = self.builder.build_int_compare(
-            IntPredicate::EQ,
-            value,
-            self.builder.build_int_cast(self.context.bool_type().const_zero(), self.context.i64_type(), ""),
-            "cond"
-        );
-
-        let function = self.cur_fn;
-        let then_bb = self.context.append_basic_block(function, "then");
-        let else_bb = self.context.append_basic_block(function, "else");
-        let cont_bb = self.context.append_basic_block(function, "cont");
-        self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-        self.builder.position_at_end(then_bb);
-        let then_val = self.alloc_const_string_obj("false");
-        self.builder.build_unconditional_branch(cont_bb);
-        let then_bb = self.builder.get_insert_block().unwrap();
-
-        self.builder.position_at_end(else_bb);
-        let else_val = self.alloc_const_string_obj("true");
-        self.builder.build_unconditional_branch(cont_bb);
-        let else_bb = self.builder.get_insert_block().unwrap();
-
-        self.builder.position_at_end(cont_bb);
-        let phi = self.builder.build_phi(self.value_t(), "");
-        phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
-        let value = phi.as_basic_value().into_int_value();
-        self.emit_extract_nan_tagged_obj(value)
-    }
-
-    fn gen_array_to_str(&self, inner_type: &Type, array: PointerValue<'ctx>) -> PointerValue<'ctx> {
-        let function = self.cur_fn;
-
-        let arr_len = self.builder.build_load(self.builder.build_struct_gep(array, 0, "").unwrap(), "array_length").into_int_value();
-        let arr_len = self.builder.build_int_cast(arr_len, self.context.i32_type(), "");
-
-        let cond_bb = self.context.append_basic_block(function, "if_cond_bb");
-        let if_then_bb = self.context.append_basic_block(function, "if_then_bb");
-        let if_else_bb = self.context.append_basic_block(function, "if_else_bb");
-        let if_end_bb = self.context.append_basic_block(function, "if_end_bb");
-
-        self.builder.build_unconditional_branch(cond_bb);
-        self.builder.position_at_end(cond_bb);
-        let if_cond = self.builder.build_int_compare(IntPredicate::EQ, arr_len, self.context.i32_type().const_zero(), "");
-        self.builder.build_conditional_branch(if_cond.into(), if_then_bb, if_else_bb);
-
-        self.builder.position_at_end(if_then_bb);
-        let if_then_val = self.alloc_const_string_obj("[]");
-        self.builder.build_unconditional_branch(if_end_bb);
-        let if_then_bb = self.builder.get_insert_block().unwrap();
-
-        self.builder.position_at_end(if_else_bb);
-        let if_else_val = {
-            let lbrack_ch = self.context.i8_type().const_int(0x5B, false);
-            let rbrack_ch = self.context.i8_type().const_int(0x5D, false);
-            let comma_ch = self.context.i8_type().const_int(0x2C, false);
-            let space_ch = self.context.i8_type().const_int(0x20, false);
-
-            let idx_ptr = self.builder.build_alloca(self.context.i32_type(), "idx");
-            self.builder.build_store(idx_ptr, self.context.i32_type().const_int(0, false));
-
-            let str_size_ptr = self.builder.build_alloca(self.context.i32_type(), "str_size");
-            // Account for '[', ']', '\0', and ", " for all but last item
-            self.builder.build_store(
-                str_size_ptr,
-                self.builder.build_int_add(
-                    self.context.i32_type().const_int(3, false),
-                    self.builder.build_int_mul(
-                        self.context.i32_type().const_int(2, false),
-                        self.builder.build_int_sub(arr_len, self.context.i32_type().const_int(1, false), ""),
-                        "",
-                    ),
-                    "",
-                ),
-            );
-            let insert_idx_ptr = self.builder.build_alloca(self.context.i32_type(), "insert_idx");
-            self.builder.build_store(insert_idx_ptr, self.context.i32_type().const_int(1, false));
-
-            let str_chars_mem = self.builder.build_call(
-                self.known_fns.malloc,
-                &[self.context.i64_type().const_int(100, false).into()], // TODO: Fix arbitrary limiting of array's string repr length
-                "str_chars_mem",
-            ).try_as_basic_value().left().unwrap().into_pointer_value();
-            self.builder.build_store(
-                unsafe { self.builder.build_gep(str_chars_mem, &[self.context.i64_type().const_zero()], "") },
-                lbrack_ch
-            );
-
-            let cond_bb = self.context.append_basic_block(function, "loop_cond_bb");
-            let body_bb = self.context.append_basic_block(function, "loop_body_bb");
-            let after_bb = self.context.append_basic_block(function, "loop_after_bb");
-
-            self.builder.build_unconditional_branch(cond_bb);
-            self.builder.position_at_end(cond_bb);
-
-            let idx = self.builder.build_load(idx_ptr, "idx").into_int_value();
-            let cond = self.builder.build_int_compare(IntPredicate::SLT, idx, arr_len, "loop_cond");
-            self.builder.build_conditional_branch(cond.into(), body_bb, after_bb);
-
-            self.builder.position_at_end(body_bb);
-            let arr_item = self.array_obj_get(self.emit_nan_tagged_obj(array), idx);
-            let arr_item_str = self.gen_value_to_str(inner_type, arr_item.into());
-
-            let arr_item_str_len = self.builder.build_struct_gep(arr_item_str, 1, "").unwrap();
-            let arr_item_str_len = self.builder.build_int_cast(self.builder.build_load(arr_item_str_len, "item_len").into_int_value(), self.context.i32_type(), "");
-            self.builder.build_store(str_size_ptr, self.builder.build_int_add(self.builder.build_load(str_size_ptr, "").into_int_value(), arr_item_str_len, ""));
-            let arr_item_str_chars = self.builder.build_struct_gep(arr_item_str, 2, "").unwrap();
-            let arr_item_str_chars = self.builder.build_load(arr_item_str_chars, "");
-
-            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
-            self.builder.build_call(
-                self.known_fns.memcpy,
-                &[cursor.into(), arr_item_str_chars.into(), arr_item_str_len.into()],
-                "",
-            ).try_as_basic_value().left().unwrap();
-            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), arr_item_str_len, ""));
-            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
-            self.builder.build_store(cursor, comma_ch);
-            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
-            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_load(insert_idx_ptr, "").into_int_value()], "cursor") };
-            self.builder.build_store( cursor, space_ch);
-            self.builder.build_store(insert_idx_ptr, self.builder.build_int_add(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), ""));
-
-            self.builder.build_store(idx_ptr, self.builder.build_int_add(idx, self.context.i32_type().const_int(1, false).into(), ""));
-            self.builder.build_unconditional_branch(cond_bb);
-
-            self.builder.position_at_end(after_bb);
-            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_int_sub(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(2, false), "")], "cursor") };
-            self.builder.build_store( cursor, rbrack_ch );
-            let cursor = unsafe { self.builder.build_gep(str_chars_mem, &[self.builder.build_int_sub(self.builder.build_load(insert_idx_ptr, "").into_int_value(), self.context.i32_type().const_int(1, false), "")], "cursor") };
-            self.builder.build_store( cursor, self.context.i8_type().const_zero() );
-
-            // The length passed to alloc_string_obj should not account for the the null terminator
-            let str_len_val = self.builder.build_int_sub(
-                self.builder.build_load(str_size_ptr, "").into_int_value(),
-                self.context.i32_type().const_int(1, false),
-                "",
-            );
-            self.alloc_string_obj(str_len_val, str_chars_mem)
-        };
-        self.builder.build_unconditional_branch(if_end_bb);
-        let if_else_bb = self.builder.get_insert_block().unwrap();
-
-        self.builder.position_at_end(if_end_bb);
-        let phi = self.builder.build_phi(self.value_t(), "");
-        phi.add_incoming(&[(&if_then_val, if_then_bb), (&if_else_val, if_else_bb)]);
-        let value = phi.as_basic_value().into_int_value();
-        self.emit_extract_nan_tagged_obj(value)
-    }
-
-    fn gen_value_to_str(&self, typ: &Type, value: BasicValueEnum<'ctx>) -> PointerValue<'ctx> {
-        let value = match typ {
-            Type::Int => self.gen_num_to_string(false, value),
-            Type::Float => self.gen_num_to_string(true, value),
-            Type::Bool => self.gen_bool_to_str(value),
-            Type::String => self.emit_extract_nan_tagged_obj(value.into_int_value()),
-            Type::Array(inner) => {
-                let ptr = self.emit_extract_nan_tagged_obj(value.into_int_value());
-                let ptr = self.builder.build_cast(InstructionOpcode::BitCast, ptr, self.known_types.array.ptr_type(AddressSpace::Generic), "").into_pointer_value();
-                self.gen_array_to_str(&inner, ptr)
-            },
-            _ => self.emit_extract_nan_tagged_obj(self.alloc_const_string_obj("todo"))
-        };
-
-        self.builder.build_cast(InstructionOpcode::BitCast, value, self.known_types.string.ptr_type(AddressSpace::Generic), "").into_pointer_value()
-    }
-
     fn finalize(&self,  last_item_type: &Type, last_item: BasicValueEnum<'ctx>) {
         if *last_item_type != Type::Unit {
-            let result_string= self.gen_value_to_str(last_item_type, last_item);
+            let result_value = self.builder.build_call(
+                self.known_fns.value_to_string,
+                &[last_item.into()],
+                ""
+            ).try_as_basic_value().left().unwrap().into_int_value();
+            let result_value = self.emit_extract_nan_tagged_obj(result_value);
+            let result_string = self.builder.build_cast(InstructionOpcode::BitCast, result_value, self.known_types.string.ptr_type(AddressSpace::Generic), "").into_pointer_value();
             let result_string_chars = self.builder.build_struct_gep(result_string, 2, "").unwrap();
             let result = self.builder.build_load(result_string_chars, "res");
 
@@ -512,10 +331,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.scopes.last_mut().expect("There should always be at least 1 scope")
     }
 
-    fn null_ptr(&self) -> BasicValueEnum<'ctx> {
-        self.str_type().const_zero()
-    }
-
     fn str_type(&self) -> BasicTypeEnum<'ctx> {
         self.context.i8_type().ptr_type(AddressSpace::Generic).as_basic_type_enum()
     }
@@ -540,10 +355,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn array_obj_insert(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>, item_val: IntValue<'ctx>) {
         self.builder.build_call(self.known_fns.array_insert, &[array_val.into(), index_val.into(), item_val.into()], "");
-    }
-
-    fn array_obj_get(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
-        self.builder.build_call(self.known_fns.array_get, &[array_val.into(), index_val.into()], "").try_as_basic_value().left().unwrap()
     }
 
     fn value_t(&self) -> IntType<'ctx> {
@@ -578,16 +389,16 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn emit_nan_tagged_bool(&self, bool_val: IntValue<'ctx>) -> IntValue<'ctx> {
         self.builder.build_int_add(
             self.context.i64_type().const_int(VAL_FALSE, false),
-            self.builder.build_int_cast(bool_val, self.context.i64_type(), ""),
+            self.builder.build_int_z_extend(bool_val, self.context.i64_type(), ""),
             "",
         )
     }
 
-    fn emit_nan_tagged_obj(&self, ptr: PointerValue<'ctx>) -> IntValue<'ctx> {
-        let ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, ptr, self.context.i64_type(), "");
-        let mask = self.context.i64_type().const_int(MASK_OBJ, false);
-        self.builder.build_or(mask, ptr.into_int_value(), "")
-    }
+    // fn emit_nan_tagged_obj(&self, ptr: PointerValue<'ctx>) -> IntValue<'ctx> {
+    //     let ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, ptr, self.context.i64_type(), "");
+    //     let mask = self.context.i64_type().const_int(MASK_OBJ, false);
+    //     self.builder.build_or(mask, ptr.into_int_value(), "")
+    // }
 
     fn emit_extract_nan_tagged_int(&self, value: IntValue<'ctx>) -> IntValue<'ctx> {
         let payload_mask_int = self.context.i64_type().const_int(PAYLOAD_MASK_INT, false);
@@ -791,43 +602,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 };
                 self.emit_nan_tagged_bool(res).as_basic_value_enum()
             }
-            (ltype @ Type::String, rtype @ Type::Int, BinaryOp::Add) |
-            (ltype @ Type::String, rtype @ Type::Float, BinaryOp::Add) |
-            (ltype @ Type::String, rtype @ Type::Bool, BinaryOp::Add) |
-            (ltype @ Type::Int, rtype @ Type::String, BinaryOp::Add) |
-            (ltype @ Type::Float, rtype @ Type::String, BinaryOp::Add) |
-            (ltype @ Type::Bool, rtype @ Type::String, BinaryOp::Add) |
-            (ltype @ Type::String, rtype @ Type::String, BinaryOp::Add) => {
+            (Type::String, _, BinaryOp::Add) | (_, Type::String, BinaryOp::Add) => {
                 let left = self.visit(*node.left)?;
                 let right = self.visit(*node.right)?;
 
-                let left_string = self.gen_value_to_str(&ltype, left);
-                let left_len = self.builder.build_load(self.builder.build_struct_gep(left_string, 1, "left_len").unwrap(), "left_len").into_int_value();
-                let left_chars = self.builder.build_load(self.builder.build_struct_gep(left_string, 2, "left_chars").unwrap(), "").into_pointer_value();
-                let right_string = self.gen_value_to_str(&rtype, right);
-                let right_len = self.builder.build_load(self.builder.build_struct_gep(right_string, 1, "right_len").unwrap(), "right_len").into_int_value();
-                let right_chars = self.builder.build_load(self.builder.build_struct_gep(right_string, 2, "right_chars").unwrap(), "").into_pointer_value();
-
-                let length = self.builder.build_int_add(left_len, right_len, "length");
-                let length_plus_1 = self.builder.build_int_cast(
-                    self.builder.build_int_add(length, self.context.i32_type().const_int(1, false).into(), ""),
-                    self.context.i64_type(),
-                    ""
-                );
-                let mem = self.builder.build_call(
-                    self.known_fns.malloc,
-                    &[length_plus_1.into()],
-                    "mem"
-                ).try_as_basic_value().left().unwrap().into_pointer_value();
-                self.builder.build_call(self.known_fns.memcpy, &[mem.into(), left_chars.into(), left_len.into()], "")
-                    .try_as_basic_value().left().unwrap();
-                let mem_offset = unsafe { self.builder.build_gep(mem, &[left_len], "") };
-                self.builder.build_call(self.known_fns.memcpy, &[mem_offset.into(), right_chars.into(), right_len.into()], "")
-                    .try_as_basic_value().left().unwrap();
-                let mem_offset = unsafe { self.builder.build_gep(mem, &[length], "") };
-                self.builder.build_store(mem_offset, self.context.i8_type().const_zero());
-
-                self.alloc_string_obj(length, mem).as_basic_value_enum()
+                self.builder.build_call(self.known_fns.string_concat, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap()
             }
             _ => todo!()
         };
