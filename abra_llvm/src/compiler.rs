@@ -90,7 +90,7 @@ const MASK_NAN: u64 = 0x7ffc000000000000;
 const MASK_INT: u64 = MASK_NAN | 0x0002000000000000;
 // const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
 
-// const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
+const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
 const VAL_FALSE: u64 = MASK_NAN | 0x0001000000000001;
 const VAL_TRUE: u64  = MASK_NAN | 0x0001000000000002;
 
@@ -697,8 +697,12 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         todo!()
     }
 
-    fn visit_identifier(&mut self, _token: Token, _node: TypedIdentifierNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        if &node.name == "None" {
+            Ok(self.context.i64_type().const_int(VAL_NONE, false).as_basic_value_enum())
+        } else {
+            todo!()
+        }
     }
 
     fn visit_assignment(&mut self, _token: Token, _node: TypedAssignmentNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -751,8 +755,12 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fn_value = fn_value.unwrap();
 
         for arg in node.args {
-            let arg = arg.unwrap();
-            let arg = self.visit(arg)?;
+            let arg = if let Some(arg) = arg {
+                self.visit(arg)?
+            } else {
+                self.context.i64_type().const_int(VAL_NONE, false).as_basic_value_enum()
+            };
+
             args.push(arg.into());
         }
 
@@ -801,6 +809,6 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        Ok(self.context.i64_type().const_zero().into())
+        Ok(self.context.i64_type().const_int(VAL_NONE, false).into())
     }
 }

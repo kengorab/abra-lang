@@ -38,7 +38,7 @@ const uint64_t MASK_NAN =            (uint64_t)0x7ffc000000000000;
 const uint64_t MASK_INT = MASK_NAN | (uint64_t)0x0002000000000000;
 const uint64_t MASK_OBJ = MASK_NAN | (uint64_t)0x8000000000000000;
 
-//const uint64_t VAL_NONE  = MASK_NAN | (uint64_t)0x0001000000000000;
+const uint64_t VAL_NONE  = MASK_NAN | (uint64_t)0x0001000000000000;
 const uint64_t VAL_FALSE = MASK_NAN | (uint64_t)0x0001000000000001;
 const uint64_t VAL_TRUE  = MASK_NAN | (uint64_t)0x0001000000000002;
 
@@ -89,12 +89,6 @@ uint32_t type_id_for_val(value_t value) {
   return header->type_id;
 }
 
-value_t value_to_string(value_t value) {
-  uint32_t type_id = type_id_for_val(value);
-  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(type_id, 0);
-  return tostring_method(value);
-}
-
 uint32_t type_id_String;
 typedef struct String {
   obj_header_t h;
@@ -109,6 +103,16 @@ value_t string_alloc(int32_t length, char* chars) {
   string->size = length;
   string->chars = chars;
   return TAG_OBJ(string);
+}
+
+value_t value_to_string(value_t value) {
+  if (value == VAL_NONE) {
+    return string_alloc(4, "None");
+  }
+
+  uint32_t type_id = type_id_for_val(value);
+  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(type_id, 0);
+  return tostring_method(value);
 }
 
 value_t string_concat(value_t _s1, value_t _s2) {
@@ -244,6 +248,11 @@ value_t prelude__Array__toString(value_t _self) {
 }
 
 void prelude__println(value_t varargs) {
+  if (varargs == VAL_NONE) {
+      printf("\n");
+      return;
+  }
+
   Array* args = AS_OBJ(varargs, Array);
 
   String** strings = GC_MALLOC(sizeof(String*) * args->length);
