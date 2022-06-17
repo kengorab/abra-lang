@@ -116,13 +116,13 @@ value_t value_to_string(value_t value) {
 }
 
 value_t string_concat(value_t _s1, value_t _s2) {
-    String* s1 = AS_OBJ(value_to_string(_s1), String);
-    String* s2 = AS_OBJ(value_to_string(_s2), String);
+  String* s1 = AS_OBJ(value_to_string(_s1), String);
+  String* s2 = AS_OBJ(value_to_string(_s2), String);
 
-    char* chars = GC_MALLOC(sizeof(char) * (s1->size + s2->size));
-    memcpy(chars, s1->chars, s1->size);
-    memcpy(chars + s1->size, s2->chars, s2->size);
-    return string_alloc(s1->size + s2->size, chars);
+  char* chars = GC_MALLOC(sizeof(char) * (s1->size + s2->size));
+  memcpy(chars, s1->chars, s1->size);
+  memcpy(chars + s1->size, s2->chars, s2->size);
+  return string_alloc(s1->size + s2->size, chars);
 }
 
 value_t prelude__String__toString(value_t self) {
@@ -213,44 +213,43 @@ value_t array_get(value_t _self, int32_t idx) {
 }
 
 value_t prelude__Array__toString(value_t _self) {
-    Array* self = AS_OBJ(_self, Array);
-    if (self->length == 0) {
-        return string_alloc(2, "[]");
+  Array* self = AS_OBJ(_self, Array);
+  if (self->length == 0) {
+    return string_alloc(2, "[]");
+  }
+
+  String** strings = GC_MALLOC(sizeof(String*) * self->length);
+  int32_t total_length = 2;
+  for (int i = 0; i < self->length; i++) {
+    value_t str_val = value_to_string(self->items[i]);
+    String* s = AS_OBJ(str_val, String);
+    strings[i] = s;
+    total_length += s->size;
+    if (i != self->length - 1) {
+      total_length += 2; // ', '
     }
+  }
 
-    String** strings = GC_MALLOC(sizeof(String*) * self->length);
-    int32_t total_length = 2;
-    for (int i = 0; i < self->length; i++) {
-        value_t str_val = value_to_string(self->items[i]);
-        String* s = AS_OBJ(str_val, String);
-        strings[i] = s;
-        total_length += s->size;
-        if (i != self->length - 1) {
-            total_length += 2; // ', '
-        }
+  char* chars = GC_MALLOC(sizeof(char) * total_length);
+  chars[0] = '[';
+  int32_t offset = 1;
+  for (int i = 0; i < self->length; i++) {
+    memcpy(chars + offset, strings[i]->chars, strings[i]->size);
+    offset += strings[i]->size;
+
+    if (i != self->length - 1) {
+      memcpy(chars + offset, ", ", 2);
+      offset += 2;
     }
+  }
+  chars[offset] = ']';
 
-    char* chars = GC_MALLOC(sizeof(char) * total_length);
-    chars[0] = '[';
-    int32_t offset = 1;
-    for (int i = 0; i < self->length; i++) {
-        memcpy(chars + offset, strings[i]->chars, strings[i]->size);
-        offset += strings[i]->size;
-
-        if (i != self->length - 1) {
-            memcpy(chars + offset, ", ", 2);
-            offset += 2;
-        }
-    }
-    chars[offset] = ']';
-
-    return string_alloc(total_length, chars);
+  return string_alloc(total_length, chars);
 }
 
-void prelude__println(value_t varargs) {
+char* print_impl(value_t varargs) {
   if (varargs == VAL_NONE) {
-      printf("\n");
-      return;
+    return "";
   }
 
   Array* args = AS_OBJ(varargs, Array);
@@ -263,7 +262,7 @@ void prelude__println(value_t varargs) {
     strings[i] = s;
     total_length += s->size;
     if (i != args->length - 1) {
-      total_length += 1; // ' '
+        total_length += 1; // ' '
     }
   }
 
@@ -279,7 +278,15 @@ void prelude__println(value_t varargs) {
     }
   }
 
-  printf("%s\n", chars);
+  return chars;
+}
+
+void prelude__print(value_t varargs) {
+  printf("%s", print_impl(varargs));
+}
+
+void prelude__println(value_t varargs) {
+  printf("%s\n", print_impl(varargs));
 }
 
 #endif

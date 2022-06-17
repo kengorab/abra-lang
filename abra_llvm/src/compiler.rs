@@ -4,7 +4,7 @@ use std::iter::repeat;
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::module::Module;
+use inkwell::module::{Linkage, Module};
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType, IntType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
 use itertools::Itertools;
@@ -173,8 +173,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn init_prelude(&mut self) {
-        let println = self.module.add_function("prelude__println", self.value_t().fn_type(&[self.value_t().into()], false), None);
+        let println = self.module.add_function("prelude__println", self.context.void_type().fn_type(&[self.value_t().into()], false), None);
         self.current_scope_mut().fns.insert("println".to_string(), println);
+        let print = self.module.add_function("prelude__print", self.context.void_type().fn_type(&[self.value_t().into()], false), None);
+        self.current_scope_mut().fns.insert("print".to_string(), print);
 
         self.init_int_type();
         self.init_float_type();
@@ -697,11 +699,47 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
 
         let fn_type = self.value_t().fn_type(repeat(self.value_t().into()).take(node.args.len()).collect_vec().as_slice(), false);
-        let func = self.module.add_function(&fully_qualified_fn_name, fn_type, None);
-        self.current_scope_mut().fns.insert(fn_name, func);
+        let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
+        self.current_scope_mut().fns.insert(fn_name.clone(), func);
         let fn_bb = self.context.append_basic_block(func, "fn_body");
         self.builder.position_at_end(fn_bb);
         self.cur_fn = func;
+
+        self.scopes.push(Scope{ name: fn_name.clone(), fns: HashMap::new(), bindings: HashMap::new() });
+
+        for (idx, (tok, _, _, default_value)) in node.args.into_iter().enumerate() {
+            let name = Token::get_ident_name(&tok);
+            let param_ptr = self.builder.build_alloca(self.value_t(), &name);
+            self.current_scope_mut().bindings.insert(name, param_ptr);
+
+            // If there's a default value for the parameter assign it, making sure to only evaluate the default expression if necessary
+            let param_val = func.get_nth_param(idx as u32)
+                .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &fn_name));
+            let param_val = if let Some(default_value) = default_value {
+                // $param = if $param == None { $default } else { $param }
+                let cond = self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), "cond");
+                let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                self.builder.position_at_end(then_bb);
+                let then_val = self.visit(default_value)?;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(else_bb);
+                let else_val = param_val;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(cont_bb);
+                let phi = self.builder.build_phi(self.value_t(), "");
+                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                phi.as_basic_value()
+            } else {
+                param_val
+            };
+            self.builder.build_store(param_ptr, param_val);
+        }
 
         let body_len = node.body.len();
         for (idx, node) in node.body.into_iter().enumerate() {
@@ -714,6 +752,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
         self.cur_fn = old_fn;
         self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+        self.scopes.pop();
 
         let res = self.emit_nan_tagged_int_const(0);
         Ok(res.into())
@@ -816,7 +855,13 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         let res = self.builder.build_call(fn_value, args.as_slice(), "");
-        Ok(res.try_as_basic_value().left().unwrap())
+        let res = if node.typ == Type::Unit {
+            self.val_none().as_basic_value_enum()
+        } else {
+            res.try_as_basic_value().left().unwrap()
+        };
+
+        Ok(res)
     }
 
     fn visit_instantiation(&mut self, _token: Token, _node: TypedInstantiationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

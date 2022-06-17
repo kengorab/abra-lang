@@ -42,6 +42,10 @@ fn run_test_cases<T: Into<TestCase>>(cases: Vec<T>) {
     run_test_cases_with_setup_and_teardown("", cases, "");
 }
 
+fn run_test_cases_with_setup<T: Into<TestCase>>(setup: &str, cases: Vec<T>) {
+    run_test_cases_with_setup_and_teardown(setup, cases, "");
+}
+
 fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str, cases: Vec<T>, teardown: &str) {
     let mut inputs = vec![];
     let mut expecteds = vec![];
@@ -252,10 +256,46 @@ fn test_functions() {
         ("func a(): Int = 6 + 24", "a()", "30"),
         ("func b(): String = \"hello\"", "b()", "hello"),
         ("func c(): Int[] = [6, 24]", "c()", "[6, 24]"),
-        ("func d(): String[] = [\"a\", \"b\"]", "d()", "[a, b]")
+        ("func d(): String[] = [\"a\", \"b\"]", "d()", "[a, b]"),
+        ("func e(): Int = 4\nfunc f(i: Int): Int = i + i * 5\nfunc g(): Int = f(e())", "g()", "24"),
+        ("val s = \"foo\"\nfunc h(a: Int): String { val s = \"hello\"\ns + a }", "h(7)", "hello7"),
     ];
 
     run_test_cases(cases);
+}
+
+#[test]
+fn test_functions_default_valued_parameters() {
+    let global_setup = r#"
+      func abc(): Int {
+        print("[abc] ")
+        6
+      }
+
+      func foo(a = abc(), b = "asdf"): String = a.toString() + b
+    "#;
+    let cases = vec![
+        ("foo(1, \"a\")", "1a"),
+        ("foo()", "[abc] 6asdf"),
+        ("foo(a: 2)", "2asdf"),
+        ("foo(b: \"qwer\")", "[abc] 6qwer"),
+    ];
+
+    run_test_cases_with_setup(global_setup, cases);
+}
+
+#[test]
+fn test_functions_vararg_parameters() {
+    let global_setup = r#"
+      func foo(head: Int, *tail: Int[]): Int[][] = [[head], tail]
+    "#;
+    let cases = vec![
+        ("foo(1, 2, 3)", "[[1], [2, 3]]"),
+        ("foo(1, 2)", "[[1], [2]]"),
+        ("foo(1)", "[[1], []]"),
+    ];
+
+    run_test_cases_with_setup(global_setup, cases);
 }
 
 #[test]
