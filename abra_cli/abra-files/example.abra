@@ -1,4 +1,2 @@
-//println()
-//println(17)
-//println(17, "asdf")
-None
+var a: Int
+println(a)

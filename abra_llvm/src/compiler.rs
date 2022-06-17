@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::repeat;
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
@@ -10,9 +10,9 @@ use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, Fun
 use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
-use abra_core::parser::ast::{BinaryOp, UnaryOp};
+use abra_core::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
-use abra_core::typechecker::typed_ast::{TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
@@ -85,10 +85,8 @@ impl<'ctx> KnownTypes<'ctx> {
 }
 
 // IMPORTANT! These must stay in sync with the constants in `rt.h`
-
 const MASK_NAN: u64 = 0x7ffc000000000000;
 const MASK_INT: u64 = MASK_NAN | 0x0002000000000000;
-// const MASK_OBJ: u64 = MASK_NAN | 0x8000000000000000;
 
 const VAL_NONE: u64  = MASK_NAN | 0x0001000000000000;
 const VAL_FALSE: u64 = MASK_NAN | 0x0001000000000001;
@@ -100,7 +98,7 @@ const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
 struct Scope<'ctx> {
     name: String,
     fns: HashMap<String, FunctionValue<'ctx>>,
-    _bindings: HashSet<String>,
+    bindings: HashMap<String, PointerValue<'ctx>>,
 }
 
 pub struct Compiler<'a, 'ctx> {
@@ -132,7 +130,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 array: placeholder_type,
                 obj_header_t: placeholder_type,
             },
-            scopes: vec![Scope { name: "$root".to_string(), fns: HashMap::new(), _bindings: HashSet::new() }],
+            scopes: vec![Scope { name: "$root".to_string(), fns: HashMap::new(), bindings: HashMap::new() }],
         };
 
         compiler.init();
@@ -286,13 +284,21 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             array_type
         };
 
+        // Prelude initialization function
+        let init_fn_type = self.context.void_type().fn_type(&[], false);
+        let init_fn = self.module.add_function("$init", init_fn_type, None);
+        let init_fn_bb = self.context.append_basic_block(init_fn, "init_fn_bb");
+        self.builder.position_at_end(init_fn_bb);
+        self.init_prelude();
+        self.builder.build_return(None);
+
         let entry_fn_type = self.context.void_type().fn_type(&[], false);
         let entry_fn = self.module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
         let entry_fn_bb = self.context.append_basic_block(entry_fn, "entry_fn_bb");
         self.builder.position_at_end(entry_fn_bb);
         self.cur_fn = entry_fn;
 
-        self.init_prelude();
+        self.builder.build_call(init_fn, &[], "");
 
         // The placeholder values were only used during initialization for convenience. They can
         // be disposed of now that all known_fns, known_types, and self.cur_fn are initialized.
@@ -374,6 +380,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn emit_nan_tagged_int(&self, int_val: IntValue<'ctx>) -> IntValue<'ctx> {
         let mask = self.context.i64_type().const_int(MASK_INT, false);
+        let int_val = self.builder.build_int_cast(int_val, self.context.i64_type(), "");
         self.builder.build_or(mask, int_val, "")
     }
 
@@ -429,6 +436,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let payload_mask_obj = self.context.i64_type().const_int(PAYLOAD_MASK_OBJ, false);
         let ptr = self.builder.build_and(payload_mask_obj, value, "");
         self.builder.build_cast(InstructionOpcode::IntToPtr, ptr, self.context.i8_type().ptr_type(AddressSpace::Generic), "").into_pointer_value()
+    }
+
+    fn val_none(&self) -> IntValue<'ctx> {
+        self.context.i64_type().const_int(VAL_NONE, false)
     }
 }
 
@@ -655,8 +666,27 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         todo!()
     }
 
-    fn visit_binding_decl(&mut self, _token: Token, _node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let local_ptr = match &node.binding {
+            BindingPattern::Variable(var_name) => {
+                let name = Token::get_ident_name(var_name);
+                let local_ptr = self.builder.build_alloca(self.value_t(), &name);
+
+                self.current_scope_mut().bindings.insert(name, local_ptr.clone());
+                local_ptr
+            }
+            BindingPattern::Tuple(_, _) |
+            BindingPattern::Array(_, _, _) => todo!()
+        };
+
+        let expr = if let Some(expr) = node.expr {
+            self.visit(*expr)?
+        } else {
+            self.val_none().as_basic_value_enum()
+        };
+        self.builder.build_store(local_ptr, expr);
+
+        Ok(self.val_none().as_basic_value_enum())
     }
 
     fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -698,15 +728,36 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        if &node.name == "None" {
-            Ok(self.context.i64_type().const_int(VAL_NONE, false).as_basic_value_enum())
+        let res = if &node.name == "None" {
+            self.val_none().as_basic_value_enum()
         } else {
-            todo!()
-        }
+            let ident_ptr_val = self.scopes.iter().rev().find_map(|sc| sc.bindings.get(&node.name));
+            let ident_ptr_val = ident_ptr_val.expect(&format!("Internal error: no binding '{}' visible in scope", &node.name));
+            self.builder.build_load(*ident_ptr_val, "").as_basic_value_enum()
+        };
+
+        Ok(res)
     }
 
-    fn visit_assignment(&mut self, _token: Token, _node: TypedAssignmentNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_assignment(&mut self, _token: Token, node: TypedAssignmentNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let res = match &node.kind {
+            AssignmentTargetKind::Identifier => {
+                if let TypedAstNode::Identifier(_, TypedIdentifierNode{ name, .. }) = *node.target {
+                    let expr = self.visit(*node.expr)?;
+
+                    let ident_ptr_val = self.scopes.iter().rev().find_map(|sc| sc.bindings.get(&name));
+                    let ident_ptr_val = ident_ptr_val.expect(&format!("Internal error: no binding '{}' visible in scope", &name));
+
+                    self.builder.build_store(*ident_ptr_val, expr);
+                    expr
+                } else { unreachable!() }
+            }
+            AssignmentTargetKind::ArrayIndex |
+            AssignmentTargetKind::MapIndex |
+            AssignmentTargetKind::Field => todo!()
+        };
+
+        Ok(res)
     }
 
     fn visit_indexing(&mut self, _token: Token, _node: TypedIndexingNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -758,7 +809,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let arg = if let Some(arg) = arg {
                 self.visit(arg)?
             } else {
-                self.context.i64_type().const_int(VAL_NONE, false).as_basic_value_enum()
+                self.val_none().as_basic_value_enum()
             };
 
             args.push(arg.into());
@@ -809,6 +860,6 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        Ok(self.context.i64_type().const_int(VAL_NONE, false).into())
+        Ok(self.val_none().as_basic_value_enum())
     }
 }

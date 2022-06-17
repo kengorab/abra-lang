@@ -39,6 +39,10 @@ impl From<(&'static str, &'static str, &'static str)> for TestCase {
 }
 
 fn run_test_cases<T: Into<TestCase>>(cases: Vec<T>) {
+    run_test_cases_with_setup_and_teardown("", cases, "");
+}
+
+fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str, cases: Vec<T>, teardown: &str) {
     let mut inputs = vec![];
     let mut expecteds = vec![];
     for case in cases {
@@ -47,7 +51,9 @@ fn run_test_cases<T: Into<TestCase>>(cases: Vec<T>) {
         expecteds.push(expected);
     }
 
-    let input = inputs.iter().map(|(setup, line)| format!("{}\nprintln({})", setup, line)).join("\n");
+    let contents = inputs.iter().map(|(setup, line)| format!("{}\nprintln({})\n{}", setup, line, teardown)).join("\n");
+    let input = format!("{}{}", global_setup, contents);
+
     let res = test_run_with_modules(&input, vec![]);
 
     for (line_num, (output, expected)) in res.lines().zip(expecteds).enumerate() {
@@ -261,4 +267,43 @@ fn test_method_calls() {
     ];
 
     run_test_cases(cases);
+}
+
+#[test]
+fn test_variables() {
+    let cases = vec![
+        ("val a = 1\nval b = 2", "a + b", "3"),
+        ("val c = \"1\"\nval d = 2", "[c, d.toString(), c + d.toString()]", "[1, 2, 12]"),
+        ("var e: Int", "e", "None"), // <- I don't love this, but it's the current behavior
+    ];
+
+    run_test_cases(cases);
+}
+
+#[test]
+fn test_assignment() {
+    let global_setup = "var a = 2\nval b = 3\nvar c = 2.0\nval d = 3.0";
+    let global_teardown = "a = 2\nc = 2.0";
+    let cases = vec![
+        ("a = a + b", "5"),
+        ("a += b", "5"),
+        ("a = a - b", "-1"),
+        ("a -= b", "-1"),
+        ("a = a * b", "6"),
+        ("a *= b", "6"),
+        ("a = a % b", "2"),
+        ("a %= b", "2"),
+        ("c = c / d", "0.666667"),
+        ("c /= d", "0.666667"),
+        ("[a += b, a -= b, a *= b, a %= b, c /= d]", "[5, 2, 6, 0, 0.666667]")
+    ];
+    run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown);
+
+    // let global_setup = "var a = true\nval b = false";
+    // let global_teardown = "a = true";
+    // let cases = vec![
+    //     ("a = a || b", "true"),
+    //     ("a ||= b", "true")
+    // ];
+    // run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown);
 }

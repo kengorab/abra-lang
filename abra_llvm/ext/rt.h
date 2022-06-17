@@ -53,17 +53,17 @@ const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
 
 // ------------------------------------------------------------------------
 
-value_t* v_table[256];
+value_t* vtable[256];
 uint32_t next_type_id = 0;
 
 value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
   value_t* entry = GC_MALLOC(sizeof(value_t) * size);
-  v_table[type_id] = entry;
+  vtable[type_id] = entry;
   return entry;
 }
 
 value_t vtable_lookup(uint32_t type_id, uint32_t idx) {
-  return v_table[type_id][idx];
+  return vtable[type_id][idx];
 }
 
 typedef struct obj_header_t {
@@ -261,6 +261,7 @@ void prelude__println(value_t varargs) {
     value_t str_val = value_to_string(args->items[i]);
     String* s = AS_OBJ(str_val, String);
     strings[i] = s;
+    total_length += s->size;
     if (i != args->length - 1) {
       total_length += 1; // ' '
     }
