@@ -34,11 +34,13 @@ struct KnownFns<'ctx> {
     string_concat: FunctionValue<'ctx>,
     string_get: FunctionValue<'ctx>,
     string_range: FunctionValue<'ctx>,
+    string_split: FunctionValue<'ctx>,
     tuple_alloc: FunctionValue<'ctx>,
     array_alloc: FunctionValue<'ctx>,
     array_insert: FunctionValue<'ctx>,
     array_get: FunctionValue<'ctx>,
     array_range: FunctionValue<'ctx>,
+    array_split: FunctionValue<'ctx>,
     tuple_get: FunctionValue<'ctx>,
     vtable_alloc_entry: FunctionValue<'ctx>,
     vtable_lookup: FunctionValue<'ctx>,
@@ -60,11 +62,13 @@ impl<'ctx> KnownFns<'ctx> {
             string_concat: placeholder,
             string_get: placeholder,
             string_range: placeholder,
+            string_split: placeholder,
             tuple_alloc: placeholder,
             array_alloc: placeholder,
             array_insert: placeholder,
             array_get: placeholder,
             array_range: placeholder,
+            array_split: placeholder,
             tuple_get: placeholder,
             vtable_alloc_entry: placeholder,
             vtable_lookup: placeholder,
@@ -74,8 +78,8 @@ impl<'ctx> KnownFns<'ctx> {
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, tuple_alloc, array_alloc, array_insert, array_get, array_range, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, tuple_alloc, array_alloc, array_insert, array_get, array_range, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, string_split, tuple_alloc, array_alloc, array_insert, array_get, array_range, array_split, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, string_split, tuple_alloc, array_alloc, array_insert, array_get, array_range, array_split, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -253,6 +257,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.string_get = self.module.add_function("string_get", string_get_type, None);
         let string_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
         self.known_fns.string_range = self.module.add_function("string_range", string_range_type, None);
+        let string_split_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
+        self.known_fns.string_split = self.module.add_function("string_split", string_split_type, None);
         let tuple_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], true);
         self.known_fns.tuple_alloc = self.module.add_function("tuple_alloc", tuple_alloc_type, None);
         let array_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
@@ -263,6 +269,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.array_get = self.module.add_function("array_get", array_get_type, None);
         let array_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
         self.known_fns.array_range = self.module.add_function("array_range", array_range_type, None);
+        let array_split_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
+        self.known_fns.array_split = self.module.add_function("array_split", array_split_type, None);
         let tuple_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
         self.known_fns.tuple_get = self.module.add_function("tuple_get", tuple_get_type, None);
         self.known_fns.vtable_alloc_entry = self.module.add_function(
@@ -360,10 +368,20 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     #[allow(dead_code)]
-    fn println_debug(&self, fmt_str: &str, value: BasicValueEnum<'ctx>) {
+    fn println_debug(&self, tag: &str, value: BasicValueEnum<'ctx>) {
+        let result_value = self.builder.build_call(
+            self.known_fns.value_to_string,
+            &[value.into()],
+            ""
+        ).try_as_basic_value().left().unwrap().into_int_value();
+        let result_value = self.emit_extract_nan_tagged_obj(result_value);
+        let result_string = self.builder.build_cast(InstructionOpcode::BitCast, result_value, self.known_types.string.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let result_string_chars = self.builder.build_struct_gep(result_string, 2, "").unwrap();
+        let result = self.builder.build_load(result_string_chars, "");
+
         self.builder.build_call(
             self.known_fns.printf,
-            &[self.builder.build_global_string_ptr(fmt_str, "fmt").as_basic_value_enum().into(), value.into()],
+            &[self.builder.build_global_string_ptr(&format!("{}: %s\n", tag), "fmt").as_basic_value_enum().into(), result.into()],
             "",
         );
     }
@@ -706,24 +724,81 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let local_ptr = match &node.binding {
-            BindingPattern::Variable(var_name) => {
-                let name = Token::get_ident_name(var_name);
-                let local_ptr = self.builder.build_alloca(self.value_t(), &name);
 
-                self.current_scope_mut().bindings.insert(name, local_ptr.clone());
-                local_ptr
+        #[inline]
+        fn visit_binding_pattern<'a, 'ctx>(zelf: &mut Compiler<'a, 'ctx>, pat: BindingPattern, cur_val: BasicValueEnum<'ctx>) {
+            match pat {
+                BindingPattern::Variable(var_name) => {
+                    let name = Token::get_ident_name(&var_name);
+                    let local_ptr = zelf.builder.build_alloca(zelf.value_t(), &name);
+
+                    zelf.current_scope_mut().bindings.insert(name, local_ptr.clone());
+                    zelf.builder.build_store(local_ptr, cur_val);
+                }
+                BindingPattern::Tuple(_, pats) => {
+                    for (idx, pat) in pats.into_iter().enumerate() {
+                        let idx = zelf.context.i32_type().const_int(idx as u64, false);
+                        let val = zelf.builder.build_call(
+                            zelf.known_fns.tuple_get,
+                            &[cur_val.into(), idx.into()],
+                            ""
+                        ).try_as_basic_value().left().unwrap();
+                        visit_binding_pattern(zelf, pat, val);
+                    }
+                }
+                BindingPattern::Array(_, pats, is_string) => {
+                    let num_pats = pats.len();
+                    let mut pats_iter = pats.into_iter();
+                    let mut cur_val = cur_val;
+                    let mut idx = 0;
+                    while let Some((pat, is_splat)) = pats_iter.next() {
+                        if is_splat {
+                            let (range_fn, split_fn) = if is_string {
+                                (zelf.known_fns.string_range, zelf.known_fns.string_split)
+                            } else {
+                                (zelf.known_fns.array_range, zelf.known_fns.array_split)
+                            };
+
+                            let idx_val = zelf.emit_nan_tagged_int_const(idx as i32);
+                            let tail = zelf.builder.build_call(range_fn, &[cur_val.into(), idx_val.into(), zelf.val_none().into()], "").try_as_basic_value().left().unwrap();
+
+                            let split_idx = (num_pats - idx - 1) as i64;
+                            let split_idx = zelf.context.i32_type().const_int((-split_idx) as u64, true);
+                            let parts = zelf.builder.build_call(split_fn, &[tail.into(), split_idx.into()], "").try_as_basic_value().left().unwrap();
+                            let l_part = zelf.builder.build_call(zelf.known_fns.tuple_get, &[parts.into(), zelf.context.i32_type().const_int(0, false).into()], "").try_as_basic_value().left().unwrap();
+                            let r_part = zelf.builder.build_call(zelf.known_fns.tuple_get, &[parts.into(), zelf.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
+
+                            if idx == num_pats - 1 {
+                                visit_binding_pattern(zelf, pat, r_part);
+                            } else {
+                                visit_binding_pattern(zelf, pat, l_part);
+                                cur_val = r_part;
+                                idx = 0;
+                            }
+                            continue;
+                        }
+
+                        let idx_val = zelf.context.i32_type().const_int(idx as u64, false);
+                        let func = if is_string { zelf.known_fns.string_get } else { zelf.known_fns.array_get };
+                        let val = zelf.builder.build_call(
+                            func,
+                            &[cur_val.into(), idx_val.into()],
+                            ""
+                        ).try_as_basic_value().left().unwrap();
+                        visit_binding_pattern(zelf, pat, val);
+
+                        idx += 1;
+                    }
+                }
             }
-            BindingPattern::Tuple(_, _) |
-            BindingPattern::Array(_, _, _) => todo!()
-        };
+        }
 
         let expr = if let Some(expr) = node.expr {
             self.visit(*expr)?
         } else {
             self.val_none().as_basic_value_enum()
         };
-        self.builder.build_store(local_ptr, expr);
+        visit_binding_pattern(self, node.binding, expr);
 
         Ok(self.val_none().as_basic_value_enum())
     }

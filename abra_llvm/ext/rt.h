@@ -143,6 +143,8 @@ void range_endpoints(int32_t len, int32_t* start, int32_t* end) {
 }
 
 value_t string_get(value_t _self, int32_t idx) {
+  if (_self == VAL_NONE) return _self;
+
   String* self = AS_OBJ(_self, String);
 
   if (idx < -self->size || idx >= self->size) return VAL_NONE;
@@ -249,6 +251,8 @@ void array_insert(value_t _self, value_t _idx, value_t item) {
 }
 
 value_t array_get(value_t _self, int32_t idx) {
+  if (_self == VAL_NONE) return _self;
+
   Array* self = AS_OBJ(_self, Array);
 
   if (idx < -self->length || idx >= self->length) return VAL_NONE;
@@ -345,6 +349,8 @@ value_t tuple_alloc(int32_t length, ...) {
 }
 
 value_t tuple_get(value_t _self, int32_t idx) {
+  if (_self == VAL_NONE) return _self;
+
   Tuple* self = AS_OBJ(_self, Tuple);
 
   if (idx < -self->length || idx >= self->length) return VAL_NONE;
@@ -372,6 +378,64 @@ void prelude__print(value_t varargs) {
 
 void prelude__println(value_t varargs) {
   printf("%s\n", print_impl(varargs));
+}
+
+value_t string_split(value_t _self, int32_t idx) {
+  String* self = AS_OBJ(_self, String);
+
+  if (idx >= self->size) {
+    char* left_chars = GC_MALLOC(sizeof(char) * self->size);
+    memcpy(left_chars, self->chars, self->size);
+    value_t left = string_alloc(self->size, left_chars);
+    value_t right = string_alloc(0, "");
+    return tuple_alloc(2, left, right);
+  }
+  if (idx < (-self->size)) {
+    value_t left = string_alloc(0, "");
+    char* right_chars = GC_MALLOC(sizeof(char) * self->size);
+    memcpy(right_chars, self->chars, self->size);
+    value_t right = string_alloc(self->size, right_chars);
+    return tuple_alloc(2, left, right);
+  }
+
+  int32_t split_idx = (self->size + idx) % self->size;
+
+  char* left_chars = GC_MALLOC(sizeof(char) * split_idx);
+  memcpy(left_chars, self->chars, split_idx);
+  value_t left = string_alloc(split_idx, left_chars);
+
+  char* right_chars = GC_MALLOC(sizeof(char) * (self->size - split_idx));
+  memcpy(right_chars, self->chars + split_idx, self->size - split_idx);
+  value_t right = string_alloc(self->size - split_idx, right_chars);
+
+  return tuple_alloc(2, left, right);
+}
+
+value_t array_split(value_t _self, int32_t idx) {
+  Array* self = AS_OBJ(_self, Array);
+
+  if (idx >= self->length) {
+    value_t left = array_alloc(self->length);
+    memcpy(AS_OBJ(left, Array)->items, self->items, self->length * sizeof(value_t));
+    value_t right = array_alloc(0);
+    return tuple_alloc(2, left, right);
+  }
+  if (idx < (-self->length)) {
+    value_t left = array_alloc(0);
+    value_t right = array_alloc(self->length);
+    memcpy(AS_OBJ(right, Array)->items, self->items, self->length * sizeof(value_t));
+    return tuple_alloc(2, left, right);
+  }
+
+  int32_t split_idx = (self->length + idx) % self->length;
+
+  value_t left = array_alloc(split_idx);
+  memcpy(AS_OBJ(left, Array)->items, self->items, split_idx * sizeof(value_t));
+
+  value_t right = array_alloc(self->length - split_idx);
+  memcpy(AS_OBJ(right, Array)->items, self->items + split_idx, (self->length - split_idx) * sizeof(value_t));
+
+  return tuple_alloc(2, left, right);
 }
 
 #endif

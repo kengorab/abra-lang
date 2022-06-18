@@ -39,14 +39,18 @@ impl From<(&'static str, &'static str, &'static str)> for TestCase {
 }
 
 fn run_test_cases<T: Into<TestCase>>(cases: Vec<T>) {
-    run_test_cases_with_setup_and_teardown("", cases, "");
+    run_test_cases_with_setup_and_teardown("", cases, "", false);
+}
+
+fn run_test_cases_isolated<T: Into<TestCase>>(cases: Vec<T>) {
+    run_test_cases_with_setup_and_teardown("", cases, "", true);
 }
 
 fn run_test_cases_with_setup<T: Into<TestCase>>(setup: &str, cases: Vec<T>) {
-    run_test_cases_with_setup_and_teardown(setup, cases, "");
+    run_test_cases_with_setup_and_teardown(setup, cases, "", false);
 }
 
-fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str, cases: Vec<T>, teardown: &str) {
+fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str, cases: Vec<T>, teardown: &str, isolated: bool) {
     let mut inputs = vec![];
     let mut expecteds = vec![];
     for case in cases {
@@ -55,8 +59,21 @@ fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str,
         expecteds.push(expected);
     }
 
-    let contents = inputs.iter().map(|(setup, line)| format!("{}\nprintln({})\n{}", setup, line, teardown)).join("\n");
+    let contents = if isolated {
+        inputs.iter().enumerate()
+            .map(|(idx, (setup, line))| {
+                let setup = setup.lines().map(|l| format!("  {}", l)).join("\n");
+                let setup = if setup.is_empty() { "".to_string() } else { format!("{}\n", setup) };
+                let teardown = teardown.lines().map(|l| format!("  {}", l)).join("\n");
+                let teardown = if teardown.is_empty() { "".to_string() } else { format!("{}\n", teardown) };
+                format!("func testCase{}() {{\n{}  println({})\n{}}}\ntestCase{}()\n", idx, setup, line, teardown, idx)
+            })
+            .join("\n")
+    } else {
+        inputs.iter().map(|(setup, line)| format!("{}\nprintln({})\n{}", setup, line, teardown)).join("\n")
+    };
     let input = format!("{}{}", global_setup, contents);
+    println!("{}", &input);
 
     let res = test_run_with_modules(&input, vec![]);
 
@@ -347,7 +364,7 @@ fn test_assignment() {
         ("c /= d", "0.666667"),
         ("[a += b, a -= b, a *= b, a %= b, c /= d]", "[5, 2, 6, 0, 0.666667]")
     ];
-    run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown);
+    run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown, false);
 
     // let global_setup = "var a = true\nval b = false";
     // let global_teardown = "a = true";
@@ -403,4 +420,28 @@ fn test_range_indexing() {
     ];
 
     run_test_cases_with_setup(global_setup, cases);
+}
+
+#[test]
+fn test_destructuring_assignment() {
+    let cases = vec![
+        ("val (a, b, c) = (1, 2, 3)", "a + b + c", "6"),
+        ("val ((a, b), c) = ((1, 2), (3, 4))", "a + b + c[0] + c[1]", "10"),
+        ("val [(x1, y1), (x2, y2), (x3, y3)] = [(1, 2), (3, 4)]", "[x1, y1, x2, y2, x3, y3]", "[1, 2, 3, 4, None, None]"),
+        ("val [(x1, y1), *mid, (x2, y2)] = [(1, 2), (3, 4), (5, 6), (7, 8)]", "(x1, y1, mid, x2, y2)", "(1, 2, [(3, 4), (5, 6)], 7, 8)"),
+        ("val [h1, h2, *mid, t1, t2, t3, t4, t5] = [1, 2, 3, 4, 5, 6]", "(h1, h2, mid, t1, t2, t3, t4, t5)", "(1, 2, [], 3, 4, 5, 6, None)"),
+        ("val [head, *tail] = [1, 2, 3]", "tail", "[2, 3]"),
+        ("val [[a], [d], [g, *h]] = [\"abc\", \"def\", \"ghi\"]", "(a, d, g, h)", "(a, d, g, hi)"),
+        (
+            r#"
+              func wrapper(): Int {
+                val ((a, b), c) = ((1, 2), (3, 4))
+                a + b + c[0] + c[1]
+              }
+            "#,
+            "wrapper()",
+            "10"
+        )
+    ];
+    run_test_cases_isolated(cases);
 }
