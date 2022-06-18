@@ -73,7 +73,7 @@ fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str,
         inputs.iter().map(|(setup, line)| format!("{}\nprintln({})\n{}", setup, line, teardown)).join("\n")
     };
     let input = format!("{}{}", global_setup, contents);
-    println!("{}", &input);
+    // println!("{}", &input);
 
     let res = test_run_with_modules(&input, vec![]);
 
@@ -278,6 +278,18 @@ fn test_binary_operations_string_concat() {
 }
 
 #[test]
+fn test_binary_operations_coalesce() {
+    let cases = vec![
+        ("[1, 2, 3][0] ?: 17", "1"),
+        ("[1, 2, 3][-3] ?: 17", "1"),
+        ("[1, 2, 3][10] ?: 17", "17"),
+        ("[1, 2, 3][-8] ?: 17", "17"),
+    ];
+
+    run_test_cases(cases);
+}
+
+#[test]
 fn test_functions() {
     let cases = vec![
         ("func a(): Int = 6 + 24", "a()", "30"),
@@ -349,8 +361,8 @@ fn test_variables() {
 
 #[test]
 fn test_assignment() {
-    let global_setup = "var a = 2\nval b = 3\nvar c = 2.0\nval d = 3.0";
-    let global_teardown = "a = 2\nc = 2.0";
+    let global_setup = "var a = 2\nval b = 3\nvar c = 2.0\nval d = 3.0\nvar e: Int? = 6\nvar f: Int? = None";
+    let global_teardown = "a = 2\nc = 2.0\ne = 6\nf = None";
     let cases = vec![
         ("a = a + b", "5"),
         ("a += b", "5"),
@@ -362,7 +374,9 @@ fn test_assignment() {
         ("a %= b", "2"),
         ("c = c / d", "0.666667"),
         ("c /= d", "0.666667"),
-        ("[a += b, a -= b, a *= b, a %= b, c /= d]", "[5, 2, 6, 0, 0.666667]")
+        ("[a += b, a -= b, a *= b, a %= b, c /= d]", "[5, 2, 6, 0, 0.666667]"),
+        ("e ?:= 7", "6"),
+        ("f ?:= 7", "7")
     ];
     run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown, false);
 
@@ -442,6 +456,22 @@ fn test_destructuring_assignment() {
             "wrapper()",
             "10"
         )
+    ];
+    run_test_cases_isolated(cases);
+}
+
+#[test]
+fn test_if_statements_and_expressions() {
+    let cases = vec![
+        ("var a = 0\nif a >= 0 { a += 1 } else { a += 2 }", "a", "1"),
+        ("var a = 0\nif a == 0 { a = 1 }", "a", "1"),
+        ("val a = if true { 0 } else { 1 }", "a", "0"),
+        ("val a = if true { 0 }", "a", "0"),
+        ("val a = if false { 0 }", "a", "None"),
+        ("val a = if false { 0 }", "a", "None"),
+        // Conditional binding
+        ("val t: (Int, Int)? = None", "if t |(a, b)| { a + b } else { 10 }", "10"),
+        ("val t: (Int, Int)? = (1, 2)", "if t |(a, b)| { a + b } else { 10 }", "3"),
     ];
     run_test_cases_isolated(cases);
 }

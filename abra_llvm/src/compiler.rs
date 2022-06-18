@@ -495,6 +495,74 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn val_none(&self) -> IntValue<'ctx> {
         self.context.i64_type().const_int(VAL_NONE, false)
     }
+
+    #[inline]
+    fn visit_binding_pattern(&mut self, pat: BindingPattern, cur_val: BasicValueEnum<'ctx>) {
+        match pat {
+            BindingPattern::Variable(var_name) => {
+                let name = Token::get_ident_name(&var_name);
+                let local_ptr = self.builder.build_alloca(self.value_t(), &name);
+
+                self.current_scope_mut().bindings.insert(name, local_ptr.clone());
+                self.builder.build_store(local_ptr, cur_val);
+            }
+            BindingPattern::Tuple(_, pats) => {
+                for (idx, pat) in pats.into_iter().enumerate() {
+                    let idx = self.context.i32_type().const_int(idx as u64, false);
+                    let val = self.builder.build_call(
+                        self.known_fns.tuple_get,
+                        &[cur_val.into(), idx.into()],
+                        ""
+                    ).try_as_basic_value().left().unwrap();
+                    self.visit_binding_pattern(pat, val);
+                }
+            }
+            BindingPattern::Array(_, pats, is_string) => {
+                let num_pats = pats.len();
+                let mut pats_iter = pats.into_iter();
+                let mut cur_val = cur_val;
+                let mut idx = 0;
+                while let Some((pat, is_splat)) = pats_iter.next() {
+                    if is_splat {
+                        let (range_fn, split_fn) = if is_string {
+                            (self.known_fns.string_range, self.known_fns.string_split)
+                        } else {
+                            (self.known_fns.array_range, self.known_fns.array_split)
+                        };
+
+                        let idx_val = self.emit_nan_tagged_int_const(idx as i32);
+                        let tail = self.builder.build_call(range_fn, &[cur_val.into(), idx_val.into(), self.val_none().into()], "").try_as_basic_value().left().unwrap();
+
+                        let split_idx = (num_pats - idx - 1) as i64;
+                        let split_idx = self.context.i32_type().const_int((-split_idx) as u64, true);
+                        let parts = self.builder.build_call(split_fn, &[tail.into(), split_idx.into()], "").try_as_basic_value().left().unwrap();
+                        let l_part = self.builder.build_call(self.known_fns.tuple_get, &[parts.into(), self.context.i32_type().const_int(0, false).into()], "").try_as_basic_value().left().unwrap();
+                        let r_part = self.builder.build_call(self.known_fns.tuple_get, &[parts.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
+
+                        if idx == num_pats - 1 {
+                            self.visit_binding_pattern(pat, r_part);
+                        } else {
+                            self.visit_binding_pattern(pat, l_part);
+                            cur_val = r_part;
+                            idx = 0;
+                        }
+                        continue;
+                    }
+
+                    let idx_val = self.context.i32_type().const_int(idx as u64, false);
+                    let func = if is_string { self.known_fns.string_get } else { self.known_fns.array_get };
+                    let val = self.builder.build_call(
+                        func,
+                        &[cur_val.into(), idx_val.into()],
+                        ""
+                    ).try_as_basic_value().left().unwrap();
+                    self.visit_binding_pattern(pat, val);
+
+                    idx += 1;
+                }
+            }
+        }
+    }
 }
 
 impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'a, 'ctx> {
@@ -680,6 +748,28 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
                 self.builder.build_call(self.known_fns.string_concat, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap()
             }
+            (Type::Option(_), _, BinaryOp::Coalesce) => {
+                let left = self.visit(*node.left)?;
+
+                let cond = self.builder.build_int_compare(IntPredicate::EQ, left.into_int_value(), self.val_none(), "cond");
+                let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                self.builder.position_at_end(then_bb);
+                let then_val = self.visit(*node.right)?;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(else_bb);
+                let else_val = left;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(cont_bb);
+                let phi = self.builder.build_phi(self.value_t(), "");
+                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                phi.as_basic_value()
+            }
             _ => todo!()
         };
 
@@ -724,81 +814,13 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-
-        #[inline]
-        fn visit_binding_pattern<'a, 'ctx>(zelf: &mut Compiler<'a, 'ctx>, pat: BindingPattern, cur_val: BasicValueEnum<'ctx>) {
-            match pat {
-                BindingPattern::Variable(var_name) => {
-                    let name = Token::get_ident_name(&var_name);
-                    let local_ptr = zelf.builder.build_alloca(zelf.value_t(), &name);
-
-                    zelf.current_scope_mut().bindings.insert(name, local_ptr.clone());
-                    zelf.builder.build_store(local_ptr, cur_val);
-                }
-                BindingPattern::Tuple(_, pats) => {
-                    for (idx, pat) in pats.into_iter().enumerate() {
-                        let idx = zelf.context.i32_type().const_int(idx as u64, false);
-                        let val = zelf.builder.build_call(
-                            zelf.known_fns.tuple_get,
-                            &[cur_val.into(), idx.into()],
-                            ""
-                        ).try_as_basic_value().left().unwrap();
-                        visit_binding_pattern(zelf, pat, val);
-                    }
-                }
-                BindingPattern::Array(_, pats, is_string) => {
-                    let num_pats = pats.len();
-                    let mut pats_iter = pats.into_iter();
-                    let mut cur_val = cur_val;
-                    let mut idx = 0;
-                    while let Some((pat, is_splat)) = pats_iter.next() {
-                        if is_splat {
-                            let (range_fn, split_fn) = if is_string {
-                                (zelf.known_fns.string_range, zelf.known_fns.string_split)
-                            } else {
-                                (zelf.known_fns.array_range, zelf.known_fns.array_split)
-                            };
-
-                            let idx_val = zelf.emit_nan_tagged_int_const(idx as i32);
-                            let tail = zelf.builder.build_call(range_fn, &[cur_val.into(), idx_val.into(), zelf.val_none().into()], "").try_as_basic_value().left().unwrap();
-
-                            let split_idx = (num_pats - idx - 1) as i64;
-                            let split_idx = zelf.context.i32_type().const_int((-split_idx) as u64, true);
-                            let parts = zelf.builder.build_call(split_fn, &[tail.into(), split_idx.into()], "").try_as_basic_value().left().unwrap();
-                            let l_part = zelf.builder.build_call(zelf.known_fns.tuple_get, &[parts.into(), zelf.context.i32_type().const_int(0, false).into()], "").try_as_basic_value().left().unwrap();
-                            let r_part = zelf.builder.build_call(zelf.known_fns.tuple_get, &[parts.into(), zelf.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
-
-                            if idx == num_pats - 1 {
-                                visit_binding_pattern(zelf, pat, r_part);
-                            } else {
-                                visit_binding_pattern(zelf, pat, l_part);
-                                cur_val = r_part;
-                                idx = 0;
-                            }
-                            continue;
-                        }
-
-                        let idx_val = zelf.context.i32_type().const_int(idx as u64, false);
-                        let func = if is_string { zelf.known_fns.string_get } else { zelf.known_fns.array_get };
-                        let val = zelf.builder.build_call(
-                            func,
-                            &[cur_val.into(), idx_val.into()],
-                            ""
-                        ).try_as_basic_value().left().unwrap();
-                        visit_binding_pattern(zelf, pat, val);
-
-                        idx += 1;
-                    }
-                }
-            }
-        }
-
         let expr = if let Some(expr) = node.expr {
             self.visit(*expr)?
         } else {
             self.val_none().as_basic_value_enum()
         };
-        visit_binding_pattern(self, node.binding, expr);
+
+        self.visit_binding_pattern(node.binding, expr);
 
         Ok(self.val_none().as_basic_value_enum())
     }
@@ -946,12 +968,58 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res.try_as_basic_value().left().unwrap())
     }
 
-    fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedIfNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_if_statement(&mut self, is_stmt: bool, _token: Token, node: TypedIfNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let cond_val = self.visit(*node.condition)?;
+        let cond = self.builder.build_and(
+            self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_FALSE, false), ""),
+            self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), ""),
+            "cond"
+        );
+        let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+        let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+        let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+        self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+        self.scopes.push(Scope { name: "then-block".to_string(), fns: HashMap::new(), bindings: HashMap::new() });
+        self.builder.position_at_end(then_bb);
+        if let Some(cond_binding_pat) = node.condition_binding {
+            self.visit_binding_pattern(cond_binding_pat, cond_val);
+        }
+        let mut last_value = self.val_none().as_basic_value_enum();
+        for node in node.if_block {
+            last_value = self.visit(node)?;
+        }
+        let then_val = last_value;
+        self.builder.build_unconditional_branch(cont_bb);
+        self.scopes.pop();
+
+        self.scopes.push(Scope { name: "else-block".to_string(), fns: HashMap::new(), bindings: HashMap::new() });
+        self.builder.position_at_end(else_bb);
+        last_value = self.val_none().as_basic_value_enum();
+        if let Some(nodes) = node.else_block {
+            for node in nodes {
+                last_value = self.visit(node)?;
+            }
+        }
+        let else_val = last_value;
+        self.builder.build_unconditional_branch(cont_bb);
+        self.scopes.pop();
+
+        self.builder.position_at_end(cont_bb);
+
+        let res = if is_stmt {
+            self.val_none().as_basic_value_enum()
+        } else {
+            let phi = self.builder.build_phi(self.value_t(), "");
+            phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+            phi.as_basic_value()
+        };
+
+        Ok(res)
     }
 
-    fn visit_if_expression(&mut self, _token: Token, _node: TypedIfNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_if_expression(&mut self, token: Token, node: TypedIfNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        self.visit_if_statement(false, token, node)
     }
 
     fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

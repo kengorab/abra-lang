@@ -1,10 +1,2 @@
-func testCase7() {
-  func wrapper(): Int {
-    val ((a, b), c) = ((1, 2), (3, 4))
-    a + b + c[0] + c[1]
-  }
-              
-  println(wrapper())
-}
-
-testCase7()
+val t: (Int, Int)? = None
+println(if t |(a, b)| { a + b } else { 10 })
