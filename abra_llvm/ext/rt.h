@@ -126,6 +126,47 @@ value_t string_concat(value_t _s1, value_t _s2) {
   return string_alloc(s1->size + s2->size, chars);
 }
 
+void range_endpoints(int32_t len, int32_t* start, int32_t* end) {
+  if (*start < 0) {
+    *start += len;
+  } else if (len == 0) {
+    *start = 0;
+  }
+
+  if (*end < 0) {
+    *end += len;
+  } else if (*end < *start) {
+    *end = *start;
+  } else if (*end >= len) {
+    *end = len;
+  }
+}
+
+value_t string_get(value_t _self, int32_t idx) {
+  String* self = AS_OBJ(_self, String);
+
+  if (idx < -self->size || idx >= self->size) return VAL_NONE;
+
+  char* s = GC_MALLOC(sizeof(char) * 1);
+  s[0] = idx < 0 ? self->chars[idx + self->size] : self->chars[idx];
+  return string_alloc(1, s);
+}
+
+value_t string_range(value_t _self, value_t _start, value_t _end) {
+  String* self = AS_OBJ(_self, String);
+  int32_t start = _start == VAL_NONE ? 0 : AS_INT(_start);
+  int32_t end = _end == VAL_NONE ? self->size : AS_INT(_end);
+  range_endpoints(self->size, &start, &end);
+
+  if (start >= end) return string_alloc(0, "");
+
+  int32_t slice_size = end - start;
+  char* tmp = GC_MALLOC(sizeof(char) * slice_size);
+  memcpy(tmp, self->chars + (start * sizeof(char)), slice_size);
+
+  return string_alloc(slice_size, tmp);
+}
+
 value_t prelude__String__toString(value_t self) {
   return self;
 }
@@ -210,7 +251,25 @@ void array_insert(value_t _self, value_t _idx, value_t item) {
 value_t array_get(value_t _self, int32_t idx) {
   Array* self = AS_OBJ(_self, Array);
 
+  if (idx < -self->length || idx >= self->length) return VAL_NONE;
+  if (idx < 0) return self->items[idx + self->length];
   return self->items[idx];
+}
+
+value_t array_range(value_t _self, value_t _start, value_t _end) {
+  Array* self = AS_OBJ(_self, Array);
+  int32_t start = _start == VAL_NONE ? 0 : AS_INT(_start);
+  int32_t end = _end == VAL_NONE ? self->length : AS_INT(_end);
+  range_endpoints(self->length, &start, &end);
+
+  if (start >= end) return array_alloc(0);
+
+  int32_t slice_size = end - start;
+  value_t sub_array_v = array_alloc(slice_size);
+  Array* sub_array = AS_OBJ(sub_array_v, Array);
+  memcpy(sub_array->items, self->items + start, slice_size * sizeof(value_t));
+
+  return sub_array_v;
 }
 
 value_t values_to_string(
@@ -285,17 +344,18 @@ value_t tuple_alloc(int32_t length, ...) {
   return TAG_OBJ(tuple);
 }
 
-value_t prelude__Tuple__toString(value_t _self) {
-    Tuple* self = AS_OBJ(_self, Tuple);
-    return values_to_string(self->length, self->items, 1, "(", 1, ")", 2, ", ");
+value_t tuple_get(value_t _self, int32_t idx) {
+  Tuple* self = AS_OBJ(_self, Tuple);
+
+  if (idx < -self->length || idx >= self->length) return VAL_NONE;
+  if (idx < 0) return self->items[idx + self->length];
+  return self->items[idx];
 }
 
-//void tuple_insert(value_t _self, value_t _idx, value_t item) {
-//  Array* self = AS_OBJ(_self, Array);
-//  int32_t idx = AS_INT(_idx);
-//
-//  self->items[idx] = item;
-//}
+value_t prelude__Tuple__toString(value_t _self) {
+  Tuple* self = AS_OBJ(_self, Tuple);
+  return values_to_string(self->length, self->items, 1, "(", 1, ")", 2, ", ");
+}
 
 char* print_impl(value_t varargs) {
   if (varargs == VAL_NONE) return "";

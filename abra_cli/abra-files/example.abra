@@ -1,1 +1,14 @@
-("a", 3, [3, 4, (true, -1)])
+//val t = ("a", 3, [3, 4, (true, -1)])
+//println(t[0], t[2])
+
+//val arr = [1, 2, 3, 4]
+//println(arr[0], arr[-1], arr[-14], arr[100])
+
+//val str = "asdf"
+//val i = 0
+//println(str[i], str[i - 1], str[100])
+
+//"asdfqwer"[-4:]
+
+//val arr = [1, 2, 3, 4, 5, 6, 7, 8]
+//arr[-4:-1]

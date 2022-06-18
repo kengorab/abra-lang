@@ -10,7 +10,7 @@ use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, Callab
 use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
-use abra_core::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
+use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
@@ -32,10 +32,14 @@ struct KnownFns<'ctx> {
     value_t_to_double: FunctionValue<'ctx>,
     string_alloc: FunctionValue<'ctx>,
     string_concat: FunctionValue<'ctx>,
+    string_get: FunctionValue<'ctx>,
+    string_range: FunctionValue<'ctx>,
     tuple_alloc: FunctionValue<'ctx>,
     array_alloc: FunctionValue<'ctx>,
     array_insert: FunctionValue<'ctx>,
     array_get: FunctionValue<'ctx>,
+    array_range: FunctionValue<'ctx>,
+    tuple_get: FunctionValue<'ctx>,
     vtable_alloc_entry: FunctionValue<'ctx>,
     vtable_lookup: FunctionValue<'ctx>,
     type_id_for_val: FunctionValue<'ctx>,
@@ -54,10 +58,14 @@ impl<'ctx> KnownFns<'ctx> {
             value_t_to_double: placeholder,
             string_alloc: placeholder,
             string_concat: placeholder,
+            string_get: placeholder,
+            string_range: placeholder,
             tuple_alloc: placeholder,
             array_alloc: placeholder,
             array_insert: placeholder,
             array_get: placeholder,
+            array_range: placeholder,
+            tuple_get: placeholder,
             vtable_alloc_entry: placeholder,
             vtable_lookup: placeholder,
             type_id_for_val: placeholder,
@@ -66,8 +74,8 @@ impl<'ctx> KnownFns<'ctx> {
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, tuple_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, tuple_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, tuple_alloc, array_alloc, array_insert, array_get, array_range, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, tuple_alloc, array_alloc, array_insert, array_get, array_range, tuple_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -241,6 +249,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.string_alloc = self.module.add_function("string_alloc", string_alloc_type, None);
         let string_concat_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into()], false);
         self.known_fns.string_concat = self.module.add_function("string_concat", string_concat_type, None);
+        let string_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
+        self.known_fns.string_get = self.module.add_function("string_get", string_get_type, None);
+        let string_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
+        self.known_fns.string_range = self.module.add_function("string_range", string_range_type, None);
         let tuple_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], true);
         self.known_fns.tuple_alloc = self.module.add_function("tuple_alloc", tuple_alloc_type, None);
         let array_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
@@ -249,6 +261,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.array_insert = self.module.add_function("array_insert", array_insert_type, None);
         let array_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
         self.known_fns.array_get = self.module.add_function("array_get", array_get_type, None);
+        let array_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
+        self.known_fns.array_range = self.module.add_function("array_range", array_range_type, None);
+        let tuple_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
+        self.known_fns.tuple_get = self.module.add_function("tuple_get", tuple_get_type, None);
         self.known_fns.vtable_alloc_entry = self.module.add_function(
             "vtable_alloc_entry",
             self.context.i64_type().ptr_type(AddressSpace::Generic).fn_type(&[self.context.i32_type().into(), self.context.i32_type().into()], false),
@@ -820,8 +836,39 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_indexing(&mut self, _token: Token, _node: TypedIndexingNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_indexing(&mut self, _token: Token, node: TypedIndexingNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let target_type = node.target.get_type();
+        let target = self.visit(*node.target)?;
+
+        let res = match node.index {
+            IndexingMode::Index(idx) => {
+                let idx = self.visit(*idx)?;
+                let idx = self.emit_extract_nan_tagged_int(idx.into_int_value());
+
+                let func = match target_type {
+                    Type::String => self.known_fns.string_get,
+                    Type::Array(_) => self.known_fns.array_get,
+                    Type::Tuple(_) => self.known_fns.tuple_get,
+                    Type::Map(_, _) => todo!(),
+                    _ => unreachable!("Internal error: attempting to index into non-indexable type")
+                };
+                self.builder.build_call(func, &[target.into(), idx.into()], "")
+            }
+            IndexingMode::Range(s, e) => {
+                let start = s.map_or(Ok(self.val_none().into()), |v| self.visit(*v))?;
+                let end = e.map_or(Ok(self.val_none().into()), |v| self.visit(*v))?;
+
+                let func = match target_type {
+                    Type::String => self.known_fns.string_range,
+                    Type::Array(_) => self.known_fns.array_range,
+                    _ => unreachable!("Internal error: attempting to range-index into non-indexable type")
+                };
+
+                self.builder.build_call(func, &[target.into(), start.into(), end.into()], "")
+            }
+        };
+
+        Ok(res.try_as_basic_value().left().unwrap())
     }
 
     fn visit_if_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedIfNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

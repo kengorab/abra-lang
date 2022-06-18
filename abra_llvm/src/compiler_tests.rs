@@ -357,3 +357,50 @@ fn test_assignment() {
     // ];
     // run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown);
 }
+
+#[test]
+fn test_indexing() {
+    let cases = vec![
+        // Arrays
+        ("[1, 2, 3][1]", "2"),
+        ("[1, 2, 3][-1]", "3"),
+        ("[][0]", "None"),
+        ("[1, 2][5]", "None"),
+        ("[1, 2][-3]", "None"),
+        // Tuples
+        ("(\"a\", 3)[0]", "a"),
+        ("(\"a\", 3)[1]", "3"),
+        // Strings
+        ("\"asdf\"[0]", "a"),
+        ("\"asdf\"[-2]", "d"),
+        ("\"asdf\"[-5]", "None"),
+        ("\"asdf\"[14]", "None"),
+    ];
+
+    run_test_cases(cases);
+}
+
+#[test]
+fn test_range_indexing() {
+    let global_setup = "val arr = [1, 2, 3]\nval str = \"some string\"";
+    let cases = vec![
+        // Arrays
+        ("arr[1:2]", "[2]"),
+        ("arr[-2:-1]", "[2]"),
+        ("arr[:1]", "[1]"),
+        ("arr[1:]", "[2, 3]"),
+        ("arr[-3:]", "[1, 2, 3]"),
+        ("arr[-3:]", "[1, 2, 3]"),
+        // Starting and ending ranges outside of bounds
+        ("arr[3:]", "[]"),
+        ("arr[:4]", "[1, 2, 3]"),
+        // Strings
+        ("str[1:2]", "o"),
+        ("str[-2:-1]", "n"),
+        ("str[:4]", "some"),
+        ("str[5:]", "string"),
+        ("str[-6:]", "string"),
+    ];
+
+    run_test_cases_with_setup(global_setup, cases);
+}
