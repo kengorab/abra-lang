@@ -6,7 +6,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType, IntType, StructType};
-use inkwell::values::{BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
+use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
 use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
@@ -32,6 +32,7 @@ struct KnownFns<'ctx> {
     value_t_to_double: FunctionValue<'ctx>,
     string_alloc: FunctionValue<'ctx>,
     string_concat: FunctionValue<'ctx>,
+    tuple_alloc: FunctionValue<'ctx>,
     array_alloc: FunctionValue<'ctx>,
     array_insert: FunctionValue<'ctx>,
     array_get: FunctionValue<'ctx>,
@@ -53,6 +54,7 @@ impl<'ctx> KnownFns<'ctx> {
             value_t_to_double: placeholder,
             string_alloc: placeholder,
             string_concat: placeholder,
+            tuple_alloc: placeholder,
             array_alloc: placeholder,
             array_insert: placeholder,
             array_get: placeholder,
@@ -64,8 +66,8 @@ impl<'ctx> KnownFns<'ctx> {
     }
 
     fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
+        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, tuple_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string } = self;
+        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, tuple_alloc, array_alloc, array_insert, array_get, vtable_alloc_entry, vtable_lookup, type_id_for_val, value_to_string].iter()
             .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
     }
 }
@@ -183,6 +185,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_bool_type();
         self.init_string_type();
         self.init_array_type();
+        self.init_tuple_type();
     }
 
     fn init_int_type(&self)  {
@@ -212,6 +215,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.value_t().fn_type(&[self.value_t().into()], false));
     }
 
+    fn init_tuple_type(&self) {
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Tuple", 0);
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.value_t().fn_type(&[self.value_t().into()], false));
+    }
+
     fn init(&mut self) {
         self.module.add_global(self.context.i32_type(), None, "next_type_id");
 
@@ -233,6 +241,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.known_fns.string_alloc = self.module.add_function("string_alloc", string_alloc_type, None);
         let string_concat_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into()], false);
         self.known_fns.string_concat = self.module.add_function("string_concat", string_concat_type, None);
+        let tuple_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], true);
+        self.known_fns.tuple_alloc = self.module.add_function("tuple_alloc", tuple_alloc_type, None);
         let array_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
         self.known_fns.array_alloc = self.module.add_function("array_alloc", array_alloc_type, None);
         let array_insert_type = self.context.void_type().fn_type(&[self.value_t().into(), self.context.i32_type().into(), self.value_t().into()], false);
@@ -362,6 +372,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             self.context.i32_type().const_int(len as u64, false),
             self.builder.build_global_string_ptr(str, "").as_pointer_value(),
         )
+    }
+
+    fn alloc_tuple_obj(&self, mut items: Vec<BasicMetadataValueEnum<'ctx>>) -> IntValue<'ctx> {
+        let mut args = Vec::with_capacity(items.len() + 1);
+        args.push(self.context.i32_type().const_int(items.len() as u64, false).into());
+        args.append(&mut items);
+
+        self.builder.build_call(self.known_fns.tuple_alloc, args.as_slice(), "").try_as_basic_value().left().unwrap().into_int_value()
     }
 
     fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> IntValue<'ctx> {
@@ -652,8 +670,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(arr_value.into())
     }
 
-    fn visit_tuple(&mut self, _token: Token, _node: TypedTupleNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_tuple(&mut self, _token: Token, node: TypedTupleNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let tuple_items = node.items.into_iter()
+            .map(|n| self.visit(n).map(|r| r.into()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self.alloc_tuple_obj(tuple_items).into())
     }
 
     fn visit_map(&mut self, _token: Token, _node: TypedMapNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

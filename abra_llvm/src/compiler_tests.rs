@@ -95,6 +95,16 @@ fn test_array_literals() {
 }
 
 #[test]
+fn test_tuple_literals() {
+    let cases = vec![
+        ("(1, 2)", "(1, 2)"),
+        ("(\"a\", 3, [3, 4, (true, -1)])", "(a, 3, [3, 4, (true, -1)])")
+    ];
+
+    run_test_cases(cases);
+}
+
+#[test]
 fn test_unary_operations() {
     let cases = vec![
         ("-24", "-24"),

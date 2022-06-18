@@ -1,6 +1,7 @@
 #ifndef __ABRA_RT_H
 #define __ABRA_RT_H
 
+#include "stdarg.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "stdint.h"
@@ -212,73 +213,97 @@ value_t array_get(value_t _self, int32_t idx) {
   return self->items[idx];
 }
 
-value_t prelude__Array__toString(value_t _self) {
-  Array* self = AS_OBJ(_self, Array);
-  if (self->length == 0) {
-    return string_alloc(2, "[]");
+value_t values_to_string(
+  int32_t length,
+  value_t* values,
+  int32_t prefix_len, char* prefix,
+  int32_t suffix_len, char* suffix,
+  int32_t sep_len, char* sep
+) {
+  if (length == 0) {
+    char* empty_str = GC_MALLOC(sizeof(char) * (prefix_len + suffix_len));
+    memcpy(empty_str, prefix, prefix_len);
+    memcpy(empty_str + prefix_len, suffix, suffix_len);
+    return string_alloc(prefix_len + suffix_len, empty_str);
   }
 
-  String** strings = GC_MALLOC(sizeof(String*) * self->length);
-  int32_t total_length = 2;
-  for (int i = 0; i < self->length; i++) {
-    value_t str_val = value_to_string(self->items[i]);
+  String** strings = GC_MALLOC(sizeof(String*) * length);
+  int32_t total_length = prefix_len + suffix_len;
+  for (int i = 0; i < length; i++) {
+    value_t str_val = value_to_string(values[i]);
     String* s = AS_OBJ(str_val, String);
     strings[i] = s;
     total_length += s->size;
-    if (i != self->length - 1) {
-      total_length += 2; // ', '
+    if (i != length - 1) {
+      total_length += sep_len;
     }
   }
 
   char* chars = GC_MALLOC(sizeof(char) * total_length);
-  chars[0] = '[';
-  int32_t offset = 1;
-  for (int i = 0; i < self->length; i++) {
+  memcpy(chars, prefix, prefix_len);
+  int32_t offset = prefix_len;
+  for (int i = 0; i < length; i++) {
     memcpy(chars + offset, strings[i]->chars, strings[i]->size);
     offset += strings[i]->size;
 
-    if (i != self->length - 1) {
-      memcpy(chars + offset, ", ", 2);
-      offset += 2;
+    if (i != length - 1) {
+      memcpy(chars + offset, sep, sep_len);
+      offset += sep_len;
     }
   }
-  chars[offset] = ']';
+  memcpy(chars + offset, suffix, suffix_len);
 
   return string_alloc(total_length, chars);
 }
 
-char* print_impl(value_t varargs) {
-  if (varargs == VAL_NONE) {
-    return "";
+value_t prelude__Array__toString(value_t _self) {
+  Array* self = AS_OBJ(_self, Array);
+  return values_to_string(self->length, self->items, 1, "[", 1, "]", 2, ", ");
+}
+
+uint32_t type_id_Tuple;
+typedef struct Tuple {
+  obj_header_t h;
+  int32_t length;
+  value_t* items;
+} Tuple;
+
+value_t tuple_alloc(int32_t length, ...) {
+  Tuple* tuple = GC_MALLOC(sizeof(Tuple));
+  value_t* tuple_items = GC_MALLOC(sizeof(value_t) * length);
+
+  va_list ptr;
+  va_start(ptr, length);
+  for (int i = 0; i < length; i++) {
+    tuple_items[i] = va_arg(ptr, value_t);
   }
+  va_end(ptr);
+
+  tuple->h.type_id = type_id_Tuple;
+  tuple->length = length;
+  tuple->items = tuple_items;
+  return TAG_OBJ(tuple);
+}
+
+value_t prelude__Tuple__toString(value_t _self) {
+    Tuple* self = AS_OBJ(_self, Tuple);
+    return values_to_string(self->length, self->items, 1, "(", 1, ")", 2, ", ");
+}
+
+//void tuple_insert(value_t _self, value_t _idx, value_t item) {
+//  Array* self = AS_OBJ(_self, Array);
+//  int32_t idx = AS_INT(_idx);
+//
+//  self->items[idx] = item;
+//}
+
+char* print_impl(value_t varargs) {
+  if (varargs == VAL_NONE) return "";
 
   Array* args = AS_OBJ(varargs, Array);
-
-  String** strings = GC_MALLOC(sizeof(String*) * args->length);
-  int32_t total_length = 0;
-  for (int i = 0; i < args->length; i++) {
-    value_t str_val = value_to_string(args->items[i]);
-    String* s = AS_OBJ(str_val, String);
-    strings[i] = s;
-    total_length += s->size;
-    if (i != args->length - 1) {
-        total_length += 1; // ' '
-    }
-  }
-
-  char* chars = GC_MALLOC(sizeof(char) * total_length);
-  int32_t offset = 0;
-  for (int i = 0; i < args->length; i++) {
-    memcpy(chars + offset, strings[i]->chars, strings[i]->size);
-    offset += strings[i]->size;
-
-    if (i != args->length - 1) {
-      memcpy(chars + offset, " ", 1);
-      offset += 1;
-    }
-  }
-
-  return chars;
+  value_t str = values_to_string(args->length, args->items, 0, "", 0, "", 1, " ");
+  String* s = AS_OBJ(str, String);
+  return s->chars;
 }
 
 void prelude__print(value_t varargs) {
