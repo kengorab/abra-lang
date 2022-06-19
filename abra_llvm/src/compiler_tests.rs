@@ -298,6 +298,11 @@ fn test_functions() {
         ("func d(): String[] = [\"a\", \"b\"]", "d()", "[a, b]"),
         ("func e(): Int = 4\nfunc f(i: Int): Int = i + i * 5\nfunc g(): Int = f(e())", "g()", "24"),
         ("val s = \"foo\"\nfunc h(a: Int): String { val s = \"hello\"\ns + a }", "h(7)", "hello7"),
+        (
+            "func fib(i: Int): Int = if i < 2 { i } else { fib(i - 1) + fib(i - 2) }",
+            "(fib(0), fib(1), fib(2), fib(3), fib(4), fib(5), fib(6), fib(7), fib(8))",
+            "(0, 1, 1, 2, 3, 5, 8, 13, 21)"
+        )
     ];
 
     run_test_cases(cases);
