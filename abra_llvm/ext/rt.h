@@ -57,16 +57,6 @@ const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
 value_t* vtable[256];
 uint32_t next_type_id = 0;
 
-value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
-  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
-  vtable[type_id] = entry;
-  return entry;
-}
-
-value_t vtable_lookup(uint32_t type_id, uint32_t idx) {
-  return vtable[type_id][idx];
-}
-
 typedef struct obj_header_t {
   uint32_t type_id;
 } obj_header_t;
@@ -90,6 +80,17 @@ uint32_t type_id_for_val(value_t value) {
   return header->type_id;
 }
 
+value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
+  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
+  vtable[type_id] = entry;
+  return entry;
+}
+
+value_t vtable_lookup(value_t value, uint32_t idx) {
+  uint32_t type_id = type_id_for_val(value);
+  return vtable[type_id][idx];
+}
+
 uint32_t type_id_String;
 typedef struct String {
   obj_header_t h;
@@ -111,8 +112,7 @@ value_t value_to_string(value_t value) {
     return string_alloc(4, "None");
   }
 
-  uint32_t type_id = type_id_for_val(value);
-  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(type_id, 0);
+  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(value, 0);
   return tostring_method(value);
 }
 
@@ -436,6 +436,36 @@ value_t array_split(value_t _self, int32_t idx) {
   memcpy(AS_OBJ(right, Array)->items, self->items + split_idx, (self->length - split_idx) * sizeof(value_t));
 
   return tuple_alloc(2, left, right);
+}
+
+uint32_t type_id_Function;
+typedef struct Function {
+  obj_header_t h;
+  char* name;
+  value_t fn_ptr;
+} Function;
+
+value_t function_alloc(char* name, value_t fn_ptr) {
+  Function* fn = GC_MALLOC(sizeof(Function));
+
+  fn->h.type_id = type_id_Function;
+  fn->name = name;
+  fn->fn_ptr = fn_ptr;
+  return TAG_OBJ(fn);
+}
+
+value_t function_get_ptr(value_t _self) {
+  return AS_OBJ(_self, Function)->fn_ptr;
+}
+
+value_t prelude__Function__toString(value_t _self) {
+  Function* self = AS_OBJ(_self, Function);
+
+  int len = snprintf(NULL, 0, "<func %s>", self->name);
+  char *result = GC_MALLOC(len + 1);
+  snprintf(result, len + 1, "<func %s>", self->name);
+
+  return string_alloc(len, result);
 }
 
 #endif

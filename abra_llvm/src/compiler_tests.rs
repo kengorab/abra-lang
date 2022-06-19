@@ -475,3 +475,41 @@ fn test_if_statements_and_expressions() {
     ];
     run_test_cases_isolated(cases);
 }
+
+#[test]
+fn test_to_string_representation() {
+    let cases = vec![
+        ("", "1", "1"),
+        ("", "-1", "-1"),
+        ("", "0.123", "0.123000"),
+        ("", "true", "true"),
+        ("", "false", "false"),
+        ("", "None", "None"),
+        ("", "\"asdf\"", "asdf"),
+        ("", "(1, (2, 3))", "(1, (2, 3))"),
+        ("", "[[\"a\"], [\"b\", \"c\"]]", "[[a], [b, c]]"),
+        ("func foo() {}", "foo", "<func foo>"),
+    ];
+    run_test_cases(cases);
+}
+
+#[test]
+fn test_higher_order_functions() {
+    let cases = vec![
+        (
+            r#"
+              func container(): (String) => String {
+                func greet(s: String): String {
+                  print("hello", s)
+                  "!"
+                }
+                greet
+              }
+              func foo(fn: (String) => String): String = fn("world")
+            "#,
+            "foo(container())",
+            "hello world!"
+        )
+    ];
+    run_test_cases_isolated(cases);
+}
