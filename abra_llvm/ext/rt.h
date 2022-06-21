@@ -112,8 +112,8 @@ value_t value_to_string(value_t value) {
     return string_alloc(4, "None");
   }
 
-  value_t(*tostring_method)(value_t) = (value_t(*)(value_t))vtable_lookup(value, 0);
-  return tostring_method(value);
+  value_t(*tostring_method)(value_t*, value_t) = (value_t(*)(value_t*, value_t))vtable_lookup(value, 0);
+  return tostring_method(NULL, value);
 }
 
 value_t string_concat(value_t _s1, value_t _s2) {
@@ -169,11 +169,11 @@ value_t string_range(value_t _self, value_t _start, value_t _end) {
   return string_alloc(slice_size, tmp);
 }
 
-value_t prelude__String__toString(value_t self) {
+value_t prelude__String__toString(value_t* _env, value_t self) {
   return self;
 }
 
-value_t prelude__String__toLower(value_t _self) {
+value_t prelude__String__toLower(value_t* _env, value_t _self) {
   String* self = AS_OBJ(_self, String);
 
   char* chars = GC_MALLOC(sizeof(char) * self->size);
@@ -185,7 +185,7 @@ value_t prelude__String__toLower(value_t _self) {
   return string_alloc(self->size, chars);
 }
 
-value_t prelude__String__toUpper(value_t _self) {
+value_t prelude__String__toUpper(value_t* _env, value_t _self) {
   String* self = AS_OBJ(_self, String);
 
   char* chars = GC_MALLOC(sizeof(char) * self->size);
@@ -197,7 +197,7 @@ value_t prelude__String__toUpper(value_t _self) {
   return string_alloc(self->size, chars);
 }
 
-value_t prelude__Int__toString(value_t _self) {
+value_t prelude__Int__toString(value_t* _env, value_t _self) {
   int32_t self = AS_INT(_self);
 
   int len = snprintf(NULL, 0, "%d", self);
@@ -207,7 +207,7 @@ value_t prelude__Int__toString(value_t _self) {
   return string_alloc(len, result);
 }
 
-value_t prelude__Float__toString(value_t _self) {
+value_t prelude__Float__toString(value_t* _env, value_t _self) {
   double self = AS_DOUBLE(_self);
 
   int len = snprintf(NULL, 0, "%f", self);
@@ -217,7 +217,7 @@ value_t prelude__Float__toString(value_t _self) {
   return string_alloc(len, result);
 }
 
-value_t prelude__Bool__toString(value_t self) {
+value_t prelude__Bool__toString(value_t* _env, value_t self) {
   if (self == VAL_TRUE) {
     return string_alloc(4, "true");
   }
@@ -319,7 +319,7 @@ value_t values_to_string(
   return string_alloc(total_length, chars);
 }
 
-value_t prelude__Array__toString(value_t _self) {
+value_t prelude__Array__toString(value_t* _env, value_t _self) {
   Array* self = AS_OBJ(_self, Array);
   return values_to_string(self->length, self->items, 1, "[", 1, "]", 2, ", ");
 }
@@ -358,7 +358,7 @@ value_t tuple_get(value_t _self, int32_t idx) {
   return self->items[idx];
 }
 
-value_t prelude__Tuple__toString(value_t _self) {
+value_t prelude__Tuple__toString(value_t* _env, value_t _self) {
   Tuple* self = AS_OBJ(_self, Tuple);
   return values_to_string(self->length, self->items, 1, "(", 1, ")", 2, ", ");
 }
@@ -372,11 +372,11 @@ char* print_impl(value_t varargs) {
   return s->chars;
 }
 
-void prelude__print(value_t varargs) {
+void prelude__print(value_t* _env, value_t varargs) {
   printf("%s", print_impl(varargs));
 }
 
-void prelude__println(value_t varargs) {
+void prelude__println(value_t* _env, value_t varargs) {
   printf("%s\n", print_impl(varargs));
 }
 
@@ -443,6 +443,7 @@ typedef struct Function {
   obj_header_t h;
   char* name;
   value_t fn_ptr;
+  value_t* env;
 } Function;
 
 value_t function_alloc(char* name, value_t fn_ptr) {
@@ -454,11 +455,17 @@ value_t function_alloc(char* name, value_t fn_ptr) {
   return TAG_OBJ(fn);
 }
 
-value_t function_get_ptr(value_t _self) {
-  return AS_OBJ(_self, Function)->fn_ptr;
+value_t closure_alloc(char* name, value_t fn_ptr, value_t* env) {
+  Function* fn = GC_MALLOC(sizeof(Function));
+
+  fn->h.type_id = type_id_Function;
+  fn->name = name;
+  fn->fn_ptr = fn_ptr;
+  fn->env = env;
+  return TAG_OBJ(fn);
 }
 
-value_t prelude__Function__toString(value_t _self) {
+value_t prelude__Function__toString(value_t* _env, value_t _self) {
   Function* self = AS_OBJ(_self, Function);
 
   int len = snprintf(NULL, 0, "<func %s>", self->name);

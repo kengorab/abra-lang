@@ -1,58 +1,19 @@
-func container(): (String) => String {
-  //var a = 0
-
-  func greet(s: String): String {
-    //a += 1
-    //println(a)
-    print("hello", s)
-    "!"
-  }
-
-  greet
-}
-
-val f = container()
-println(f)
-//f() // => 1
-//f() // => 2
-
-func foo(fn: (String) => String): String {
-  fn("world")
-}
-println(foo(f))
-
-/*
-
-func container(): () -> Unit {
-  var x = 0                         // create xptr, *xptr = value_t(0)
-  x = 1                             // *xptr = value_t(1)
-
-  func f() {    // func f(env: value_t[]) {
-    x += 1      //   var x = env[0]
-                //
-    println(x)  //
-  }
-
-  x = 0
-
-  //
-  f becomes a closure, since it captures x
-
-  build env: value_t[]
-  let x_val = *xptr
-  create box pointer, which holds value that xptr points to
-  set *xptr = that new box, as a nan-tagged pointer with a flag to denote that it's been lifted
-
-  closure = {
-    fn = *f, (take the function ptr of f, except f takes an additional param of `value_t[]` to account for env)
-    env = value_t[*xptr, ...]
-  }
-  //
-
-  f
-}
-val fn = container()
-fn() // prints 2
-fn() // prints 3
-fn() // prints 4
-*/
+      func abc(): Int {
+        var a = 20
+        func wrapper(): Int {
+          val b = 123
+          func wrapper2(): Int {
+            val c = 456
+            if (true) {
+              val b = 456
+              a = 24
+              a
+            } else {
+              0
+            }
+          }
+          wrapper2()
+        }
+        wrapper()
+      }
+      abc()

@@ -78,6 +78,7 @@ fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str,
     let res = test_run_with_modules(&input, vec![]);
 
     for (line_num, (output, expected)) in res.lines().zip(expecteds).enumerate() {
+        let output = output.trim();
         assert_eq!(expected, output, "Expected '{}' but saw '{}' (test case {})", expected, output, line_num + 1);
     }
 }
@@ -517,4 +518,95 @@ fn test_higher_order_functions() {
         )
     ];
     run_test_cases_isolated(cases);
+}
+
+#[test]
+fn test_closures() {
+    let cases = vec![
+        (
+            r#"
+              var z = 0
+              func counter(): (() => Unit, () => Unit) {
+                var a = 0
+                print(z, "")
+
+                func inc() {
+                  a += 1
+                  print(a, "")
+                }
+                func dec() {
+                  a -= 1
+                  print(a, "")
+                }
+                (inc, dec)
+              }
+
+              val (inc, dec) = counter()
+              inc()
+              inc()
+              dec()
+              dec()
+            "#,
+            "",
+            "0 1 2 1 0"
+        ),
+        (
+            r#"
+              func container(cond: Bool): () => Unit {
+                var a = 0
+
+                func inc() {
+                  a += 1
+                  print(a, "")
+                }
+                if cond {
+                  a = 7
+                  print(a, "")
+                }
+                inc
+              }
+
+              val fn1 = container(cond: false)
+              fn1()
+              print("|", "")
+              val fn2 = container(cond: true)
+              fn2()
+            "#,
+            "",
+            "1 | 7 8"
+        ),
+        // Test closing over global variables
+        (
+            r#"
+              val a = 1
+              var b = 2
+              func getSum(): Int = a + b
+              b = 17
+            "#,
+            "getSum()",
+            "18"
+        ),
+        // Test deeply nested upvalue access
+        (
+            r#"
+              func getCounter(): () => Int {
+                var count = 100
+                func unnecessaryLayer1(): () => () => Int {
+                  func unnecessaryLayer2(): () => Int {
+                    func tick(): Int { count += 1 }
+                    tick
+                  }
+                  unnecessaryLayer2
+                }
+                count = 0
+                val ul1 = unnecessaryLayer1()
+                ul1()
+              }
+              val tick = getCounter()
+            "#,
+            "[tick(), tick(), tick(), tick(), tick()]",
+            "[1, 2, 3, 4, 5]"
+        )
+    ];
+    run_test_cases(cases);
 }
