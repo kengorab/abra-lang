@@ -207,9 +207,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn init_prelude(&mut self) {
-        let println = self.module.add_function("prelude__println", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false), None);
+        let println = self.module.add_function("prelude__println", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false), None);
         self.current_scope_mut().fns.insert("println".to_string(), println);
-        let print = self.module.add_function("prelude__print", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false), None);
+        let print = self.module.add_function("prelude__print", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false), None);
         self.current_scope_mut().fns.insert("print".to_string(), print);
 
         self.init_int_type();
@@ -223,39 +223,39 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn init_int_type(&self)  {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Int", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Int__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Int__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
     fn init_float_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Float", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Float__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Float__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
-    fn init_bool_type(&self)  {
+    fn init_bool_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Bool", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Bool__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Bool__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
-    fn init_string_type(&self)  {
+    fn init_string_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_String", 3);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__String__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
-        self.add_vtable_fn(vtable_entry, 1, "prelude__String__toLower", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
-        self.add_vtable_fn(vtable_entry, 2, "prelude__String__toUpper", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__String__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 1, "prelude__String__toLower", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 2, "prelude__String__toUpper", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
     fn init_array_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Array", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
     fn init_tuple_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Tuple", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
     fn init_function_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
     }
 
     fn init(&mut self) {
@@ -926,6 +926,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
         let mut fn_arg_types = Vec::new();
         fn_arg_types.push(self.value_t().ptr_type(AddressSpace::Generic).into());
+        fn_arg_types.push(self.context.i8_type().into());
         fn_arg_types.append(&mut repeat(self.value_t().into()).take(node.args.len()).collect_vec());
         let fn_type = self.value_t().fn_type(fn_arg_types.as_slice(), false);
 
@@ -991,9 +992,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         } else {
             None
         };
+        let num_received_args = func.get_nth_param(1).unwrap().into_int_value();
         self.begin_new_fn_scope(fn_name.clone(), closure_context);
         for (mut idx, (tok, _, _, default_value)) in node.args.into_iter().enumerate() {
-            idx += 1; // Skip over _env param
+            idx += 2; // Skip over `env` and `num_received_args` params
 
             let name = Token::get_ident_name(&tok);
             let param_ptr = self.builder.build_alloca(self.value_t(), &name);
@@ -1003,8 +1005,21 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let param_val = func.get_nth_param(idx as u32)
                 .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &fn_name));
             let param_val = if let Some(default_value) = default_value {
-                // $param = if $param == None { $default } else { $param }
-                let cond = self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), "cond");
+                // Supply the default value for the parameter if it was either explicitly/implicitly omitted.
+                // Explicit omission:
+                //   func foo(i = 0): Int = i
+                //   foo() // A `None` will be explicitly passed in this case, since the required arity of `foo` is known at compile-time
+                // Implicit omission:
+                //   func foo(i = 0): Int = i
+                //   func bar(fn: () => Int): Int = fn()
+                //   bar(foo) // Within the body of `bar`, we cannot know the required arity of its argument, and thus we cannot emit `None` values to pass
+                //
+                // $param = if num_received_args < $param_idx || $param == None { $default } else { $param }
+                let cond = self.builder.build_or(
+                    self.builder.build_int_compare(IntPredicate::ULE, num_received_args, self.context.i8_type().const_int((idx - 2) as u64, false),  ""),
+                    self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), ""),
+                    "cond"
+                );
                 let then_bb = self.context.append_basic_block(self.cur_fn, "then");
                 let else_bb = self.context.append_basic_block(self.cur_fn, "else");
                 let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
@@ -1198,6 +1213,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         fn convert_serialized_fn_ptr_to_callable<'a, 'ctx>(zelf: &Compiler<'a, 'ctx>, fn_ptr_value_t: IntValue<'ctx>, num_args: usize, ret_type: &Type) -> Option<CallableValue<'ctx>> {
             let mut args = Vec::new();
             args.push(zelf.value_t().ptr_type(AddressSpace::Generic).into());
+            args.push(zelf.context.i8_type().into());
             args.append(&mut repeat(zelf.value_t().into()).take(num_args).collect_vec());
 
             let fn_type = if ret_type == &Type::Unit {
@@ -1212,6 +1228,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fn_value = match *node.target {
             TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => {
                 let num_args = node.args.len();
+                args.push(self.context.i8_type().const_int(num_args as u64, false).into());
+
                 let fn_ret_type = &node.typ;
 
                 // If there's a known function in the scopes by the given name, use that FunctionValue.
@@ -1228,8 +1246,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                             self.known_types.function.ptr_type(AddressSpace::Generic),
                             ""
                         );
-                        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "fn_ptr_value_t").unwrap();
-                        let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "loaded").into_int_value();
+                        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
+                        let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
 
                         let env_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
                         args[0] = self.builder.build_load(env_ptr, "").into();
@@ -1241,16 +1259,37 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, .. }) => {
                 if !is_method { todo!(); }
 
-                let rcv = self.visit(*target)?;
-                args.push(rcv.into());
-
-                let idx = self.context.i32_type().const_int(field_idx as u64, false);
-                let fn_ptr_value_t = self.builder.build_call(self.known_fns.vtable_lookup, &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
                 if let Type::Fn(FnType { ret_type, arg_types, .. }) = &typ {
-                    convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, arg_types.len() + 1, ret_type)
+                    let num_args = arg_types.len() + 1;
+                    args.push(self.context.i8_type().const_int(num_args as u64, false).into());
+
+                    let rcv = self.visit(*target)?;
+                    args.push(rcv.into());
+
+                    let idx = self.context.i32_type().const_int(field_idx as u64, false);
+                    let fn_ptr_value_t = self.builder.build_call(self.known_fns.vtable_lookup, &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, ret_type)
                 } else { unreachable!() }
             }
-            _ => todo!()
+            expr => {
+                let (fn_ret_type, num_args) = if let Type::Fn(FnType { ret_type, arg_types, .. }) = expr.get_type() { (ret_type, arg_types.len()) } else { unreachable!() };
+                let typed_expr = self.visit(expr)?;
+
+                let fn_val_ptr = self.builder.build_pointer_cast(
+                    self.emit_extract_nan_tagged_obj(typed_expr.into_int_value()),
+                    self.known_types.function.ptr_type(AddressSpace::Generic),
+                    ""
+                );
+                let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
+                let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+
+                let env_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
+                args[0] = self.builder.build_load(env_ptr, "").into();
+
+                args.push(self.context.i8_type().const_int(num_args as u64, false).into());
+
+                convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, &fn_ret_type)
+            }
         };
         let fn_value = fn_value.unwrap();
 

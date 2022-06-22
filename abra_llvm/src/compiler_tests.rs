@@ -320,10 +320,15 @@ fn test_functions_default_valued_parameters() {
       func foo(a = abc(), b = "asdf"): String = a.toString() + b
     "#;
     let cases = vec![
-        ("foo(1, \"a\")", "1a"),
-        ("foo()", "[abc] 6asdf"),
-        ("foo(a: 2)", "2asdf"),
-        ("foo(b: \"qwer\")", "[abc] 6qwer"),
+        ("", "foo(1, \"a\")", "1a"),
+        ("", "foo()", "[abc] 6asdf"),
+        ("", "foo(a: 2)", "2asdf"),
+        ("", "foo(b: \"qwer\")", "[abc] 6qwer"),
+        (
+            "func a(x = abc, y = abc): Int = x() + y()",
+            "(a, a)[0](a, a)",
+            "[abc] [abc] [abc] [abc] 24"
+        )
     ];
 
     run_test_cases_with_setup(global_setup, cases);
@@ -599,8 +604,7 @@ fn test_closures() {
                   unnecessaryLayer2
                 }
                 count = 0
-                val ul1 = unnecessaryLayer1()
-                ul1()
+                unnecessaryLayer1()()
               }
               val tick = getCounter()
             "#,

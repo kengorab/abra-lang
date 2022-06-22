@@ -1,19 +1,12 @@
+//func six(): Int = 6
+//func a(x = six, y = six): Int = x() + y()
+
+//func six(): Int = 6
       func abc(): Int {
-        var a = 20
-        func wrapper(): Int {
-          val b = 123
-          func wrapper2(): Int {
-            val c = 456
-            if (true) {
-              val b = 456
-              a = 24
-              a
-            } else {
-              0
-            }
-          }
-          wrapper2()
-        }
-        wrapper()
+        print("[abc] ")
+        6
       }
-      abc()
+func a(x = abc, y = abc): Int = x() + y()
+println((a, a)[0](a, a))
+
+//println(a(a, a))
