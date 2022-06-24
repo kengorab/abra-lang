@@ -16,91 +16,36 @@ use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode,
 use abra_core::typechecker::types::{FnType, Type};
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
-const PLACEHOLDER_FN_NAME: &str = "__placeholder";
-const PLACEHOLDER_TYPE_NAME: &str = "__placeholder";
 
-#[derive(Debug)]
-pub enum CompilerError {}
+// Cached externally-defined functions
+const FN_PRINTF: &str = "printf";
+const FN_POWF64: &str = "llvm.pow.f64";
+const FN_MALLOC: &str = "GC_malloc";
+const FN_DOUBLE_TO_VALUE_T: &str = "double_to_value_t";
+const FN_VALUE_T_TO_DOUBLE: &str = "value_t_to_double";
+const FN_STRING_ALLOC: &str = "string_alloc";
+const FN_STRING_CONCAT: &str = "string_concat";
+const FN_STRING_GET: &str = "string_get";
+const FN_STRING_RANGE: &str = "string_range";
+const FN_STRING_SPLIT: &str = "string_split";
+const FN_TUPLE_ALLOC: &str = "tuple_alloc";
+const FN_ARRAY_ALLOC: &str = "array_alloc";
+const FN_ARRAY_INSERT: &str = "array_insert";
+const FN_ARRAY_GET: &str = "array_get";
+const FN_ARRAY_RANGE: &str = "array_range";
+const FN_ARRAY_SPLIT: &str = "array_split";
+const FN_TUPLE_GET: &str = "tuple_get";
+const FN_FUNCTION_ALLOC: &str = "function_alloc";
+const FN_CLOSURE_ALLOC: &str = "closure_alloc";
+const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
+const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
+const FN_VALUE_TO_STRING: &str = "value_to_string";
 
-struct KnownFns<'ctx> {
-    snprintf: FunctionValue<'ctx>,
-    printf: FunctionValue<'ctx>,
-    powf64: FunctionValue<'ctx>,
-    malloc: FunctionValue<'ctx>,
-    memcpy: FunctionValue<'ctx>,
-    double_to_value_t: FunctionValue<'ctx>,
-    value_t_to_double: FunctionValue<'ctx>,
-    string_alloc: FunctionValue<'ctx>,
-    string_concat: FunctionValue<'ctx>,
-    string_get: FunctionValue<'ctx>,
-    string_range: FunctionValue<'ctx>,
-    string_split: FunctionValue<'ctx>,
-    tuple_alloc: FunctionValue<'ctx>,
-    array_alloc: FunctionValue<'ctx>,
-    array_insert: FunctionValue<'ctx>,
-    array_get: FunctionValue<'ctx>,
-    array_range: FunctionValue<'ctx>,
-    array_split: FunctionValue<'ctx>,
-    tuple_get: FunctionValue<'ctx>,
-    function_alloc: FunctionValue<'ctx>,
-    closure_alloc: FunctionValue<'ctx>,
-    vtable_alloc_entry: FunctionValue<'ctx>,
-    vtable_lookup: FunctionValue<'ctx>,
-    value_to_string: FunctionValue<'ctx>,
-}
+// Cached externally-defined types
+const TYPE_STRING: &str = "String";
+const TYPE_FUNCTION: &str = "Function";
 
-impl<'ctx> KnownFns<'ctx> {
-    fn initial_value(placeholder: FunctionValue<'ctx>) -> Self {
-        KnownFns {
-            snprintf: placeholder,
-            printf: placeholder,
-            powf64: placeholder,
-            malloc: placeholder,
-            memcpy: placeholder,
-            double_to_value_t: placeholder,
-            value_t_to_double: placeholder,
-            string_alloc: placeholder,
-            string_concat: placeholder,
-            string_get: placeholder,
-            string_range: placeholder,
-            string_split: placeholder,
-            tuple_alloc: placeholder,
-            array_alloc: placeholder,
-            array_insert: placeholder,
-            array_get: placeholder,
-            array_range: placeholder,
-            array_split: placeholder,
-            tuple_get: placeholder,
-            function_alloc: placeholder,
-            closure_alloc: placeholder,
-            vtable_alloc_entry: placeholder,
-            vtable_lookup: placeholder,
-            value_to_string: placeholder,
-        }
-    }
-
-    fn is_initialized(&self) -> bool {
-        let KnownFns { snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, string_split, tuple_alloc, array_alloc, array_insert, array_get, array_range, array_split, tuple_get, function_alloc, closure_alloc, vtable_alloc_entry, vtable_lookup, value_to_string } = self;
-        [snprintf, printf, powf64, malloc, memcpy, double_to_value_t, value_t_to_double, string_alloc, string_concat, string_get, string_range, string_split, tuple_alloc, array_alloc, array_insert, array_get, array_range, array_split, tuple_get, function_alloc, closure_alloc, vtable_alloc_entry, vtable_lookup, value_to_string].iter()
-            .all(|f| f.get_name().to_str().unwrap().ne(PLACEHOLDER_FN_NAME))
-    }
-}
-
-struct KnownTypes<'ctx> {
-    string: StructType<'ctx>,
-    array: StructType<'ctx>,
-    obj_header_t: StructType<'ctx>,
-    function: StructType<'ctx>,
-}
-
-impl<'ctx> KnownTypes<'ctx> {
-    fn is_initialized(&self) -> bool {
-        let KnownTypes { string, array, obj_header_t, function } = self;
-        [string, array, obj_header_t, function].iter()
-            .all(|t| t.get_name().unwrap().to_str().unwrap().ne(PLACEHOLDER_TYPE_NAME))
-    }
-}
-
+// NaN-tagging constants
 // IMPORTANT! These must stay in sync with the constants in `rt.h`
 const MASK_NAN: u64 = 0x7ffc000000000000;
 const MASK_INT: u64 = MASK_NAN | 0x0002000000000000;
@@ -139,31 +84,24 @@ pub struct Compiler<'a, 'ctx> {
     builder: &'a Builder<'ctx>,
     module: &'a Module<'ctx>,
     cur_fn: FunctionValue<'ctx>,
-    known_fns: KnownFns<'ctx>,
-    known_types: KnownTypes<'ctx>,
     scopes: Vec<Scope<'ctx>>,
 }
+
+type CompilerError = ();
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
     pub fn compile_module(context: &'ctx Context, typed_module: TypedModule) -> Result<Module<'ctx>, CompilerError> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
 
-        let placeholder_fn = module.add_function(PLACEHOLDER_FN_NAME, context.void_type().fn_type(&[], false), None);
-        let placeholder_type = context.opaque_struct_type(PLACEHOLDER_TYPE_NAME);
+        let entry_fn_type = context.void_type().fn_type(&[], false);
+        let entry_fn = module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
 
         let mut compiler = Compiler {
             context: &context,
             builder: &builder,
             module: &module,
-            cur_fn: placeholder_fn,
-            known_fns: KnownFns::initial_value(placeholder_fn),
-            known_types: KnownTypes {
-                string: placeholder_type,
-                array: placeholder_type,
-                obj_header_t: placeholder_type,
-                function: placeholder_type,
-            },
+            cur_fn: entry_fn,
             scopes: vec![Scope { name: "$root".to_string(), fn_depth: 0, fns: HashMap::new(), variables: HashMap::new(), closure_context: None }],
         };
 
@@ -191,7 +129,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.builder.build_store(next_type_id.as_pointer_value(), self.builder.build_int_add(type_id.into_int_value(), self.context.i32_type().const_int(1, false), ""));
 
         self.builder.build_call(
-            self.known_fns.vtable_alloc_entry,
+            self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
             &[
                 self.builder.build_load(new_type_id.as_pointer_value(), "").into_int_value().into(),
                 self.context.i32_type().const_int(vtable_size as u64, false).into()
@@ -261,140 +199,84 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn init(&mut self) {
         self.module.add_global(self.context.i32_type(), None, "next_type_id");
 
-        let malloc_type = self.str_type().fn_type(&[self.context.i64_type().into()], false);
-        self.known_fns.malloc = self.module.add_function("GC_malloc", malloc_type, None);
-        let snprintf_type = self.context.i64_type().fn_type(&[self.str_type().into(), self.context.i64_type().into(), self.str_type().into()], true);
-        self.known_fns.snprintf = self.module.add_function("snprintf", snprintf_type, None);
-        let printf_type = self.context.i64_type().fn_type(&[self.str_type().into()], true);
-        self.known_fns.printf = self.module.add_function("printf", printf_type, None);
-        let powf64_type = self.context.f64_type().fn_type(&[self.context.f64_type().into(), self.context.f64_type().into()], false);
-        self.known_fns.powf64 = self.module.add_function("llvm.pow.f64", powf64_type, None);
-        let memcpy_type = self.str_type().fn_type(&[self.str_type().into(), self.str_type().into(), self.context.i32_type().into()], false);
-        self.known_fns.memcpy = self.module.add_function("memcpy", memcpy_type, None);
-        let double_to_value_t_type = self.value_t().fn_type(&[self.context.f64_type().into()], false);
-        self.known_fns.double_to_value_t = self.module.add_function("double_to_value_t", double_to_value_t_type, None);
-        let value_t_to_double_type = self.context.f64_type().fn_type(&[self.value_t().into()], false);
-        self.known_fns.value_t_to_double = self.module.add_function("value_t_to_double", value_t_to_double_type, None);
-        let string_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into(), self.str_type().into()], false);
-        self.known_fns.string_alloc = self.module.add_function("string_alloc", string_alloc_type, None);
-        let string_concat_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into()], false);
-        self.known_fns.string_concat = self.module.add_function("string_concat", string_concat_type, None);
-        let string_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
-        self.known_fns.string_get = self.module.add_function("string_get", string_get_type, None);
-        let string_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
-        self.known_fns.string_range = self.module.add_function("string_range", string_range_type, None);
-        let string_split_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
-        self.known_fns.string_split = self.module.add_function("string_split", string_split_type, None);
-        let tuple_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], true);
-        self.known_fns.tuple_alloc = self.module.add_function("tuple_alloc", tuple_alloc_type, None);
-        let array_alloc_type = self.value_t().fn_type(&[self.context.i32_type().into()], false);
-        self.known_fns.array_alloc = self.module.add_function("array_alloc", array_alloc_type, None);
-        let array_insert_type = self.context.void_type().fn_type(&[self.value_t().into(), self.context.i32_type().into(), self.value_t().into()], false);
-        self.known_fns.array_insert = self.module.add_function("array_insert", array_insert_type, None);
-        let array_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
-        self.known_fns.array_get = self.module.add_function("array_get", array_get_type, None);
-        let array_range_type = self.value_t().fn_type(&[self.value_t().into(), self.value_t().into(), self.value_t().into()], false);
-        self.known_fns.array_range = self.module.add_function("array_range", array_range_type, None);
-        let array_split_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
-        self.known_fns.array_split = self.module.add_function("array_split", array_split_type, None);
-        let tuple_get_type = self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false);
-        self.known_fns.tuple_get = self.module.add_function("tuple_get", tuple_get_type, None);
-        let function_alloc_type = self.value_t().fn_type(&[self.str_type().into(), self.value_t().into()], false);
-        self.known_fns.function_alloc = self.module.add_function("function_alloc", function_alloc_type, None);
-        let closure_alloc_type = self.value_t().fn_type(&[self.str_type().into(), self.value_t().into(), self.value_t().ptr_type(AddressSpace::Generic).into()], false);
-        self.known_fns.closure_alloc = self.module.add_function("closure_alloc", closure_alloc_type, None);
-        self.known_fns.vtable_alloc_entry = self.module.add_function(
-            "vtable_alloc_entry",
-            self.context.i64_type().ptr_type(AddressSpace::Generic).fn_type(&[self.context.i32_type().into(), self.context.i32_type().into()], false),
-            None
-        );
-        self.known_fns.vtable_lookup = self.module.add_function(
-            "vtable_lookup",
-            self.value_t().fn_type(&[self.value_t().into(), self.context.i32_type().into()], false),
-            None
-        );
-        self.known_fns.value_to_string = self.module.add_function(
-            "value_to_string",
-            self.value_t().fn_type(&[self.value_t().into()], false),
-            None
-        );
+        let value_t = self.value_t();
+        let str = self.str_type();
+        let void = self.context.void_type();
+        let i32 = self.context.i32_type();
+        let i64 = self.context.i64_type();
+        let f64 = self.context.f64_type();
 
-        self.known_types.obj_header_t = {
-            let t = self.context.opaque_struct_type("obj_header_t");
-            t.set_body(&[
-                self.context.i32_type().into() // type_id
-            ], false);
-            t
-        };
-        self.known_types.string = {
-            let string_type = self.context.opaque_struct_type("String");
-            string_type.set_body(&[
-                self.known_types.obj_header_t.into(), // obj_header_t h
-                self.context.i32_type().into(), // int32_t length
-                self.str_type(), // char* chars
-            ], false);
-            string_type
-        };
-        self.known_types.array = { // TODO: Clean up unused `known_types`
-            let array_type = self.context.opaque_struct_type("Array");
-            array_type.set_body(&[
-                self.context.i32_type().into(), // int64_t length
-                self.context.i32_type().into(), // int64_t _capacity
-                self.value_t().ptr_type(AddressSpace::Generic).into(), // void** items
-            ], false);
-            array_type
-        };
-        self.known_types.function = {
-            let fn_type = self.context.opaque_struct_type("Function");
-            fn_type.set_body(&[
-                self.known_types.obj_header_t.into(), // obj_header_t h
-                self.str_type().into(), // char* name
-                self.value_t().into(), // value_t fn_ptr
-                self.value_t().ptr_type(AddressSpace::Generic).into(), // value_t* env
-            ], false);
-            fn_type
-        };
+        self.module.add_function(FN_MALLOC, str.fn_type(&[i64.into()], false), None);
+        self.module.add_function(FN_PRINTF, i64.fn_type(&[str.into()], true), None);
+        self.module.add_function(FN_POWF64, f64.fn_type(&[f64.into(), f64.into()], false), None);
+        self.module.add_function(FN_DOUBLE_TO_VALUE_T, value_t.fn_type(&[f64.into()], false), None);
+        self.module.add_function(FN_VALUE_T_TO_DOUBLE, f64.fn_type(&[value_t.into()], false), None);
+        self.module.add_function(FN_STRING_ALLOC, value_t.fn_type(&[i32.into(), str.into()], false), None);
+        self.module.add_function(FN_STRING_CONCAT, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_STRING_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_STRING_RANGE, value_t.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_STRING_SPLIT, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_TUPLE_ALLOC, value_t.fn_type(&[i32.into()], true), None);
+        self.module.add_function(FN_ARRAY_ALLOC, value_t.fn_type(&[i32.into()], false), None);
+        self.module.add_function(FN_ARRAY_INSERT, void.fn_type(&[value_t.into(), i32.into(), value_t.into()], false), None);
+        self.module.add_function(FN_ARRAY_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_ARRAY_RANGE, value_t.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_ARRAY_SPLIT, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_TUPLE_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into()], false), None);
+        self.module.add_function(FN_CLOSURE_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
+        self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
+        self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
+
+        let obj_header_t = self.context.opaque_struct_type("obj_header_t");
+        obj_header_t.set_body(&[i32.into() /* type_id */], false);
+
+        self.context.opaque_struct_type(TYPE_STRING).set_body(
+            &[
+                obj_header_t.into(), // obj_header_t h
+                i32.into(), // int32_t length
+                str, // char* chars
+            ],
+            false,
+        );
+        self.context.opaque_struct_type(TYPE_FUNCTION).set_body(
+            &[
+                obj_header_t.into(), // obj_header_t h
+                str.into(), // char* name
+                value_t.into(), // value_t fn_ptr
+                value_t.ptr_type(AddressSpace::Generic).into(), // value_t* env
+            ],
+            false,
+        );
 
         // Prelude initialization function
-        let init_fn_type = self.context.void_type().fn_type(&[], false);
+        let init_fn_type = void.fn_type(&[], false);
         let init_fn = self.module.add_function("$init", init_fn_type, None);
         let init_fn_bb = self.context.append_basic_block(init_fn, "init_fn_bb");
         self.builder.position_at_end(init_fn_bb);
         self.init_prelude();
         self.builder.build_return(None);
 
-        let entry_fn_type = self.context.void_type().fn_type(&[], false);
-        let entry_fn = self.module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
-        let entry_fn_bb = self.context.append_basic_block(entry_fn, "entry_fn_bb");
+        // Begin emitting code in the entry function, starting with `$init()`
+        let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "entry_fn_bb");
         self.builder.position_at_end(entry_fn_bb);
-        self.cur_fn = entry_fn;
-
         self.builder.build_call(init_fn, &[], "");
-
-        // The placeholder values were only used during initialization for convenience. They can
-        // be disposed of now that all known_fns, known_types, and self.cur_fn are initialized.
-        debug_assert!(self.known_fns.is_initialized());
-        debug_assert!(self.known_types.is_initialized());
-        unsafe {
-            self.module.get_function(PLACEHOLDER_FN_NAME).unwrap().delete();
-        }
     }
 
     fn finalize(&self,  last_item_type: &Type, last_item: BasicValueEnum<'ctx>) {
         if *last_item_type != Type::Unit {
-            let result_value = self.builder.build_call(
-                self.known_fns.value_to_string,
-                &[last_item.into()],
-                ""
-            ).try_as_basic_value().left().unwrap().into_int_value();
-            let result_value = self.emit_extract_nan_tagged_obj(result_value);
-            let result_string = self.builder.build_cast(InstructionOpcode::BitCast, result_value, self.known_types.string.ptr_type(AddressSpace::Generic), "").into_pointer_value();
-            let result_string_chars = self.builder.build_struct_gep(result_string, 2, "").unwrap();
-            let result = self.builder.build_load(result_string_chars, "res");
+            let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[last_item.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+            let res_val = self.emit_extract_nan_tagged_obj(res_val);
+            let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type("String").ptr_type(AddressSpace::Generic), "").into_pointer_value();
+            let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
 
             self.builder.build_call(
-                self.known_fns.printf,
-                &[self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(), result.into()],
+                self.cached_fn(FN_PRINTF),
+                &[
+                    self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(),
+                    self.builder.build_load(res_str_chars, "").into()
+                ],
                 "",
             );
         }
@@ -402,21 +284,29 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.builder.build_return(None);
     }
 
+    #[inline]
+    fn cached_fn(&self, name: &str) -> FunctionValue<'ctx> {
+        self.module.get_function(name).expect(&format!("Internal error: expected function '{}' to be defined", name))
+    }
+
+    #[inline]
+    fn cached_type(&self, name: &str) -> StructType<'ctx> {
+        self.module.get_struct_type(name).expect(&format!("Internal error: expected type '{}' to be defined", name))
+    }
+
     #[allow(dead_code)]
     fn println_debug(&self, tag: &str, value: BasicValueEnum<'ctx>) {
-        let result_value = self.builder.build_call(
-            self.known_fns.value_to_string,
-            &[value.into()],
-            ""
-        ).try_as_basic_value().left().unwrap().into_int_value();
-        let result_value = self.emit_extract_nan_tagged_obj(result_value);
-        let result_string = self.builder.build_cast(InstructionOpcode::BitCast, result_value, self.known_types.string.ptr_type(AddressSpace::Generic), "").into_pointer_value();
-        let result_string_chars = self.builder.build_struct_gep(result_string, 2, "").unwrap();
-        let result = self.builder.build_load(result_string_chars, "");
+        let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[value.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        let res_val = self.emit_extract_nan_tagged_obj(res_val);
+        let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type("String").ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
 
         self.builder.build_call(
-            self.known_fns.printf,
-            &[self.builder.build_global_string_ptr(&format!("{}: %s\n", tag), "fmt").as_basic_value_enum().into(), result.into()],
+            self.cached_fn(FN_PRINTF),
+            &[
+                self.builder.build_global_string_ptr(&format!("{}: %s\n", tag), "fmt").as_basic_value_enum().into(),
+                self.builder.build_load(res_str_chars, "").into()
+            ],
             "",
         );
     }
@@ -449,7 +339,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn alloc_string_obj(&self, length_val: IntValue<'ctx>, chars_val: PointerValue<'ctx>) -> IntValue<'ctx> {
-        self.builder.build_call(self.known_fns.string_alloc, &[length_val.into(), chars_val.into()], "").try_as_basic_value().left().unwrap().into_int_value()
+        self.builder.build_call(self.cached_fn(FN_STRING_ALLOC), &[length_val.into(), chars_val.into()], "").try_as_basic_value().left().unwrap().into_int_value()
     }
 
     fn alloc_const_string_obj<S: AsRef<str>>(&self, s: S) -> IntValue<'ctx> {
@@ -467,15 +357,15 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         args.push(self.context.i32_type().const_int(items.len() as u64, false).into());
         args.append(&mut items);
 
-        self.builder.build_call(self.known_fns.tuple_alloc, args.as_slice(), "").try_as_basic_value().left().unwrap().into_int_value()
+        self.builder.build_call(self.cached_fn(FN_TUPLE_ALLOC), args.as_slice(), "").try_as_basic_value().left().unwrap().into_int_value()
     }
 
     fn alloc_array_obj_with_length(&self, length_val: IntValue<'ctx>) -> IntValue<'ctx> {
-        self.builder.build_call(self.known_fns.array_alloc, &[length_val.into()], "").try_as_basic_value().left().unwrap().into_int_value()
+        self.builder.build_call(self.cached_fn(FN_ARRAY_ALLOC), &[length_val.into()], "").try_as_basic_value().left().unwrap().into_int_value()
     }
 
     fn array_obj_insert(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>, item_val: IntValue<'ctx>) {
-        self.builder.build_call(self.known_fns.array_insert, &[array_val.into(), index_val.into(), item_val.into()], "");
+        self.builder.build_call(self.cached_fn(FN_ARRAY_INSERT), &[array_val.into(), index_val.into(), item_val.into()], "");
     }
 
     fn value_t(&self) -> IntType<'ctx> {
@@ -483,7 +373,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn value_t_ptr(&self) -> PointerType<'ctx> {
-        self.context.i64_type().ptr_type(AddressSpace::Generic)
+        self.value_t().ptr_type(AddressSpace::Generic)
     }
 
     fn emit_nan_tagged_int_const(&self, int: i32) -> IntValue<'ctx> {
@@ -502,7 +392,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn emit_nan_tagged_float(&self, float_val: FloatValue<'ctx>) -> IntValue<'ctx> {
         self.builder.build_call(
-            self.known_fns.double_to_value_t,
+            self.cached_fn(FN_DOUBLE_TO_VALUE_T),
             &[float_val.into()],
             ""
         ).try_as_basic_value().left().unwrap().into_int_value()
@@ -534,7 +424,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn emit_extract_nan_tagged_float(&self, value: IntValue<'ctx>) -> FloatValue<'ctx> {
         self.builder.build_call(
-            self.known_fns.value_t_to_double,
+            self.cached_fn(FN_VALUE_T_TO_DOUBLE),
             &[value.into()],
             ""
         ).try_as_basic_value().left().unwrap().into_float_value()
@@ -568,7 +458,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 for (idx, pat) in pats.into_iter().enumerate() {
                     let idx = self.context.i32_type().const_int(idx as u64, false);
                     let val = self.builder.build_call(
-                        self.known_fns.tuple_get,
+                        self.cached_fn(FN_TUPLE_GET),
                         &[cur_val.into(), idx.into()],
                         ""
                     ).try_as_basic_value().left().unwrap();
@@ -583,9 +473,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 while let Some((pat, is_splat)) = pats_iter.next() {
                     if is_splat {
                         let (range_fn, split_fn) = if is_string {
-                            (self.known_fns.string_range, self.known_fns.string_split)
+                            (self.cached_fn(FN_STRING_RANGE), self.cached_fn(FN_STRING_SPLIT))
                         } else {
-                            (self.known_fns.array_range, self.known_fns.array_split)
+                            (self.cached_fn(FN_ARRAY_RANGE), self.cached_fn(FN_ARRAY_SPLIT))
                         };
 
                         let idx_val = self.emit_nan_tagged_int_const(idx as i32);
@@ -594,8 +484,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                         let split_idx = (num_pats - idx - 1) as i64;
                         let split_idx = self.context.i32_type().const_int((-split_idx) as u64, true);
                         let parts = self.builder.build_call(split_fn, &[tail.into(), split_idx.into()], "").try_as_basic_value().left().unwrap();
-                        let l_part = self.builder.build_call(self.known_fns.tuple_get, &[parts.into(), self.context.i32_type().const_int(0, false).into()], "").try_as_basic_value().left().unwrap();
-                        let r_part = self.builder.build_call(self.known_fns.tuple_get, &[parts.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
+                        let l_part = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[parts.into(), self.context.i32_type().const_int(0, false).into()], "").try_as_basic_value().left().unwrap();
+                        let r_part = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[parts.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
 
                         if idx == num_pats - 1 {
                             self.visit_binding_pattern(pat, r_part);
@@ -608,7 +498,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     }
 
                     let idx_val = self.context.i32_type().const_int(idx as u64, false);
-                    let func = if is_string { self.known_fns.string_get } else { self.known_fns.array_get };
+                    let func = if is_string { self.cached_fn(FN_STRING_GET) } else { self.cached_fn(FN_ARRAY_GET) };
                     let val = self.builder.build_call(
                         func,
                         &[cur_val.into(), idx_val.into()],
@@ -728,7 +618,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                         let right = self.builder.build_signed_int_to_float(right, self.context.f64_type(), "right");
 
                         let res = self.builder.build_call(
-                            self.known_fns.powf64,
+                            self.cached_fn(FN_POWF64),
                             &[left.into(), right.into()],
                             "",
                         ).try_as_basic_value().left().unwrap().into_float_value();
@@ -779,7 +669,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                         let then_val = {
                             let left = self.builder.build_float_mul(left, self.context.f64_type().const_float(-1.0), "");
                             let left = self.builder.build_call(
-                                self.known_fns.powf64,
+                                self.cached_fn(FN_POWF64),
                                 &[left.into(), right.into()],
                                 "",
                             ).try_as_basic_value().left().unwrap().into_float_value();
@@ -790,7 +680,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
                         self.builder.position_at_end(else_bb);
                         let else_val = self.builder.build_call(
-                            self.known_fns.powf64,
+                            self.cached_fn(FN_POWF64),
                             &[left.into(), right.into()],
                             "",
                         ).try_as_basic_value().left().unwrap();
@@ -834,7 +724,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let left = self.visit(*node.left)?;
                 let right = self.visit(*node.right)?;
 
-                self.builder.build_call(self.known_fns.string_concat, &[left.into(), right.into()], "").try_as_basic_value().left().unwrap()
+                self.builder.build_call(self.cached_fn(FN_STRING_CONCAT), &[left.into(), right.into()], "").try_as_basic_value().left().unwrap()
             }
             (Type::Option(_), _, BinaryOp::Coalesce) => {
                 let left = self.visit(*node.left)?;
@@ -941,7 +831,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         } else {
             // Allocate space for closure's `env`, lifting variables from the current scope if necessary
             let env_mem = self.builder.build_call(
-                self.known_fns.malloc,
+                self.cached_fn(FN_MALLOC),
                 &[self.builder.build_int_mul(self.value_t().size_of(), self.context.i64_type().const_int(num_captured_variables as u64, false), "").into()],
                 ""
             ).try_as_basic_value().left().unwrap().into_pointer_value();
@@ -964,7 +854,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let val = if needs_lift {
                     let local_ptr = var.local_ptr;
                     let val = self.builder.build_load(local_ptr, "");
-                    let lifted_val_mem = self.builder.build_call(self.known_fns.malloc, &[self.value_t().size_of().into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+                    let lifted_val_mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[self.value_t().size_of().into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
                     let lifted_val_mem = self.builder.build_pointer_cast(lifted_val_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
                     self.builder.build_store(lifted_val_mem, val);
                     let lifted_val = self.emit_nan_tagged_obj(lifted_val_mem).as_basic_value_enum();
@@ -1059,9 +949,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
         let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
         let fn_val = if let Some(env_mem) = env_mem {
-            self.builder.build_call(self.known_fns.closure_alloc, &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap()
+            self.builder.build_call(self.cached_fn(FN_CLOSURE_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap()
         } else {
-            self.builder.build_call(self.known_fns.function_alloc, &[fn_name_val, fn_ptr_val], "").try_as_basic_value().left().unwrap()
+            self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val], "").try_as_basic_value().left().unwrap()
         };
         if node.is_recursive {
             let val = self.builder.build_load(fn_local, "");
@@ -1125,9 +1015,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let idx = self.emit_extract_nan_tagged_int(idx.into_int_value());
 
                 let func = match target_type {
-                    Type::String => self.known_fns.string_get,
-                    Type::Array(_) => self.known_fns.array_get,
-                    Type::Tuple(_) => self.known_fns.tuple_get,
+                    Type::String => self.cached_fn(FN_STRING_GET),
+                    Type::Array(_) => self.cached_fn(FN_ARRAY_GET),
+                    Type::Tuple(_) => self.cached_fn(FN_TUPLE_GET),
                     Type::Map(_, _) => todo!(),
                     _ => unreachable!("Internal error: attempting to index into non-indexable type")
                 };
@@ -1138,8 +1028,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let end = e.map_or(Ok(self.val_none().into()), |v| self.visit(*v))?;
 
                 let func = match target_type {
-                    Type::String => self.known_fns.string_range,
-                    Type::Array(_) => self.known_fns.array_range,
+                    Type::String => self.cached_fn(FN_STRING_RANGE),
+                    Type::Array(_) => self.cached_fn(FN_ARRAY_RANGE),
                     _ => unreachable!("Internal error: attempting to range-index into non-indexable type")
                 };
 
@@ -1243,7 +1133,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                         let fn_val = self.builder.build_load(ptr, "").into_int_value();
                         let fn_val_ptr = self.builder.build_pointer_cast(
                             self.emit_extract_nan_tagged_obj(fn_val),
-                            self.known_types.function.ptr_type(AddressSpace::Generic),
+                            self.cached_type("Function").ptr_type(AddressSpace::Generic),
                             ""
                         );
                         let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
@@ -1267,7 +1157,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     args.push(rcv.into());
 
                     let idx = self.context.i32_type().const_int(field_idx as u64, false);
-                    let fn_ptr_value_t = self.builder.build_call(self.known_fns.vtable_lookup, &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    let fn_ptr_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
                     convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, ret_type)
                 } else { unreachable!() }
             }
@@ -1277,7 +1167,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
                 let fn_val_ptr = self.builder.build_pointer_cast(
                     self.emit_extract_nan_tagged_obj(typed_expr.into_int_value()),
-                    self.known_types.function.ptr_type(AddressSpace::Generic),
+                    self.cached_type("Function").ptr_type(AddressSpace::Generic),
                     ""
                 );
                 let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
