@@ -144,10 +144,23 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
     }
 
+    fn gen_llvm_fn_type(&self, has_return: bool, num_args: usize) -> FunctionType<'ctx> {
+        let mut args = Vec::new();
+        args.push(self.value_t_ptr().into());
+        args.push(self.context.i8_type().into());
+        args.append(&mut repeat(self.value_t().into()).take(num_args).collect_vec());
+
+        if has_return {
+            self.value_t().fn_type(args.as_slice(), false)
+        } else {
+            self.context.void_type().fn_type(args.as_slice(), false)
+        }
+    }
+
     fn init_prelude(&mut self) {
-        let println = self.module.add_function("prelude__println", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false), None);
+        let println = self.module.add_function("prelude__println", self.gen_llvm_fn_type(false, 1), None);
         self.current_scope_mut().fns.insert("println".to_string(), println);
-        let print = self.module.add_function("prelude__print", self.context.void_type().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false), None);
+        let print = self.module.add_function("prelude__print", self.gen_llvm_fn_type(false, 1), None);
         self.current_scope_mut().fns.insert("print".to_string(), print);
 
         self.init_int_type();
@@ -161,39 +174,39 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn init_int_type(&self)  {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Int", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Int__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Int__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_float_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Float", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Float__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Float__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_bool_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Bool", 1);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Bool__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Bool__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_string_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_String", 3);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__String__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
-        self.add_vtable_fn(vtable_entry, 1, "prelude__String__toLower", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
-        self.add_vtable_fn(vtable_entry, 2, "prelude__String__toUpper", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__String__toString", self.gen_llvm_fn_type(false, 1));
+        self.add_vtable_fn(vtable_entry, 1, "prelude__String__toLower", self.gen_llvm_fn_type(false, 1));
+        self.add_vtable_fn(vtable_entry, 2, "prelude__String__toUpper", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_array_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Array", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_tuple_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Tuple", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_function_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 0);
-        self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.value_t().fn_type(&[self.value_t_ptr().into(), self.context.i8_type().into(), self.value_t().into()], false));
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init(&mut self) {
@@ -268,7 +281,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         if *last_item_type != Type::Unit {
             let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[last_item.into()], "").try_as_basic_value().left().unwrap().into_int_value();
             let res_val = self.emit_extract_nan_tagged_obj(res_val);
-            let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type("String").ptr_type(AddressSpace::Generic), "").into_pointer_value();
+            let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "").into_pointer_value();
             let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
 
             self.builder.build_call(
@@ -298,7 +311,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn println_debug(&self, tag: &str, value: BasicValueEnum<'ctx>) {
         let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[value.into()], "").try_as_basic_value().left().unwrap().into_int_value();
         let res_val = self.emit_extract_nan_tagged_obj(res_val);
-        let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type("String").ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "").into_pointer_value();
         let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
 
         self.builder.build_call(
@@ -814,12 +827,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let num_captured_variables = captured_variables.len();
         let is_closure = !captured_variables.is_empty();
 
-        let mut fn_arg_types = Vec::new();
-        fn_arg_types.push(self.value_t().ptr_type(AddressSpace::Generic).into());
-        fn_arg_types.push(self.context.i8_type().into());
-        fn_arg_types.append(&mut repeat(self.value_t().into()).take(node.args.len()).collect_vec());
-        let fn_type = self.value_t().fn_type(fn_arg_types.as_slice(), false);
-
+        let fn_ret_type = node.ret_type;
+        let fn_type = self.gen_llvm_fn_type(fn_ret_type != Type::Unit, node.args.len());
         let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
         let fn_local = self.builder.build_alloca(self.value_t(), &fn_name);
         self.current_scope_mut().variables.insert(fn_name.clone(), Variable { local_ptr: fn_local, is_captured: false });
@@ -938,7 +947,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let value = self.visit(node)?;
 
             if idx == body_len - 1 {
-                self.builder.build_return(Some(&value.as_basic_value_enum()));
+                if fn_ret_type == Type::Unit {
+                    self.builder.build_return(None);
+                } else {
+                    self.builder.build_return(Some(&value.as_basic_value_enum()));
+                }
             }
         }
 
@@ -1101,16 +1114,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
         #[inline]
         fn convert_serialized_fn_ptr_to_callable<'a, 'ctx>(zelf: &Compiler<'a, 'ctx>, fn_ptr_value_t: IntValue<'ctx>, num_args: usize, ret_type: &Type) -> Option<CallableValue<'ctx>> {
-            let mut args = Vec::new();
-            args.push(zelf.value_t().ptr_type(AddressSpace::Generic).into());
-            args.push(zelf.context.i8_type().into());
-            args.append(&mut repeat(zelf.value_t().into()).take(num_args).collect_vec());
-
-            let fn_type = if ret_type == &Type::Unit {
-                zelf.context.void_type().fn_type(args.as_slice(), false)
-            } else {
-                zelf.value_t().fn_type(args.as_slice(), false)
-            };
+            let fn_type = zelf.gen_llvm_fn_type(ret_type != &Type::Unit, num_args);
             let fn_ptr = zelf.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_value_t, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
             CallableValue::try_from(fn_ptr).ok()
         }
@@ -1133,7 +1137,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                         let fn_val = self.builder.build_load(ptr, "").into_int_value();
                         let fn_val_ptr = self.builder.build_pointer_cast(
                             self.emit_extract_nan_tagged_obj(fn_val),
-                            self.cached_type("Function").ptr_type(AddressSpace::Generic),
+                            self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
                             ""
                         );
                         let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
@@ -1167,7 +1171,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
                 let fn_val_ptr = self.builder.build_pointer_cast(
                     self.emit_extract_nan_tagged_obj(typed_expr.into_int_value()),
-                    self.cached_type("Function").ptr_type(AddressSpace::Generic),
+                    self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
                     ""
                 );
                 let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
