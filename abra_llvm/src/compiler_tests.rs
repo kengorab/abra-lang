@@ -242,6 +242,19 @@ fn test_binary_operations_comparisons() {
         ("2.0 != 1", "true"),
         ("1.0 != 2.1", "true"),
         ("1 != 2.0", "true"),
+        // Non-numeric equality
+        ("\"hello\" == \"world\"", "false"),
+        ("\"hello\" != \"world\"", "true"),
+        ("\"hello\" == \"hello\"", "true"),
+        ("\"hello\" != \"hello\"", "false"),
+        ("\"hello\" != 16", "true"),
+        ("(\"hello\", 12) == \"hello\"", "false"),
+        ("\"hello\" != (\"hello\", 12)", "true"),
+        ("(\"hello\", 12) != (\"hello\", 12)", "false"),
+        ("(\"hello\", 12.0) == (\"hello\", 12)", "true"),
+        ("(\"hello\", 12) == (\"hello\", 12.0)", "true"),
+        ("[(\"hello\", \"world\")] == [(\"hello\", \"world\")]", "true"),
+        ("[(\"hello\", true)] != (\"hello\", false)", "true"),
     ];
 
     run_test_cases(cases);

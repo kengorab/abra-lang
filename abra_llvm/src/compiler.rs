@@ -40,6 +40,7 @@ const FN_CLOSURE_ALLOC: &str = "closure_alloc";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
+const FN_VALUE_EQ: &str = "value_eq";
 
 // Cached externally-defined types
 const TYPE_STRING: &str = "String";
@@ -195,17 +196,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     fn init_array_type(&self) {
-        let vtable_entry = self.add_type_id_and_vtable("type_id_Array", 0);
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Array", 1);
         self.add_vtable_fn(vtable_entry, 0, "prelude__Array__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_tuple_type(&self) {
-        let vtable_entry = self.add_type_id_and_vtable("type_id_Tuple", 0);
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Tuple", 1);
         self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.gen_llvm_fn_type(false, 1));
     }
 
     fn init_function_type(&self) {
-        let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 0);
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 1);
         self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.gen_llvm_fn_type(false, 1));
     }
 
@@ -241,6 +242,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
+        self.module.add_function(FN_VALUE_EQ, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
 
         let obj_header_t = self.context.opaque_struct_type("obj_header_t");
         obj_header_t.set_body(&[i32.into() /* type_id */], false);
@@ -525,6 +527,17 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
+    #[inline]
+    fn build_bool_negate(&self, bool_val: BasicValueEnum<'ctx>) -> BasicValueEnum<'ctx> {
+        let value = self.emit_extract_nan_tagged_bool(bool_val.into_int_value());
+        let res = self.builder.build_int_unsigned_rem(
+            self.builder.build_int_add(value, self.context.i64_type().const_int(1, false), ""),
+            self.context.i64_type().const_int(2, false),
+            ""
+        );
+        self.emit_nan_tagged_bool(res).as_basic_value_enum()
+    }
+
     fn resolve_ptr_to_variable(&self, var_name: &String) -> PointerValue<'ctx> {
         // Find the scope that contains the variable
         let containing_scope = self.scopes.iter().rev().find(|sc| sc.variables.contains_key(var_name));
@@ -590,13 +603,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             }
             UnaryOp::Negate => {
                 let value = self.visit(*node.expr)?;
-                let value = self.emit_extract_nan_tagged_bool(value.into_int_value());
-                let res = self.builder.build_int_unsigned_rem(
-                    self.builder.build_int_add(value, self.context.i64_type().const_int(1, false), ""),
-                    self.context.i64_type().const_int(2, false),
-                    ""
-                );
-                self.emit_nan_tagged_bool(res).as_basic_value_enum()
+                self.build_bool_negate(value)
             }
         };
 
@@ -760,6 +767,17 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let phi = self.builder.build_phi(self.value_t(), "");
                 phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
                 phi.as_basic_value()
+            }
+            (_, _, op @ BinaryOp::Eq) | (_, _, op @ BinaryOp::Neq) => {
+                let left = self.visit(*node.left)?;
+                let right = self.visit(*node.right)?;
+
+                let res = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[left.into(), right.into()], "").try_as_basic_value().left().unwrap();
+                if op == &BinaryOp::Neq {
+                    self.build_bool_negate(res)
+                } else {
+                    res
+                }
             }
             _ => todo!()
         };

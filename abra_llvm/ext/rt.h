@@ -49,8 +49,16 @@ const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
 #define AS_INT(val)    ((int32_t) (val & PAYLOAD_MASK_INT))
 #define AS_DOUBLE(val) ((double) (value_t_to_double(val)))
 
+#define FROM_BOOL(b) (b ? VAL_TRUE : VAL_FALSE)
+
+#define IS_INT(val) ((val & MASK_INT) == MASK_INT)
+#define IS_FLOAT(val) ((val & MASK_NAN) != MASK_NAN)
+#define IS_OBJ(val) ((val & MASK_OBJ) == MASK_OBJ)
+
 #define AS_OBJ(val, typ)  ((typ*)(val & PAYLOAD_MASK_OBJ))
 #define TAG_OBJ(val)      (MASK_OBJ | (uint64_t)val)
+
+#define DBG(v) printf("`" #v "` => %s\n", AS_OBJ(value_to_string(v), String)->chars);
 
 // ------------------------------------------------------------------------
 
@@ -66,15 +74,9 @@ uint32_t type_id_Float;
 uint32_t type_id_Bool;
 
 uint32_t type_id_for_val(value_t value) {
-  if ((value & MASK_INT) == MASK_INT) {
-    return type_id_Int;
-  }
-  if ((value & MASK_NAN) != MASK_NAN) {
-    return type_id_Float;
-  }
-  if (value == VAL_TRUE || value == VAL_FALSE) {
-    return type_id_Bool;
-  }
+  if (IS_INT(value)) return type_id_Int;
+  if (IS_FLOAT(value)) return type_id_Float;
+  if (value == VAL_TRUE || value == VAL_FALSE) return type_id_Bool;
 
   obj_header_t* header = AS_OBJ(value, obj_header_t);
   return header->type_id;
@@ -107,12 +109,17 @@ value_t string_alloc(int32_t length, char* chars) {
   return TAG_OBJ(string);
 }
 
+const uint32_t TOSTRING_IDX = 0;
+typedef value_t (*tostring_method_t)(value_t*, int8_t, value_t);
+const uint32_t EQ_IDX = 1;
+typedef value_t (*eq_method_t)(value_t*, int8_t, value_t, value_t);
+
 value_t value_to_string(value_t value) {
   if (value == VAL_NONE) {
     return string_alloc(4, "None");
   }
 
-  value_t(*tostring_method)(value_t*, int8_t, value_t) = (value_t(*)(value_t*, int8_t, value_t))vtable_lookup(value, 0);
+  tostring_method_t tostring_method = (tostring_method_t)vtable_lookup(value, TOSTRING_IDX);
   return tostring_method(NULL, 1, value);
 }
 
@@ -473,6 +480,65 @@ value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t
   snprintf(result, len + 1, "<func %s>", self->name);
 
   return string_alloc(len, result);
+}
+
+value_t value_eq(value_t v1, value_t v2) {
+  if ((IS_OBJ(v1) && !IS_OBJ(v2)) || (!IS_OBJ(v1) && IS_OBJ(v2))) {
+    return VAL_FALSE;
+  }
+
+  if (IS_OBJ(v1) && IS_OBJ(v2)) {
+    uint32_t tid1 = AS_OBJ(v1, obj_header_t)->type_id;
+    uint32_t tid2 = AS_OBJ(v2, obj_header_t)->type_id;
+
+    if (tid1 != tid2) return VAL_FALSE;
+
+    if (tid1 == type_id_String) {
+      String* self = AS_OBJ(v1, String);
+      String* other = AS_OBJ(v2, String);
+
+      if (self->size != other->size) return VAL_FALSE;
+
+      for (int i = 0; i < self->size; ++i) {
+        if (self->chars[i] != other->chars[i]) return VAL_FALSE;
+      }
+
+      return VAL_TRUE;
+    }
+
+    if (tid1 == type_id_Array || tid1 == type_id_Tuple) {
+      int32_t len1 = (tid1 == type_id_Array) ? AS_OBJ(v1, Array)->length : AS_OBJ(v1, Tuple)->length;
+      int32_t len2 = (tid1 == type_id_Array) ? AS_OBJ(v2, Array)->length : AS_OBJ(v2, Tuple)->length;
+
+      if (len1 != len2) return VAL_FALSE;
+
+      value_t* items1 = (tid1 == type_id_Array) ? AS_OBJ(v1, Array)->items : AS_OBJ(v1, Tuple)->items;
+      value_t* items2 = (tid1 == type_id_Array) ? AS_OBJ(v2, Array)->items : AS_OBJ(v2, Tuple)->items;
+      for (int i = 0; i < len1; i++) {
+        value_t eq = value_eq(items1[i], items2[i]);
+        if (eq == VAL_FALSE) return VAL_FALSE;
+      }
+
+      return VAL_TRUE;
+    }
+
+    if (tid1 == type_id_Function) {
+      return VAL_FALSE;
+    }
+
+    eq_method_t eq_method = (eq_method_t) vtable_lookup(v1, EQ_IDX);
+    return eq_method(NULL, 2, v1, v2);
+  } else if (IS_INT(v1) && IS_FLOAT(v2)) {
+    double d1 = (double)AS_INT(v1);
+    double d2 = AS_DOUBLE(v2);
+    return d1 == d2 ? VAL_TRUE : VAL_FALSE;
+  } else if (IS_FLOAT(v1) && IS_INT(v2)) {
+    double d1 = AS_DOUBLE(v1);
+    double d2 = (double)AS_INT(v2);
+    return d1 == d2 ? VAL_TRUE : VAL_FALSE;
+  } else {
+    return v1 == v2 ? VAL_TRUE : VAL_FALSE;
+  }
 }
 
 #endif
