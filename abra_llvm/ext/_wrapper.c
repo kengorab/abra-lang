@@ -1,5 +1,4 @@
 #include "gc.h"
-#include "./rt.h"
 
 void __mod_entry();
 

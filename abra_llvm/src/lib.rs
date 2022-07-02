@@ -78,7 +78,7 @@ fn join_path<S: AsRef<str>>(pwd: &PathBuf, file: S) -> String {
 }
 
 fn compile_and_run(llvm_module: &Module) -> Result<Output, String> {
-    let working_dir = std::env::temp_dir().join(random_string(7));
+    let working_dir = env::temp_dir().join(random_string(7));
     fs::create_dir(&working_dir).map_err(|_| format!("Could not create tmp dir {}", working_dir.as_path().to_str().unwrap()))?;
 
     let ll_file = working_dir.join("module.ll");
@@ -90,6 +90,7 @@ fn compile_and_run(llvm_module: &Module) -> Result<Output, String> {
     let src_file_path = ll_file.as_path().to_str().unwrap();
     let out_file_path = join_path(&working_dir, "module");
     let wrapper_file_path = join_path(&ext_base_path, "_wrapper.c");
+    let runtime_file_path = join_path(&ext_base_path, "rt.c");
     let libgc_lib_path = join_path(&ext_base_path.join("libgc").join("lib"), "libgc.a");
     let libgc_header_path = join_path(&ext_base_path.join("libgc"), "include");
 
@@ -97,8 +98,9 @@ fn compile_and_run(llvm_module: &Module) -> Result<Output, String> {
 
     let output = Command::new("clang")
         .arg(src_file_path)
-        .arg(wrapper_file_path)
         .arg(libgc_lib_path)
+        .arg(runtime_file_path)
+        .arg(wrapper_file_path)
         .arg("-o").arg(&out_file_path)
         .arg(format!("-I{}", libgc_header_path))
         .arg("-lm")
