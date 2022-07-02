@@ -8,7 +8,6 @@
 #include "string.h"
 #include "stdbool.h"
 #include "math.h"
-#include "gc.h"
 
 // ------------------------ NAN TAGGING ------------------------
 typedef uint64_t value_t;
