@@ -36,7 +36,7 @@ const FN_ARRAY_RANGE: &str = "array_range";
 const FN_ARRAY_SPLIT: &str = "array_split";
 const FN_TUPLE_GET: &str = "tuple_get";
 const FN_FUNCTION_ALLOC: &str = "function_alloc";
-const FN_CLOSURE_ALLOC: &str = "closure_alloc";
+// const FN_CLOSURE_ALLOC: &str = "closure_alloc";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
@@ -237,8 +237,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_ARRAY_RANGE, value_t.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_ARRAY_SPLIT, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_TUPLE_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
-        self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into()], false), None);
-        self.module.add_function(FN_CLOSURE_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
+        self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
+        // self.module.add_function(FN_CLOSURE_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
@@ -854,7 +854,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let env_mem= if !is_closure {
             self.current_scope_mut().fns.insert(fn_name.clone(), func);
 
-            None
+            self.value_t_ptr().const_zero() // Pass `NULL` as env if non-closure
         } else {
             // Allocate space for closure's `env`, lifting variables from the current scope if necessary
             let env_mem = self.builder.build_call(
@@ -896,7 +896,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 self.builder.build_store(env_slot, val);
             }
 
-            Some(env_mem)
+            env_mem
         };
 
         let fn_bb = self.context.append_basic_block(func, "fn_body");
@@ -979,11 +979,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
         let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
         let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
-        let fn_val = if let Some(env_mem) = env_mem {
-            self.builder.build_call(self.cached_fn(FN_CLOSURE_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap()
-        } else {
-            self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val], "").try_as_basic_value().left().unwrap()
-        };
+        let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap();
         if node.is_recursive {
             let val = self.builder.build_load(fn_local, "");
             let ptr = self.emit_extract_nan_tagged_obj(val.into_int_value());

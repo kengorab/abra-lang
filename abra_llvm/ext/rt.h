@@ -160,8 +160,7 @@ typedef struct Function {
 } Function;
 
 // Function utils
-value_t function_alloc(char* name, value_t fn_ptr);
-value_t closure_alloc(char* name, value_t fn_ptr, value_t* env);
+value_t function_alloc(char* name, value_t fn_ptr, value_t* env);
 
 // Function methods
 value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);

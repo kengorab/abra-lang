@@ -393,22 +393,13 @@ value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
 }
 
 // ------------------------ FUNCTION ------------------------
-value_t function_alloc(char* name, value_t fn_ptr) {
+value_t function_alloc(char* name, value_t fn_ptr, value_t* env) {
   Function* fn = GC_MALLOC(sizeof(Function));
 
   fn->h.type_id = type_id_Function;
   fn->name = name;
   fn->fn_ptr = fn_ptr;
-  return TAG_OBJ(fn);
-}
-
-value_t closure_alloc(char* name, value_t fn_ptr, value_t* env) {
-  Function* fn = GC_MALLOC(sizeof(Function));
-
-  fn->h.type_id = type_id_Function;
-  fn->name = name;
-  fn->fn_ptr = fn_ptr;
-  fn->env = env;
+  fn->env = env; // env will be NULL for non-closures
   return TAG_OBJ(fn);
 }
 
