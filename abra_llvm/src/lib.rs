@@ -98,9 +98,9 @@ fn compile_and_run(llvm_module: &Module) -> Result<Output, String> {
 
     let output = Command::new("clang")
         .arg(src_file_path)
-        .arg(libgc_lib_path)
         .arg(runtime_file_path)
         .arg(wrapper_file_path)
+        .arg(libgc_lib_path)
         .arg("-o").arg(&out_file_path)
         .arg(format!("-I{}", libgc_header_path))
         .arg("-lm")
