@@ -123,6 +123,26 @@ fn test_tuple_literals() {
 }
 
 #[test]
+fn test_map_literals() {
+    let cases = vec![
+        ("", "{}", "{}"),
+        ("", "{ a: 1 }", "{ a: 1 }"),
+        (
+            "",
+            "{ a: 1, b: 1.2, c: (true, false), d: [{ a1: false }], e: { a2: true } }",
+            "{ e: { a2: true }, d: [{ a1: false }], a: 1, c: (true, false), b: 1.200000 }"
+        ),
+        (
+            "val x = 16",
+            "{ (1 + 2): 3, (x): x*2, ((1, 2)): 4, \"abc\": 1, ({ a: 1 }): 8, (false): -1 }",
+            "{ (1, 2): 4, { a: 1 }: 8, abc: 1, false: -1, 16: 32, 3: 3 }",
+        )
+    ];
+
+    run_test_cases(cases);
+}
+
+#[test]
 fn test_unary_operations() {
     let cases = vec![
         ("-24", "-24"),
@@ -263,6 +283,15 @@ fn test_binary_operations_comparisons() {
 #[test]
 fn test_binary_operations_booleans() {
     let cases = vec![
+        // and/or
+        ("true && true", "true"),
+        ("false && true", "false"),
+        ("true && false", "false"),
+        ("false && false", "false"),
+        ("true || true", "true"),
+        ("false || true", "true"),
+        ("true || false", "true"),
+        ("false || false", "false"),
         // exclusive-or
         ("true ^ true", "false"),
         ("false ^ true", "true"),
@@ -272,8 +301,22 @@ fn test_binary_operations_booleans() {
         ("(1 > 2) == (3 > 4)", "true"),
         ("(1 >= 2) != (3 < 4)", "true")
     ];
-
     run_test_cases(cases);
+
+    let setup = r#"
+      var a = 1
+      func sideEffect(ret: Bool): Bool {
+        a += 1
+        ret
+      }
+    "#;
+    let cases = vec![
+        (setup, "if true || sideEffect(true) { a } else { a }", "1"),
+        (setup, "if false || sideEffect(true) { a } else { a }", "2"),
+        (setup, "if true && sideEffect(true) { a } else { a }", "2"),
+        (setup, "if false && sideEffect(true) { a } else { a }", "1"),
+    ];
+    run_test_cases_isolated(cases);
 }
 
 #[test]
@@ -385,8 +428,8 @@ fn test_variables() {
 
 #[test]
 fn test_assignment() {
-    let global_setup = "var a = 2\nval b = 3\nvar c = 2.0\nval d = 3.0\nvar e: Int? = 6\nvar f: Int? = None";
-    let global_teardown = "a = 2\nc = 2.0\ne = 6\nf = None";
+    let global_setup = "var a = 2\nval b = 3\nvar c = 2.0\nval d = 3.0\nvar e: Int? = 6\nvar f: Int? = None\nvar g = true\nval h = false";
+    let global_teardown = "a = 2\nc = 2.0\ne = 6\nf = None\ng = true";
     let cases = vec![
         ("a = a + b", "5"),
         ("a += b", "5"),
@@ -400,17 +443,13 @@ fn test_assignment() {
         ("c /= d", "0.666667"),
         ("[a += b, a -= b, a *= b, a %= b, c /= d]", "[5, 2, 6, 0, 0.666667]"),
         ("e ?:= 7", "6"),
-        ("f ?:= 7", "7")
+        ("f ?:= 7", "7"),
+        ("g = g || h", "true"),
+        ("g ||= h", "true"),
+        ("g = g && h", "false"),
+        ("g &&= h", "false"),
     ];
     run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown, false);
-
-    // let global_setup = "var a = true\nval b = false";
-    // let global_teardown = "a = true";
-    // let cases = vec![
-    //     ("a = a || b", "true"),
-    //     ("a ||= b", "true")
-    // ];
-    // run_test_cases_with_setup_and_teardown(global_setup, cases, global_teardown);
 }
 
 #[test]
@@ -430,6 +469,10 @@ fn test_indexing() {
         ("\"asdf\"[-2]", "d"),
         ("\"asdf\"[-5]", "None"),
         ("\"asdf\"[14]", "None"),
+        // Maps
+        ("{ a: 1 }[\"a\"]", "1"),
+        ("{ a: 1, (0): 18 }[1 - 1]", "18"),
+        ("{ a: 1, (0): 18 }[1]", "None"),
     ];
 
     run_test_cases(cases);

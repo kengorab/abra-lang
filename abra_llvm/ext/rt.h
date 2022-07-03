@@ -8,47 +8,8 @@
 #include "string.h"
 #include "stdbool.h"
 #include "math.h"
-
-// ------------------------ NAN TAGGING ------------------------
-typedef uint64_t value_t;
-
-const uint64_t MASK_NAN =            (uint64_t)0x7ffc000000000000;
-const uint64_t MASK_INT = MASK_NAN | (uint64_t)0x0002000000000000;
-const uint64_t MASK_OBJ = MASK_NAN | (uint64_t)0x8000000000000000;
-
-const uint64_t VAL_NONE  = MASK_NAN | (uint64_t)0x0001000000000000;
-const uint64_t VAL_FALSE = MASK_NAN | (uint64_t)0x0001000000000001;
-const uint64_t VAL_TRUE  = MASK_NAN | (uint64_t)0x0001000000000002;
-
-const uint64_t PAYLOAD_MASK_INT = (uint64_t)0x00000000ffffffff;
-const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
-
-#define AS_INT(val)    ((int32_t) (val & PAYLOAD_MASK_INT))
-#define AS_DOUBLE(val) ((double) (value_t_to_double(val)))
-
-#define FROM_BOOL(b) (b ? VAL_TRUE : VAL_FALSE)
-
-#define IS_INT(val) ((val & MASK_INT) == MASK_INT)
-#define IS_FLOAT(val) ((val & MASK_NAN) != MASK_NAN)
-#define IS_OBJ(val) ((val & MASK_OBJ) == MASK_OBJ)
-
-#define AS_OBJ(val, typ)  ((typ*)(val & PAYLOAD_MASK_OBJ))
-#define TAG_OBJ(val)      (MASK_OBJ | (uint64_t)val)
-
-typedef union {
-  value_t raw;
-  double d;
-} value_t_transmute;
-
-value_t double_to_value_t(double value) {
-  value_t_transmute t = {.d = value};
-  return t.raw;
-}
-
-double value_t_to_double(value_t value) {
-  value_t_transmute t = {.raw = value};
-  return t.d;
-}
+#include "nan.h"
+#include "hashmap.h"
 
 // ------------------------ VTABLE ------------------------
 value_t* vtable[256];
@@ -67,6 +28,7 @@ value_t values_to_string(
   int32_t sep_len, char* sep
 );
 value_t value_eq(value_t v1, value_t v2);
+uint32_t value_hash(value_t v);
 
 #define DBG(v) printf("`" #v "` => %s\n", AS_OBJ(value_to_string(v), String)->chars);
 
@@ -75,6 +37,8 @@ const uint32_t TOSTRING_IDX = 0;
 typedef value_t (*tostring_method_t)(value_t*, int8_t, value_t);
 const uint32_t EQ_IDX = 1;
 typedef value_t (*eq_method_t)(value_t*, int8_t, value_t, value_t);
+const uint32_t HASH_IDX = 2;
+typedef uint32_t (*hash_method_t)(value_t*, int8_t, value_t);
 
 uint32_t next_type_id = 0;
 uint32_t type_id_for_val(value_t value);
@@ -149,6 +113,21 @@ value_t tuple_get(value_t _self, int32_t idx);
 // Tuple methods
 value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
+// ------------------------ MAP ------------------------
+uint32_t type_id_Map;
+typedef struct Map {
+  obj_header_t h;
+  hashmap_t hash;
+} Map;
+
+// Map utils
+value_t map_alloc(int32_t size);
+void map_insert(value_t _self, value_t key, value_t value);
+value_t map_get(value_t _self, value_t key);
+
+// Map methods
+value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+
 // ------------------------ FUNCTION ------------------------
 uint32_t type_id_Function;
 typedef struct Function {
@@ -156,6 +135,7 @@ typedef struct Function {
   char* name;
   value_t fn_ptr;
   value_t* env;
+  uint32_t id;
 } Function;
 
 // Function utils

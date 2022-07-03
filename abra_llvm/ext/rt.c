@@ -130,8 +130,27 @@ value_t value_eq(value_t v1, value_t v2) {
       return VAL_TRUE;
     }
 
+    if (tid1 == type_id_Map) {
+      Map* map1 = AS_OBJ(v1, Map);
+      Map* map2 = AS_OBJ(v2, Map);
+      if (map1->hash.size != map2->hash.size) return VAL_FALSE;
+
+      value_t* keys1 = hashmap_keys(&map1->hash);
+      for (int i = 0; i < map1->hash.size; i++) {
+          value_t key = keys1[i];
+          value_t val1 = hashmap_get(&map1->hash, key);
+          value_t val2 = hashmap_get(&map2->hash, key);
+          if (value_eq(val1, val2) == VAL_FALSE) return VAL_FALSE;
+      }
+
+      return VAL_TRUE;
+    }
+
     if (tid1 == type_id_Function) {
-      return VAL_FALSE;
+      uint32_t id1 = AS_OBJ(v1, Function)->id;
+      uint32_t id2 = AS_OBJ(v2, Function)->id;
+
+      return id1 == id2 ? VAL_TRUE : VAL_FALSE;
     }
 
     eq_method_t eq_method = (eq_method_t) vtable_lookup(v1, EQ_IDX);
@@ -147,6 +166,77 @@ value_t value_eq(value_t v1, value_t v2) {
   } else {
     return v1 == v2 ? VAL_TRUE : VAL_FALSE;
   }
+}
+
+uint32_t value_hash(value_t v) {
+  if (v == VAL_NONE) return 0;
+
+  uint32_t type_id = type_id_for_val(v);
+  if (type_id == type_id_Int) {
+    return AS_INT(v) * 719;
+  }
+
+  if (type_id == type_id_Float) {
+    return (uint32_t)(AS_DOUBLE(v) * 1000000000000 * 839);
+  }
+
+  if (type_id == type_id_Bool) {
+    return v == VAL_TRUE ? 42643801 : 43112609;
+  }
+
+  if (type_id == type_id_String) {
+    String* str = AS_OBJ(v, String);
+
+    // Adapted from djb2 hashing algorithm
+    uint32_t hash = 5381;
+    for (uint32_t i = 0; i < str->size; ++i) {
+      hash = ((hash << 5) + hash) ^ str->chars[i];
+    }
+    return hash;
+  }
+
+  if (type_id == type_id_Array) {
+    Array* arr = AS_OBJ(v, Array);
+
+    // Adapted from djb2 hashing algorithm
+    size_t hash = 1823;
+    for (int i = 0; i < arr->length; ++i) {
+      hash = ((hash << 5) + hash) ^ value_hash(arr->items[i]);
+    }
+    return hash;
+  }
+
+  if (type_id == type_id_Tuple) {
+    Tuple* tuple = AS_OBJ(v, Tuple);
+
+    // Adapted from djb2 hashing algorithm
+    size_t hash = 4253;
+    for (int i = 0; i < tuple->length; ++i) {
+      hash = ((hash << 5) + hash) ^ value_hash(tuple->items[i]);
+    }
+    return hash;
+  }
+
+  if (type_id == type_id_Map) {
+    Map* map = AS_OBJ(v, Map);
+
+    uint32_t hash = 4253;
+    value_t* keys = hashmap_keys(&map->hash);
+    for (int i = 0; i < map->hash.size; ++i) {
+      value_t key = keys[i];
+      value_t val = hashmap_get(&map->hash, key);
+      hash = ((hash << 5) + hash) ^ value_hash(key);
+      hash = ((hash << 5) + hash) ^ value_hash(val);
+    }
+    return hash;
+  }
+
+  if (type_id == type_id_Function) {
+    return AS_OBJ(v, Function)->id;
+  }
+
+  hash_method_t hash_method = (hash_method_t)vtable_lookup(v, HASH_IDX);
+  return hash_method(NULL, 1, v);
 }
 
 // ------------------------ INT ------------------------
@@ -393,6 +483,82 @@ value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
   return values_to_string(self->length, self->items, 1, "(", 1, ")", 2, ", ");
 }
 
+// ------------------------ MAP ------------------------
+bool map_eq_fn(value_t v1, value_t v2) { return value_eq(v1, v2) == VAL_TRUE; }
+value_t map_alloc(int32_t size) {
+  Map* map = GC_MALLOC(sizeof(Map));
+
+  map->h.type_id = type_id_Map;
+  map->hash = new_hashmap((uint32_t)size, &value_hash, &map_eq_fn);
+
+  return TAG_OBJ(map);
+}
+
+void map_insert(value_t _self, value_t key, value_t value) {
+  Map* self = AS_OBJ(_self, Map);
+  hashmap_insert(&self->hash, key, value);
+}
+
+value_t map_get(value_t _self, value_t key) {
+  Map* self = AS_OBJ(_self, Map);
+  return hashmap_get(&self->hash, key);
+}
+
+value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Map* self = AS_OBJ(_self, Map);
+  uint32_t size = (uint32_t)self->hash.size;
+  value_t* keys = hashmap_keys(&self->hash);
+
+  if (size == 0) {
+    return string_alloc(2, "{}");
+  }
+
+  String** strings = GC_MALLOC(sizeof(String*) * size * 2);
+  int32_t total_length = 4;
+  for (int i = 0; i < size; i++) {
+    value_t key = keys[i];
+    value_t val = hashmap_get(&self->hash, key);
+
+    String* key_str = AS_OBJ(value_to_string(key), String);
+    String* val_str = AS_OBJ(value_to_string(val), String);
+
+    strings[2 * i] = key_str;
+    strings[2 * i + 1] = val_str;
+
+    total_length += (key_str->size + val_str->size + 2); // ": "
+    if (i != size - 1) {
+      total_length += 2;
+    }
+  }
+
+  char* chars = GC_MALLOC(sizeof(char) * total_length);
+  chars[0] = '{';
+  chars[1] = ' ';
+
+  int32_t offset = 2;
+  for (int i = 0; i < size; i++) {
+    String* key = strings[2 * i];
+    memcpy(chars + offset, key->chars, key->size);
+    offset += key->size;
+
+    chars[offset++] = ':';
+    chars[offset++] = ' ';
+
+    String* val = strings[2 * i + 1];
+    memcpy(chars + offset, val->chars, val->size);
+    offset += val->size;
+
+    if (i != size - 1) {
+      chars[offset++] = ',';
+      chars[offset++] = ' ';
+    }
+  }
+  chars[offset++] = ' ';
+  chars[offset] = '}';
+
+  return string_alloc(total_length, chars);
+}
+
 // ------------------------ FUNCTION ------------------------
 value_t function_alloc(char* name, value_t fn_ptr, value_t* env) {
   Function* fn = GC_MALLOC(sizeof(Function));
@@ -401,6 +567,7 @@ value_t function_alloc(char* name, value_t fn_ptr, value_t* env) {
   fn->name = name;
   fn->fn_ptr = fn_ptr;
   fn->env = env; // env will be NULL for non-closures
+  fn->id = (uint32_t)rand();
   return TAG_OBJ(fn);
 }
 

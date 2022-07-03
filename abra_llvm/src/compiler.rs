@@ -35,8 +35,10 @@ const FN_ARRAY_GET: &str = "array_get";
 const FN_ARRAY_RANGE: &str = "array_range";
 const FN_ARRAY_SPLIT: &str = "array_split";
 const FN_TUPLE_GET: &str = "tuple_get";
+const FN_MAP_ALLOC: &str = "map_alloc";
+const FN_MAP_INSERT: &str = "map_insert";
+const FN_MAP_GET: &str = "map_get";
 const FN_FUNCTION_ALLOC: &str = "function_alloc";
-// const FN_CLOSURE_ALLOC: &str = "closure_alloc";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
@@ -170,6 +172,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_string_type();
         self.init_array_type();
         self.init_tuple_type();
+        self.init_map_type();
         self.init_function_type();
     }
 
@@ -205,6 +208,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.add_vtable_fn(vtable_entry, 0, "prelude__Tuple__toString", self.gen_llvm_fn_type(false, 1));
     }
 
+    fn init_map_type(&self) {
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Map", 1);
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Map__toString", self.gen_llvm_fn_type(false, 1));
+    }
+
     fn init_function_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 1);
         self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.gen_llvm_fn_type(false, 1));
@@ -237,8 +245,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_ARRAY_RANGE, value_t.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_ARRAY_SPLIT, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_TUPLE_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_MAP_ALLOC, value_t.fn_type(&[i32.into()], false), None);
+        self.module.add_function(FN_MAP_INSERT, void.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_MAP_GET, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
-        // self.module.add_function(FN_CLOSURE_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
@@ -261,6 +271,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 str.into(), // char* name
                 value_t.into(), // value_t fn_ptr
                 value_t.ptr_type(AddressSpace::Generic).into(), // value_t* env
+                i32.into(), // uint32_t id
             ],
             false,
         );
@@ -381,6 +392,21 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn array_obj_insert(&self, array_val: IntValue<'ctx>, index_val: IntValue<'ctx>, item_val: IntValue<'ctx>) {
         self.builder.build_call(self.cached_fn(FN_ARRAY_INSERT), &[array_val.into(), index_val.into(), item_val.into()], "");
+    }
+
+    fn alloc_map_obj(&self, entries: Vec<(BasicValueEnum<'ctx>, BasicValueEnum<'ctx>)>) -> IntValue<'ctx> {
+        let length_val = self.context.i32_type().const_int(entries.len() as u64, false);
+
+        let map = self.builder.build_call(self.cached_fn(FN_MAP_ALLOC), &[length_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        for (key, value) in entries {
+            self.builder.build_call(
+                self.cached_fn(FN_MAP_INSERT),
+                &[map.into(), key.into(), value.into()],
+                ""
+            );
+        }
+
+        map
     }
 
     fn value_t(&self) -> IntType<'ctx> {
@@ -810,8 +836,16 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(self.alloc_tuple_obj(tuple_items).into())
     }
 
-    fn visit_map(&mut self, _token: Token, _node: TypedMapNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_map(&mut self, _token: Token, node: TypedMapNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let entries = node.items.into_iter()
+            .map(|(key, value)| {
+                self.visit(key)
+                    .and_then(|key| self.visit(value).map(|value| (key, value)))
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let entries = entries?;
+
+        Ok(self.alloc_map_obj(entries).into())
     }
 
     fn visit_set(&mut self, _token: Token, _node: TypedSetNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -1039,16 +1073,21 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let res = match node.index {
             IndexingMode::Index(idx) => {
                 let idx = self.visit(*idx)?;
-                let idx = self.emit_extract_nan_tagged_int(idx.into_int_value());
 
                 let func = match target_type {
                     Type::String => self.cached_fn(FN_STRING_GET),
                     Type::Array(_) => self.cached_fn(FN_ARRAY_GET),
                     Type::Tuple(_) => self.cached_fn(FN_TUPLE_GET),
-                    Type::Map(_, _) => todo!(),
+                    Type::Map(_, _) => self.cached_fn(FN_MAP_GET),
                     _ => unreachable!("Internal error: attempting to index into non-indexable type")
                 };
-                self.builder.build_call(func, &[target.into(), idx.into()], "")
+
+                if let Type::Map(_, _) = target_type {
+                    self.builder.build_call(func, &[target.into(), idx.into()], "")
+                } else {
+                    let idx = self.emit_extract_nan_tagged_int(idx.into_int_value());
+                    self.builder.build_call(func, &[target.into(), idx.into()], "")
+                }
             }
             IndexingMode::Range(s, e) => {
                 let start = s.map_or(Ok(self.val_none().into()), |v| self.visit(*v))?;
