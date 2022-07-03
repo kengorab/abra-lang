@@ -109,6 +109,7 @@ typedef struct Tuple {
 // Tuple utils
 value_t tuple_alloc(int32_t length, ...);
 value_t tuple_get(value_t _self, int32_t idx);
+void tuple_set(value_t _self, int32_t idx, value_t value);
 
 // Tuple methods
 value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);

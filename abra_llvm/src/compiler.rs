@@ -35,6 +35,7 @@ const FN_ARRAY_GET: &str = "array_get";
 const FN_ARRAY_RANGE: &str = "array_range";
 const FN_ARRAY_SPLIT: &str = "array_split";
 const FN_TUPLE_GET: &str = "tuple_get";
+const FN_TUPLE_SET: &str = "tuple_set";
 const FN_MAP_ALLOC: &str = "map_alloc";
 const FN_MAP_INSERT: &str = "map_insert";
 const FN_MAP_GET: &str = "map_get";
@@ -253,6 +254,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_ARRAY_RANGE, value_t.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_ARRAY_SPLIT, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_TUPLE_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_TUPLE_SET, void.fn_type(&[value_t.into(), i32.into(), value_t.into()], false), None);
         self.module.add_function(FN_MAP_ALLOC, value_t.fn_type(&[i32.into()], false), None);
         self.module.add_function(FN_MAP_INSERT, void.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_MAP_GET, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
@@ -1087,17 +1089,22 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 } else { unreachable!() }
             }
             k @ AssignmentTargetKind::ArrayIndex | k @ AssignmentTargetKind::MapIndex => {
-                let (target, idx) = if let TypedAstNode::Indexing(_, TypedIndexingNode{ target, index, .. }) = *node.target {
+                let (target_type, target, idx) = if let TypedAstNode::Indexing(_, TypedIndexingNode{ target, index, .. }) = *node.target {
+                    let target_type = target.get_type();
                     if let IndexingMode::Index(idx_expr) = index {
                         let target = self.visit(*target)?;
                         let idx = self.visit(*idx_expr)?;
-                        (target, idx)
+                        (target_type, target, idx)
                     } else { unreachable!() }
                 } else { unreachable!() };
 
                 if k == &AssignmentTargetKind::ArrayIndex {
                     let idx = self.builder.build_int_cast(idx.into_int_value(), self.context.i32_type(), "");
-                    self.builder.build_call(self.cached_fn(FN_ARRAY_INSERT), &[target.into(), idx.into(), expr.into()], "");
+                    if let Type::Tuple(_) = target_type {
+                        self.builder.build_call(self.cached_fn(FN_TUPLE_SET), &[target.into(), idx.into(), expr.into()], "");
+                    } else {
+                        self.builder.build_call(self.cached_fn(FN_ARRAY_INSERT), &[target.into(), idx.into(), expr.into()], "");
+                    }
                 } else {
                     self.builder.build_call(self.cached_fn(FN_MAP_INSERT), &[target.into(), idx.into(), expr.into()], "");
                 }

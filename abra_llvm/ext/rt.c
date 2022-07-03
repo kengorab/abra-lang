@@ -513,10 +513,14 @@ value_t tuple_get(value_t _self, int32_t idx) {
   if (_self == VAL_NONE) return _self;
 
   Tuple* self = AS_OBJ(_self, Tuple);
-
-  if (idx < -self->length || idx >= self->length) return VAL_NONE;
-  if (idx < 0) return self->items[idx + self->length];
   return self->items[idx];
+}
+
+void tuple_set(value_t _self, int32_t idx, value_t value) {
+  if (_self == VAL_NONE) return;
+
+  Tuple* self = AS_OBJ(_self, Tuple);
+  self->items[idx] = value;
 }
 
 value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {

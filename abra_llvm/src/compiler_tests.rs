@@ -517,6 +517,7 @@ fn test_range_indexing() {
 fn test_index_assignment() {
     let array_setup = "val arr = [1, 2, 3]";
     let map_setup = "val map = { a: 1, b: 2 }";
+    let tuple_setup = "val tuple = (1, 2)";
     let cases = vec![
         // Array index assignment
         (array_setup, "(arr[0] = 4, arr)[1]", "[4, 2, 3]"),
@@ -526,6 +527,9 @@ fn test_index_assignment() {
         // Map index assignment
         (map_setup, "(map[\"b\"] = 6, map)[1]", "{ a: 1, b: 6 }"),
         (map_setup, "(map[\"a\" + \"b\"] = 6, map)[1]", "{ a: 1, ab: 6, b: 2 }"),
+        // Tuple index assignment
+        (tuple_setup, "(tuple[0] = 0, tuple)[1]", "(0, 2)"),
+        (tuple_setup, "(tuple[1] = 0, tuple)[1]", "(1, 0)"),
     ];
     run_test_cases_isolated(cases);
 }
