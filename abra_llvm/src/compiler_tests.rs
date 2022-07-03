@@ -143,6 +143,16 @@ fn test_map_literals() {
 }
 
 #[test]
+fn test_set_literals() {
+    let cases = vec![
+        ("#{}", "#{}"),
+        ("#{1, 2, 3}", "#{3, 2, 1}"),
+        ("#{1, 2, 3, 2, 1}", "#{3, 2, 1}"),
+    ];
+    run_test_cases(cases);
+}
+
+#[test]
 fn test_unary_operations() {
     let cases = vec![
         ("-24", "-24"),

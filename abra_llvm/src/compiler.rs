@@ -38,6 +38,8 @@ const FN_TUPLE_GET: &str = "tuple_get";
 const FN_MAP_ALLOC: &str = "map_alloc";
 const FN_MAP_INSERT: &str = "map_insert";
 const FN_MAP_GET: &str = "map_get";
+const FN_SET_ALLOC: &str = "set_alloc";
+const FN_SET_INSERT: &str = "set_insert";
 const FN_FUNCTION_ALLOC: &str = "function_alloc";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
@@ -173,6 +175,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_array_type();
         self.init_tuple_type();
         self.init_map_type();
+        self.init_set_type();
         self.init_function_type();
     }
 
@@ -213,6 +216,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.add_vtable_fn(vtable_entry, 0, "prelude__Map__toString", self.gen_llvm_fn_type(false, 1));
     }
 
+    fn init_set_type(&self) {
+        let vtable_entry = self.add_type_id_and_vtable("type_id_Set", 1);
+        self.add_vtable_fn(vtable_entry, 0, "prelude__Set__toString", self.gen_llvm_fn_type(false, 1));
+    }
+
     fn init_function_type(&self) {
         let vtable_entry = self.add_type_id_and_vtable("type_id_Function", 1);
         self.add_vtable_fn(vtable_entry, 0, "prelude__Function__toString", self.gen_llvm_fn_type(false, 1));
@@ -248,6 +256,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_MAP_ALLOC, value_t.fn_type(&[i32.into()], false), None);
         self.module.add_function(FN_MAP_INSERT, void.fn_type(&[value_t.into(), value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_MAP_GET, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_SET_ALLOC, value_t.fn_type(&[i32.into()], false), None);
+        self.module.add_function(FN_SET_INSERT, void.fn_type(&[value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
@@ -407,6 +417,21 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
 
         map
+    }
+
+    fn alloc_set_obj(&self, values: Vec<BasicValueEnum<'ctx>>) -> IntValue<'ctx> {
+        let length_val = self.context.i32_type().const_int(values.len() as u64, false);
+
+        let set = self.builder.build_call(self.cached_fn(FN_SET_ALLOC), &[length_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        for value in values {
+            self.builder.build_call(
+                self.cached_fn(FN_SET_INSERT),
+                &[set.into(), value.into()],
+                ""
+            );
+        }
+
+        set
     }
 
     fn value_t(&self) -> IntType<'ctx> {
@@ -848,8 +873,13 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(self.alloc_map_obj(entries).into())
     }
 
-    fn visit_set(&mut self, _token: Token, _node: TypedSetNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_set(&mut self, _token: Token, node: TypedSetNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let values = node.items.into_iter()
+            .map(|value| self.visit(value))
+            .collect::<Result<Vec<_>, _>>();
+        let values = values?;
+
+        Ok(self.alloc_set_obj(values).into())
     }
 
     fn visit_lambda(&mut self, _token: Token, _node: TypedLambdaNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

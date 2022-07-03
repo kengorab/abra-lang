@@ -128,6 +128,20 @@ value_t map_get(value_t _self, value_t key);
 // Map methods
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
+// ------------------------ SET ------------------------
+uint32_t type_id_Set;
+typedef struct Set {
+  obj_header_t h;
+  hashmap_t hash;
+} Set;
+
+// Set utils
+value_t set_alloc(int32_t size);
+void set_insert(value_t _self, value_t value);
+
+// Set methods
+value_t prelude__Set__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+
 // ------------------------ FUNCTION ------------------------
 uint32_t type_id_Function;
 typedef struct Function {

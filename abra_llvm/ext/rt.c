@@ -146,6 +146,22 @@ value_t value_eq(value_t v1, value_t v2) {
       return VAL_TRUE;
     }
 
+    if (tid1 == type_id_Set) {
+      Set* set1 = AS_OBJ(v1, Set);
+      Set* set2 = AS_OBJ(v2, Set);
+      if (set1->hash.size != set2->hash.size) return VAL_FALSE;
+
+      value_t* keys1 = hashmap_keys(&set1->hash);
+      for (int i = 0; i < set1->hash.size; i++) {
+        value_t key = keys1[i];
+        value_t val1 = hashmap_get(&set1->hash, key);
+        value_t val2 = hashmap_get(&set2->hash, key);
+        if (value_eq(val1, val2) == VAL_FALSE) return VAL_FALSE;
+      }
+
+      return VAL_TRUE;
+    }
+
     if (tid1 == type_id_Function) {
       uint32_t id1 = AS_OBJ(v1, Function)->id;
       uint32_t id2 = AS_OBJ(v2, Function)->id;
@@ -227,6 +243,18 @@ uint32_t value_hash(value_t v) {
       value_t val = hashmap_get(&map->hash, key);
       hash = ((hash << 5) + hash) ^ value_hash(key);
       hash = ((hash << 5) + hash) ^ value_hash(val);
+    }
+    return hash;
+  }
+
+  if (type_id == type_id_Set) {
+    Set* set = AS_OBJ(v, Set);
+
+    uint32_t hash = 4253;
+    value_t* values = hashmap_keys(&set->hash);
+    for (int i = 0; i < set->hash.size; ++i) {
+      value_t value = values[i];
+      hash = ((hash << 5) + hash) ^ value_hash(value);
     }
     return hash;
   }
@@ -557,6 +585,28 @@ value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _sel
   chars[offset] = '}';
 
   return string_alloc(total_length, chars);
+}
+
+// ------------------------ SET ------------------------
+value_t set_alloc(int32_t size) {
+  Set* set = GC_MALLOC(sizeof(Set));
+
+  set->h.type_id = type_id_Set;
+  set->hash = new_hashmap((uint32_t)size, &value_hash, &map_eq_fn);
+
+  return TAG_OBJ(set);
+}
+
+void set_insert(value_t _self, value_t value) {
+  Set* self = AS_OBJ(_self, Set);
+  hashmap_insert(&self->hash, value, VAL_TRUE);
+}
+
+value_t prelude__Set__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Set* self = AS_OBJ(_self, Set);
+
+  value_t* keys = hashmap_keys(&self->hash);
+  return values_to_string((int32_t)self->hash.size, keys, 2, "#{", 1, "}", 2, ", ");
 }
 
 // ------------------------ FUNCTION ------------------------
