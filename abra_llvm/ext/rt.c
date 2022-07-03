@@ -417,6 +417,19 @@ void array_insert(value_t _self, value_t _idx, value_t item) {
   Array* self = AS_OBJ(_self, Array);
   int32_t idx = AS_INT(_idx);
 
+  if (idx < -self->length) return;
+  if (idx < 0) idx += self->length;
+  if (idx >= self->length) {
+    int32_t old_size = self->length;
+    int32_t new_size = idx + 1;
+    self->items = GC_REALLOC(self->items, sizeof(value_t) * new_size);
+    self->length = new_size;
+
+    for (int i = old_size; i < new_size; i++) {
+      self->items[i] = VAL_NONE;
+    }
+  }
+
   self->items[idx] = item;
 }
 

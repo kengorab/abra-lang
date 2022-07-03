@@ -1077,23 +1077,35 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_assignment(&mut self, _token: Token, node: TypedAssignmentNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let res = match &node.kind {
+        let expr = self.visit(*node.expr)?;
+
+        match &node.kind {
             AssignmentTargetKind::Identifier => {
                 if let TypedAstNode::Identifier(_, TypedIdentifierNode{ name, .. }) = *node.target {
-                    let expr = self.visit(*node.expr)?;
-
                     let ptr = self.resolve_ptr_to_variable(&name);
                     self.builder.build_store(ptr, expr);
-
-                    expr
                 } else { unreachable!() }
             }
-            AssignmentTargetKind::ArrayIndex |
-            AssignmentTargetKind::MapIndex |
-            AssignmentTargetKind::Field => todo!()
-        };
+            k @ AssignmentTargetKind::ArrayIndex | k @ AssignmentTargetKind::MapIndex => {
+                let (target, idx) = if let TypedAstNode::Indexing(_, TypedIndexingNode{ target, index, .. }) = *node.target {
+                    if let IndexingMode::Index(idx_expr) = index {
+                        let target = self.visit(*target)?;
+                        let idx = self.visit(*idx_expr)?;
+                        (target, idx)
+                    } else { unreachable!() }
+                } else { unreachable!() };
 
-        Ok(res)
+                if k == &AssignmentTargetKind::ArrayIndex {
+                    let idx = self.builder.build_int_cast(idx.into_int_value(), self.context.i32_type(), "");
+                    self.builder.build_call(self.cached_fn(FN_ARRAY_INSERT), &[target.into(), idx.into(), expr.into()], "");
+                } else {
+                    self.builder.build_call(self.cached_fn(FN_MAP_INSERT), &[target.into(), idx.into(), expr.into()], "");
+                }
+            }
+            AssignmentTargetKind::Field => todo!()
+        }
+
+        Ok(expr)
     }
 
     fn visit_indexing(&mut self, _token: Token, node: TypedIndexingNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

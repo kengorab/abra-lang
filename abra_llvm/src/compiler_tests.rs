@@ -514,6 +514,23 @@ fn test_range_indexing() {
 }
 
 #[test]
+fn test_index_assignment() {
+    let array_setup = "val arr = [1, 2, 3]";
+    let map_setup = "val map = { a: 1, b: 2 }";
+    let cases = vec![
+        // Array index assignment
+        (array_setup, "(arr[0] = 4, arr)[1]", "[4, 2, 3]"),
+        (array_setup, "(arr[-1] = 4, arr)[1]", "[1, 2, 4]"),
+        (array_setup, "(arr[3] = 4, arr)[1]", "[1, 2, 3, 4]"),
+        (array_setup, "(arr[6] = 4, arr)[1]", "[1, 2, 3, None, None, None, 4]"),
+        // Map index assignment
+        (map_setup, "(map[\"b\"] = 6, map)[1]", "{ a: 1, b: 6 }"),
+        (map_setup, "(map[\"a\" + \"b\"] = 6, map)[1]", "{ a: 1, ab: 6, b: 2 }"),
+    ];
+    run_test_cases_isolated(cases);
+}
+
+#[test]
 fn test_destructuring_assignment() {
     let cases = vec![
         ("val (a, b, c) = (1, 2, 3)", "a + b + c", "6"),
