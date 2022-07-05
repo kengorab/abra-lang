@@ -27,7 +27,7 @@ value_t values_to_string(
   int32_t suffix_len, char* suffix,
   int32_t sep_len, char* sep
 );
-value_t value_eq(value_t v1, value_t v2);
+bool value_eq(value_t v1, value_t v2);
 uint32_t value_hash(value_t v);
 
 #define DBG(v) printf("`" #v "` => %s\n", AS_OBJ(value_to_string(v), String)->chars);
@@ -38,7 +38,7 @@ typedef value_t (*tostring_method_t)(value_t*, int8_t, value_t);
 const uint32_t EQ_IDX = 1;
 typedef value_t (*eq_method_t)(value_t*, int8_t, value_t, value_t);
 const uint32_t HASH_IDX = 2;
-typedef uint32_t (*hash_method_t)(value_t*, int8_t, value_t);
+typedef value_t (*hash_method_t)(value_t*, int8_t, value_t);
 
 uint32_t next_type_id = 0;
 uint32_t type_id_for_val(value_t value);

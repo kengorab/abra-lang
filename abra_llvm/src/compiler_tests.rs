@@ -701,3 +701,25 @@ fn test_closures() {
     ];
     run_test_cases(cases);
 }
+
+#[test]
+fn test_types() {
+    let setup = r#"
+      type Person {
+        name: String
+        age: Int = 30
+      }
+    "#;
+    let cases = vec![
+        ("Person(name: \"Human\", age: 30)", "Person(name: Human, age: 30)"),
+        ("Person(name: \"Human\")", "Person(name: Human, age: 30)"),
+        ("Person(name: \"Human\") == Person(name: \"Other Human\")", "false"),
+        ("Person(name: \"Human\") == \"Human\"", "false"),
+        ("Person(name: \"Human\", age: 30) == Person(name: \"Human\")", "true"),
+        (
+            "#{Person(name: \"Human\", age: 30), Person(name: \"Human\"), Person(name: \"Other Human\", age: 31)}",
+            "#{Person(name: Human, age: 30), Person(name: Other Human, age: 31)}"
+        ),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}

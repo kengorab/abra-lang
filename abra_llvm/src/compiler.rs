@@ -19,6 +19,7 @@ const ENTRY_FN_NAME: &str = "__mod_entry";
 
 // Cached externally-defined functions
 const FN_PRINTF: &str = "printf";
+const FN_SNPRINTF: &str = "snprintf";
 const FN_POWF64: &str = "llvm.pow.f64";
 const FN_MALLOC: &str = "GC_malloc";
 const FN_DOUBLE_TO_VALUE_T: &str = "double_to_value_t";
@@ -46,8 +47,10 @@ const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
 const FN_VALUE_EQ: &str = "value_eq";
+const FN_VALUE_HASH: &str = "value_hash";
 
 // Cached externally-defined types
+const TYPE_OBJ_HEADER: &str = "obj_header_t";
 const TYPE_STRING: &str = "String";
 const TYPE_FUNCTION: &str = "Function";
 
@@ -77,15 +80,24 @@ struct ClosureContext<'ctx> {
 }
 
 #[derive(Debug)]
+struct TypeSpec<'ctx> {
+    type_id: IntValue<'ctx>,
+    struct_type: StructType<'ctx>,
+    ctor_fn: FunctionValue<'ctx>
+}
+
+#[derive(Debug)]
 struct Scope<'ctx> {
     name: String,
     fn_depth: usize,
     fns: HashMap<String, FunctionValue<'ctx>>,
     variables: HashMap<String, Variable<'ctx>>,
     closure_context: Option<ClosureContext<'ctx>>,
+    types: HashMap<String, TypeSpec<'ctx>>,
 }
 
 pub struct Compiler<'a, 'ctx> {
+    module_name: &'a str,
     context: &'ctx Context,
     builder: &'a Builder<'ctx>,
     module: &'a Module<'ctx>,
@@ -97,18 +109,29 @@ type CompilerError = ();
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
     pub fn compile_module(context: &'ctx Context, typed_module: TypedModule) -> Result<Module<'ctx>, CompilerError> {
+        let module_name = "__main";
         let builder = context.create_builder();
-        let module = context.create_module("__main");
+        let module = context.create_module(module_name);
 
         let entry_fn_type = context.void_type().fn_type(&[], false);
         let entry_fn = module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
 
+        let root_scope = Scope {
+            name: "$root".to_string(),
+            fn_depth: 0,
+            fns: HashMap::new(),
+            variables: HashMap::new(),
+            closure_context: None,
+            types: HashMap::new(),
+        };
+
         let mut compiler = Compiler {
+            module_name,
             context: &context,
             builder: &builder,
             module: &module,
             cur_fn: entry_fn,
-            scopes: vec![Scope { name: "$root".to_string(), fn_depth: 0, fns: HashMap::new(), variables: HashMap::new(), closure_context: None }],
+            scopes: vec![root_scope],
         };
 
         compiler.init();
@@ -126,13 +149,25 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         Ok(module)
     }
 
-    fn add_type_id_and_vtable<S: AsRef<str>>(&self, type_id_name: S, vtable_size: usize) -> PointerValue<'ctx> {
+    fn incr_next_type_id(&self) -> IntValue<'ctx> {
         let next_type_id = self.module.get_global("next_type_id").unwrap();
+        let type_id = self.builder.build_load(next_type_id.as_pointer_value(), "").into_int_value();
+        self.builder.build_store(
+            next_type_id.as_pointer_value(),
+            self.builder.build_int_add(
+                type_id,
+                self.context.i32_type().const_int(1, false),
+                ""
+            )
+        );
 
+        type_id
+    }
+
+    fn add_type_id_and_vtable<S: AsRef<str>>(&self, type_id_name: S, vtable_size: usize) -> PointerValue<'ctx> {
+        let type_id = self.incr_next_type_id();
         let new_type_id = self.module.add_global(self.context.i32_type(), None, type_id_name.as_ref());
-        let type_id = self.builder.build_load(next_type_id.as_pointer_value(), "");
         self.builder.build_store(new_type_id.as_pointer_value(), type_id);
-        self.builder.build_store(next_type_id.as_pointer_value(), self.builder.build_int_add(type_id.into_int_value(), self.context.i32_type().const_int(1, false), ""));
 
         self.builder.build_call(
             self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
@@ -236,9 +271,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         let i32 = self.context.i32_type();
         let i64 = self.context.i64_type();
         let f64 = self.context.f64_type();
+        let bool = self.context.bool_type();
 
         self.module.add_function(FN_MALLOC, str.fn_type(&[i64.into()], false), None);
         self.module.add_function(FN_PRINTF, i64.fn_type(&[str.into()], true), None);
+        self.module.add_function(FN_SNPRINTF, i64.fn_type(&[str.into(), i32.into(), str.into()], true), None);
         self.module.add_function(FN_POWF64, f64.fn_type(&[f64.into(), f64.into()], false), None);
         self.module.add_function(FN_DOUBLE_TO_VALUE_T, value_t.fn_type(&[f64.into()], false), None);
         self.module.add_function(FN_VALUE_T_TO_DOUBLE, f64.fn_type(&[value_t.into()], false), None);
@@ -264,9 +301,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
-        self.module.add_function(FN_VALUE_EQ, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_VALUE_EQ, bool.fn_type(&[value_t.into(), value_t.into()], false), None);
+        self.module.add_function(FN_VALUE_HASH, i32.fn_type(&[value_t.into()], false), None);
 
-        let obj_header_t = self.context.opaque_struct_type("obj_header_t");
+        let obj_header_t = self.context.opaque_struct_type(TYPE_OBJ_HEADER);
         obj_header_t.set_body(&[i32.into() /* type_id */], false);
 
         self.context.opaque_struct_type(TYPE_STRING).set_body(
@@ -360,12 +398,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn begin_new_fn_scope(&mut self, name: String, closure_context: Option<ClosureContext<'ctx>>) {
         let current_fn_depth = self.current_scope().fn_depth;
         let fn_depth = current_fn_depth + 1;
-        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context })
+        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context, types: HashMap::new() })
     }
 
     fn begin_new_scope(&mut self, name: String) {
         let fn_depth = self.current_scope().fn_depth;
-        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context: None })
+        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context: None, types: HashMap::new() })
     }
 
     fn end_scope(&mut self) {
@@ -826,10 +864,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let right = self.visit(*node.right)?;
 
                 let res = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[left.into(), right.into()], "").try_as_basic_value().left().unwrap();
+                let res = self.emit_nan_tagged_bool(res.into_int_value());
                 if op == &BinaryOp::Neq {
-                    self.build_bool_negate(res)
+                    self.build_bool_negate(res.into())
                 } else {
-                    res
+                    res.into()
                 }
             }
             _ => todo!()
@@ -1059,8 +1098,225 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res.into())
     }
 
-    fn visit_type_decl(&mut self, _token: Token, _node: TypedTypeDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_type_decl(&mut self, _token: Token, node: TypedTypeDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let num_fields = node.fields.len();
+        let field_names = node.fields.iter().map(|f| Token::get_ident_name(&f.ident)).collect_vec();
+        let type_name = Token::get_ident_name(&node.name);
+
+        let struct_type = self.context.opaque_struct_type(&type_name);
+        let mut field_types = vec![self.cached_type(TYPE_OBJ_HEADER).into()];
+        field_types.append(&mut repeat(self.value_t().into()).take(num_fields).collect_vec());
+        struct_type.set_body(field_types.as_slice(), false);
+
+        let type_id = self.incr_next_type_id();
+        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &type_name));
+        type_id_global.set_linkage(Linkage::Common);
+        type_id_global.set_initializer(&self.context.i32_type().const_zero());
+        self.builder.build_store(type_id_global.as_pointer_value(), type_id);
+
+        // Generate constructor function
+        let ctor_fn = {
+            let old_fn = self.cur_fn;
+
+            let ctor_fn_type = self.value_t().fn_type(repeat(self.value_t().into()).take(num_fields).collect_vec().as_slice(), false);
+            let ctor_fn = self.module.add_function(&format!("{}__{}_new", &self.module_name, &type_name), ctor_fn_type, None);
+            self.cur_fn = ctor_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let struct_size = self.builder.build_int_add(
+                self.cached_type(TYPE_OBJ_HEADER).size_of().unwrap(),
+                self.builder.build_int_mul(
+                    self.value_t().size_of(),
+                    self.context.i64_type().const_int(num_fields as u64, false),
+                    "",
+                ),
+                "",
+            );
+            let mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[struct_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+            let mem = self.builder.build_pointer_cast(mem, struct_type.ptr_type(AddressSpace::Generic), "");
+
+            let header_slot = unsafe { self.builder.build_gep(mem, &[self.context.i32_type().const_zero()], "") };
+            let header_type_id_slot = unsafe { self.builder.build_gep(header_slot, &[self.context.i32_type().const_zero()], "") };
+            let header_type_id_slot = self.builder.build_pointer_cast(header_type_id_slot, self.context.i32_type().ptr_type(AddressSpace::Generic), "");
+            self.builder.build_store(header_type_id_slot, self.builder.build_load(type_id_global.as_pointer_value(), ""));
+
+            for idx in 0..num_fields {
+                let slot = self.builder.build_struct_gep(mem, (idx + 1) as u32, "").unwrap();
+                let field_value = self.cur_fn.get_nth_param(idx as u32).unwrap();
+                self.builder.build_store(slot, field_value);
+            }
+            self.builder.build_return(Some(&self.emit_nan_tagged_obj(mem).as_basic_value_enum()));
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            ctor_fn
+        };
+
+        let type_spec = TypeSpec { type_id, struct_type, ctor_fn };
+        self.current_scope_mut().types.insert(type_name.clone(), type_spec);
+
+        let num_methods = node.methods.len();
+        let vtable_entry = self.builder.build_call(
+            self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
+            &[
+                type_id.into(),
+                self.context.i32_type().const_int(num_methods as u64, false).into()
+            ],
+            "",
+        ).try_as_basic_value().left().unwrap().into_pointer_value();
+
+        // Generate toString method
+        let tostring_fn = {
+            let old_fn = self.cur_fn;
+
+            let tostring_fn_type = self.gen_llvm_fn_type(true, 1);
+            let tostring_fn = self.module.add_function(&format!("{}__{}__toString", &self.module_name, &type_name), tostring_fn_type, None);
+            self.cur_fn = tostring_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, struct_type.ptr_type(AddressSpace::Generic), "");
+
+            let field_strs = (0..num_fields).into_iter()
+                .map(|idx| {
+                    let field_value_ptr = self.builder.build_struct_gep(self_arg, (idx + 1) as u32, "").unwrap();
+                    let field_value = self.builder.build_load(field_value_ptr, "");
+                    let str_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[field_value.into()], "").try_as_basic_value().left().unwrap();
+                    let res_val = self.emit_extract_nan_tagged_obj(str_val.into_int_value());
+                    let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                    let chars_ptr = self.builder.build_struct_gep(res_str, 2, "").unwrap();
+
+                    self.builder.build_load(chars_ptr, "").into()
+                })
+                .collect_vec();
+            let fmt_str = format!("{}({})", &type_name, field_names.iter().map(|name| format!("{}: %s", name)).join(", "));
+            let fmt_str_val = self.builder.build_global_string_ptr(&fmt_str, "").as_basic_value_enum();
+            let mut args = vec![self.str_type().const_zero().into(), self.context.i32_type().const_zero().into(), fmt_str_val.into()];
+            args.append(&mut field_strs.clone());
+            let len_val = self.builder.build_call(self.cached_fn(FN_SNPRINTF), args.as_slice(), "").try_as_basic_value().left().unwrap().into_int_value();
+            let len_val = self.builder.build_int_add(len_val, self.context.i64_type().const_int(1, false), "");
+            let str_mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[len_val.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+            let len_val = self.builder.build_int_cast(len_val, self.context.i32_type(), "");
+            let mut args = vec![str_mem.into(), len_val.into(), fmt_str_val.into()];
+            args.append(&mut field_strs.clone());
+            self.builder.build_call(self.cached_fn(FN_SNPRINTF), args.as_slice(), "");
+
+            let len_val = self.builder.build_int_sub(len_val, self.context.i32_type().const_int(1, false), "");
+            let str_repr = self.alloc_string_obj(len_val, str_mem);
+            self.builder.build_return(Some(&str_repr.as_basic_value_enum()));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            tostring_fn
+        };
+        let fn_ptr = tostring_fn.as_global_value().as_pointer_value();
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        // Generate eq method
+        let eq_fn = {
+            let old_fn = self.cur_fn;
+
+            let eq_fn_type = self.gen_llvm_fn_type(true, 2);
+            let eq_fn = self.module.add_function(&format!("{}__{}__eq", &self.module_name, &type_name), eq_fn_type, None);
+            self.cur_fn = eq_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, struct_type.ptr_type(AddressSpace::Generic), "");
+
+            let other_arg = self.cur_fn.get_nth_param(3).unwrap();
+            let other_arg = self.emit_extract_nan_tagged_obj(other_arg.into_int_value());
+            let other_arg = self.builder.build_pointer_cast(other_arg, struct_type.ptr_type(AddressSpace::Generic), "");
+
+            for idx in 0..num_fields {
+                let f1_ptr = self.builder.build_struct_gep(self_arg, (idx + 1) as u32, "").unwrap();
+                let f1_val = self.builder.build_load(f1_ptr, "");
+                let f2_ptr = self.builder.build_struct_gep(other_arg, (idx + 1) as u32, "").unwrap();
+                let f2_val = self.builder.build_load(f2_ptr, "");
+                let cond_val = self.builder.build_call(
+                    self.cached_fn(FN_VALUE_EQ),
+                    &[f1_val.into(), f2_val.into()],
+                    ""
+                ).try_as_basic_value().left().unwrap().into_int_value();
+                let cond = self.builder.build_int_compare(
+                    IntPredicate::EQ,
+                    cond_val,
+                    self.context.bool_type().const_zero(),
+                    ""
+                );
+
+                let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                self.builder.build_conditional_branch(cond, then_bb, cont_bb);
+
+                self.builder.position_at_end(then_bb);
+                self.builder.build_return(Some(&self.context.i64_type().const_int(VAL_FALSE, false)));
+
+                self.builder.position_at_end(cont_bb);
+            }
+            self.builder.build_return(Some(&self.context.i64_type().const_int(VAL_TRUE, false)));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            eq_fn
+        };
+        let fn_ptr = eq_fn.as_global_value().as_pointer_value();
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(1, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        // Generate hash method
+        let hash_fn = {
+            let old_fn = self.cur_fn;
+
+            let hash_fn_type = self.gen_llvm_fn_type(true, 1);
+            let hash_fn = self.module.add_function(&format!("{}__{}__hash", &self.module_name, &type_name), hash_fn_type, None);
+            self.cur_fn = hash_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let hash_val = self.builder.build_alloca(self.context.i32_type(), "hash");
+            self.builder.build_store(hash_val, self.builder.build_load(type_id_global.as_pointer_value(), ""));
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, struct_type.ptr_type(AddressSpace::Generic), "");
+
+            for idx in 0..num_fields {
+                let field_ptr = self.builder.build_struct_gep(self_arg, (idx + 1) as u32, "").unwrap();
+                let field_val = self.builder.build_load(field_ptr, "");
+                let field_hash = self.builder.build_call(
+                    self.cached_fn(FN_VALUE_HASH),
+                    &[field_val.into()],
+                    ""
+                ).try_as_basic_value().left().unwrap().into_int_value();
+
+                let cur_hash_val = self.builder.build_load(hash_val, "").into_int_value();
+                self.builder.build_store(
+                    hash_val,
+                    self.builder.build_int_add(cur_hash_val, field_hash, "")
+                );
+            }
+            let ret_hash = self.emit_nan_tagged_int(self.builder.build_load(hash_val, "").into_int_value());
+            self.builder.build_return(Some(&ret_hash));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            hash_fn
+        };
+        let fn_ptr = hash_fn.as_global_value().as_pointer_value();
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        Ok(self.val_none().as_basic_value_enum())
     }
 
     fn visit_enum_decl(&mut self, _token: Token, _node: TypedEnumDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -1309,8 +1565,28 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_instantiation(&mut self, _token: Token, _node: TypedInstantiationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_instantiation(&mut self, _token: Token, node: TypedInstantiationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let type_name = if let TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) = *node.target {
+            name
+        } else { unreachable!() };
+
+        let type_spec = self.current_scope().types
+            .get(&type_name)
+            .expect(&format!("Internal error: no type named '{}' exists in the current scope", &type_name));
+        let ctor_fn = type_spec.ctor_fn;
+
+        let field_values = node.fields.into_iter()
+            .map(|(_, node)| self.visit(node).map(|r| r.into()))
+            .collect::<Result<Vec<_>, _>>();
+        let field_values = field_values?;
+
+        let res = self.builder.build_call(
+            ctor_fn,
+            field_values.as_slice(),
+            ""
+        ).try_as_basic_value().left().unwrap();
+
+        Ok(res)
     }
 
     fn visit_accessor(&mut self, _token: Token, _node: TypedAccessorNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

@@ -90,97 +90,96 @@ value_t values_to_string(
   return string_alloc(total_length, chars);
 }
 
-value_t value_eq(value_t v1, value_t v2) {
+bool value_eq(value_t v1, value_t v2) {
   if ((IS_OBJ(v1) && !IS_OBJ(v2)) || (!IS_OBJ(v1) && IS_OBJ(v2))) {
-    return VAL_FALSE;
+    return false;
   }
 
   if (IS_OBJ(v1) && IS_OBJ(v2)) {
     uint32_t tid1 = AS_OBJ(v1, obj_header_t)->type_id;
     uint32_t tid2 = AS_OBJ(v2, obj_header_t)->type_id;
 
-    if (tid1 != tid2) return VAL_FALSE;
+    if (tid1 != tid2) return false;
 
     if (tid1 == type_id_String) {
       String* self = AS_OBJ(v1, String);
       String* other = AS_OBJ(v2, String);
 
-      if (self->size != other->size) return VAL_FALSE;
+      if (self->size != other->size) return false;
 
       for (int i = 0; i < self->size; ++i) {
-        if (self->chars[i] != other->chars[i]) return VAL_FALSE;
+        if (self->chars[i] != other->chars[i]) return false;
       }
 
-      return VAL_TRUE;
+      return true;
     }
 
     if (tid1 == type_id_Array || tid1 == type_id_Tuple) {
       int32_t len1 = (tid1 == type_id_Array) ? AS_OBJ(v1, Array)->length : AS_OBJ(v1, Tuple)->length;
       int32_t len2 = (tid1 == type_id_Array) ? AS_OBJ(v2, Array)->length : AS_OBJ(v2, Tuple)->length;
 
-      if (len1 != len2) return VAL_FALSE;
+      if (len1 != len2) return false;
 
       value_t* items1 = (tid1 == type_id_Array) ? AS_OBJ(v1, Array)->items : AS_OBJ(v1, Tuple)->items;
       value_t* items2 = (tid1 == type_id_Array) ? AS_OBJ(v2, Array)->items : AS_OBJ(v2, Tuple)->items;
       for (int i = 0; i < len1; i++) {
-        value_t eq = value_eq(items1[i], items2[i]);
-        if (eq == VAL_FALSE) return VAL_FALSE;
+        if (!value_eq(items1[i], items2[i])) return false;
       }
 
-      return VAL_TRUE;
+      return true;
     }
 
     if (tid1 == type_id_Map) {
       Map* map1 = AS_OBJ(v1, Map);
       Map* map2 = AS_OBJ(v2, Map);
-      if (map1->hash.size != map2->hash.size) return VAL_FALSE;
+      if (map1->hash.size != map2->hash.size) return false;
 
       value_t* keys1 = hashmap_keys(&map1->hash);
       for (int i = 0; i < map1->hash.size; i++) {
           value_t key = keys1[i];
           value_t val1 = hashmap_get(&map1->hash, key);
           value_t val2 = hashmap_get(&map2->hash, key);
-          if (value_eq(val1, val2) == VAL_FALSE) return VAL_FALSE;
+          if (!value_eq(val1, val2)) return false;
       }
 
-      return VAL_TRUE;
+      return true;
     }
 
     if (tid1 == type_id_Set) {
       Set* set1 = AS_OBJ(v1, Set);
       Set* set2 = AS_OBJ(v2, Set);
-      if (set1->hash.size != set2->hash.size) return VAL_FALSE;
+      if (set1->hash.size != set2->hash.size) return false;
 
       value_t* keys1 = hashmap_keys(&set1->hash);
       for (int i = 0; i < set1->hash.size; i++) {
         value_t key = keys1[i];
         value_t val1 = hashmap_get(&set1->hash, key);
         value_t val2 = hashmap_get(&set2->hash, key);
-        if (value_eq(val1, val2) == VAL_FALSE) return VAL_FALSE;
+        if (!value_eq(val1, val2)) return false;
       }
 
-      return VAL_TRUE;
+      return true;
     }
 
     if (tid1 == type_id_Function) {
       uint32_t id1 = AS_OBJ(v1, Function)->id;
       uint32_t id2 = AS_OBJ(v2, Function)->id;
 
-      return id1 == id2 ? VAL_TRUE : VAL_FALSE;
+      return id1 == id2;
     }
 
     eq_method_t eq_method = (eq_method_t) vtable_lookup(v1, EQ_IDX);
-    return eq_method(NULL, 2, v1, v2);
+    return eq_method(NULL, 2, v1, v2) == VAL_TRUE;
   } else if (IS_INT(v1) && IS_FLOAT(v2)) {
     double d1 = (double)AS_INT(v1);
     double d2 = AS_DOUBLE(v2);
-    return d1 == d2 ? VAL_TRUE : VAL_FALSE;
+    return d1 == d2;
   } else if (IS_FLOAT(v1) && IS_INT(v2)) {
     double d1 = AS_DOUBLE(v1);
     double d2 = (double)AS_INT(v2);
-    return d1 == d2 ? VAL_TRUE : VAL_FALSE;
+    return d1 == d2;
   } else {
-    return v1 == v2 ? VAL_TRUE : VAL_FALSE;
+    return v1 == v2;
   }
 }
 
@@ -264,7 +263,7 @@ uint32_t value_hash(value_t v) {
   }
 
   hash_method_t hash_method = (hash_method_t)vtable_lookup(v, HASH_IDX);
-  return hash_method(NULL, 1, v);
+  return (uint32_t) AS_INT(hash_method(NULL, 1, v));
 }
 
 // ------------------------ INT ------------------------
@@ -529,12 +528,11 @@ value_t prelude__Tuple__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
 }
 
 // ------------------------ MAP ------------------------
-bool map_eq_fn(value_t v1, value_t v2) { return value_eq(v1, v2) == VAL_TRUE; }
 value_t map_alloc(int32_t size) {
   Map* map = GC_MALLOC(sizeof(Map));
 
   map->h.type_id = type_id_Map;
-  map->hash = new_hashmap((uint32_t)size, &value_hash, &map_eq_fn);
+  map->hash = new_hashmap((uint32_t)size, &value_hash, &value_eq);
 
   return TAG_OBJ(map);
 }
@@ -609,7 +607,7 @@ value_t set_alloc(int32_t size) {
   Set* set = GC_MALLOC(sizeof(Set));
 
   set->h.type_id = type_id_Set;
-  set->hash = new_hashmap((uint32_t)size, &value_hash, &map_eq_fn);
+  set->hash = new_hashmap((uint32_t)size, &value_hash, &value_eq);
 
   return TAG_OBJ(set);
 }
