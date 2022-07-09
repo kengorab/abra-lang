@@ -658,6 +658,174 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             local_ptr.clone()
         }
     }
+
+    fn compile_function(
+        &mut self,
+        fn_name: String,
+        is_method: bool,
+        node: TypedFunctionDeclNode,
+    ) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let old_fn = self.cur_fn;
+
+        let namespace = self.scopes.iter().map(|s| &s.name).join("::");
+        let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
+
+        let captured_variables = CapturedVariableFinder::find_captured_variables(&node);
+        let num_captured_variables = captured_variables.len();
+        let is_closure = !captured_variables.is_empty();
+
+        let fn_ret_type = node.ret_type;
+        let fn_type = self.gen_llvm_fn_type(fn_ret_type != Type::Unit, node.args.len());
+        let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
+        let fn_local = if !is_method {
+            let local_ptr = self.builder.build_alloca(self.value_t(), &fn_name);
+            self.current_scope_mut().variables.insert(fn_name.clone(), Variable { local_ptr, is_captured: false });
+            Some(local_ptr)
+        } else { None };
+
+        let env_mem = if !is_closure {
+            self.current_scope_mut().fns.insert(fn_name.clone(), func);
+
+            self.value_t_ptr().const_zero() // Pass `NULL` as env if non-closure
+        } else {
+            // Allocate space for closure's `env`, lifting variables from the current scope if necessary
+            let env_mem = self.builder.build_call(
+                self.cached_fn(FN_MALLOC),
+                &[self.builder.build_int_mul(self.value_t().size_of(), self.context.i64_type().const_int(num_captured_variables as u64, false), "").into()],
+                ""
+            ).try_as_basic_value().left().unwrap().into_pointer_value();
+            let env_mem = self.builder.build_pointer_cast(env_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
+
+            for (name, idx) in &captured_variables {
+                let var = self.scopes.iter_mut().rev()
+                    .find_map(|sc| sc.variables.get_mut(name))
+                    .expect(&format!("Internal error: could not find captured variable '{}' in outer scope", name));
+                let needs_lift = if !var.is_captured {
+                    var.is_captured = true;
+                    true
+                } else {
+                    false
+                };
+
+                // If necessary, "lift" the variable from its current location as a stack local to the heap,
+                // and overwrite stack local value with pointer to heap value. Subsequent accesses of this
+                // variable will need to make an extra dereference through this pointer (see `resolve_ptr_to_variable`).
+                let val = if needs_lift {
+                    let local_ptr = var.local_ptr;
+                    let val = self.builder.build_load(local_ptr, "");
+                    let lifted_val_mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[self.value_t().size_of().into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+                    let lifted_val_mem = self.builder.build_pointer_cast(lifted_val_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
+                    self.builder.build_store(lifted_val_mem, val);
+                    let lifted_val = self.emit_nan_tagged_obj(lifted_val_mem).as_basic_value_enum();
+                    self.builder.build_store(local_ptr, lifted_val);
+                    lifted_val
+                } else {
+                    let ptr = self.resolve_ptr_to_variable(&name);
+                    self.emit_nan_tagged_obj(ptr).as_basic_value_enum()
+                };
+
+                let env_slot = unsafe { self.builder.build_gep(env_mem, &[self.context.i32_type().const_int(*idx as u64, false)], "") };
+                self.builder.build_store(env_slot, val);
+            }
+
+            env_mem
+        };
+
+        let fn_bb = self.context.append_basic_block(func, "fn_body");
+        self.builder.position_at_end(fn_bb);
+        self.cur_fn = func;
+
+        let closure_context = if is_closure {
+            let env = func.get_nth_param(0).unwrap().into_pointer_value();
+            Some(ClosureContext { env, captured_variables })
+        } else {
+            None
+        };
+        let num_received_args = func.get_nth_param(1).unwrap().into_int_value();
+        self.begin_new_fn_scope(fn_name.clone(), closure_context);
+        for (mut idx, (tok, _, _, default_value)) in node.args.into_iter().enumerate() {
+            idx += 2; // Skip over `env` and `num_received_args` params
+
+            let name = Token::get_ident_name(&tok);
+            let param_ptr = self.builder.build_alloca(self.value_t(), &name);
+            self.current_scope_mut().variables.insert(name, Variable { local_ptr: param_ptr, is_captured: false });
+
+            // If there's a default value for the parameter assign it, making sure to only evaluate the default expression if necessary
+            let param_val = func.get_nth_param(idx as u32)
+                .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &fn_name));
+            let param_val = if let Some(default_value) = default_value {
+                // Supply the default value for the parameter if it was either explicitly/implicitly omitted.
+                // Explicit omission:
+                //   func foo(i = 0): Int = i
+                //   foo() // A `None` will be explicitly passed in this case, since the required arity of `foo` is known at compile-time
+                // Implicit omission:
+                //   func foo(i = 0): Int = i
+                //   func bar(fn: () => Int): Int = fn()
+                //   bar(foo) // Within the body of `bar`, we cannot know the required arity of its argument, and thus we cannot emit `None` values to pass
+                //
+                // $param = if num_received_args < $param_idx || $param == None { $default } else { $param }
+                let cond = self.builder.build_or(
+                    self.builder.build_int_compare(IntPredicate::ULE, num_received_args, self.context.i8_type().const_int((idx - 2) as u64, false),  ""),
+                    self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), ""),
+                    "cond"
+                );
+                let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                self.builder.position_at_end(then_bb);
+                let then_val = self.visit(default_value)?;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(else_bb);
+                let else_val = param_val;
+                self.builder.build_unconditional_branch(cont_bb);
+
+                self.builder.position_at_end(cont_bb);
+                let phi = self.builder.build_phi(self.value_t(), "");
+                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                phi.as_basic_value()
+            } else {
+                param_val
+            };
+            self.builder.build_store(param_ptr, param_val);
+        }
+
+        let body_len = node.body.len();
+        for (idx, node) in node.body.into_iter().enumerate() {
+            let value = self.visit(node)?;
+
+            if idx == body_len - 1 {
+                if fn_ret_type == Type::Unit {
+                    self.builder.build_return(None);
+                } else {
+                    self.builder.build_return(Some(&value.as_basic_value_enum()));
+                }
+            }
+        }
+
+        self.cur_fn = old_fn;
+        self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+        self.end_scope();
+
+        let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
+        let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
+        let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap();
+        if !is_method {
+            let fn_local = fn_local.unwrap();
+            if node.is_recursive {
+                let val = self.builder.build_load(fn_local, "");
+                let ptr = self.emit_extract_nan_tagged_obj(val.into_int_value());
+                let ptr = self.builder.build_pointer_cast(ptr, self.value_t().ptr_type(AddressSpace::Generic), "");
+                self.builder.build_store(ptr, fn_val);
+            } else {
+                self.builder.build_store(fn_local, fn_val);
+            }
+        }
+
+        Ok(fn_ptr_val.into_int_value().as_basic_value_enum())
+    }
 }
 
 impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'a, 'ctx> {
@@ -940,159 +1108,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_function_decl(&mut self, _token: Token, node: TypedFunctionDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let old_fn = self.cur_fn;
-
-        let namespace = self.scopes.iter().map(|s| &s.name).join("::");
         let fn_name = Token::get_ident_name(&node.name);
-        let fully_qualified_fn_name = format!("{}::{}", namespace, fn_name);
 
-        let captured_variables = CapturedVariableFinder::find_captured_variables(&node);
-        let num_captured_variables = captured_variables.len();
-        let is_closure = !captured_variables.is_empty();
-
-        let fn_ret_type = node.ret_type;
-        let fn_type = self.gen_llvm_fn_type(fn_ret_type != Type::Unit, node.args.len());
-        let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
-        let fn_local = self.builder.build_alloca(self.value_t(), &fn_name);
-        self.current_scope_mut().variables.insert(fn_name.clone(), Variable { local_ptr: fn_local, is_captured: false });
-
-        let env_mem= if !is_closure {
-            self.current_scope_mut().fns.insert(fn_name.clone(), func);
-
-            self.value_t_ptr().const_zero() // Pass `NULL` as env if non-closure
-        } else {
-            // Allocate space for closure's `env`, lifting variables from the current scope if necessary
-            let env_mem = self.builder.build_call(
-                self.cached_fn(FN_MALLOC),
-                &[self.builder.build_int_mul(self.value_t().size_of(), self.context.i64_type().const_int(num_captured_variables as u64, false), "").into()],
-                ""
-            ).try_as_basic_value().left().unwrap().into_pointer_value();
-            let env_mem = self.builder.build_pointer_cast(env_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
-
-            for (name, idx) in &captured_variables {
-                let var = self.scopes.iter_mut().rev()
-                    .find_map(|sc| sc.variables.get_mut(name))
-                    .expect(&format!("Internal error: could not find captured variable '{}' in outer scope", name));
-                let needs_lift = if !var.is_captured {
-                    var.is_captured = true;
-                    true
-                } else {
-                    false
-                };
-
-                // If necessary, "lift" the variable from its current location as a stack local to the heap,
-                // and overwrite stack local value with pointer to heap value. Subsequent accesses of this
-                // variable will need to make an extra dereference through this pointer (see `resolve_ptr_to_variable`).
-                let val = if needs_lift {
-                    let local_ptr = var.local_ptr;
-                    let val = self.builder.build_load(local_ptr, "");
-                    let lifted_val_mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[self.value_t().size_of().into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
-                    let lifted_val_mem = self.builder.build_pointer_cast(lifted_val_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
-                    self.builder.build_store(lifted_val_mem, val);
-                    let lifted_val = self.emit_nan_tagged_obj(lifted_val_mem).as_basic_value_enum();
-                    self.builder.build_store(local_ptr, lifted_val);
-                    lifted_val
-                } else {
-                    let ptr = self.resolve_ptr_to_variable(&name);
-                    self.emit_nan_tagged_obj(ptr).as_basic_value_enum()
-                };
-
-                let env_slot = unsafe { self.builder.build_gep(env_mem, &[self.context.i32_type().const_int(*idx as u64, false)], "") };
-                self.builder.build_store(env_slot, val);
-            }
-
-            env_mem
-        };
-
-        let fn_bb = self.context.append_basic_block(func, "fn_body");
-        self.builder.position_at_end(fn_bb);
-        self.cur_fn = func;
-
-        let closure_context = if is_closure {
-            let env = func.get_nth_param(0).unwrap().into_pointer_value();
-            Some(ClosureContext { env, captured_variables })
-        } else {
-            None
-        };
-        let num_received_args = func.get_nth_param(1).unwrap().into_int_value();
-        self.begin_new_fn_scope(fn_name.clone(), closure_context);
-        for (mut idx, (tok, _, _, default_value)) in node.args.into_iter().enumerate() {
-            idx += 2; // Skip over `env` and `num_received_args` params
-
-            let name = Token::get_ident_name(&tok);
-            let param_ptr = self.builder.build_alloca(self.value_t(), &name);
-            self.current_scope_mut().variables.insert(name, Variable { local_ptr: param_ptr, is_captured: false });
-
-            // If there's a default value for the parameter assign it, making sure to only evaluate the default expression if necessary
-            let param_val = func.get_nth_param(idx as u32)
-                .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &fn_name));
-            let param_val = if let Some(default_value) = default_value {
-                // Supply the default value for the parameter if it was either explicitly/implicitly omitted.
-                // Explicit omission:
-                //   func foo(i = 0): Int = i
-                //   foo() // A `None` will be explicitly passed in this case, since the required arity of `foo` is known at compile-time
-                // Implicit omission:
-                //   func foo(i = 0): Int = i
-                //   func bar(fn: () => Int): Int = fn()
-                //   bar(foo) // Within the body of `bar`, we cannot know the required arity of its argument, and thus we cannot emit `None` values to pass
-                //
-                // $param = if num_received_args < $param_idx || $param == None { $default } else { $param }
-                let cond = self.builder.build_or(
-                    self.builder.build_int_compare(IntPredicate::ULE, num_received_args, self.context.i8_type().const_int((idx - 2) as u64, false),  ""),
-                    self.builder.build_int_compare(IntPredicate::EQ, param_val.into_int_value(), self.val_none(), ""),
-                    "cond"
-                );
-                let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
-                self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-                self.builder.position_at_end(then_bb);
-                let then_val = self.visit(default_value)?;
-                self.builder.build_unconditional_branch(cont_bb);
-
-                self.builder.position_at_end(else_bb);
-                let else_val = param_val;
-                self.builder.build_unconditional_branch(cont_bb);
-
-                self.builder.position_at_end(cont_bb);
-                let phi = self.builder.build_phi(self.value_t(), "");
-                phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
-                phi.as_basic_value()
-            } else {
-                param_val
-            };
-            self.builder.build_store(param_ptr, param_val);
-        }
-
-        let body_len = node.body.len();
-        for (idx, node) in node.body.into_iter().enumerate() {
-            let value = self.visit(node)?;
-
-            if idx == body_len - 1 {
-                if fn_ret_type == Type::Unit {
-                    self.builder.build_return(None);
-                } else {
-                    self.builder.build_return(Some(&value.as_basic_value_enum()));
-                }
-            }
-        }
-
-        self.cur_fn = old_fn;
-        self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
-        self.end_scope();
-
-        let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
-        let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
-        let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap();
-        if node.is_recursive {
-            let val = self.builder.build_load(fn_local, "");
-            let ptr = self.emit_extract_nan_tagged_obj(val.into_int_value());
-            let ptr = self.builder.build_pointer_cast(ptr, self.value_t().ptr_type(AddressSpace::Generic), "");
-            self.builder.build_store(ptr, fn_val);
-        } else {
-            self.builder.build_store(fn_local, fn_val);
-        }
+        self.compile_function(fn_name, false, node)?;
 
         let res = self.emit_nan_tagged_int_const(0);
         Ok(res.into())
@@ -1161,7 +1179,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
             &[
                 type_id.into(),
-                self.context.i32_type().const_int(num_methods as u64, false).into()
+                self.context.i32_type().const_int((num_methods + 3) as u64, false).into()
             ],
             "",
         ).try_as_basic_value().left().unwrap().into_pointer_value();
@@ -1315,6 +1333,17 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fn_ptr = hash_fn.as_global_value().as_pointer_value();
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        for (idx, (name, decl_node)) in node.methods.into_iter().enumerate() {
+            let fn_name = format!("{}__{}", &type_name, name);
+
+            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node {
+                decl_node
+            } else { unreachable!() };
+            let fn_val = self.compile_function(fn_name, true, decl_node)?;
+            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int((idx + 3) as u64, false)], "") };
+            self.builder.build_store(slot, fn_val);
+        }
 
         Ok(self.val_none().as_basic_value_enum())
     }
@@ -1508,8 +1537,19 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     }
                 }
             }
-            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, .. }) => {
+            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, field_ident, .. }) => {
                 if !is_method { todo!(); }
+
+                let is_builtin_type = match target.get_type() {
+                    Type::Int | Type::Float | Type::Bool | Type::Array(_) | Type::Tuple(_) | Type::Map(_, _) | Type::Set(_) => true,
+                    _ => false,
+                };
+                let field_idx = if is_builtin_type {
+                    field_idx
+                } else {
+                    let field_name = Token::get_ident_name(&field_ident);
+                    if field_name == "toString" { 0 } else { field_idx + 2 }
+                };
 
                 if let Type::Fn(FnType { ret_type, arg_types, .. }) = &typ {
                     let num_args = arg_types.len() + 1;

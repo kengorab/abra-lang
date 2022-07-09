@@ -1,12 +1,10 @@
-//func six(): Int = 6
-//func a(x = six, y = six): Int = x() + y()
+type Person {
+  name: String
 
-//func six(): Int = 6
-      func abc(): Int {
-        print("[abc] ")
-        6
-      }
-func a(x = abc, y = abc): Int = x() + y()
-println((a, a)[0](a, a))
+  func greet(self) {
+    println("Hello!")
+  }
+}
 
-//println(a(a, a))
+val me = Person(name: "Ken")
+me.greet

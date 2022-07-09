@@ -11,7 +11,7 @@ fn test_run_with_modules(input: &str, modules: Vec<(&str, &str)>) -> String {
     let mut mock_loader = ModuleLoader::new(&mut mock_reader);
     let module_id = ModuleId::parse_module_path("./test").unwrap();
     let module = crate::typecheck(module_id.clone(), &input.to_string(), &mut mock_loader)
-        .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!() })
+        .map_err(|e| if let crate::Error::TypecheckerError(e) = e { e.kind } else { unreachable!("Error: {:#?}", e); })
         .unwrap();
     mock_loader.add_typed_module(module);
 
@@ -703,7 +703,7 @@ fn test_closures() {
 }
 
 #[test]
-fn test_types() {
+fn test_types_base_functionality() {
     let setup = r#"
       type Person {
         name: String
@@ -720,6 +720,28 @@ fn test_types() {
             "#{Person(name: \"Human\", age: 30), Person(name: \"Human\"), Person(name: \"Other Human\", age: 31)}",
             "#{Person(name: Human, age: 30), Person(name: Other Human, age: 31)}"
         ),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
+fn test_types_methods() {
+    let setup = r#"
+      type Person {
+        name: String
+        age: Int = 30
+
+        func returnSix(self): Int = 6
+        func sayHello(self) = println("Hello!")
+      }
+
+      val p = Person(name: "Human", age: 30)
+    "#;
+
+    let cases = vec![
+        ("", "p.toString()", "Person(name: Human, age: 30)"),
+        ("", "p.returnSix()", "6"),
+        ("p.sayHello()", "", "Hello!"),
     ];
     run_test_cases_with_setup(setup, cases);
 }
