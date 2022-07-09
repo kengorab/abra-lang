@@ -824,7 +824,26 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
         }
 
-        Ok(fn_ptr_val.into_int_value().as_basic_value_enum())
+        Ok(fn_val)
+    }
+
+    fn unpack_function_value(&self, fn_val_as_value_t: IntValue<'ctx>, num_args: usize, ret_type: &Type) -> (Option<CallableValue<'ctx>>, BasicValueEnum<'ctx>) {
+        let fn_val_ptr = self.builder.build_pointer_cast(
+            self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
+            self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
+            ""
+        );
+        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
+        let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+
+        let fn_type = self.gen_llvm_fn_type(ret_type != &Type::Unit, num_args);
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_value_t, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let callable = CallableValue::try_from(fn_ptr).ok();
+
+        let env_ptr_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
+        let env_ptr = self.builder.build_load(env_ptr_ptr, "");
+
+        (callable, env_ptr)
     }
 }
 
@@ -1232,8 +1251,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             tostring_fn
         };
         let fn_ptr = tostring_fn.as_global_value().as_pointer_value();
+        let fn_name_val = self.builder.build_global_string_ptr("toString", "").as_pointer_value().into();
+        let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
+        let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap();
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_val, self.context.i64_type(), ""));
 
         // Generate eq method
         let eq_fn = {
@@ -1341,7 +1363,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 decl_node
             } else { unreachable!() };
             let fn_val = self.compile_function(fn_name, true, decl_node)?;
-            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int((idx + 3) as u64, false)], "") };
+            let idx = if name == "toString" { 0 } else { idx + 3 };
+            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
             self.builder.build_store(slot, fn_val);
         }
 
@@ -1495,95 +1518,70 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let mut args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
-          self.value_t().ptr_type(AddressSpace::Generic).const_zero().into()
-        ];
+        let null_ptr = self.value_t().ptr_type(AddressSpace::Generic).const_zero();
 
-        #[inline]
-        fn convert_serialized_fn_ptr_to_callable<'a, 'ctx>(zelf: &Compiler<'a, 'ctx>, fn_ptr_value_t: IntValue<'ctx>, num_args: usize, ret_type: &Type) -> Option<CallableValue<'ctx>> {
-            let fn_type = zelf.gen_llvm_fn_type(ret_type != &Type::Unit, num_args);
-            let fn_ptr = zelf.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_value_t, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
-            CallableValue::try_from(fn_ptr).ok()
-        }
-
-        let fn_value = match *node.target {
+        let (callable, env_ptr, num_passed_args, receiver) = match *node.target {
             TypedAstNode::Identifier(_, TypedIdentifierNode { name, .. }) => {
                 let num_args = node.args.len();
-                args.push(self.context.i8_type().const_int(num_args as u64, false).into());
-
-                let fn_ret_type = &node.typ;
 
                 // If there's a known function in the scopes by the given name, use that FunctionValue.
                 // Otherwise, if there's a variable in the scopes by the given name, then that variable
                 // is an instance of `Function` and we construct a CallableValue from its fn_ptr.
                 let found_function = self.scopes.iter().rev().find_map(|sc| sc.fns.get(&name)).map(|f| CallableValue::from(f.clone()));
                 match found_function {
-                    Some(f) => Some(f),
+                    Some(f) => (Some(f), null_ptr.into(), num_args, None),
                     None => {
                         let ptr = self.resolve_ptr_to_variable(&name);
-                        let fn_val = self.builder.build_load(ptr, "").into_int_value();
-                        let fn_val_ptr = self.builder.build_pointer_cast(
-                            self.emit_extract_nan_tagged_obj(fn_val),
-                            self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
-                            ""
-                        );
-                        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
-                        let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+                        let fn_val_as_value_t = self.builder.build_load(ptr, "").into_int_value();
+                        let (callable, env_ptr) = self.unpack_function_value(fn_val_as_value_t, num_args, &node.typ);
 
-                        let env_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
-                        args[0] = self.builder.build_load(env_ptr, "").into();
-
-                        convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, fn_ret_type)
+                        (callable, env_ptr, num_args, None)
                     }
                 }
             }
             TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, field_ident, .. }) => {
                 if !is_method { todo!(); }
 
-                let is_builtin_type = match target.get_type() {
-                    Type::Int | Type::Float | Type::Bool | Type::Array(_) | Type::Tuple(_) | Type::Map(_, _) | Type::Set(_) => true,
-                    _ => false,
-                };
-                let field_idx = if is_builtin_type {
-                    field_idx
-                } else {
-                    let field_name = Token::get_ident_name(&field_ident);
-                    if field_name == "toString" { 0 } else { field_idx + 2 }
+                let field_idx = match target.get_type() {
+                    Type::Int | Type::Float | Type::Bool | Type::Array(_) | Type::Tuple(_) | Type::Map(_, _) | Type::Set(_) => field_idx,
+                    _ => {
+                        let field_name = Token::get_ident_name(&field_ident);
+                        if field_name == "toString" { 0 } else { field_idx + 2 }
+                    }
                 };
 
                 if let Type::Fn(FnType { ret_type, arg_types, .. }) = &typ {
                     let num_args = arg_types.len() + 1;
-                    args.push(self.context.i8_type().const_int(num_args as u64, false).into());
 
                     let rcv = self.visit(*target)?;
-                    args.push(rcv.into());
 
                     let idx = self.context.i32_type().const_int(field_idx as u64, false);
-                    let fn_ptr_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
-                    convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, ret_type)
+                    let fn_val_as_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+
+                    let (callable, env_ptr) = self.unpack_function_value(fn_val_as_value_t, num_args, ret_type);
+
+                    (callable, env_ptr, num_args, rcv.into())
                 } else { unreachable!() }
             }
             expr => {
                 let (fn_ret_type, num_args) = if let Type::Fn(FnType { ret_type, arg_types, .. }) = expr.get_type() { (ret_type, arg_types.len()) } else { unreachable!() };
                 let typed_expr = self.visit(expr)?;
+                let fn_val_as_value_t = typed_expr.into_int_value();
 
-                let fn_val_ptr = self.builder.build_pointer_cast(
-                    self.emit_extract_nan_tagged_obj(typed_expr.into_int_value()),
-                    self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
-                    ""
-                );
-                let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
-                let fn_ptr_value_t = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+                let (callable, env_ptr) = self.unpack_function_value(fn_val_as_value_t, num_args, &fn_ret_type);
 
-                let env_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
-                args[0] = self.builder.build_load(env_ptr, "").into();
-
-                args.push(self.context.i8_type().const_int(num_args as u64, false).into());
-
-                convert_serialized_fn_ptr_to_callable(self, fn_ptr_value_t, num_args, &fn_ret_type)
+                (callable, env_ptr, num_args, None)
             }
         };
-        let fn_value = fn_value.unwrap();
+        let fn_value = callable.unwrap();
+
+        let args_size = node.args.len() + receiver.map_or(0, |_| 1) + 2;
+        let mut args = Vec::with_capacity(args_size);
+        args.push(env_ptr.into());
+        args.push(self.context.i8_type().const_int(num_passed_args as u64, false).into());
+        if let Some(rcv) = receiver {
+            args.push(rcv.into());
+        }
 
         for arg in node.args {
             let arg = if let Some(arg) = arg {

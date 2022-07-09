@@ -43,8 +43,31 @@ void range_endpoints(int32_t len, int32_t* start, int32_t* end) {
 value_t value_to_string(value_t value) {
   if (value == VAL_NONE) return string_alloc(4, "None");
 
-  tostring_method_t tostring_method = (tostring_method_t)vtable_lookup(value, TOSTRING_IDX);
-  return tostring_method(NULL, 1, value);
+  tostring_method_t tostring_method;
+  value_t* env = NULL;
+
+  // A type's toString method can have an explicit implementation provided, which in theory can be a closure. We know
+  // however, that none of the builtin types' toString methods are closures, so we can take a shortcut here.
+  uint32_t type_id = type_id_for_val(value);
+  if (
+    type_id == type_id_Int ||
+    type_id == type_id_Float ||
+    type_id == type_id_Bool ||
+    type_id == type_id_String ||
+    type_id == type_id_Array ||
+    type_id == type_id_Tuple ||
+    type_id == type_id_Map ||
+    type_id == type_id_Set ||
+    type_id == type_id_Function
+  ) {
+    tostring_method = (tostring_method_t)vtable_lookup(value, TOSTRING_IDX);
+  } else {
+    Function* f = AS_OBJ(vtable_lookup(value, TOSTRING_IDX), Function);
+    tostring_method = (tostring_method_t)f->fn_ptr;
+    env = f->env;
+  }
+
+  return tostring_method(env, 1, value);
 }
 
 value_t values_to_string(

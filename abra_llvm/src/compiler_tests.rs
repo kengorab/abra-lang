@@ -712,6 +712,7 @@ fn test_types_base_functionality() {
     "#;
     let cases = vec![
         ("Person(name: \"Human\", age: 30)", "Person(name: Human, age: 30)"),
+        ("Person(name: \"Human\", age: 30).toString()", "Person(name: Human, age: 30)"),
         ("Person(name: \"Human\")", "Person(name: Human, age: 30)"),
         ("Person(name: \"Human\") == Person(name: \"Other Human\")", "false"),
         ("Person(name: \"Human\") == \"Human\"", "false"),
@@ -727,21 +728,33 @@ fn test_types_base_functionality() {
 #[test]
 fn test_types_methods() {
     let setup = r#"
+      val message = "Hello!"
+
       type Person {
         name: String
         age: Int = 30
 
+        func toString(self): String {
+          print(message)
+          "<from explicit toString implementation>"
+        }
+        func printSelf(self) = print(self)
         func returnSix(self): Int = 6
-        func sayHello(self) = println("Hello!")
+        func sayHello(self) = print("Hello!")
+        func sayHelloClosure(self) = print(message)
+        func sayHelloIndirect(self) = self.sayHello()
       }
 
       val p = Person(name: "Human", age: 30)
     "#;
 
     let cases = vec![
-        ("", "p.toString()", "Person(name: Human, age: 30)"),
+        ("", "p.toString()", "Hello!<from explicit toString implementation>"),
+        ("p.printSelf()", "", "Hello!<from explicit toString implementation>"),
         ("", "p.returnSix()", "6"),
         ("p.sayHello()", "", "Hello!"),
+        ("p.sayHelloClosure()", "", "Hello!"),
+        ("p.sayHelloIndirect()", "", "Hello!"),
     ];
     run_test_cases_with_setup(setup, cases);
 }

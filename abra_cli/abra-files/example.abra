@@ -1,10 +1,30 @@
+val hello = "Hello"
+
 type Person {
   name: String
 
-  func greet(self) {
-    println("Hello!")
+  func toString(self): String {
+    println(hello)
+    "Person(...)"
   }
 }
 
 val me = Person(name: "Ken")
-me.greet
+println(me.toString(), me)
+
+/* TODO: Function hoisting
+val hello = "Hello"
+
+type Person {
+  name: String
+
+  func greet(self) {
+    sayHello(hello)
+  }
+}
+
+func sayHello(msg: String) = println(msg)
+
+val me = Person(name: "Ken")
+me.greet()
+*/
