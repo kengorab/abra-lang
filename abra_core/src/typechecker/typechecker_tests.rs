@@ -1833,6 +1833,7 @@ fn typecheck_type_decl() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((1, 15), "name"),
@@ -1861,6 +1862,7 @@ fn typecheck_type_decl() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((1, 15), "name"),
@@ -2014,6 +2016,7 @@ fn typecheck_type_decl_methods() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((2, 1), "name"),
@@ -2154,6 +2157,7 @@ fn typecheck_type_decl_static_methods() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((2, 1), "name"),

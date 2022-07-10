@@ -1822,7 +1822,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
-        self.cur_typedef = Some(typeref);
+        self.cur_typedef = Some(typeref.clone());
 
         // Insert Generics for all type_args present
         let mut scope = Scope::new(ScopeKind::TypeDef);
@@ -1904,7 +1904,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // this TypeDeclNode and add static fields and methods, but this allows for methods to reference
         // fields of instances of this current type within their bodies.
         let (_, node) = self.get_type_mut(&new_type_name).unwrap();
-        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields: typed_fields, static_fields: vec![], methods: vec![] });
+        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, self_type: typeref, fields: typed_fields, static_fields: vec![], methods: vec![] });
         *node = Some(type_decl_node.clone());
 
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(false, methods, field_names)?;

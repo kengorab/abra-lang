@@ -758,3 +758,29 @@ fn test_types_methods() {
     ];
     run_test_cases_with_setup(setup, cases);
 }
+
+#[test]
+fn test_types_fields() {
+    let setup = r#"
+      type Person {
+        name: String
+        age: Int = 30
+      }
+      val p = Person(name: "Human", age: 30)
+    "#;
+    let cases = vec![
+        // Builtin types' fields
+        ("\"\".length", "0"),
+        ("\"asdf\".length", "4"),
+        ("[].length", "0"),
+        ("[1, 2, 3].length", "3"),
+        ("#{}.size", "0"),
+        ("#{1, 2, 3, 2, 1}.size", "3"),
+        ("{}.size", "0"),
+        ("{ a: 1, b: 3 }.size", "2"),
+        // User-defined types' fields
+        ("p.name", "Human"),
+        ("p.name.length + p.age", "35"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}

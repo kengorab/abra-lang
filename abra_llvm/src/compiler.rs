@@ -51,7 +51,11 @@ const FN_VALUE_HASH: &str = "value_hash";
 
 // Cached externally-defined types
 const TYPE_OBJ_HEADER: &str = "obj_header_t";
+const TYPE_HASHMAP: &str = "hashmap_t";
 const TYPE_STRING: &str = "String";
+const TYPE_ARRAY: &str = "Array";
+const TYPE_MAP: &str = "Map";
+const TYPE_SET: &str = "Set";
 const TYPE_FUNCTION: &str = "Function";
 
 // NaN-tagging constants
@@ -81,6 +85,7 @@ struct ClosureContext<'ctx> {
 
 #[derive(Debug)]
 struct TypeSpec<'ctx> {
+    typ: Type,
     type_id: IntValue<'ctx>,
     struct_type: StructType<'ctx>,
     ctor_fn: FunctionValue<'ctx>
@@ -145,7 +150,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         compiler.finalize(&last_item_type, last_item);
 
-        // module.print_to_stderr();
+        module.print_to_stderr();
         Ok(module)
     }
 
@@ -306,12 +311,37 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         let obj_header_t = self.context.opaque_struct_type(TYPE_OBJ_HEADER);
         obj_header_t.set_body(&[i32.into() /* type_id */], false);
+        let hashmap_t = self.context.opaque_struct_type(TYPE_HASHMAP);
+        hashmap_t.set_body(&[i32.into(), i32.into() /* size */], false);
 
         self.context.opaque_struct_type(TYPE_STRING).set_body(
             &[
                 obj_header_t.into(), // obj_header_t h
                 i32.into(), // int32_t length
                 str, // char* chars
+            ],
+            false,
+        );
+        self.context.opaque_struct_type(TYPE_ARRAY).set_body(
+            &[
+                obj_header_t.into(), // obj_header_t h
+                i32.into(), // int32_t length
+                i32.into(), // int32_t capacity
+                value_t.ptr_type(AddressSpace::Generic).into(), // value_t* items
+            ],
+            false,
+        );
+        self.context.opaque_struct_type(TYPE_MAP).set_body(
+            &[
+                obj_header_t.into(), // obj_header_t h
+                hashmap_t.into(), // hashmap_t hash
+            ],
+            false,
+        );
+        self.context.opaque_struct_type(TYPE_SET).set_body(
+            &[
+                obj_header_t.into(), // obj_header_t h
+                hashmap_t.into(), // hashmap_t hash
             ],
             false,
         );
@@ -1190,7 +1220,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             ctor_fn
         };
 
-        let type_spec = TypeSpec { type_id, struct_type, ctor_fn };
+        let type_spec = TypeSpec { typ: node.self_type, type_id, struct_type, ctor_fn };
         self.current_scope_mut().types.insert(type_name.clone(), type_spec);
 
         let num_methods = node.methods.len();
@@ -1627,8 +1657,93 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_accessor(&mut self, _token: Token, _node: TypedAccessorNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        debug_assert!(!node.is_opt_safe);
+        assert!(!node.is_method);
+
+        let target_type = node.target.get_type();
+        let target = self.visit(*node.target)?;
+
+        let field_name = Token::get_ident_name(&node.field_ident);
+
+        let val = match target_type {
+            Type::Int => unreachable!("Internal error: type Int has no accessible fields"),
+            Type::Float => unreachable!("Internal error: type Float has no accessible fields"),
+            Type::Bool => unreachable!("Internal error: type Bool has no accessible fields"),
+            Type::Tuple(_) => unreachable!("Internal error: type Tuple has no accessible fields"),
+            Type::String => {
+                let target = self.emit_extract_nan_tagged_obj(target.into_int_value());
+                let target = self.builder.build_pointer_cast(target, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "");
+
+                if field_name == "length" {
+                    let length_ptr = self.builder.build_struct_gep(target, 1, "").unwrap();
+                    let length_val = self.builder.build_load(length_ptr, "");
+                    self.emit_nan_tagged_int(length_val.into_int_value()).into()
+                } else {
+                    unreachable!("Internal error: type String has no field '{}'", field_name);
+                }
+            }
+            Type::Array(_) => {
+                let target = self.emit_extract_nan_tagged_obj(target.into_int_value());
+                let target = self.builder.build_pointer_cast(target, self.cached_type(TYPE_ARRAY).ptr_type(AddressSpace::Generic), "");
+
+                if field_name == "length" {
+                    let length_ptr = self.builder.build_struct_gep(target, 1, "").unwrap();
+                    let length_val = self.builder.build_load(length_ptr, "");
+                    self.emit_nan_tagged_int(length_val.into_int_value()).into()
+                } else {
+                    unreachable!("Internal error: type Array has no field '{}'", field_name);
+                }
+            }
+            Type::Map(_, _) => {
+                let target = self.emit_extract_nan_tagged_obj(target.into_int_value());
+                let target = self.builder.build_pointer_cast(target, self.cached_type(TYPE_MAP).ptr_type(AddressSpace::Generic), "");
+
+                if field_name == "size" {
+                    let hashmap_ptr = self.builder.build_struct_gep(target, 1, "").unwrap();
+                    let hashmap_size_ptr = self.builder.build_struct_gep(hashmap_ptr, 1, "").unwrap(); // Not sure why this is 1 and not 0, since `size` is the first field on hashmap_t...
+                    let hashmap_size_val = self.builder.build_load(hashmap_size_ptr, "");
+
+                    self.emit_nan_tagged_int(hashmap_size_val.into_int_value()).into()
+                } else {
+                    unreachable!("Internal error: type Map has no field '{}'", field_name);
+                }
+            }
+            Type::Set(_) => {
+                let target = self.emit_extract_nan_tagged_obj(target.into_int_value());
+                let target = self.builder.build_pointer_cast(target, self.cached_type(TYPE_SET).ptr_type(AddressSpace::Generic), "");
+
+                if field_name == "size" {
+                    let hashmap_ptr = self.builder.build_struct_gep(target, 1, "").unwrap();
+                    let hashmap_size_ptr = self.builder.build_struct_gep(hashmap_ptr, 1, "").unwrap(); // Not sure why this is 1 and not 0, since `size` is the first field on hashmap_t...
+                    let hashmap_size_val = self.builder.build_load(hashmap_size_ptr, "");
+
+                    self.emit_nan_tagged_int(hashmap_size_val.into_int_value()).into()
+                } else {
+                    unreachable!("Internal error: type Set has no field '{}'", field_name);
+                }
+            }
+            _ => {
+                let type_spec = self.scopes[0].types
+                    .values()
+                    .find(|spec| spec.typ == target_type)
+                    .expect(&format!("Internal error: could not find type '{:?}' in scope", target_type));
+                if node.is_method {
+                    unimplemented!()
+                }
+
+                let target = self.emit_extract_nan_tagged_obj(target.into_int_value());
+                let target = self.builder.build_pointer_cast(target, type_spec.struct_type.ptr_type(AddressSpace::Generic), "");
+
+                let idx = (node.field_idx + 1) as u32; // +1 to account for obj_header
+                let field_ptr = self.builder.build_struct_gep(target, idx, "").unwrap();
+                let field_val = self.builder.build_load(field_ptr, "");
+
+                field_val.into()
+            }
+        };
+
+        Ok(val)
     }
 
     fn visit_for_loop(&mut self, _token: Token, _node: TypedForLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

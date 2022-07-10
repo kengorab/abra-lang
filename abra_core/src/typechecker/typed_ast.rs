@@ -263,6 +263,7 @@ pub struct TypedFunctionDeclNode {
 pub struct TypedTypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    pub self_type: Type,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<TypedTypeDeclField>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
