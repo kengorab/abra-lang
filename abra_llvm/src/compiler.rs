@@ -1233,8 +1233,16 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             "",
         ).try_as_basic_value().left().unwrap().into_pointer_value();
 
-        // Generate toString method
-        let tostring_fn = {
+        // Find the potential user-defined toString method definition for the current type
+        let (mut tostring_method_defs, method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
+        debug_assert!(tostring_method_defs.len() <= 1);
+
+        // Generate toString method, using user-defined method if provided; otherwise generate the default
+        let tostring_fn_val = if let Some(tostring_method_def) = tostring_method_defs.pop() {
+            let (name, node) = tostring_method_def;
+            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = node { decl_node } else { unreachable!() };
+            self.compile_function(name, true, decl_node)?
+        } else {
             let old_fn = self.cur_fn;
 
             let tostring_fn_type = self.gen_llvm_fn_type(true, 1);
@@ -1278,14 +1286,13 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             self.cur_fn = old_fn;
             self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
 
-            tostring_fn
+            let fn_ptr = tostring_fn.as_global_value().as_pointer_value();
+            let fn_name_val = self.builder.build_global_string_ptr("toString", "").as_pointer_value().into();
+            let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
+            self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap()
         };
-        let fn_ptr = tostring_fn.as_global_value().as_pointer_value();
-        let fn_name_val = self.builder.build_global_string_ptr("toString", "").as_pointer_value().into();
-        let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
-        let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap();
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_val, self.context.i64_type(), ""));
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), ""));
 
         // Generate eq method
         let eq_fn = {
@@ -1386,14 +1393,12 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
 
-        for (idx, (name, decl_node)) in node.methods.into_iter().enumerate() {
+        for (idx, (name, decl_node)) in method_defs.into_iter().enumerate() {
             let fn_name = format!("{}__{}", &type_name, name);
 
-            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node {
-                decl_node
-            } else { unreachable!() };
+            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node { decl_node } else { unreachable!() };
             let fn_val = self.compile_function(fn_name, true, decl_node)?;
-            let idx = if name == "toString" { 0 } else { idx + 3 };
+            let idx = idx + 3; // +3 to account for toString, eq, hash
             let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
             self.builder.build_store(slot, fn_val);
         }
