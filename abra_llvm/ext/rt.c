@@ -300,6 +300,13 @@ value_t prelude__Int__toString(value_t* _env, int8_t _num_rcv_args, value_t _sel
   return string_alloc(len, result);
 }
 
+value_t prelude__Int__abs(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  int32_t self = AS_INT(_self);
+
+  if (self < 0) return TAG_INT(-self);
+  return _self;
+}
+
 // ------------------------ FLOAT ------------------------
 value_t prelude__Float__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {
   double self = AS_DOUBLE(_self);
@@ -309,6 +316,13 @@ value_t prelude__Float__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
   snprintf(result, len + 1, "%f", self);
 
   return string_alloc(len, result);
+}
+
+value_t prelude__Float__floor(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  double self = AS_DOUBLE(_self);
+  int32_t i = (int32_t)floor(self);
+
+  return TAG_INT(i);
 }
 
 // ------------------------ BOOL ------------------------
@@ -513,6 +527,12 @@ value_t prelude__Array__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
   return values_to_string(self->length, self->items, 1, "[", 1, "]", 2, ", ");
 }
 
+value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Array* self = AS_OBJ(_self, Array);
+
+  return self->length == 0 ? VAL_TRUE : VAL_FALSE;
+}
+
 // ------------------------ TUPLE ------------------------
 value_t tuple_alloc(int32_t length, ...) {
   Tuple* tuple = GC_MALLOC(sizeof(Tuple));
@@ -625,6 +645,12 @@ value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _sel
   return string_alloc(total_length, chars);
 }
 
+value_t prelude__Map__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Map* self = AS_OBJ(_self, Map);
+
+  return self->hash.size == 0 ? VAL_TRUE : VAL_FALSE;
+}
+
 // ------------------------ SET ------------------------
 value_t set_alloc(int32_t size) {
   Set* set = GC_MALLOC(sizeof(Set));
@@ -647,6 +673,12 @@ value_t prelude__Set__toString(value_t* _env, int8_t _num_rcv_args, value_t _sel
   return values_to_string((int32_t)self->hash.size, keys, 2, "#{", 1, "}", 2, ", ");
 }
 
+value_t prelude__Set__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Set* self = AS_OBJ(_self, Set);
+
+  return self->hash.size == 0 ? VAL_TRUE : VAL_FALSE;
+}
+
 // ------------------------ FUNCTION ------------------------
 value_t function_alloc(char* name, value_t fn_ptr, value_t* env) {
   Function* fn = GC_MALLOC(sizeof(Function));
@@ -656,7 +688,119 @@ value_t function_alloc(char* name, value_t fn_ptr, value_t* env) {
   fn->fn_ptr = fn_ptr;
   fn->env = env; // env will be NULL for non-closures
   fn->id = (uint32_t)rand();
+  fn->bound_self = VAL_NONE;
   return TAG_OBJ(fn);
+}
+
+value_t function_bind(value_t fn_val, value_t self) {
+  Function* fn = AS_OBJ(fn_val, Function);
+  Function* fn_copy = GC_MALLOC(sizeof(Function));
+
+  fn_copy->h.type_id = type_id_Function;
+  fn_copy->name = fn->name;
+  fn_copy->fn_ptr = fn->fn_ptr;
+  fn_copy->env = fn->env;
+  fn_copy->id = (uint32_t)rand();
+  fn_copy->bound_self = self;
+
+  return TAG_OBJ(fn_copy);
+}
+
+
+value_t function_call(value_t fn_val, bool has_return, int8_t fn_arity, int8_t num_args, ...) {
+#define FN_LOGIC(n, nplus1, ...) \
+    if (fn->bound_self != VAL_NONE) { \
+        if (has_return) return ((fn_##nplus1##_t)(fn->fn_ptr))(fn->env, num_args + 1, fn->bound_self, ##__VA_ARGS__); \
+        ((fn_void_##nplus1##_t)(fn->fn_ptr))(fn->env, num_args + 1, fn->bound_self, ##__VA_ARGS__); \
+        return VAL_NONE; \
+    } \
+    if (has_return) return ((fn_##n##_t)(fn->fn_ptr))(fn->env, num_args, ##__VA_ARGS__); \
+    ((fn_void_##n##_t)(fn->fn_ptr))(fn->env, num_args, ##__VA_ARGS__); \
+    return VAL_NONE;
+
+  Function* fn = AS_OBJ(fn_val, Function);
+
+  va_list args;
+  va_start(args, num_args);
+
+  typedef value_t (*fn_0_t)(value_t*, int8_t);
+  typedef void (*fn_void_0_t)(value_t*, int8_t);
+  typedef value_t (*fn_1_t)(value_t*, int8_t, value_t);
+  typedef void (*fn_void_1_t)(value_t*, int8_t, value_t);
+  if (fn_arity == 0) { FN_LOGIC(0, 1) }
+
+  typedef value_t (*fn_2_t)(value_t*, int8_t, value_t, value_t);
+  typedef void (*fn_void_2_t)(value_t*, int8_t, value_t, value_t);
+  value_t arg0 = va_arg(args, value_t);
+  if (fn_arity == 1) { va_end(args); FN_LOGIC(1, 2, arg0) }
+
+  typedef value_t (*fn_3_t)(value_t*, int8_t, value_t, value_t, value_t);
+  typedef void (*fn_void_3_t)(value_t*, int8_t, value_t, value_t, value_t);
+  value_t arg1 = va_arg(args, value_t);
+  if (fn_arity == 2) { va_end(args); FN_LOGIC(2, 3, arg0, arg1) }
+
+  typedef value_t (*fn_4_t)(value_t*, int8_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_4_t)(value_t*, int8_t, value_t, value_t, value_t, value_t);
+  value_t arg2 = va_arg(args, value_t);
+  if (fn_arity == 3) { va_end(args); FN_LOGIC(3, 4, arg0, arg1, arg2) }
+
+  typedef value_t (*fn_5_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_5_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg3 = va_arg(args, value_t);
+  if (fn_arity == 4) { va_end(args); FN_LOGIC(4, 5, arg0, arg1, arg2, arg3) }
+
+  typedef value_t (*fn_6_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_6_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg4 = va_arg(args, value_t);
+  if (fn_arity == 5) { va_end(args); FN_LOGIC(5, 6, arg0, arg1, arg2, arg3, arg4) }
+
+  typedef value_t (*fn_7_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_7_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg5 = va_arg(args, value_t);
+  if (fn_arity == 6) { va_end(args); FN_LOGIC(6, 7, arg0, arg1, arg2, arg3, arg4, arg5) }
+
+  typedef value_t (*fn_8_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_8_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg6 = va_arg(args, value_t);
+  if (fn_arity == 7) { va_end(args); FN_LOGIC(7, 8, arg0, arg1, arg2, arg3, arg4, arg5, arg6) }
+
+  typedef value_t (*fn_9_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_9_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg7 = va_arg(args, value_t);
+  if (fn_arity == 8) { va_end(args); FN_LOGIC(8, 9, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7) }
+
+  typedef value_t (*fn_10_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_10_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg8 = va_arg(args, value_t);
+  if (fn_arity == 9) { va_end(args); FN_LOGIC(9, 10, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) }
+
+  typedef value_t (*fn_11_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_11_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg9 = va_arg(args, value_t);
+  if (fn_arity == 10) { va_end(args); FN_LOGIC(10, 11, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) }
+
+  typedef value_t (*fn_12_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_12_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg10 = va_arg(args, value_t);
+  if (fn_arity == 11) { va_end(args); FN_LOGIC(11, 12, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) }
+
+  typedef value_t (*fn_13_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_13_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg11 = va_arg(args, value_t);
+  if (fn_arity == 12) { va_end(args); FN_LOGIC(12, 13, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) }
+
+  typedef value_t (*fn_14_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_14_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg12 = va_arg(args, value_t);
+  if (fn_arity == 13) { va_end(args); FN_LOGIC(13, 14, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) }
+
+  typedef value_t (*fn_15_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  typedef void (*fn_void_15_t)(value_t*, int8_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t, value_t);
+  value_t arg13 = va_arg(args, value_t);
+  if (fn_arity == 14) { va_end(args); FN_LOGIC(14, 15, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13) }
+
+  return VAL_NONE;
+#undef FN_LOGIC
 }
 
 value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {

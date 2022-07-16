@@ -27,6 +27,7 @@ const uint64_t PAYLOAD_MASK_OBJ = (uint64_t)0x0000ffffffffffff;
 
 #define AS_OBJ(val, typ)  ((typ*)(val & PAYLOAD_MASK_OBJ))
 #define TAG_OBJ(val)      (MASK_OBJ | (uint64_t)val)
+#define TAG_INT(i)        (MASK_INT | (uint64_t)i)
 
 typedef union {
   value_t raw;

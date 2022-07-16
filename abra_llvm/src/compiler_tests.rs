@@ -1,5 +1,5 @@
 use inkwell::context::Context;
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use abra_core::common::test_utils::MockModuleReader;
 use abra_core::module_loader::ModuleLoader;
 use abra_core::parser::ast::ModuleId;
@@ -72,14 +72,26 @@ fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str,
     } else {
         inputs.iter().map(|(setup, line)| format!("{}\nprintln({})\n{}", setup, line, teardown)).join("\n")
     };
-    let input = format!("{}{}", global_setup, contents);
+    let input = format!("{}{}\nprintln()", global_setup, contents);
     // println!("{}", &input);
 
     let res = test_run_with_modules(&input, vec![]);
+    // println!("{}", &res);
+    let res_lines = res.lines();
 
-    for (line_num, (output, expected)) in res.lines().zip(expecteds).enumerate() {
-        let output = output.trim();
-        assert_eq!(expected, output, "Expected '{}' but saw '{}' (test case {})", expected, output, line_num + 1);
+    for (line_num, r) in res_lines.zip_longest(expecteds).enumerate() {
+        match r {
+            EitherOrBoth::Both(output, expected) => {
+                let output = output.trim();
+                assert_eq!(expected, output, "Expected '{}' but saw '{}' (test case {})", expected, output, line_num + 1);
+            }
+            EitherOrBoth::Left(output) => {
+                panic!("Unexpected output '{}' (test case {})", output, line_num + 1);
+            }
+            EitherOrBoth::Right(expected) => {
+                panic!("Expected '{}' but saw nothing (test case {})", expected, line_num + 1);
+            }
+        }
     }
 }
 
@@ -781,6 +793,134 @@ fn test_types_fields() {
         // User-defined types' fields
         ("p.name", "Human"),
         ("p.name.length + p.age", "35"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
+fn test_types_bound_methods() {
+    let setup = r#"
+      val hello = "Hello"
+
+      type Person {
+        name: String
+
+        func greet(self, suffix = "!"): String = hello + " from " + self.name + suffix
+      }
+
+      val i = -1
+      val f = 1.23
+      val str = "asdf"
+      val a = [1, 2, 3]
+      val set = #{1, 2, 3}
+      val m = { a: 1 }
+
+      val me = Person(name: "Ken")
+      val greet = me.greet
+    "#;
+
+    let cases = vec![
+        // Built-in types
+        ("val intAbs = i.abs", "(i.abs(), intAbs())", "(1, 1)"),
+        ("val intToString = i.toString", "(i.toString(), intToString())", "(-1, -1)"),
+        ("val floatFloor = f.floor", "(f.floor(), floatFloor())", "(1, 1)"),
+        ("val floatToString = f.toString", "(f.toString(), floatToString())", "(1.230000, 1.230000)"),
+        ("val strToUpper = str.toUpper", "(str.toUpper(), strToUpper())", "(ASDF, ASDF)"),
+        ("val strToString = str.toString", "(str.toString(), strToString())", "(asdf, asdf)"),
+        ("val arrIsEmpty = a.isEmpty", "(a.isEmpty(), arrIsEmpty())", "(false, false)"),
+        ("val arrToString = a.toString", "(a.toString(), arrToString())", "([1, 2, 3], [1, 2, 3])"),
+        ("val setIsEmpty = set.isEmpty", "(set.isEmpty(), setIsEmpty())", "(false, false)"),
+        ("val setToString = set.toString", "(set.toString(), setToString())", "(#{3, 2, 1}, #{3, 2, 1})"),
+        ("val mapIsEmpty = m.isEmpty", "(m.isEmpty(), mapIsEmpty())", "(false, false)"),
+        ("val mapToString = m.toString", "(m.toString(), mapToString())", "({ a: 1 }, { a: 1 })"),
+        // User-defined types
+        ("", "me.greet", "<func greet>"),
+        ("", "greet", "<func greet>"),
+        ("", "greet()", "Hello from Ken!"),
+        ("", "greet(\" 🙂\")", "Hello from Ken 🙂"),
+        ("", "me.greet()", "Hello from Ken!"),
+        ("", "me.greet(\" 🙂\")", "Hello from Ken 🙂"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
+fn test_calling_bound_closures() {
+    let setup = r#"
+      var a = 1
+
+      type X {
+        x: Int = 6
+
+        func foo0(self): Int {
+          a += 1
+          self.x
+        }
+        func foo1(self, a1: Int): Int {
+          a += 1
+          self.x + a1
+        }
+        func foo1_(self, a1: Int = 18): Int {
+          a += 1
+          self.x + a1
+        }
+        func foo2(self, a1: Int, a2: Int): Int {
+          a += 1
+          self.x + a1 + a2
+        }
+        func foo2_(self, a1: Int = 18, a2: Int = 19): Int {
+          a += 1
+          self.x + a1 + a2
+        }
+      }
+
+      func foo0(): Int {
+        a += 1
+        6
+      }
+      func foo1(a1: Int): Int {
+        a += 1
+        6 + a1
+      }
+      func foo1_(a1: Int = 18): Int {
+        a += 1
+        6 + a1
+      }
+      func foo2(a1: Int, a2: Int): Int {
+        a += 1
+        6 + a1 + a2
+      }
+      func foo2_(a1: Int = 18, a2: Int = 19): Int {
+        a += 1
+        6 + a1 + a2
+      }
+
+      val x = X()
+      val xFoo0 = x.foo0
+      val xFoo1 = x.foo1
+      val xFoo1_ = x.foo1_
+      val xFoo2 = x.foo2
+      val xFoo2_ = x.foo2_
+    "#;
+    let cases = vec![
+        // Testing calling standalone closure functions
+        ("foo0()", "6"),
+        ("foo1(1)", "7"),
+        ("foo1_()", "24"),
+        ("foo1_(1)", "7"),
+        ("foo2(1, 2)", "9"),
+        ("foo2_()", "43"),
+        ("foo2_(1)", "26"),
+        ("foo2_(1, 2)", "9"),
+        // Testing calling bound closure methods
+        ("xFoo0()", "6"),
+        ("xFoo1(1)", "7"),
+        ("xFoo1_()", "24"),
+        ("xFoo1_(1)", "7"),
+        ("xFoo2(1, 2)", "9"),
+        ("xFoo2_()", "43"),
+        ("xFoo2_(1)", "26"),
+        ("xFoo2_(1, 2)", "9"),
     ];
     run_test_cases_with_setup(setup, cases);
 }

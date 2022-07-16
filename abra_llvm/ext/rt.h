@@ -50,10 +50,12 @@ typedef struct obj_header_t {
 // ------------------------ INT ------------------------
 uint32_t type_id_Int;
 value_t prelude__Int__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Int__abs(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ FLOAT ------------------------
 uint32_t type_id_Float;
 value_t prelude__Float__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Float__floor(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ BOOL ------------------------
 uint32_t type_id_Bool;
@@ -97,6 +99,7 @@ value_t array_split(value_t _self, int32_t idx);
 
 // Array methods
 value_t prelude__Array__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ TUPLE ------------------------
 uint32_t type_id_Tuple;
@@ -128,6 +131,7 @@ value_t map_get(value_t _self, value_t key);
 
 // Map methods
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Map__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ SET ------------------------
 uint32_t type_id_Set;
@@ -142,6 +146,7 @@ void set_insert(value_t _self, value_t value);
 
 // Set methods
 value_t prelude__Set__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Set__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ FUNCTION ------------------------
 uint32_t type_id_Function;
@@ -151,10 +156,13 @@ typedef struct Function {
   value_t fn_ptr;
   value_t* env;
   uint32_t id;
+  value_t bound_self;
 } Function;
 
 // Function utils
 value_t function_alloc(char* name, value_t fn_ptr, value_t* env);
+value_t function_bind(value_t fn_val, value_t self);
+value_t function_call(value_t fn_val, bool has_return, int8_t fn_arity, int8_t argc, ...);
 
 // Function methods
 value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);

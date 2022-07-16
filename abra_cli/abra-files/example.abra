@@ -1,28 +1,11 @@
-//val hello = "Hello"
-//val age = 30
-//
-//type Person {
-//  name: String
-//  age: Int = age
-//
-//  func toString(self): String {
-//    println(hello)
-//    "Person(...)"
-//  }
-//}
-//
-//val me = Person(name: "Ken")
-////[me.name.length].length
-
-[[1, 2, 3], [4, 5, 6]][0]?.length
+//val f1 = "asdf".toUpper
+//println(f1())
 
 
-
-
-
-
-
-
+val a = [1, 2, 3]
+val arrIsEmpty = a.isEmpty
+println(arrIsEmpty())
+//println((a.isEmpty(), arrIsEmpty()))
 
 
 
