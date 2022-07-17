@@ -774,11 +774,17 @@ fn test_types_methods() {
 #[test]
 fn test_types_fields() {
     let setup = r#"
+      val nameSuffix = "!"
+
       type Person {
         name: String
         age: Int = 30
+        nameFormatter: (String) => String
+
+        func formatName(self): String = self.nameFormatter(self.name)
       }
-      val p = Person(name: "Human", age: 30)
+      func toUpper(s: String): String = s.toUpper() + nameSuffix
+      val p = Person(name: "Human", age: 30, nameFormatter: toUpper)
     "#;
     let cases = vec![
         // Builtin types' fields
@@ -793,6 +799,8 @@ fn test_types_fields() {
         // User-defined types' fields
         ("p.name", "Human"),
         ("p.name.length + p.age", "35"),
+        ("p.nameFormatter", "<func toUpper>"),
+        ("p.formatName()", "HUMAN!"),
     ];
     run_test_cases_with_setup(setup, cases);
 }

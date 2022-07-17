@@ -1586,10 +1586,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         let res = match *node.target {
-            // If the node is an accessor (`x.y`), look up that type's function and call it, passing `x` as its `self` arg, and any env in case the function is a closure
-            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, field_ident, .. }) => {
-                if !is_method { todo!(); }
-
+            // If the node is an accessor (`x.y`), and `y` is a method of `x`, look up that type's function and call it, passing `x`
+            // as its `self` arg, and any env in case the function is a closure.
+            // If `y` is _not_ a method of `x`, we are just invoking a field of `x` which happens to be a function. This is handled in
+            // the case below.
+            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, field_ident, .. }) if is_method => {
                 let target_type = target.get_type();
                 let field_idx = if Compiler::is_builtin_type(&target_type) {
                     field_idx

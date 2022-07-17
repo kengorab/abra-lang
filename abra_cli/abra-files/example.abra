@@ -1,14 +1,13 @@
-//val f1 = "asdf".toUpper
-//println(f1())
+type Fn {
+  f: (Int) => Int
 
+  func call(self, i: Int): Int = self.f(i)
+}
 
-val a = [1, 2, 3]
-val arrIsEmpty = a.isEmpty
-println(arrIsEmpty())
-//println((a.isEmpty(), arrIsEmpty()))
+func incr(x: Int): Int = x + 1
 
-
-
+val add1 = Fn(f: incr)
+println(add1.call(1))
 
 
 
