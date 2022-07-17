@@ -1562,13 +1562,16 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         self.visit_if_statement(false, token, node)
     }
 
-    fn visit_invocation(&mut self, _token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+    fn visit_invocation(&mut self, token: Token, node: TypedInvocationNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let null_ptr = self.value_t().ptr_type(AddressSpace::Generic).const_zero();
         let num_passed_args = node.args.len();
 
-        let mut passed_args = node.args.into_iter()
-            .map(|arg| if let Some(arg) = arg { self.visit(arg).map(|v| v.into()) } else { Ok(self.val_none().into()) })
-            .collect::<Result<Vec<_>, _>>()?;
+        #[inline]
+        fn passed_args<'a, 'ctx>(zelf: &mut Compiler<'a, 'ctx>, args: Vec<Option<TypedAstNode>>) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, CompilerError> {
+            args.into_iter()
+                .map(|arg| if let Some(arg) = arg { zelf.visit(arg).map(|v| v.into()) } else { Ok(zelf.val_none().into()) })
+                .collect::<Result<Vec<_>, _>>()
+        }
 
         // If the invokee is an identifier and it represents a static function in scope, call that function.
         // If the function is a closure or a bound method, it will be handled below.
@@ -1576,7 +1579,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let found_function = self.scopes.iter().rev().find_map(|sc| sc.fns.get(name)).map(|f| CallableValue::from(f.clone()));
             if let Some(fn_value) = found_function {
                 let mut args = vec![null_ptr.into(), self.context.i8_type().const_int(num_passed_args as u64, false).into()];
-                args.append(&mut passed_args);
+                args.append(&mut passed_args(self, node.args)?);
 
                 let res = self.builder.build_call(fn_value, args.as_slice(), "");
                 let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else { res.try_as_basic_value().left().unwrap() };
@@ -1586,11 +1589,50 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         let res = match *node.target {
+            // If the node is an opt-safe accessor (`x?.y`), transform code to if-expr and compile
+            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_ident, field_idx, is_opt_safe, is_method, is_readonly }) if is_method && is_opt_safe => {
+                let target_type = target.get_type().get_opt_unwrapped();
+
+                let transformed_node = TypedAstNode::IfExpression(
+                    token.clone(),
+                    TypedIfNode {
+                        typ: node.typ.clone(),
+                        condition: target,
+                        condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), "target".to_string()))),
+                        if_block: vec![
+                            TypedAstNode::Invocation(
+                                token.clone(),
+                                TypedInvocationNode {
+                                    typ: node.typ,
+                                    target: Box::new(
+                                        TypedAstNode::Accessor(
+                                            token.clone(),
+                                            TypedAccessorNode {
+                                                typ: typ.get_opt_unwrapped(),
+                                                target: Box::new(TypedAstNode::Identifier(token, TypedIdentifierNode { typ: target_type, name: "target".to_string(), is_mutable: false, scope_depth: 0 /* doesn't matter */ })),
+                                                field_ident,
+                                                field_idx,
+                                                is_opt_safe: false,
+                                                is_method,
+                                                is_readonly,
+                                            }
+                                        )
+                                    ),
+                                    args: node.args
+                                }
+                            )
+                        ],
+                        else_block: None,
+                    },
+                );
+
+                return self.visit(transformed_node);
+            }
             // If the node is an accessor (`x.y`), and `y` is a method of `x`, look up that type's function and call it, passing `x`
             // as its `self` arg, and any env in case the function is a closure.
             // If `y` is _not_ a method of `x`, we are just invoking a field of `x` which happens to be a function. This is handled in
             // the case below.
-            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_method, field_ident, .. }) if is_method => {
+            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_opt_safe, is_method, field_ident, .. }) if is_method && !is_opt_safe => {
                 let target_type = target.get_type();
                 let field_idx = if Compiler::is_builtin_type(&target_type) {
                     field_idx
@@ -1625,7 +1667,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 };
 
                 let mut args = vec![env_ptr.into(), self.context.i8_type().const_int((num_passed_args + 1) as u64, false).into(), rcv.into()];
-                args.append(&mut passed_args);
+                args.append(&mut passed_args(self, node.args)?);
 
                 let fn_type = self.gen_llvm_fn_type(*ret_type != Type::Unit, num_args);
                 let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_as_int, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
@@ -1649,7 +1691,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 args.push(self.context.bool_type().const_int(if has_return { 1 } else { 0 }, false).into());
                 args.push(self.context.i8_type().const_int(num_args as u64, false).into());
                 args.push(self.context.i8_type().const_int(num_passed_args as u64, false).into());
-                args.append(&mut passed_args);
+                args.append(&mut passed_args(self, node.args)?);
 
                 let res = self.builder.build_call(self.cached_fn(FN_FUNCTION_CALL), args.as_slice(), "").try_as_basic_value().left().unwrap();
                 if has_return {
@@ -1687,8 +1729,36 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_accessor(&mut self, _token: Token, node: TypedAccessorNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        debug_assert!(!node.is_opt_safe);
+    fn visit_accessor(&mut self, token: Token, node: TypedAccessorNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        // If the node is an opt-safe accessor (`x?.y`), transform code to if-expr and compile
+        if node.is_opt_safe {
+            let target_type = node.target.get_type().get_opt_unwrapped();
+
+            let transformed_node = TypedAstNode::IfExpression(
+                token.clone(),
+                TypedIfNode {
+                    typ: node.typ.clone(),
+                    condition: node.target,
+                    condition_binding: Some(BindingPattern::Variable(Token::Ident(token.get_position(), "target".to_string()))),
+                    if_block: vec![
+                        TypedAstNode::Accessor(
+                            token.clone(),
+                            TypedAccessorNode {
+                                typ: node.typ,
+                                target: Box::new(TypedAstNode::Identifier(token, TypedIdentifierNode { typ: target_type, name: "target".to_string(), is_mutable: false, scope_depth: 0 /* doesn't matter */ })),
+                                field_ident: node.field_ident,
+                                field_idx: node.field_idx,
+                                is_opt_safe: false,
+                                is_method: node.is_method,
+                                is_readonly: node.is_readonly,
+                            }
+                        )
+                    ],
+                    else_block: None,
+                },
+            );
+            return self.visit(transformed_node);
+        }
 
         let target_type = node.target.get_type();
         let target = self.visit(*node.target)?;

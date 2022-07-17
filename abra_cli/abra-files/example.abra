@@ -1,13 +1,20 @@
-type Fn {
-  f: (Int) => Int
+type Person {
+  name: String
 
-  func call(self, i: Int): Int = self.f(i)
+  func intro(self): String = "Hi, I'm " + self.name
 }
 
-func incr(x: Int): Int = x + 1
+val arr = [Person(name: "Ken"), Person(name: "Meg")]
+//if arr[0]?.name |name| println("name:", name) else println("no name")
 
-val add1 = Fn(f: incr)
-println(add1.call(1))
+println(arr[0]?.name, arr[1]?.name, arr[2]?.name)
+println(arr[0]?.intro, arr[1]?.intro, arr[2]?.intro)
+println(arr[0]?.intro(), arr[1]?.intro(), arr[2]?.intro())
+
+
+
+
+
 
 
 

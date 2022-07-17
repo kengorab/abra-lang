@@ -806,6 +806,29 @@ fn test_types_fields() {
 }
 
 #[test]
+fn test_opt_safe_accessor() {
+    let setup = r#"
+      type Person {
+        name: String
+        func intro(self): String = "Hi, I'm " + self.name
+      }
+      val arr = [Person(name: "Ken"), Person(name: "Meg")]
+    "#;
+    let cases = vec![
+        ("arr[0]?.name", "Ken"),
+        ("arr[1]?.name", "Meg"),
+        ("arr[2]?.name", "None"),
+        ("arr[0]?.intro", "<func intro>"),
+        ("arr[1]?.intro", "<func intro>"),
+        ("arr[2]?.intro", "None"),
+        ("arr[0]?.intro()", "Hi, I'm Ken"),
+        ("arr[1]?.intro()", "Hi, I'm Meg"),
+        ("arr[2]?.intro()", "None"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
 fn test_types_bound_methods() {
     let setup = r#"
       val hello = "Hello"
