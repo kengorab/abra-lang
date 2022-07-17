@@ -547,6 +547,25 @@ fn test_index_assignment() {
 }
 
 #[test]
+fn test_field_assignment() {
+    let setup = r#"
+      type Person {
+        name: String
+
+        func intro(self): String = "I'm " + self.name
+      }
+
+      val me = Person(name: "Kenny")
+    "#;
+    let cases = vec![
+        ("(me, me.intro())", "(Person(name: Kenny), I'm Kenny)"),
+        ("me.name = \"Ken\"", "Ken"),
+        ("(me, me.intro())", "(Person(name: Ken), I'm Ken)"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
 fn test_destructuring_assignment() {
     let cases = vec![
         ("val (a, b, c) = (1, 2, 3)", "a + b + c", "6"),

@@ -1462,7 +1462,30 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     self.builder.build_call(self.cached_fn(FN_MAP_INSERT), &[target.into(), idx.into(), expr.into()], "");
                 }
             }
-            AssignmentTargetKind::Field => todo!()
+            AssignmentTargetKind::Field => {
+                let (target, field_idx) = if let TypedAstNode::Accessor(_, TypedAccessorNode { target, field_idx, .. }) = *node.target { (target, field_idx) } else { unreachable!() };
+                let target_type = target.get_type();
+
+                if Compiler::is_builtin_type(&target_type) {
+                    unreachable!("Internal error: builtin fields are readonly and cannot be assigned to");
+                }
+
+                let target = self.visit(*target)?;
+
+                let type_spec = self.scopes[0].types
+                    .values()
+                    .find(|spec| spec.typ == target_type)
+                    .expect(&format!("Internal error: could not find type '{:?}' in scope", target_type));
+
+                let target_ptr = self.builder.build_pointer_cast(
+                    self.emit_extract_nan_tagged_obj(target.into_int_value()),
+                    type_spec.struct_type.ptr_type(AddressSpace::Generic),
+                    ""
+                );
+                let slot = self.builder.build_struct_gep(target_ptr, (field_idx + 1) as u32, "").unwrap();
+
+                self.builder.build_store(slot, expr);
+            }
         }
 
         Ok(expr)
