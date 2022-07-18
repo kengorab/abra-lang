@@ -1446,6 +1446,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         type_id_global.set_initializer(&self.context.i32_type().const_zero());
         self.builder.build_store(type_id_global.as_pointer_value(), type_id);
 
+        // Generate values for each enum variant
         let mut variants = Vec::new();
         for (idx, (tok, _)) in node.variants.iter().enumerate() {
             let variant_name = Token::get_ident_name(&tok);
@@ -1486,9 +1487,11 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             "",
         ).try_as_basic_value().left().unwrap().into_pointer_value();
 
+        // Find the potential user-defined toString method definition for the current type
         let (mut tostring_method_defs, _method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
         debug_assert!(tostring_method_defs.len() <= 1);
 
+        // Generate toString method, using user-defined method if provided; otherwise generate the default
         let tostring_fn_val = if let Some(tostring_method_def) = tostring_method_defs.pop() {
             let (name, node) = tostring_method_def;
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = node { decl_node } else { unreachable!() };
@@ -1537,6 +1540,77 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         };
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), ""));
+
+        // Generate eq method
+        let eq_fn = {
+            let old_fn = self.cur_fn;
+
+            let eq_fn_type = self.gen_llvm_fn_type(true, 2);
+            let eq_fn = self.module.add_function(&format!("{}__{}__eq", &self.module_name, &enum_name), eq_fn_type, None);
+            self.cur_fn = eq_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, base_struct_type.ptr_type(AddressSpace::Generic), "");
+            let self_variant_idx_ptr = self.builder.build_struct_gep(self_arg, 1, "").unwrap();
+            let self_variant_idx = self.builder.build_load(self_variant_idx_ptr, "").into_int_value();
+
+            let other_arg = self.cur_fn.get_nth_param(3).unwrap();
+            let other_arg = self.emit_extract_nan_tagged_obj(other_arg.into_int_value());
+            let other_arg = self.builder.build_pointer_cast(other_arg, base_struct_type.ptr_type(AddressSpace::Generic), "");
+            let other_variant_idx_ptr = self.builder.build_struct_gep(other_arg, 1, "").unwrap();
+            let other_variant_idx = self.builder.build_load(other_variant_idx_ptr, "").into_int_value();
+
+            let ret_val = self.emit_nan_tagged_bool(self.builder.build_int_compare(IntPredicate::EQ, self_variant_idx, other_variant_idx, ""));
+            self.builder.build_return(Some(&ret_val));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            eq_fn
+        };
+        let fn_ptr = eq_fn.as_global_value().as_pointer_value();
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(1, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        // Generate hash method
+        let hash_fn = {
+            let old_fn = self.cur_fn;
+
+            let hash_fn_type = self.gen_llvm_fn_type(true, 1);
+            let hash_fn = self.module.add_function(&format!("{}__{}__hash", &self.module_name, &enum_name), hash_fn_type, None);
+            self.cur_fn = hash_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let hash_val = self.builder.build_alloca(self.context.i32_type(), "hash");
+            self.builder.build_store(hash_val, self.builder.build_load(type_id_global.as_pointer_value(), ""));
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, base_struct_type.ptr_type(AddressSpace::Generic), "");
+            let self_variant_idx_ptr = self.builder.build_struct_gep(self_arg, 1, "").unwrap();
+            let self_variant_idx = self.builder.build_load(self_variant_idx_ptr, "").into_int_value();
+            let self_variant_idx = self.builder.build_int_cast(self_variant_idx, self.context.i32_type(), "");
+
+            let cur_hash_val = self.builder.build_load(hash_val, "").into_int_value();
+            self.builder.build_store(
+                hash_val,
+                self.builder.build_int_add(cur_hash_val, self_variant_idx, "")
+            );
+            let ret_hash = self.emit_nan_tagged_int(self.builder.build_load(hash_val, "").into_int_value());
+            self.builder.build_return(Some(&ret_hash));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            hash_fn
+        };
+        let fn_ptr = hash_fn.as_global_value().as_pointer_value();
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
 
         Ok(self.val_none().as_basic_value_enum())
     }

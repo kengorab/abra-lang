@@ -12,11 +12,12 @@ enum Color {
   Red
   Green
   Blue
-
-  func toString(self): String = "Color(...)"
 }
+val r = Color.Red
+val g = Color.Green
+val b = Color.Blue
 
-println(Color.Red, Color.Green, Color.Blue)
+println(r == r, r == g, r == b, g == r, g == g, g == b, b == r, b == g, b == b)
 
 //println(Color.Red, Color.Green, Color.Blue)
 

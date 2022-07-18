@@ -825,7 +825,7 @@ fn test_types_fields() {
 }
 
 #[test]
-fn test_enums_variants() {
+fn test_enums_base_functionality() {
     let setup = r#"
       enum Color {
         Red
@@ -835,9 +835,25 @@ fn test_enums_variants() {
     "#;
 
     let cases = vec![
+        // toString
         ("Color.Red", "Color.Red"),
         ("Color.Green", "Color.Green"),
         ("Color.Blue", "Color.Blue"),
+        // eq
+        ("Color.Red == Color.Red", "true"),
+        ("Color.Red == Color.Blue", "false"),
+        ("Color.Red == Color.Green", "false"),
+        ("Color.Blue == Color.Red", "false"),
+        ("Color.Blue == Color.Blue", "true"),
+        ("Color.Blue == Color.Green", "false"),
+        ("Color.Green == Color.Red", "false"),
+        ("Color.Green == Color.Blue", "false"),
+        ("Color.Green == Color.Green", "true"),
+        // hash
+        (
+            "#{Color.Red, Color.Green, Color.Blue, Color.Blue, Color.Green, Color.Red}",
+            "#{Color.Red, Color.Green, Color.Blue}"
+        ),
     ];
     run_test_cases_with_setup(setup, cases);
 }
