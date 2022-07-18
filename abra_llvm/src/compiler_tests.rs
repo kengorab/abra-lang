@@ -825,6 +825,43 @@ fn test_types_fields() {
 }
 
 #[test]
+fn test_enums_variants() {
+    let setup = r#"
+      enum Color {
+        Red
+        Green
+        Blue
+      }
+    "#;
+
+    let cases = vec![
+        ("Color.Red", "Color.Red"),
+        ("Color.Green", "Color.Green"),
+        ("Color.Blue", "Color.Blue"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
+fn test_enums_methods() {
+    let setup = r#"
+      enum Color {
+        Red
+        Green
+        Blue
+
+        func toString(self): String = "Color(...)"
+      }
+    "#;
+
+    let cases = vec![
+        ("Color.Blue", "Color(...)"),
+        ("Color.Blue.toString()", "Color(...)"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
 fn test_opt_safe_accessor() {
     let setup = r#"
       type Person {

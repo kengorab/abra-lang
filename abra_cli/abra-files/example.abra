@@ -1,19 +1,24 @@
-type Person {
-  name: String
+//enum Color {
+//  Red
+//  R(r: Int)
+//}
+//
+//func a(f: (Int) => Color) = println(f(16))
+//
+//a(Color.R)
 
-  func intro(self): String = "Hi, I'm " + self.name
+
+enum Color {
+  Red
+  Green
+  Blue
+
+  func toString(self): String = "Color(...)"
 }
 
-val me = Person(name: "Kenny")
-println(me, me.intro())
+println(Color.Red, Color.Green, Color.Blue)
 
-me.name = "Ken"
-println(me, me.intro())
-
-
-
-
-
+//println(Color.Red, Color.Green, Color.Blue)
 
 
 

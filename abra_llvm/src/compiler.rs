@@ -7,7 +7,7 @@ use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType, IntType, PointerType, StructType};
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
@@ -94,6 +94,21 @@ struct TypeSpec<'ctx> {
 }
 
 #[derive(Debug)]
+struct EnumSpec<'ctx> {
+    typ: Type,
+    base_struct_type: StructType<'ctx>,
+    type_id: IntValue<'ctx>,
+    variants: Vec<EnumVariantSpec<'ctx>>,
+}
+
+#[derive(Debug)]
+struct EnumVariantSpec<'ctx> {
+    variant_idx: usize,
+    struct_type: StructType<'ctx>,
+    val: Either<IntValue<'ctx>, FunctionValue<'ctx>>,
+}
+
+#[derive(Debug)]
 struct Scope<'ctx> {
     name: String,
     fn_depth: usize,
@@ -101,6 +116,7 @@ struct Scope<'ctx> {
     variables: HashMap<String, Variable<'ctx>>,
     closure_context: Option<ClosureContext<'ctx>>,
     types: HashMap<String, TypeSpec<'ctx>>,
+    enums: HashMap<String, EnumSpec<'ctx>>,
 }
 
 pub struct Compiler<'a, 'ctx> {
@@ -130,6 +146,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             variables: HashMap::new(),
             closure_context: None,
             types: HashMap::new(),
+            enums: HashMap::new(),
         };
 
         let mut compiler = Compiler {
@@ -453,12 +470,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn begin_new_fn_scope(&mut self, name: String, closure_context: Option<ClosureContext<'ctx>>) {
         let current_fn_depth = self.current_scope().fn_depth;
         let fn_depth = current_fn_depth + 1;
-        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context, types: HashMap::new() })
+        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context, types: HashMap::new(), enums: HashMap::new() })
     }
 
     fn begin_new_scope(&mut self, name: String) {
         let fn_depth = self.current_scope().fn_depth;
-        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context: None, types: HashMap::new() })
+        self.scopes.push(Scope { name, fn_depth, fns: HashMap::new(), variables: HashMap::new(), closure_context: None, types: HashMap::new(), enums: HashMap::new() })
     }
 
     fn end_scope(&mut self) {
@@ -1215,8 +1232,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[struct_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
             let mem = self.builder.build_pointer_cast(mem, struct_type.ptr_type(AddressSpace::Generic), "");
 
-            let header_slot = unsafe { self.builder.build_gep(mem, &[self.context.i32_type().const_zero()], "") };
-            let header_type_id_slot = unsafe { self.builder.build_gep(header_slot, &[self.context.i32_type().const_zero()], "") };
+            let header_slot = self.builder.build_struct_gep(mem, 0, "").unwrap();
+            let header_type_id_slot = self.builder.build_struct_gep(header_slot, 0, "").unwrap();
             let header_type_id_slot = self.builder.build_pointer_cast(header_type_id_slot, self.context.i32_type().ptr_type(AddressSpace::Generic), "");
             self.builder.build_store(header_type_id_slot, self.builder.build_load(type_id_global.as_pointer_value(), ""));
 
@@ -1416,8 +1433,112 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(self.val_none().as_basic_value_enum())
     }
 
-    fn visit_enum_decl(&mut self, _token: Token, _node: TypedEnumDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_enum_decl(&mut self, _token: Token, node: TypedEnumDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let enum_name = Token::get_ident_name(&node.name);
+
+        let base_struct_fields = vec![self.cached_type(TYPE_OBJ_HEADER).into(), self.context.i8_type().into()];
+        let base_struct_type = self.context.opaque_struct_type(&enum_name);
+        base_struct_type.set_body(base_struct_fields.as_slice(), false);
+
+        let type_id = self.incr_next_type_id();
+        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &enum_name));
+        type_id_global.set_linkage(Linkage::Common);
+        type_id_global.set_initializer(&self.context.i32_type().const_zero());
+        self.builder.build_store(type_id_global.as_pointer_value(), type_id);
+
+        let mut variants = Vec::new();
+        for (idx, (tok, _)) in node.variants.iter().enumerate() {
+            let variant_name = Token::get_ident_name(&tok);
+            let variant_struct_type = self.context.opaque_struct_type(&format!("{}_{}", &enum_name, &variant_name));
+            variant_struct_type.set_body(base_struct_fields.as_slice(), false);
+            let variant_struct_size = variant_struct_type.size_of().unwrap();
+
+            let variant_value_global = self.module.add_global(self.value_t(), None, &format!("{}_{}", &enum_name, &variant_name));
+            variant_value_global.set_linkage(Linkage::Common);
+            variant_value_global.set_initializer(&self.val_none().as_basic_value_enum());
+            let mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[variant_struct_size.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+            let mem = self.builder.build_pointer_cast(mem, variant_struct_type.ptr_type(AddressSpace::Generic), "");
+            let header_slot = self.builder.build_struct_gep(mem, 0, "").unwrap();
+            let header_type_id_slot = self.builder.build_struct_gep(header_slot, 0, "").unwrap();
+            let header_type_id_slot = self.builder.build_pointer_cast(header_type_id_slot, self.context.i32_type().ptr_type(AddressSpace::Generic), "");
+            self.builder.build_store(header_type_id_slot, self.builder.build_load(type_id_global.as_pointer_value(), ""));
+            let variant_idx_slot = self.builder.build_struct_gep(mem, 1, "").unwrap();
+            self.builder.build_store(variant_idx_slot, self.context.i8_type().const_int(idx as u64, false));
+            let val = self.emit_nan_tagged_obj(mem);
+
+            variants.push(EnumVariantSpec {
+                variant_idx: idx,
+                struct_type: variant_struct_type,
+                val: Either::Left(val),
+            });
+        }
+
+        let enum_spec = EnumSpec { typ: node.self_type, type_id, base_struct_type, variants };
+        self.current_scope_mut().enums.insert(enum_name.clone(), enum_spec);
+
+        let num_methods = node.methods.len();
+        let vtable_entry = self.builder.build_call(
+            self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
+            &[
+                type_id.into(),
+                self.context.i32_type().const_int((num_methods + 3) as u64, false).into()
+            ],
+            "",
+        ).try_as_basic_value().left().unwrap().into_pointer_value();
+
+        let (mut tostring_method_defs, _method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
+        debug_assert!(tostring_method_defs.len() <= 1);
+
+        let tostring_fn_val = if let Some(tostring_method_def) = tostring_method_defs.pop() {
+            let (name, node) = tostring_method_def;
+            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = node { decl_node } else { unreachable!() };
+            self.compile_function(name, Some(&enum_name), decl_node)?
+        } else {
+            let old_fn = self.cur_fn;
+
+            let tostring_fn_type = self.gen_llvm_fn_type(true, 1);
+            let tostring_fn = self.module.add_function(&format!("{}__{}__toString", &self.module_name, &enum_name), tostring_fn_type, None);
+            self.cur_fn = tostring_fn;
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            self.builder.position_at_end(fn_bb);
+
+            let self_arg = self.cur_fn.get_nth_param(2).unwrap();
+            let self_arg = self.emit_extract_nan_tagged_obj(self_arg.into_int_value());
+            let self_arg = self.builder.build_pointer_cast(self_arg, base_struct_type.ptr_type(AddressSpace::Generic), "");
+            let variant_idx_ptr = self.builder.build_struct_gep(self_arg, 1, "").unwrap();
+            let variant_idx_val = self.builder.build_load(variant_idx_ptr, "").into_int_value();
+
+            for (idx, (tok, _)) in node.variants.iter().enumerate() {
+                let variant_name = Token::get_ident_name(&tok);
+
+                let idx_val = self.context.i8_type().const_int(idx as u64, false);
+                let cond = self.builder.build_int_compare(IntPredicate::EQ, variant_idx_val, idx_val, "");
+
+                let then_bb = self.context.append_basic_block(self.cur_fn, "then_bb");
+                let cont_bb = self.context.append_basic_block(self.cur_fn, "cont_bb");
+                self.builder.build_conditional_branch(cond, then_bb, cont_bb);
+
+                self.builder.position_at_end(then_bb);
+                let str_repr = self.alloc_const_string_obj(format!("{}.{}", &enum_name, &variant_name));
+                self.builder.build_return(Some(&str_repr.as_basic_value_enum()));
+
+                self.builder.position_at_end(cont_bb);
+            }
+
+            self.builder.build_return(Some(&self.val_none().as_basic_value_enum()));
+
+            self.cur_fn = old_fn;
+            self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+
+            let fn_ptr = tostring_fn.as_global_value().as_pointer_value();
+            let fn_name_val = self.builder.build_global_string_ptr("toString", "").as_pointer_value().into();
+            let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
+            self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap()
+        };
+        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
+        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), ""));
+
+        Ok(self.val_none().as_basic_value_enum())
     }
 
     fn visit_identifier(&mut self, _token: Token, node: TypedIdentifierNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -1784,6 +1905,25 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         let target_type = node.target.get_type();
+        match target_type {
+            // enum
+            Type::Type(_, typ, true) => {
+                let enum_spec = self.scopes[0].enums
+                    .values()
+                    .find(|spec| spec.typ == *typ)
+                    .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ));
+                let variant = match enum_spec.variants[node.field_idx].val {
+                    Either::Left(const_val) => const_val.into(),
+                    Either::Right(_fn_val) => todo!(),
+                };
+
+                return Ok(variant);
+            }
+            // type
+            Type::Type(_, _, false) => todo!("Static methods/fields on Types"),
+            _ => {}
+        }
+
         let target = self.visit(*node.target)?;
 
         let field_name = Token::get_ident_name(&node.field_ident);

@@ -2525,6 +2525,7 @@ fn typecheck_enum_decl() -> TestResult {
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "Temp"),
+            self_type: Type::Reference("./test/Temp".to_string(), vec![]),
             static_fields: vec![],
             methods: vec![],
             variants: vec![
@@ -2542,12 +2543,13 @@ fn typecheck_enum_decl() -> TestResult {
     assert_eq!(expected, module.typed_nodes[0]);
 
     let module = test_typecheck("\
-          enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
-        ")?;
+      enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
+    ")?;
     let expected = TypedAstNode::EnumDecl(
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "AngleMode"),
+            self_type: Type::Reference("./test/AngleMode".to_string(), vec![]),
             static_fields: vec![],
             methods: vec![],
             variants: vec![
@@ -2584,12 +2586,13 @@ fn typecheck_enum_decl() -> TestResult {
 
     // Verify that constructor variants can have default arg values that are themselves enum variants
     let module = test_typecheck("\
-          enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
-        ")?;
+      enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
+    ")?;
     let expected = TypedAstNode::EnumDecl(
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "Color"),
+            self_type: Type::Reference("./test/Color".to_string(), vec![]),
             methods: vec![],
             static_fields: vec![],
             variants: vec![

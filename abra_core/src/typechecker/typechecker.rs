@@ -2053,8 +2053,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // Record EnumDecl for enum, registering the freshly-typed variants. Later on, we'll mutate
         // this EnumDecl node and add static fields and methods, but this allows for methods to reference
         // variants of this current enum within their bodies.
-        let (_, node) = self.get_type_mut(&new_enum_name).unwrap();
-        let enum_decl_node = TypedAstNode::EnumDecl(token, TypedEnumDeclNode { name, variants: variant_nodes, static_fields: vec![], methods: vec![] });
+        let (self_type, node) = self.get_type_mut(&new_enum_name).unwrap();
+        let enum_decl_node = TypedAstNode::EnumDecl(token, TypedEnumDeclNode { name, self_type: self_type.clone(), variants: variant_nodes, static_fields: vec![], methods: vec![] });
         *node = Some(enum_decl_node);
 
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(true, methods, variant_names)?;
