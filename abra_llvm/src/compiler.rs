@@ -105,7 +105,7 @@ struct EnumSpec<'ctx> {
 struct EnumVariantSpec<'ctx> {
     variant_idx: usize,
     struct_type: StructType<'ctx>,
-    val: Either<IntValue<'ctx>, FunctionValue<'ctx>>,
+    val: Either<PointerValue<'ctx>, FunctionValue<'ctx>>,
 }
 
 #[derive(Debug)]
@@ -748,7 +748,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
         let fully_qualified_fn_name = format!("{}::{}", namespace, official_fn_name);
 
-        let captured_variables = CapturedVariableFinder::find_captured_variables(&node);
+        let mut captured_vars_context = CapturedVariableFinder::base_context();
+        for type_name in self.scopes[0].types.keys() {
+            captured_vars_context.insert(type_name.clone());
+        }
+        for enum_name in self.scopes[0].enums.keys() {
+            captured_vars_context.insert(enum_name.clone());
+        }
+        let captured_variables = CapturedVariableFinder::find_captured_variables(captured_vars_context, &node);
         let num_captured_variables = captured_variables.len();
         let is_closure = !captured_variables.is_empty();
 
@@ -1422,6 +1429,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
 
+        // Generate user-defined methods
         for (idx, (name, decl_node)) in method_defs.into_iter().enumerate() {
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node { decl_node } else { unreachable!() };
             let fn_val = self.compile_function(name, Some(&type_name), decl_node)?;
@@ -1466,11 +1474,12 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let variant_idx_slot = self.builder.build_struct_gep(mem, 1, "").unwrap();
             self.builder.build_store(variant_idx_slot, self.context.i8_type().const_int(idx as u64, false));
             let val = self.emit_nan_tagged_obj(mem);
+            self.builder.build_store(variant_value_global.as_pointer_value(), val);
 
             variants.push(EnumVariantSpec {
                 variant_idx: idx,
                 struct_type: variant_struct_type,
-                val: Either::Left(val),
+                val: Either::Left(variant_value_global.as_pointer_value()),
             });
         }
 
@@ -1488,7 +1497,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         ).try_as_basic_value().left().unwrap().into_pointer_value();
 
         // Find the potential user-defined toString method definition for the current type
-        let (mut tostring_method_defs, _method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
+        let (mut tostring_method_defs, method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
         debug_assert!(tostring_method_defs.len() <= 1);
 
         // Generate toString method, using user-defined method if provided; otherwise generate the default
@@ -1611,6 +1620,15 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let fn_ptr = hash_fn.as_global_value().as_pointer_value();
         let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
         self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+
+        // Generate user-defined methods
+        for (idx, (name, decl_node)) in method_defs.into_iter().enumerate() {
+            let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node { decl_node } else { unreachable!() };
+            let fn_val = self.compile_function(name, Some(&enum_name), decl_node)?;
+            let idx = idx + 3; // +3 to account for toString, eq, hash
+            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
+            self.builder.build_store(slot, fn_val);
+        }
 
         Ok(self.val_none().as_basic_value_enum())
     }
@@ -1749,6 +1767,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
         let then_val = last_value;
         self.builder.build_unconditional_branch(cont_bb);
+        let then_bb = self.builder.get_insert_block().unwrap();
         self.end_scope();
 
         self.begin_new_scope("else-block".to_string());
@@ -1761,6 +1780,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
         let else_val = last_value;
         self.builder.build_unconditional_branch(cont_bb);
+        let else_bb = self.builder.get_insert_block().unwrap();
         self.end_scope();
 
         self.builder.position_at_end(cont_bb);
@@ -1987,7 +2007,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     .find(|spec| spec.typ == *typ)
                     .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ));
                 let variant = match enum_spec.variants[node.field_idx].val {
-                    Either::Left(const_val) => const_val.into(),
+                    Either::Left(const_global_ptr) => {
+                        self.builder.build_load(const_global_ptr, "")
+                    },
                     Either::Right(_fn_val) => todo!(),
                 };
 
@@ -2144,19 +2166,20 @@ struct CapturedVariableFinder {
     scopes: Vec<CVFScope>,
     cur_fn_id: usize, // TODO: Do we need to track this?
     captured_variables: HashMap<String, usize>,
-    builtins: HashSet<String>,
+    context: HashSet<String>,
 }
 
 impl CapturedVariableFinder {
-    fn find_captured_variables(fn_decl_node: &TypedFunctionDeclNode) -> HashMap<String, usize> {
-        let builtins = {
-            let mut s = HashSet::new();
-            s.insert("println".to_string());
-            s.insert("print".to_string());
-            s.insert("None".to_string());
-            s
-        };
-        let mut finder = CapturedVariableFinder { scopes: vec![(0, HashSet::new())], cur_fn_id: 0, captured_variables: HashMap::new(), builtins };
+    fn base_context() -> HashSet<String> {
+        vec![
+            "println".to_string(),
+            "print".to_string(),
+            "None".to_string(),
+        ].into_iter().collect()
+    }
+
+    fn find_captured_variables(context: HashSet<String>, fn_decl_node: &TypedFunctionDeclNode) -> HashMap<String, usize> {
+        let mut finder = CapturedVariableFinder { scopes: vec![(0, HashSet::new())], cur_fn_id: 0, captured_variables: HashMap::new(), context };
 
         let TypedFunctionDeclNode { args, body, .. } = fn_decl_node;
         for (tok, _, _, default_value) in args {
@@ -2174,7 +2197,7 @@ impl CapturedVariableFinder {
     }
 
     fn is_builtin(&self, var_name: &String) -> bool {
-        self.builtins.contains(var_name)
+        self.context.contains(var_name)
     }
 
     fn begin_new_fn_scope(&mut self) {

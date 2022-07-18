@@ -867,12 +867,27 @@ fn test_enums_methods() {
         Blue
 
         func toString(self): String = "Color(...)"
+
+        func toHex(self): String {
+          if self == Color.Red {
+            "0xFF0000"
+          } else if self == Color.Green {
+            "0x00FF00"
+          } else if self == Color.Blue {
+            "0x0000FF"
+          } else {
+            "unreachable"
+          }
+        }
       }
     "#;
 
     let cases = vec![
         ("Color.Blue", "Color(...)"),
         ("Color.Blue.toString()", "Color(...)"),
+        ("Color.Red.toHex()", "0xFF0000"),
+        ("Color.Green.toHex()", "0x00FF00"),
+        ("Color.Blue.toHex()", "0x0000FF"),
     ];
     run_test_cases_with_setup(setup, cases);
 }
