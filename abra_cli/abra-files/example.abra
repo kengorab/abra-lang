@@ -7,10 +7,13 @@
 //
 //a(Color.R)
 
+val four = 4
+
 enum Color {
   Red
   Green
   Blue
+  RGB(r: Int, g: Int, b: Int = four)
 
   func toHex(self): String {
     if self == Color.Red {
@@ -25,7 +28,8 @@ enum Color {
   }
 }
 
-println(Color.Red.toHex(), Color.Green.toHex(), Color.Blue.toHex())
+println(Color.RGB, Color.RGB(r: 1, g: 2))
+//println(Color.Red.toHex(), Color.Green.toHex(), Color.Blue.toHex(), Color.RGB(r: 1, g: 2, b: 3))
 
 
 /* TODO: Function hoisting

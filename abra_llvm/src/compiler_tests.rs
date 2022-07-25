@@ -827,10 +827,14 @@ fn test_types_fields() {
 #[test]
 fn test_enums_base_functionality() {
     let setup = r#"
+      val defaultGray = 0.5
+
       enum Color {
         Red
         Green
         Blue
+        Gray(percent: Float = defaultGray)
+        RGB(r: Int, g: Int, b: Int)
       }
     "#;
 
@@ -839,6 +843,9 @@ fn test_enums_base_functionality() {
         ("Color.Red", "Color.Red"),
         ("Color.Green", "Color.Green"),
         ("Color.Blue", "Color.Blue"),
+        ("Color.Gray()", "Color.Gray(percent: 0.500000)"),
+        ("Color.Gray(percent: 0.12)", "Color.Gray(percent: 0.120000)"),
+        ("Color.RGB(r: 1, g: 2, b: 3)", "Color.RGB(r: 1, g: 2, b: 3)"),
         // eq
         ("Color.Red == Color.Red", "true"),
         ("Color.Red == Color.Blue", "false"),
@@ -849,10 +856,50 @@ fn test_enums_base_functionality() {
         ("Color.Green == Color.Red", "false"),
         ("Color.Green == Color.Blue", "false"),
         ("Color.Green == Color.Green", "true"),
-        // hash
+        ("Color.Gray() == Color.Gray(percent: 0.1)", "false"),
+        ("Color.Gray(percent: 0.25) == Color.Gray(percent: 0.25)", "true"),
+        ("Color.RGB(r: 1, g: 2, b: 3) == Color.RGB(r: 1, g: 2, b: 3)", "true"),
+        ("Color.RGB(r: 1, g: 2, b: 3) == Color.RGB(r: 1, g: 2, b: 2)", "false"),
+        // hash (simple)
         (
             "#{Color.Red, Color.Green, Color.Blue, Color.Blue, Color.Green, Color.Red}",
             "#{Color.Red, Color.Green, Color.Blue}"
+        ),
+        // hash (complex)
+        (
+            "#{Color.Gray(), Color.Gray(percent: 0.25), Color.Gray(percent: 0.5)}",
+            "#{Color.Gray(percent: 0.500000), Color.Gray(percent: 0.250000)}"
+        ),
+        (
+            "#{Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 11, g: 12, b: 13), Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 2, g: 1, b: 3)}",
+            "#{Color.RGB(r: 11, g: 12, b: 13), Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 2, g: 1, b: 3)}"
+        ),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
+fn test_enums_variant_constructors() {
+    let setup = r#"
+      enum Color {
+        Red
+        Blue
+        Green
+        RGB(r: Int, g: Int = 0, b: Int = 0)
+      }
+
+      func foo(fn: (Int) => Color): Color = fn(16)
+    "#;
+    let cases = vec![
+        // toString
+        ("", "Color.RGB", "<func Color.RGB>"),
+        // Passing as function values
+        ("", "foo(Color.RGB)", "Color.RGB(r: 16, g: 0, b: 0)"),
+        // Calling as function
+        (
+            "val fn = Color.RGB",
+            "(fn(1), fn(1, 2), fn(1, 2, 3))",
+            "(Color.RGB(r: 1, g: 0, b: 0), Color.RGB(r: 1, g: 2, b: 0), Color.RGB(r: 1, g: 2, b: 3))"
         ),
     ];
     run_test_cases_with_setup(setup, cases);
