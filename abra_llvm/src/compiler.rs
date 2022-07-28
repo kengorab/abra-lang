@@ -1218,8 +1218,35 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(self.alloc_set_obj(values).into())
     }
 
-    fn visit_lambda(&mut self, _token: Token, _node: TypedLambdaNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_lambda(&mut self, _token: Token, node: TypedLambdaNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedLambdaNode { typ, idx, args, typed_body, .. } = node;
+        let body = typed_body.unwrap();
+        let fn_name = format!("_${}", idx);
+        let has_return = if let Type::Fn(FnType { ret_type, .. }) = typ { *ret_type != Type::Unit } else { unreachable!() };
+
+        let old_fn = self.cur_fn;
+
+        let args = args.into_iter().map(|(tok, _, default_value)| (Token::get_ident_name(&tok), default_value)).collect();
+        let captured_variables = self.find_captured_variables(&args, &body);
+        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, None, captured_variables, args, has_return)?;
+
+        let body_len = body.len();
+        for (idx, node) in body.into_iter().enumerate() {
+            let value = self.visit(node)?;
+
+            if idx == body_len - 1 {
+                if has_return {
+                    self.builder.build_return(Some(&value.as_basic_value_enum()));
+                } else {
+                    self.builder.build_return(None);
+                }
+            }
+        }
+
+        self.cur_fn = old_fn;
+        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, false);
+
+        Ok(fn_val)
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -2609,7 +2636,7 @@ impl CapturedVariableFinder {
                 for node in &n.body {
                     self.find_foreign_variables(node);
                 }
-                self.end_fn_scope();
+                self.end_scope();
             }
             TypedAstNode::WhileLoop(_, n) => {
                 self.begin_new_scope();
@@ -2621,7 +2648,7 @@ impl CapturedVariableFinder {
                 for node in &n.body {
                     self.find_foreign_variables(node);
                 }
-                self.end_fn_scope();
+                self.end_scope();
             }
             TypedAstNode::Break(_) => {}
             TypedAstNode::Continue(_) => {}
@@ -2641,7 +2668,7 @@ impl CapturedVariableFinder {
                     for node in body {
                         self.find_foreign_variables(node);
                     }
-                    self.end_fn_scope();
+                    self.end_scope();
                 }
             }
             TypedAstNode::ImportStatement(_, _) => {}

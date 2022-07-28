@@ -1089,3 +1089,62 @@ fn test_calling_bound_closures() {
     ];
     run_test_cases_with_setup(setup, cases);
 }
+
+#[test]
+fn test_lambdas() {
+    let setup = r#"
+      val fn0 = (i: Int) => i + 1
+
+      val fn1 = (i: Int, x: Int) => i + x
+
+      val fn2 = (i: Int, x = 2) => i + x
+
+      val a = 16
+      val fn3 = (i: Int, x = 4) => i + x + a
+    "#;
+    let cases = vec![
+        ("fn0(1)", "2"),
+        ("fn1(1, 3)", "4"),
+        ("fn2(1)", "3"),
+        ("fn2(1, 3)", "4"),
+        ("fn3(1)", "21"),
+        ("fn3(1, 3)", "20"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+
+    let setup = r#"
+      func makeCounter(start = 0): ((Int) => Int, (Int) => Int) {
+        var counter = start
+
+        val incr = (by: Int) => counter += by
+        val decr = (by: Int) => counter -= by
+
+        (incr, decr)
+      }
+
+      val (incr, decr) = makeCounter()
+    "#;
+    let cases = vec![
+        ("(incr(1), incr(1), decr(2), incr(1), incr(2), decr(1), decr(2))", "(1, 2, 0, 1, 3, 2, 0)"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+
+    let setup = r#"
+      type Counter {
+        count: Int = 0
+        incr: (Int) => Int
+
+        func up(self): Int {
+          self.count = self.incr(self.count)
+        }
+      }
+
+      var incrAmount = 1
+      val c = Counter(incr: x => x + incrAmount)
+    "#;
+    let cases = vec![
+        ("", "(c.up(), c.up(), c.up())", "(1, 2, 3)"),
+        ("incrAmount = 5", "(c.up(), c.up(), c.up())", "(8, 13, 18)"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
