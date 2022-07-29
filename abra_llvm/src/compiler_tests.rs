@@ -95,6 +95,12 @@ fn run_test_cases_with_setup_and_teardown<T: Into<TestCase>>(global_setup: &str,
     }
 }
 
+fn run_and_verify_output_lines(input: &str, output_lines: Vec<&str>) {
+    let res = test_run_with_modules(&input, vec![]);
+    let expected = output_lines.join("\n");
+    assert_eq!(expected, res, "Expected output '{}' to equal '{}'", expected, res);
+}
+
 #[test]
 fn test_literals() {
     let cases = vec![
@@ -1112,7 +1118,7 @@ fn test_lambdas() {
     ];
     run_test_cases_with_setup(setup, cases);
 
-    let setup = r#"
+    let input = r#"
       func makeCounter(start = 0): ((Int) => Int, (Int) => Int) {
         var counter = start
 
@@ -1123,13 +1129,11 @@ fn test_lambdas() {
       }
 
       val (incr, decr) = makeCounter()
+      println(incr(1), incr(1), decr(2), incr(1), incr(2), decr(1), decr(2))
     "#;
-    let cases = vec![
-        ("(incr(1), incr(1), decr(2), incr(1), incr(2), decr(1), decr(2))", "(1, 2, 0, 1, 3, 2, 0)"),
-    ];
-    run_test_cases_with_setup(setup, cases);
+    run_and_verify_output_lines(input, vec!["1 2 0 1 3 2 0"]);
 
-    let setup = r#"
+    let input = r#"
       type Counter {
         count: Int = 0
         incr: (Int) => Int
@@ -1141,10 +1145,63 @@ fn test_lambdas() {
 
       var incrAmount = 1
       val c = Counter(incr: x => x + incrAmount)
+      println(c.up(), c.up(), c.up())
+      incrAmount = 5
+      println(c.up(), c.up(), c.up())
     "#;
-    let cases = vec![
-        ("", "(c.up(), c.up(), c.up())", "(1, 2, 3)"),
-        ("incrAmount = 5", "(c.up(), c.up(), c.up())", "(8, 13, 18)"),
-    ];
-    run_test_cases_with_setup(setup, cases);
+    run_and_verify_output_lines(input, vec!["1 2 3", "8 13 18"]);
+
+    let input = r#"
+      func makeIterator<T>(arr: T[]): () => (T, Int)? {
+        var idx = 0
+
+        () => if arr[idx] |item| {
+          idx += 1
+          (item, idx - 1)
+        } else {
+          None
+        }
+      }
+
+      val arr = ["a", "b", "c"]
+      val iter = makeIterator(arr)
+      println(iter(), iter(), iter())
+      arr[3] = "d"
+      arr[4] = "e"
+      println(iter(), iter(), iter(), iter(), iter())
+    "#;
+    run_and_verify_output_lines(input, vec![
+        "(a, 0) (b, 1) (c, 2)",
+        "(d, 3) (e, 4) None None None",
+    ]);
+}
+
+#[test]
+fn test_for_loops() {
+    let input = r#"
+      val arr = [2, 4, 6, 8, 10]
+      for i in arr print(i, "")
+      println()
+      for i, idx in arr print(idx, "=>", i + ", ")
+      println()
+
+      val set = #{"a", "b", "a", "c", "a", "d"}
+      for i in set print(i, "")
+      println()
+      for i, idx in set print(idx, "=>", i + ", ")
+      println()
+
+      val map = { a: 1, b: 2, c: 3, d: 4 }
+      for i in map print(i, "")
+      println()
+      for k, v in map print(k, "=>", v + ", ")
+    "#;
+    run_and_verify_output_lines(input, vec![
+        "2 4 6 8 10 ",
+        "0 => 2, 1 => 4, 2 => 6, 3 => 8, 4 => 10, ",
+        "c b d a ",
+        "0 => c, 1 => b, 2 => d, 3 => a, ",
+        "a d c b ",
+        "a => 1, d => 4, c => 3, b => 2,",
+    ]);
 }

@@ -533,6 +533,19 @@ value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _se
   return self->length == 0 ? VAL_TRUE : VAL_FALSE;
 }
 
+value_t prelude__Array__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Array* self = AS_OBJ(_self, Array);
+
+  Array* pairs = AS_OBJ(array_alloc(self->length), Array);
+  for (int i = 0; i < self->length; i++) {
+    value_t item = self->items[i];
+    value_t idx = TAG_INT(i);
+    pairs->items[i] = tuple_alloc(2, item, idx);
+  }
+
+  return TAG_OBJ(pairs);
+}
+
 // ------------------------ TUPLE ------------------------
 value_t tuple_alloc(int32_t length, ...) {
   Tuple* tuple = GC_MALLOC(sizeof(Tuple));
@@ -651,6 +664,24 @@ value_t prelude__Map__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self
   return self->hash.size == 0 ? VAL_TRUE : VAL_FALSE;
 }
 
+value_t prelude__Map__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Map* self = AS_OBJ(_self, Map);
+
+  size_t size = self->hash.size;
+  Array* pairs = AS_OBJ(array_alloc(size), Array);
+
+  value_t* map_keys = hashmap_keys(&self->hash);
+  for (int i = 0; i < size; i++) {
+    value_t key = map_keys[i];
+    value_t val = hashmap_get(&self->hash, key);
+
+    pairs->items[i] = tuple_alloc(2, key, val);
+  }
+
+  return TAG_OBJ(pairs);
+}
+
+
 // ------------------------ SET ------------------------
 value_t set_alloc(int32_t size) {
   Set* set = GC_MALLOC(sizeof(Set));
@@ -677,6 +708,23 @@ value_t prelude__Set__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self
   Set* self = AS_OBJ(_self, Set);
 
   return self->hash.size == 0 ? VAL_TRUE : VAL_FALSE;
+}
+
+value_t prelude__Set__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  Set* self = AS_OBJ(_self, Set);
+
+  size_t size = self->hash.size;
+  Array* pairs = AS_OBJ(array_alloc(size), Array);
+
+  value_t* map_keys = hashmap_keys(&self->hash);
+  for (int i = 0; i < size; i++) {
+    value_t item = map_keys[i];
+    value_t idx = TAG_INT(i);
+
+    pairs->items[i] = tuple_alloc(2, item, idx);
+  }
+
+  return TAG_OBJ(pairs);
 }
 
 // ------------------------ FUNCTION ------------------------

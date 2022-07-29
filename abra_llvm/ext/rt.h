@@ -100,6 +100,7 @@ value_t array_split(value_t _self, int32_t idx);
 // Array methods
 value_t prelude__Array__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ TUPLE ------------------------
 uint32_t type_id_Tuple;
@@ -132,6 +133,7 @@ value_t map_get(value_t _self, value_t key);
 // Map methods
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__Map__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Map__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ SET ------------------------
 uint32_t type_id_Set;
@@ -147,6 +149,7 @@ void set_insert(value_t _self, value_t value);
 // Set methods
 value_t prelude__Set__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__Set__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Set__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ FUNCTION ------------------------
 uint32_t type_id_Function;

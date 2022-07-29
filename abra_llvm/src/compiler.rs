@@ -276,6 +276,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_builtin_type("type_id_Array", &[
             ("prelude__Array__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Array__isEmpty", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__enumerate", self.gen_llvm_fn_type(true, 1)),
         ]);
     }
 
@@ -289,6 +290,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_builtin_type("type_id_Map", &[
             ("prelude__Map__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Map__isEmpty", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Map__enumerate", self.gen_llvm_fn_type(true, 1)),
         ]);
     }
 
@@ -296,6 +298,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.init_builtin_type("type_id_Set", &[
             ("prelude__Set__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Set__isEmpty", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Set__enumerate", self.gen_llvm_fn_type(true, 1)),
         ]);
     }
 
@@ -2195,9 +2198,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             name
         } else { unreachable!() };
 
-        let type_spec = self.current_scope().types
+        let type_spec = self.scopes[0].types
             .get(&type_name)
-            .expect(&format!("Internal error: no type named '{}' exists in the current scope", &type_name));
+            .expect(&format!("Internal error: no type named '{}' exists", &type_name));
         let ctor_fn = type_spec.ctor_fn;
 
         let field_values = node.fields.into_iter()
@@ -2371,8 +2374,88 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(val)
     }
 
-    fn visit_for_loop(&mut self, _token: Token, _node: TypedForLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_for_loop(&mut self, _token: Token, node: TypedForLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedForLoopNode { binding, index_ident, iterator, body } = node;
+
+        self.begin_new_scope("for-container".to_string());
+
+        let iter = self.visit(*iterator)?;
+        let enumerate_fn_idx = self.context.i32_type().const_int(2, false);
+        let enumerate_fn_val = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[iter.into(), enumerate_fn_idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        let fn_type = self.gen_llvm_fn_type(true, 1);
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, enumerate_fn_val, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let callable = CallableValue::try_from(fn_ptr).unwrap();
+        let res = self.builder.build_call(
+            callable,
+            &[self.value_t_ptr().const_zero().into(), self.context.i8_type().const_int(1, false).into(), iter.into()],
+            ""
+        ).try_as_basic_value().left().unwrap();
+        let iter_local = self.builder.build_alloca(self.value_t(), "$iter");
+        self.builder.build_store(iter_local, res);
+        let iter_len_local = self.builder.build_alloca(self.context.i32_type(), "$iter_len");
+        let iter_len_val = self.builder.build_load(
+            self.builder.build_struct_gep(
+                self.builder.build_pointer_cast(
+                    self.emit_extract_nan_tagged_obj(res.into_int_value()),
+                    self.cached_type(TYPE_ARRAY).ptr_type(AddressSpace::Generic),
+                    ""
+                ),
+                1,
+                ""
+            ).unwrap(),
+            ""
+        );
+        self.builder.build_store(iter_len_local, iter_len_val);
+
+        let idx_local = self.builder.build_alloca(self.context.i32_type(), "$idx");
+        self.builder.build_store(idx_local, self.context.i32_type().const_zero());
+
+        let item_local = self.builder.build_alloca(self.value_t(), "$item");
+        self.builder.build_store(item_local, self.val_none());
+
+        let loop_cond_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
+        self.builder.build_unconditional_branch(loop_cond_bb);
+        self.builder.position_at_end(loop_cond_bb);
+
+        let loop_body_bb = self.context.append_basic_block(self.cur_fn, "loop_body");
+        let loop_end_bb = self.context.append_basic_block(self.cur_fn, "loop_end");
+        let cond = self.builder.build_int_compare(
+            IntPredicate::ULT,
+            self.builder.build_load(idx_local, "").into_int_value(),
+            self.builder.build_load(iter_len_local, "").into_int_value(),
+            ""
+        );
+        self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
+
+        self.builder.position_at_end(loop_body_bb);
+        let item_pair_val = self.builder.build_call(self.cached_fn(FN_ARRAY_GET), &[self.builder.build_load(iter_local, "").into(), self.builder.build_load(idx_local, "").into()], "").try_as_basic_value().left().unwrap();
+        let pair_l_val = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[item_pair_val.into(), self.context.i32_type().const_zero().into()], "").try_as_basic_value().left().unwrap();
+        self.visit_binding_pattern(binding, pair_l_val);
+        if let Some(ident_tok) = index_ident {
+            let pair_r_val = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[item_pair_val.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
+            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), pair_r_val);
+        }
+
+        for node in body {
+            self.visit(node)?;
+        }
+
+        self.builder.build_store(
+            idx_local,
+            self.builder.build_int_add(
+                self.builder.build_load(idx_local, "").into_int_value(),
+                self.context.i32_type().const_int(1, false),
+                "",
+            )
+        );
+        self.builder.build_unconditional_branch(loop_cond_bb);
+
+        self.builder.position_at_end(loop_end_bb);
+
+        self.end_scope();
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_while_loop(&mut self, _token: Token, _node: TypedWhileLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

@@ -1,49 +1,47 @@
-//val a = 16
-//val fn = (i: Int, x = 4) => i + x + a
+//val arr = [("a", true), ("b", false), ("c", true)]
+//println(arr.enumerate())
+//val map = { a: 1, b: 2 }
+//println(map.enumerate())
+//val set = #{"a", "b", "c"}
+//println(set.enumerate())
 
-//func makeCounter(start = 0): ((Int) => Int, (Int) => Int) {
-//  var counter = start
-//
-//  val incr = (by: Int) => counter += by
-//  val decr = (by: Int) => counter -= by
-//
-//  (incr, decr)
+//for (v, b), idx in arr {
+//  println("item:", v, b, ", idx:", idx)
 //}
-//
-//val (incr, decr) = makeCounter()
-//println(incr(1), incr(1), decr(2), incr(1), incr(2), decr(1), decr(2))
+//for item, idx in arr {
+//  println("item:", item, "idx:", idx)
+//}
 
-func forEach<T>(v1: T, v2: T, v3: T, fn: (T) => Unit) {
-  fn(v1)
-  fn(v2)
-  fn(v3)
-}
+func makeIterator<T>(arr: T[]): () => (T, Int)? {
+  var idx = 0
 
-val factor = 2
-func double(v1: Int, v2: Int, v3: Int): Int[] {
-  val arr: Int[] = []
-
-  forEach(v1, v2, v3, x => arr[x] = x * factor)
-
-  arr
-}
-
-println(double(0, 1, 2))
-
-type Counter {
-  count: Int = 0
-  incr: (Int) => Int
-
-  func up(self): Int {
-    self.count = self.incr(self.count)
+  () => if arr[idx] |item| {
+    idx += 1
+    (item, idx - 1)
+  } else {
+    None
   }
 }
 
-var incrAmount = 1
-val c = Counter(incr: x => x + incrAmount)
-println(c.up(), c.up(), c.up())
-incrAmount = 5
-println(c.up(), c.up(), c.up())
+val arr = ["a", "b", "c"]
+val iter = makeIterator(arr)
+println(iter(), iter(), iter())
+arr[3] = "d"
+arr[4] = "e"
+println(iter(), iter(), iter(), iter(), iter())
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 /* TODO: Function hoisting
