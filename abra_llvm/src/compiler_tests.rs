@@ -1207,12 +1207,12 @@ fn test_for_loops() {
       for k, v in map print(k, "=>", v + ", ")
       println()
 
-      var count = 0
+      var count1 = 0
       for item, i in [1, 2, 3] {
         val inc = if item == 2 { break } else 1
-        count += inc
+        count1 += inc
       }
-      println(count)
+      println(count1)
 
       var a = 0
       for _ in [1, 2, 3, 4, 5] {
@@ -1224,6 +1224,13 @@ fn test_for_loops() {
         if a > 3 break
       }
       println(a) // If this printed 3, we'd know that `break` destroyed the outer loop too, but it doesn't
+
+      var count2 = 0
+      for item, i in [1, 2, 3] {
+        val inc = if item == 2 { continue } else 1
+        count2 += inc
+      }
+      println(count2)
     "#;
     run_and_verify_output_lines(input, vec![
         "2 4 6 8 10 ",
@@ -1234,5 +1241,6 @@ fn test_for_loops() {
         "a => 1, d => 4, c => 3, b => 2, ",
         "1",
         "5",
+        "2",
     ]);
 }

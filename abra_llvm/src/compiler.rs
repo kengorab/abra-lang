@@ -172,7 +172,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         compiler.finalize(&last_item_type, last_item);
 
-        // module.print_to_stderr();
+        module.print_to_stderr();
         Ok(module)
     }
 
@@ -2439,6 +2439,14 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let loop_start_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
         self.builder.build_unconditional_branch(loop_start_bb);
         self.builder.position_at_end(loop_start_bb);
+        self.builder.build_store(
+            idx_local,
+            self.builder.build_int_add(
+                self.builder.build_load(idx_local, "").into_int_value(),
+                self.context.i32_type().const_int(1, false),
+                "",
+            )
+        );
 
         let loop_body_bb = self.context.append_basic_block(self.cur_fn, "loop_body");
         let loop_end_bb = self.context.append_basic_block(self.cur_fn, "loop_end");
@@ -2475,14 +2483,14 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         if !terminates_early {
-            self.builder.build_store(
-                idx_local,
-                self.builder.build_int_add(
-                    self.builder.build_load(idx_local, "").into_int_value(),
-                    self.context.i32_type().const_int(1, false),
-                    "",
-                )
-            );
+            // self.builder.build_store(
+            //     idx_local,
+            //     self.builder.build_int_add(
+            //         self.builder.build_load(idx_local, "").into_int_value(),
+            //         self.context.i32_type().const_int(1, false),
+            //         "",
+            //     )
+            // );
             self.builder.build_unconditional_branch(loop_start_bb);
         }
 
@@ -2511,7 +2519,14 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_continue(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+        if let Some((loop_start_bb, _loop_end_bb)) = self.cur_loop {
+            self.builder.build_unconditional_branch(loop_start_bb);
+        } else {
+            unreachable!("Internal error: continue found outside of a loop context");
+        }
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_return(&mut self, _token: Token, _node: TypedReturnNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {

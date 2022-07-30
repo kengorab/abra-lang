@@ -1,11 +1,10 @@
-var f: () => Int
-for i in [1, 2, 3, 4, 5] {
-  val x = i
-
-  f = () => x
-  if true break
+var count2 = 0
+for item, i in [1, 2, 3] {
+println(item, i)
+  val inc = if item == 2 { continue } else 1
+  count2 += inc
 }
-println(f())
+println(count2)
 
 
 
