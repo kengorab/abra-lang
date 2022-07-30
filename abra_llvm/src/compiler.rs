@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::repeat;
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
@@ -126,6 +127,7 @@ pub struct Compiler<'a, 'ctx> {
     module: &'a Module<'ctx>,
     cur_fn: FunctionValue<'ctx>,
     scopes: Vec<Scope<'ctx>>,
+    cur_loop: Option<(BasicBlock<'ctx>, BasicBlock<'ctx>)>,
 }
 
 type CompilerError = ();
@@ -156,6 +158,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             module: &module,
             cur_fn: entry_fn,
             scopes: vec![root_scope],
+            cur_loop: None,
         };
 
         compiler.init();
@@ -846,7 +849,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         for (mut idx, (name, default_value)) in args.into_iter().enumerate() {
             idx += 2; // Skip over `env` and `num_received_args` params
 
-            // let name = Token::get_ident_name(&tok);
             let param_ptr = self.builder.build_alloca(self.value_t(), &name);
             self.current_scope_mut().variables.insert(name, Variable { local_ptr: param_ptr, is_captured: false });
 
@@ -902,8 +904,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         env_mem: PointerValue<'ctx>,
         fn_local: Option<PointerValue<'ctx>>,
         is_recursive: bool,
+        fn_decl_site_bb: BasicBlock<'ctx>,
     ) -> BasicValueEnum<'ctx> {
-        self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+        // self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+        self.builder.position_at_end(fn_decl_site_bb);
         self.end_scope();
 
         let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
@@ -930,6 +934,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         node: TypedFunctionDeclNode,
     ) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let old_fn = self.cur_fn;
+        let fn_decl_site_bb = self.builder.get_insert_block().unwrap();
         let has_return = node.ret_type != Type::Unit;
 
         let args = node.args.into_iter()
@@ -952,7 +957,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
 
         self.cur_fn = old_fn;
-        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, node.is_recursive);
+        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, node.is_recursive, fn_decl_site_bb);
 
         Ok(fn_val)
     }
@@ -1228,6 +1233,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let has_return = if let Type::Fn(FnType { ret_type, .. }) = typ { *ret_type != Type::Unit } else { unreachable!() };
 
         let old_fn = self.cur_fn;
+        let fn_decl_site_bb = self.builder.get_insert_block().unwrap();
 
         let args = args.into_iter().map(|(tok, _, default_value)| (Token::get_ident_name(&tok), default_value)).collect();
         let captured_variables = self.find_captured_variables(&args, &body);
@@ -1247,7 +1253,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         self.cur_fn = old_fn;
-        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, false);
+        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, false, fn_decl_site_bb);
 
         Ok(fn_val)
     }
@@ -1572,6 +1578,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 let variant_struct_size = variant_struct_type.size_of().unwrap();
 
                 let old_fn = self.cur_fn;
+                let fn_decl_site_bb = self.builder.get_insert_block().unwrap();
 
                 debug_assert!(arg_types.len() == default_field_vals.len());
                 let arg_names = arg_types.iter().map(|(name, _, _)| name.clone()).collect_vec();
@@ -1596,7 +1603,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
                 self.cur_fn = old_fn;
                 let variant_fn_name = format!("{}.{}", &enum_name, &variant_name);
-                let fn_val = self.compile_function_end(&variant_fn_name, func, env_mem, fn_local, false);
+                let fn_val = self.compile_function_end(&variant_fn_name, func, env_mem, fn_local, false, fn_decl_site_bb);
 
                 variants.push((variant_name, variant_struct_type, arg_names));
 
@@ -2012,24 +2019,40 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             self.visit_binding_pattern(cond_binding_pat, cond_val);
         }
         let mut last_value = self.val_none().as_basic_value_enum();
+        let mut terminates_early = false;
         for node in node.if_block {
+            let terminates = node.all_branches_terminate().is_some();
             last_value = self.visit(node)?;
+            if terminates {
+                last_value = self.val_none().as_basic_value_enum();
+                terminates_early = true;
+            }
         }
         let then_val = last_value;
-        self.builder.build_unconditional_branch(cont_bb);
+        if !terminates_early {
+            self.builder.build_unconditional_branch(cont_bb);
+        }
         let then_bb = self.builder.get_insert_block().unwrap();
         self.end_scope();
 
         self.begin_new_scope("else-block".to_string());
         self.builder.position_at_end(else_bb);
-        last_value = self.val_none().as_basic_value_enum();
+        let mut last_value = self.val_none().as_basic_value_enum();
+        let mut terminates_early = false;
         if let Some(nodes) = node.else_block {
             for node in nodes {
+                let terminates = node.all_branches_terminate().is_some();
                 last_value = self.visit(node)?;
+                if terminates {
+                    last_value = self.val_none().as_basic_value_enum();
+                    terminates_early = true;
+                }
             }
         }
         let else_val = last_value;
-        self.builder.build_unconditional_branch(cont_bb);
+        if !terminates_early {
+            self.builder.build_unconditional_branch(cont_bb);
+        }
         let else_bb = self.builder.get_insert_block().unwrap();
         self.end_scope();
 
@@ -2413,9 +2436,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let item_local = self.builder.build_alloca(self.value_t(), "$item");
         self.builder.build_store(item_local, self.val_none());
 
-        let loop_cond_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
-        self.builder.build_unconditional_branch(loop_cond_bb);
-        self.builder.position_at_end(loop_cond_bb);
+        let loop_start_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
+        self.builder.build_unconditional_branch(loop_start_bb);
+        self.builder.position_at_end(loop_start_bb);
 
         let loop_body_bb = self.context.append_basic_block(self.cur_fn, "loop_body");
         let loop_end_bb = self.context.append_basic_block(self.cur_fn, "loop_end");
@@ -2427,6 +2450,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         );
         self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
 
+        let old_loop = self.cur_loop;
+        self.cur_loop = Some((loop_start_bb, loop_end_bb));
+
         self.builder.position_at_end(loop_body_bb);
         let item_pair_val = self.builder.build_call(self.cached_fn(FN_ARRAY_GET), &[self.builder.build_load(iter_local, "").into(), self.builder.build_load(idx_local, "").into()], "").try_as_basic_value().left().unwrap();
         let pair_l_val = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[item_pair_val.into(), self.context.i32_type().const_zero().into()], "").try_as_basic_value().left().unwrap();
@@ -2436,22 +2462,33 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             self.visit_binding_pattern(BindingPattern::Variable(ident_tok), pair_r_val);
         }
 
+        let mut terminates_early = false;
         for node in body {
+            let terminates = node.all_branches_terminate().is_some();
+
             self.visit(node)?;
+
+            if terminates {
+                terminates_early = terminates;
+                break;
+            }
         }
 
-        self.builder.build_store(
-            idx_local,
-            self.builder.build_int_add(
-                self.builder.build_load(idx_local, "").into_int_value(),
-                self.context.i32_type().const_int(1, false),
-                "",
-            )
-        );
-        self.builder.build_unconditional_branch(loop_cond_bb);
+        if !terminates_early {
+            self.builder.build_store(
+                idx_local,
+                self.builder.build_int_add(
+                    self.builder.build_load(idx_local, "").into_int_value(),
+                    self.context.i32_type().const_int(1, false),
+                    "",
+                )
+            );
+            self.builder.build_unconditional_branch(loop_start_bb);
+        }
 
         self.builder.position_at_end(loop_end_bb);
 
+        self.cur_loop = old_loop;
         self.end_scope();
 
         let res = self.val_none().as_basic_value_enum();
@@ -2463,7 +2500,14 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_break(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+        if let Some((_loop_start_bb, loop_end_bb)) = self.cur_loop {
+            self.builder.build_unconditional_branch(loop_end_bb);
+        } else {
+            unreachable!("Internal error: break found outside of a loop context");
+        }
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_continue(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {

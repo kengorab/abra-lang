@@ -1174,6 +1174,16 @@ fn test_lambdas() {
         "(a, 0) (b, 1) (c, 2)",
         "(d, 3) (e, 4) None None None",
     ]);
+
+    let input = r#"
+      var f: () => Int
+      for i in [24, 25, 26, 27, 28, 29] {
+        f = () => i
+        break
+      }
+      println(f())
+    "#;
+    run_and_verify_output_lines(input, vec!["24"]);
 }
 
 #[test]
@@ -1195,6 +1205,25 @@ fn test_for_loops() {
       for i in map print(i, "")
       println()
       for k, v in map print(k, "=>", v + ", ")
+      println()
+
+      var count = 0
+      for item, i in [1, 2, 3] {
+        val inc = if item == 2 { break } else 1
+        count += inc
+      }
+      println(count)
+
+      var a = 0
+      for _ in [1, 2, 3, 4, 5] {
+        a = a + 1
+        for _ in [1, 2, 3, 4, 5] {
+          a = a + 1
+          if a >= 3 break
+        }
+        if a > 3 break
+      }
+      println(a) // If this printed 3, we'd know that `break` destroyed the outer loop too, but it doesn't
     "#;
     run_and_verify_output_lines(input, vec![
         "2 4 6 8 10 ",
@@ -1202,6 +1231,8 @@ fn test_for_loops() {
         "c b d a ",
         "0 => c, 1 => b, 2 => d, 3 => a, ",
         "a d c b ",
-        "a => 1, d => 4, c => 3, b => 2,",
+        "a => 1, d => 4, c => 3, b => 2, ",
+        "1",
+        "5",
     ]);
 }

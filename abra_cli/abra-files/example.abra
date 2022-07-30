@@ -1,34 +1,12 @@
-//val arr = [("a", true), ("b", false), ("c", true)]
-//println(arr.enumerate())
-//val map = { a: 1, b: 2 }
-//println(map.enumerate())
-//val set = #{"a", "b", "c"}
-//println(set.enumerate())
+var f: () => Int
+for i in [1, 2, 3, 4, 5] {
+  val x = i
 
-//for (v, b), idx in arr {
-//  println("item:", v, b, ", idx:", idx)
-//}
-//for item, idx in arr {
-//  println("item:", item, "idx:", idx)
-//}
-
-func makeIterator<T>(arr: T[]): () => (T, Int)? {
-  var idx = 0
-
-  () => if arr[idx] |item| {
-    idx += 1
-    (item, idx - 1)
-  } else {
-    None
-  }
+  f = () => x
+  if true break
 }
+println(f())
 
-val arr = ["a", "b", "c"]
-val iter = makeIterator(arr)
-println(iter(), iter(), iter())
-arr[3] = "d"
-arr[4] = "e"
-println(iter(), iter(), iter(), iter(), iter())
 
 
 
