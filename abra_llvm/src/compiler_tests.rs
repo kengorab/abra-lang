@@ -1175,15 +1175,33 @@ fn test_lambdas() {
         "(d, 3) (e, 4) None None None",
     ]);
 
+    // Lambdas closing over block-scoped variables
     let input = r#"
       var f: () => Int
+
+      if true {
+        val x = 6
+        f = () => x
+      } else {
+        val y = 12
+        f = () => y
+      }
+      println(f())
+
       for i in [24, 25, 26, 27, 28, 29] {
         f = () => i
         break
       }
       println(f())
+
+      while true {
+        val x = 29
+        f = () => x
+        break
+      }
+      println(f())
     "#;
-    run_and_verify_output_lines(input, vec!["24"]);
+    run_and_verify_output_lines(input, vec!["6", "24", "29"]);
 }
 
 #[test]
@@ -1242,5 +1260,77 @@ fn test_for_loops() {
         "1",
         "5",
         "2",
+    ]);
+}
+
+#[test]
+fn test_while_loops() {
+    let input = r#"
+      var i = 0
+      while i < 3 {
+        print(i, "")
+        i += 1
+      }
+      println()
+
+      var a = 0
+      while true {
+        a = a + 1
+        while true {
+          a = a + 1
+          if a >= 3 break
+        }
+        if a > 3 break
+      }
+      println(a) // If this printed 3, we'd know that `break` destroyed the outer loop too, but it doesn't
+
+      val arr = [1, 2, 3]
+      var idx = 0
+      var count = 0
+      while arr[idx] |item| {
+        idx += 1
+        val inc = if item == 2 { continue } else 1
+        count += inc
+      }
+      println(count)
+
+      // Condition binding
+      (() => {
+        var str = ""
+        var idx = 0
+        val arr = [1, 2, 3]
+        while arr[idx] |item| {
+          str = str + item
+          idx = idx + 1
+        }
+        println(str)
+      })()
+
+      // Fizzbuzz-ish
+      (() => {
+        var i = 1
+        var output = ""
+        while i <= 20 {
+          val msg = if i % 15 == 0 {
+            "Fb"
+          } else if i % 3 == 0 {
+            "F"
+          } else if i % 5 == 0 {
+            "B"
+          } else {
+            "" + i
+          }
+          output = output + msg + ","
+          i = i + 1
+        }
+        println(output)
+      })()
+    "#;
+    run_and_verify_output_lines(input, vec![
+        "0 1 2 ",
+        "5",
+        "2",
+        "123",
+        "1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,",
     ]);
 }

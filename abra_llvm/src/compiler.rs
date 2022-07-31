@@ -2499,8 +2499,56 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_while_loop(&mut self, _token: Token, _node: TypedWhileLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_while_loop(&mut self, _token: Token, node: TypedWhileLoopNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedWhileLoopNode { condition, condition_binding, body } = node;
+
+        self.begin_new_scope("while-container".to_string());
+
+        let loop_start_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
+        self.builder.build_unconditional_branch(loop_start_bb);
+        self.builder.position_at_end(loop_start_bb);
+
+        let loop_body_bb = self.context.append_basic_block(self.cur_fn, "loop_body");
+        let loop_end_bb = self.context.append_basic_block(self.cur_fn, "loop_end");
+        let cond_val = self.visit(*condition)?;
+        let cond = self.builder.build_and(
+            self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_FALSE, false), ""),
+            self.builder.build_int_compare(IntPredicate::NE, cond_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), ""),
+            "cond"
+        );
+        self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
+
+        let old_loop = self.cur_loop;
+        self.cur_loop = Some((loop_start_bb, loop_end_bb));
+
+        self.builder.position_at_end(loop_body_bb);
+        if let Some(ident_tok) = condition_binding {
+            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), cond_val);
+        }
+
+        let mut terminates_early = false;
+        for node in body {
+            let terminates = node.all_branches_terminate().is_some();
+
+            self.visit(node)?;
+
+            if terminates {
+                terminates_early = terminates;
+                break;
+            }
+        }
+
+        if !terminates_early {
+            self.builder.build_unconditional_branch(loop_start_bb);
+        }
+
+        self.builder.position_at_end(loop_end_bb);
+
+        self.cur_loop = old_loop;
+        self.end_scope();
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_break(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -2515,8 +2563,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     }
 
     fn visit_continue(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        if let Some((loop_start_bb, _loop_end_bb)) = self.cur_loop {
-            self.builder.build_unconditional_branch(loop_start_bb);
+        if let Some((loop_incr_bb, _loop_end_bb)) = self.cur_loop {
+            self.builder.build_unconditional_branch(loop_incr_bb);
         } else {
             unreachable!("Internal error: continue found outside of a loop context");
         }
