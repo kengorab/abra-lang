@@ -40,7 +40,7 @@ pub fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<ParsedTypeAtt
                             let type_args = type_args.into_iter()
                                 .map(|t| match t {
                                     TypeRepr::Ident(n, _) => n,
-                                    r => unreachable!(format!("Unexpected type {:?}", r))
+                                    r => unreachable!("Unexpected type {:?}", r),
                                 })
                                 .collect();
                             let parsed = ParsedTypeAttr {
@@ -54,7 +54,7 @@ pub fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<ParsedTypeAtt
                             };
                             Ok(parsed)
                         }
-                        r => unreachable!(format!("Unexpected type {:?}", r))
+                        r => unreachable!("Unexpected type {:?}", r),
                     },
                     Err(e) => {
                         let msg = format!("Invalid signature provided to #[abra_type]: {}", e);
@@ -76,7 +76,7 @@ pub fn parse_abra_type_attr(attrs: &Vec<syn::Attribute>) -> Result<ParsedTypeAtt
 
 #[derive(Debug)]
 pub struct FieldSpec {
-    pub(crate) native_field_name: String,
+    // pub(crate) native_field_name: String,
     pub(crate) name: String,
     pub(crate) typ: TypeRepr,
     pub(crate) has_default: bool,
@@ -118,7 +118,7 @@ pub fn parse_abra_field_attr(type_name: &String, struct_item: &syn::ItemStruct, 
     };
 
     Ok(Some(FieldSpec {
-        native_field_name: name.clone(),
+        // native_field_name: name.clone(),
         name: field_attr.get("name").unwrap_or(&name).clone(),
         typ,
         has_default: field_attr.get("has_default").map_or(false, |f| f == "true"),

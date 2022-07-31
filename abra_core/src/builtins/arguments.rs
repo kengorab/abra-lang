@@ -17,8 +17,8 @@ impl<'a> Arguments<'a> {
     pub fn next_int(&mut self) -> i64 {
         match self.args.next() {
             Some(Value::Int(i)) => i,
-            Some(v) => unreachable!(format!("Expected Int, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Int, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
@@ -26,16 +26,16 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::Int(i)) => i,
             Some(Value::Nil) => default,
-            Some(v) => unreachable!(format!("Expected Int, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Int, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_float(&mut self) -> f64 {
         match self.args.next() {
             Some(Value::Float(f)) => f,
-            Some(v) => unreachable!(format!("Expected Float, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Float, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
@@ -43,16 +43,16 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::Float(f)) => f,
             Some(Value::Nil) => default,
-            Some(v) => unreachable!(format!("Expected Float, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Float, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_bool(&mut self) -> bool {
         match self.args.next() {
             Some(Value::Bool(b)) => b,
-            Some(v) => unreachable!(format!("Expected Bool, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Bool, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
@@ -60,16 +60,16 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::Bool(b)) => b,
             Some(Value::Nil) => default,
-            Some(v) => unreachable!(format!("Expected Bool, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Bool, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_string(&mut self) -> String {
         match self.args.next() {
             Some(Value::StringObj(o)) => o.borrow()._inner.clone(),
-            Some(v) => unreachable!(format!("Expected String, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected String, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
@@ -77,31 +77,31 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::StringObj(o)) => o.borrow()._inner.clone(),
             Some(Value::Nil) => default.as_ref().to_string(),
-            Some(v) => unreachable!(format!("Expected String, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected String, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_array(&mut self) -> Vec<Value> {
         match self.args.next() {
             Some(Value::ArrayObj(o)) => (&*o.borrow())._inner.clone(),
-            Some(v) => unreachable!(format!("Expected Array, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Array, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_set(&mut self) -> HashSet<Value> {
         match self.args.next() {
             Some(Value::SetObj(o)) => (&*o.borrow())._inner.clone(),
-            Some(v) => unreachable!(format!("Expected Set, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Set, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
     pub fn next_value(&mut self) -> Value {
         match self.args.next() {
             Some(v) => v,
-            None => unreachable!(self.error_str()),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 
@@ -110,8 +110,8 @@ impl<'a> Arguments<'a> {
         match self.args.next() {
             Some(Value::ArrayObj(o)) => (*o.borrow())._inner.clone(),
             Some(Value::Nil) => vec![],
-            Some(v) => unreachable!(format!("Expected Array, received {}", v)),
-            None => unreachable!(self.error_str()),
+            Some(v) => unreachable!("Expected Array, received {}", v),
+            None => unreachable!("{}", self.error_str()),
         }
     }
 

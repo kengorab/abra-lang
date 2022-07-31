@@ -258,7 +258,7 @@ impl<'a> Compiler<'a> {
 
     fn get_global_idx<S: AsRef<str>>(&self, module_id: &ModuleId, name: S) -> Option<&usize> {
         match self.globals.get(module_id) {
-            None => unreachable!(format!("No globals found for module {:?}", module_id)),
+            None => unreachable!("No globals found for module {:?}", module_id),
             Some(module_globals) => module_globals.get(name.as_ref())
         }
     }
@@ -267,7 +267,7 @@ impl<'a> Compiler<'a> {
         let num_globals = self.globals.values().map(|m| m.len()).sum();
 
         match self.globals.get_mut(&self.module_id) {
-            None => unreachable!(format!("No globals found for module {:?}", self.module_id)),
+            None => unreachable!("No globals found for module {:?}", self.module_id),
             Some(module_globals) => {
                 let idx = num_globals;
                 module_globals.insert(name.as_ref().to_string(), idx);
@@ -454,8 +454,8 @@ impl<'a> Compiler<'a> {
         match code.get_mut(jump_handle.instr_slot) {
             Some(Opcode::Jump(offset)) => *offset = jump_offset - 1,
             Some(Opcode::JumpIfF(offset)) => *offset = jump_offset - 1,
-            Some(op) => unreachable!(format!("Expected Jump/JumpIfF, got {:?}", op)),
-            None => unreachable!(format!("Expected opcode at index {}, but there was none", jump_handle.instr_slot)),
+            Some(op) => unreachable!("Expected Jump/JumpIfF, got {:?}", op),
+            None => unreachable!("Expected opcode at index {}, but there was none", jump_handle.instr_slot),
         }
     }
 
