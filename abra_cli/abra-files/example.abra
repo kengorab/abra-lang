@@ -1,4 +1,15 @@
-1 + 1
+func abc() {}
+
+type Foo {
+  func abc(self) {}
+}
+
+enum Bar {
+  Baz(a: Int)
+
+  func abc(self) {}
+}
+
 
 
 

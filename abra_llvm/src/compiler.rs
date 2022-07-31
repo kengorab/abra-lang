@@ -120,8 +120,7 @@ struct Scope<'ctx> {
     enums: HashMap<String, EnumSpec<'ctx>>,
 }
 
-pub struct Compiler<'a, 'ctx> {
-    module_name: &'a str,
+pub struct Compiler<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
@@ -132,17 +131,16 @@ pub struct Compiler<'a, 'ctx> {
 
 type CompilerError = ();
 
-impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn new(context: &'ctx Context) -> Compiler<'a, 'ctx> {
-        let module_name = "__main";
+impl<'ctx> Compiler<'ctx> {
+    pub fn new(context: &'ctx Context) -> Compiler<'ctx> {
         let builder = context.create_builder();
-        let module = context.create_module(module_name);
+        let module = context.create_module("__main");
 
         let entry_fn_type = context.void_type().fn_type(&[], false);
         let entry_fn = module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
 
         let root_scope = Scope {
-            name: "$root".to_string(),
+            name: "$0".to_string(),
             fn_depth: 0,
             fns: HashMap::new(),
             variables: HashMap::new(),
@@ -151,22 +149,27 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             enums: HashMap::new(),
         };
 
-        Compiler { module_name, context: &context, builder, module, cur_fn: entry_fn, scopes: vec![root_scope], cur_loop: None }
+        Compiler { context: &context, builder, module, cur_fn: entry_fn, scopes: vec![root_scope], cur_loop: None }
     }
 
     pub fn initialize(&mut self) {
         let prelude_init_fn = self.prelude_init();
 
         // Begin emitting code in the entry function, starting with `$prelude_init()`
-        let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "entry_fn_bb");
+        let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "");
         self.builder.position_at_end(entry_fn_bb);
         self.builder.build_call(prelude_init_fn, &[], "");
     }
 
     pub fn compile_module(&mut self, typed_module: TypedModule, mod_idx: usize, is_main: bool) -> Result<(), CompilerError> {
+        debug_assert!(self.scopes.len() == 1);
+        self.scopes.first_mut()
+            .expect("There should always (and only) be the root scope remaining at the start of a module compilation")
+            .name = format!("${}", mod_idx);
+
         let main_fn = self.cur_fn;
         let init_fn_type = self.context.void_type().fn_type(&[], false);
-        let mod_init_fn = self.module.add_function(&format!("${}$init", mod_idx), init_fn_type, None);
+        let mod_init_fn = self.module.add_function(&format!("${}", mod_idx), init_fn_type, None);
         let mod_init_fn_bb = self.context.append_basic_block(mod_init_fn, "");
         self.builder.position_at_end(mod_init_fn_bb);
 
@@ -430,7 +433,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         // Prelude initialization function
         let init_fn_type = void.fn_type(&[], false);
         let init_fn = self.module.add_function("$prelude_init", init_fn_type, None);
-        let init_fn_bb = self.context.append_basic_block(init_fn, "init_fn_bb");
+        let init_fn_bb = self.context.append_basic_block(init_fn, "");
         self.builder.position_at_end(init_fn_bb);
         self.init_prelude();
         self.builder.build_return(None);
@@ -773,37 +776,49 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         CapturedVariableFinder::find_captured_variables(context, args, body)
     }
 
+    fn namespaced_type_name(&self, type_name: &String) -> String {
+        let prefix = self.scopes.iter().map(|s| &s.name).join("::");
+        format!("{}::{}", prefix, type_name)
+    }
+
+    fn namespaced_fn_name(&self, type_name: Option<&String>, fn_name: &String, is_static: bool) -> String {
+        if let Some(type_name) = type_name {
+            let prefix = self.namespaced_type_name(type_name);
+            if is_static {
+                format!("{}.{}", prefix, fn_name)
+            } else {
+                format!("{}#{}", prefix, fn_name)
+            }
+        } else {
+            let prefix = self.scopes.iter().map(|s| &s.name).join("::");
+            format!("{}::{}", prefix, fn_name)
+        }
+    }
+
     fn compile_function_start(
         &mut self,
-        fn_name: &String,
-        type_name: Option<&String>,
+        fn_display_name: &String,
+        fully_qualified_fn_name: &String,
         captured_variables: HashMap<String, usize>,
         args: Vec<(/* name: */ String, /* default_value: */ Option<TypedAstNode>)>,
         has_return: bool,
+        create_local: bool,
     ) -> Result<(FunctionValue<'ctx>, PointerValue<'ctx>, Option<PointerValue<'ctx>>), CompilerError> {
-        let is_method = type_name.is_some();
-
-        let namespace = self.scopes.iter().map(|s| &s.name).join("::");
-        let official_fn_name = if let Some(type_name) = type_name {
-            format!("{}__{}", &type_name, fn_name)
-        } else {
-            fn_name.clone()
-        };
-        let fully_qualified_fn_name = format!("{}::{}", namespace, official_fn_name);
-
         let num_captured_variables = captured_variables.len();
         let is_closure = !captured_variables.is_empty();
 
         let fn_type = self.gen_llvm_fn_type(has_return, args.len());
         let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
-        let fn_local = if !is_method {
-            let local_ptr = self.builder.build_alloca(self.value_t(), &official_fn_name);
-            self.current_scope_mut().variables.insert(official_fn_name.clone(), Variable { local_ptr, is_captured: false });
+        let fn_local = if create_local {
+            let local_ptr = self.builder.build_alloca(self.value_t(), &fn_display_name);
+            self.current_scope_mut().variables.insert(fn_display_name.clone(), Variable { local_ptr, is_captured: false });
             Some(local_ptr)
-        } else { None };
+        } else {
+            None
+        };
 
         let env_mem = if !is_closure {
-            self.current_scope_mut().fns.insert(official_fn_name.clone(), func);
+            self.current_scope_mut().fns.insert(fn_display_name.clone(), func);
 
             self.value_t_ptr().const_zero() // Pass `NULL` as env if non-closure
         } else {
@@ -850,7 +865,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             env_mem
         };
 
-        let fn_bb = self.context.append_basic_block(func, "fn_body");
+        let fn_bb = self.context.append_basic_block(func, "");
         self.builder.position_at_end(fn_bb);
         self.cur_fn = func;
 
@@ -861,7 +876,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             None
         };
         let num_received_args = func.get_nth_param(1).unwrap().into_int_value();
-        self.begin_new_fn_scope(official_fn_name.clone(), closure_context);
+        self.begin_new_fn_scope(fn_display_name.clone(), closure_context);
         for (mut idx, (name, default_value)) in args.into_iter().enumerate() {
             idx += 2; // Skip over `env` and `num_received_args` params
 
@@ -870,7 +885,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
             // If there's a default value for the parameter assign it, making sure to only evaluate the default expression if necessary
             let param_val = func.get_nth_param(idx as u32)
-                .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &official_fn_name));
+                .expect(&format!("Internal error: expected parameter idx {} to exist for function {}", idx, &fn_display_name));
             let param_val = if let Some(default_value) = default_value {
                 // Supply the default value for the parameter if it was either explicitly/implicitly omitted.
                 // Explicit omission:
@@ -915,7 +930,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     fn compile_function_end(
         &mut self,
-        fn_name: &String,
+        fn_display_name: &String,
         func: FunctionValue<'ctx>,
         env_mem: PointerValue<'ctx>,
         fn_local: Option<PointerValue<'ctx>>,
@@ -925,7 +940,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         self.builder.position_at_end(fn_decl_site_bb);
         self.end_scope();
 
-        let fn_name_val = self.builder.build_global_string_ptr(&fn_name, "").as_pointer_value().into();
+        let fn_name_val = self.builder.build_global_string_ptr(&fn_display_name, "").as_pointer_value().into();
         let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
         let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap();
         if let Some(fn_local) = fn_local {
@@ -956,7 +971,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             .map(|(tok, _, _, default_value)| (Token::get_ident_name(&tok), default_value))
             .collect();
         let captured_variables = self.find_captured_variables(&args, &node.body);
-        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, type_name, captured_variables, args, has_return)?;
+        let fully_qualified_fn_name = self.namespaced_fn_name(type_name, &fn_name, false);
+        let is_method = type_name.is_some();
+        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, !is_method)?;
 
         let body_len = node.body.len();
         for (idx, node) in node.body.into_iter().enumerate() {
@@ -978,7 +995,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 }
 
-impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'a, 'ctx> {
+impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ctx> {
     fn visit_literal(&mut self, _token: Token, node: TypedLiteralNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let value = match node {
             TypedLiteralNode::IntLiteral(v) => {
@@ -1244,7 +1261,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
     fn visit_lambda(&mut self, _token: Token, node: TypedLambdaNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let TypedLambdaNode { typ, idx, args, typed_body, .. } = node;
         let body = typed_body.unwrap();
-        let fn_name = format!("_${}", idx);
+        let fn_name = format!("$anon{}", idx);
         let has_return = if let Type::Fn(FnType { ret_type, .. }) = typ { *ret_type != Type::Unit } else { unreachable!() };
 
         let old_fn = self.cur_fn;
@@ -1252,7 +1269,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
         let args = args.into_iter().map(|(tok, _, default_value)| (Token::get_ident_name(&tok), default_value)).collect();
         let captured_variables = self.find_captured_variables(&args, &body);
-        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, None, captured_variables, args, has_return)?;
+        let fully_qualified_fn_name = self.namespaced_fn_name(None, &fn_name, false);
+        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, true)?;
 
         let body_len = body.len();
         for (idx, node) in body.into_iter().enumerate() {
@@ -1298,14 +1316,15 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let num_fields = node.fields.len();
         let field_names = node.fields.iter().map(|f| Token::get_ident_name(&f.ident)).collect_vec();
         let type_name = Token::get_ident_name(&node.name);
+        let fully_qualified_type_name = self.namespaced_type_name(&type_name);
 
-        let struct_type = self.context.opaque_struct_type(&type_name);
+        let struct_type = self.context.opaque_struct_type(&fully_qualified_type_name);
         let mut field_types = vec![self.cached_type(TYPE_OBJ_HEADER).into()];
         field_types.append(&mut repeat(self.value_t().into()).take(num_fields).collect_vec());
         struct_type.set_body(field_types.as_slice(), false);
 
         let type_id = self.incr_next_type_id();
-        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &type_name));
+        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &fully_qualified_type_name));
         type_id_global.set_linkage(Linkage::Common);
         type_id_global.set_initializer(&self.context.i32_type().const_zero());
         self.builder.build_store(type_id_global.as_pointer_value(), type_id);
@@ -1315,9 +1334,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let ctor_fn_type = self.value_t().fn_type(repeat(self.value_t().into()).take(num_fields).collect_vec().as_slice(), false);
-            let ctor_fn = self.module.add_function(&format!("{}__{}_new", &self.module_name, &type_name), ctor_fn_type, None);
+            let ctor_fn_name = self.namespaced_fn_name(Some(&type_name), &"new".to_string(), true);
+            let ctor_fn = self.module.add_function(&ctor_fn_name, ctor_fn_type, None);
             self.cur_fn = ctor_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let struct_size = self.builder.build_int_add(
@@ -1375,9 +1395,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let tostring_fn_type = self.gen_llvm_fn_type(true, 1);
-            let tostring_fn = self.module.add_function(&format!("{}__{}__toString", &self.module_name, &type_name), tostring_fn_type, None);
+            let tostring_fn_name = self.namespaced_fn_name(Some(&type_name), &"toString".to_string(), false);
+            let tostring_fn = self.module.add_function(&tostring_fn_name, tostring_fn_type, None);
             self.cur_fn = tostring_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let self_arg = self.cur_fn.get_nth_param(2).unwrap();
@@ -1428,9 +1449,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let eq_fn_type = self.gen_llvm_fn_type(true, 2);
-            let eq_fn = self.module.add_function(&format!("{}__{}__eq", &self.module_name, &type_name), eq_fn_type, None);
+            let eq_fn_name = self.namespaced_fn_name(Some(&type_name), &"eq".to_string(), false);
+            let eq_fn = self.module.add_function(&eq_fn_name, eq_fn_type, None);
             self.cur_fn = eq_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let self_arg = self.cur_fn.get_nth_param(2).unwrap();
@@ -1483,9 +1505,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let hash_fn_type = self.gen_llvm_fn_type(true, 1);
-            let hash_fn = self.module.add_function(&format!("{}__{}__hash", &self.module_name, &type_name), hash_fn_type, None);
+            let hash_fn_name = self.namespaced_fn_name(Some(&type_name), &"hash".to_string(), false);
+            let hash_fn = self.module.add_function(&hash_fn_name, hash_fn_type, None);
             self.cur_fn = hash_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let hash_val = self.builder.build_alloca(self.context.i32_type(), "hash");
@@ -1536,6 +1559,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
 
     fn visit_enum_decl(&mut self, _token: Token, node: TypedEnumDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let enum_name = Token::get_ident_name(&node.name);
+        let fully_qualified_enum_name = self.namespaced_type_name(&enum_name);
 
         let max_num_fields = node.variants.iter()
             .map(|(_, (typ, _))| if let Type::Fn(FnType{arg_types, ..}) = typ { arg_types.len() } else { 0 })
@@ -1547,18 +1571,18 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         } else {
             vec![base_enum_struct_fields.clone(), vec![self.value_t().array_type(max_num_fields as u32).into()]].concat()
         };
-        let base_struct_type = self.context.opaque_struct_type(&enum_name);
+        let base_struct_type = self.context.opaque_struct_type(&fully_qualified_enum_name);
         base_struct_type.set_body(base_struct_fields.as_slice(), false);
 
         let type_id = self.incr_next_type_id();
-        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &enum_name));
+        let type_id_global = self.module.add_global(self.context.i32_type(), None, &format!("type_id_{}", &fully_qualified_enum_name));
         type_id_global.set_linkage(Linkage::Common);
         type_id_global.set_initializer(&self.context.i32_type().const_zero());
         self.builder.build_store(type_id_global.as_pointer_value(), type_id);
 
         #[inline]
-        fn emit_alloc_variant<'a, 'ctx>(
-            zelf: &mut Compiler<'a, 'ctx>,
+        fn emit_alloc_variant<'ctx>(
+            zelf: &mut Compiler<'ctx>,
             variant_idx: usize,
             variant_struct_size: IntValue<'ctx>,
             variant_struct_type: StructType<'ctx>,
@@ -1581,7 +1605,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let mut variant_specs = Vec::new();
         for (idx, (tok, (typ, default_field_vals))) in node.variants.into_iter().enumerate() {
             let variant_name = Token::get_ident_name(&tok);
-            let variant_struct_type = self.context.opaque_struct_type(&format!("{}_{}", &enum_name, &variant_name));
+            let fully_qualified_variant_name = self.namespaced_fn_name(Some(&enum_name), &variant_name, true);
+            let variant_struct_type = self.context.opaque_struct_type(&fully_qualified_variant_name);
 
             let val = if let Type::Fn(FnType { arg_types, is_enum_constructor, .. }) = typ {
                 debug_assert!(is_enum_constructor);
@@ -1601,7 +1626,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                     .map(|(name, default_val)| (name.clone(), default_val))
                     .collect();
                 let captured_variables = self.find_captured_variables(&args, &vec![]);
-                let (func, env_mem, fn_local) = self.compile_function_start(&variant_name, Some(&enum_name), captured_variables, args, true)?;
+                let (func, env_mem, fn_local) = self.compile_function_start(&variant_name, &fully_qualified_variant_name, captured_variables, args, true, false)?;
 
                 let mem = emit_alloc_variant(self, idx, variant_struct_size, variant_struct_type, type_id_global.as_pointer_value());
                 let mem = self.builder.build_pointer_cast(mem, variant_struct_type.ptr_type(AddressSpace::Generic), "");
@@ -1617,8 +1642,8 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 self.builder.build_return(Some(&val.as_basic_value_enum()));
 
                 self.cur_fn = old_fn;
-                let variant_fn_name = format!("{}.{}", &enum_name, &variant_name);
-                let fn_val = self.compile_function_end(&variant_fn_name, func, env_mem, fn_local, false, fn_decl_site_bb);
+                let variant_fn_display_name = format!("{}.{}", &enum_name, &variant_name);
+                let fn_val = self.compile_function_end(&variant_fn_display_name, func, env_mem, fn_local, false, fn_decl_site_bb);
 
                 variants.push((variant_name, variant_struct_type, arg_names));
 
@@ -1627,7 +1652,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
                 variant_struct_type.set_body(base_enum_struct_fields.as_slice(), false);
                 let variant_struct_size = variant_struct_type.size_of().unwrap();
 
-                let variant_value_global = self.module.add_global(self.value_t(), None, &format!("{}_{}", &enum_name, &variant_name));
+                let variant_value_global = self.module.add_global(self.value_t(), None, &fully_qualified_variant_name);
                 variant_value_global.set_linkage(Linkage::Common);
                 variant_value_global.set_initializer(&self.val_none().as_basic_value_enum());
 
@@ -1673,9 +1698,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let tostring_fn_type = self.gen_llvm_fn_type(true, 1);
-            let tostring_fn = self.module.add_function(&format!("{}__{}__toString", &self.module_name, &enum_name), tostring_fn_type, None);
+            let tostring_fn_name = self.namespaced_fn_name(Some(&enum_name), &"toString".to_string(), false);
+            let tostring_fn = self.module.add_function(&tostring_fn_name, tostring_fn_type, None);
             self.cur_fn = tostring_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let self_arg = self.cur_fn.get_nth_param(2).unwrap();
@@ -1747,9 +1773,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let eq_fn_type = self.gen_llvm_fn_type(true, 2);
-            let eq_fn = self.module.add_function(&format!("{}__{}__eq", &self.module_name, &enum_name), eq_fn_type, None);
+            let eq_fn_name = self.namespaced_fn_name(Some(&enum_name), &"eq".to_string(), false);
+            let eq_fn = self.module.add_function(&eq_fn_name, eq_fn_type, None);
             self.cur_fn = eq_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let self_arg = self.cur_fn.get_nth_param(2).unwrap();
@@ -1829,9 +1856,10 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
             let old_fn = self.cur_fn;
 
             let hash_fn_type = self.gen_llvm_fn_type(true, 1);
-            let hash_fn = self.module.add_function(&format!("{}__{}__hash", &self.module_name, &enum_name), hash_fn_type, None);
+            let hash_fn_name = self.namespaced_fn_name(Some(&enum_name), &"hash".to_string(), false);
+            let hash_fn = self.module.add_function(&hash_fn_name, hash_fn_type, None);
             self.cur_fn = hash_fn;
-            let fn_bb = self.context.append_basic_block(self.cur_fn, "fn_body");
+            let fn_bb = self.context.append_basic_block(self.cur_fn, "");
             self.builder.position_at_end(fn_bb);
 
             let hash_val = self.builder.build_alloca(self.context.i32_type(), "hash");
@@ -2093,7 +2121,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let num_passed_args = node.args.len();
 
         #[inline]
-        fn passed_args<'a, 'ctx>(zelf: &mut Compiler<'a, 'ctx>, args: Vec<Option<TypedAstNode>>) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, CompilerError> {
+        fn passed_args<'ctx>(zelf: &mut Compiler<'ctx>, args: Vec<Option<TypedAstNode>>) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, CompilerError> {
             args.into_iter()
                 .map(|arg| if let Some(arg) = arg { zelf.visit(arg).map(|v| v.into()) } else { Ok(zelf.val_none().into()) })
                 .collect::<Result<Vec<_>, _>>()
