@@ -172,7 +172,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         compiler.finalize(&last_item_type, last_item);
 
-        module.print_to_stderr();
+        // module.print_to_stderr();
         Ok(module)
     }
 
@@ -2439,16 +2439,9 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         let loop_start_bb = self.context.append_basic_block(self.cur_fn, "loop_cond");
         self.builder.build_unconditional_branch(loop_start_bb);
         self.builder.position_at_end(loop_start_bb);
-        self.builder.build_store(
-            idx_local,
-            self.builder.build_int_add(
-                self.builder.build_load(idx_local, "").into_int_value(),
-                self.context.i32_type().const_int(1, false),
-                "",
-            )
-        );
 
         let loop_body_bb = self.context.append_basic_block(self.cur_fn, "loop_body");
+        let loop_incr_bb = self.context.append_basic_block(self.cur_fn, "loop_incr");
         let loop_end_bb = self.context.append_basic_block(self.cur_fn, "loop_end");
         let cond = self.builder.build_int_compare(
             IntPredicate::ULT,
@@ -2459,7 +2452,7 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         self.builder.build_conditional_branch(cond, loop_body_bb, loop_end_bb);
 
         let old_loop = self.cur_loop;
-        self.cur_loop = Some((loop_start_bb, loop_end_bb));
+        self.cur_loop = Some((loop_incr_bb, loop_end_bb));
 
         self.builder.position_at_end(loop_body_bb);
         let item_pair_val = self.builder.build_call(self.cached_fn(FN_ARRAY_GET), &[self.builder.build_load(iter_local, "").into(), self.builder.build_load(idx_local, "").into()], "").try_as_basic_value().left().unwrap();
@@ -2483,16 +2476,19 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         }
 
         if !terminates_early {
-            // self.builder.build_store(
-            //     idx_local,
-            //     self.builder.build_int_add(
-            //         self.builder.build_load(idx_local, "").into_int_value(),
-            //         self.context.i32_type().const_int(1, false),
-            //         "",
-            //     )
-            // );
-            self.builder.build_unconditional_branch(loop_start_bb);
+            self.builder.build_unconditional_branch(loop_incr_bb);
         }
+
+        self.builder.position_at_end(loop_incr_bb);
+        self.builder.build_store(
+            idx_local,
+            self.builder.build_int_add(
+                self.builder.build_load(idx_local, "").into_int_value(),
+                self.context.i32_type().const_int(1, false),
+                "",
+            )
+        );
+        self.builder.build_unconditional_branch(loop_start_bb);
 
         self.builder.position_at_end(loop_end_bb);
 

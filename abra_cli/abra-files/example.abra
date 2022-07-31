@@ -1,6 +1,6 @@
 var count2 = 0
 for item, i in [1, 2, 3] {
-println(item, i)
+  println(item, i)
   val inc = if item == 2 { continue } else 1
   count2 += inc
 }
