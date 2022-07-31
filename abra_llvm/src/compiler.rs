@@ -123,8 +123,8 @@ struct Scope<'ctx> {
 pub struct Compiler<'a, 'ctx> {
     module_name: &'a str,
     context: &'ctx Context,
-    builder: &'a Builder<'ctx>,
-    module: &'a Module<'ctx>,
+    builder: Builder<'ctx>,
+    module: Module<'ctx>,
     cur_fn: FunctionValue<'ctx>,
     scopes: Vec<Scope<'ctx>>,
     cur_loop: Option<(BasicBlock<'ctx>, BasicBlock<'ctx>)>,
@@ -133,7 +133,7 @@ pub struct Compiler<'a, 'ctx> {
 type CompilerError = ();
 
 impl<'a, 'ctx> Compiler<'a, 'ctx> {
-    pub fn compile_module(context: &'ctx Context, typed_module: TypedModule) -> Result<Module<'ctx>, CompilerError> {
+    pub fn new(context: &'ctx Context) -> Compiler<'a, 'ctx> {
         let module_name = "__main";
         let builder = context.create_builder();
         let module = context.create_module(module_name);
@@ -151,29 +151,52 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             enums: HashMap::new(),
         };
 
-        let mut compiler = Compiler {
-            module_name,
-            context: &context,
-            builder: &builder,
-            module: &module,
-            cur_fn: entry_fn,
-            scopes: vec![root_scope],
-            cur_loop: None,
-        };
+        Compiler { module_name, context: &context, builder, module, cur_fn: entry_fn, scopes: vec![root_scope], cur_loop: None }
+    }
 
-        compiler.init();
+    pub fn initialize(&mut self) {
+        let prelude_init_fn = self.prelude_init();
 
-        let mut last_item = context.i64_type().const_zero().as_basic_value_enum();
+        // Begin emitting code in the entry function, starting with `$prelude_init()`
+        let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "entry_fn_bb");
+        self.builder.position_at_end(entry_fn_bb);
+        self.builder.build_call(prelude_init_fn, &[], "");
+    }
+
+    pub fn compile_module(&mut self, typed_module: TypedModule, mod_idx: usize, is_main: bool) -> Result<(), CompilerError> {
+        let main_fn = self.cur_fn;
+        let init_fn_type = self.context.void_type().fn_type(&[], false);
+        let mod_init_fn = self.module.add_function(&format!("${}$init", mod_idx), init_fn_type, None);
+        let mod_init_fn_bb = self.context.append_basic_block(mod_init_fn, "");
+        self.builder.position_at_end(mod_init_fn_bb);
+
+        self.cur_fn = mod_init_fn;
+
+        let mut last_item = self.context.i64_type().const_zero().as_basic_value_enum();
         let mut last_item_type = Type::Unit;
         for node in typed_module.typed_nodes {
             last_item_type = node.get_type();
-            last_item = compiler.visit(node)?;
+            last_item = self.visit(node)?;
         }
 
-        compiler.finalize(&last_item_type, last_item);
+        if is_main && last_item_type != Type::Unit {
+            self.print_module_result(last_item);
+        }
+        self.builder.build_return(None);
 
-        // module.print_to_stderr();
-        Ok(module)
+        self.cur_fn = main_fn;
+        self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
+        self.builder.build_call(mod_init_fn, &[], "");
+
+        Ok(())
+    }
+
+    pub fn finish(self) -> Module<'ctx> {
+        self.builder.build_return(None);
+
+        // self.module.print_to_stderr();
+
+        self.module
     }
 
     fn incr_next_type_id(&self) -> IntValue<'ctx> {
@@ -311,7 +334,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         ]);
     }
 
-    fn init(&mut self) {
+    fn prelude_init(&mut self) -> FunctionValue<'ctx> {
         self.module.add_global(self.context.i32_type(), None, "next_type_id");
 
         let value_t = self.value_t();
@@ -406,36 +429,29 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         // Prelude initialization function
         let init_fn_type = void.fn_type(&[], false);
-        let init_fn = self.module.add_function("$init", init_fn_type, None);
+        let init_fn = self.module.add_function("$prelude_init", init_fn_type, None);
         let init_fn_bb = self.context.append_basic_block(init_fn, "init_fn_bb");
         self.builder.position_at_end(init_fn_bb);
         self.init_prelude();
         self.builder.build_return(None);
 
-        // Begin emitting code in the entry function, starting with `$init()`
-        let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "entry_fn_bb");
-        self.builder.position_at_end(entry_fn_bb);
-        self.builder.build_call(init_fn, &[], "");
+        init_fn
     }
 
-    fn finalize(&self,  last_item_type: &Type, last_item: BasicValueEnum<'ctx>) {
-        if *last_item_type != Type::Unit {
-            let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[last_item.into()], "").try_as_basic_value().left().unwrap().into_int_value();
-            let res_val = self.emit_extract_nan_tagged_obj(res_val);
-            let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "").into_pointer_value();
-            let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
+    fn print_module_result(&self, last_item: BasicValueEnum<'ctx>) {
+        let res_val = self.builder.build_call(self.cached_fn(FN_VALUE_TO_STRING), &[last_item.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+        let res_val = self.emit_extract_nan_tagged_obj(res_val);
+        let res_str = self.builder.build_cast(InstructionOpcode::BitCast, res_val, self.cached_type(TYPE_STRING).ptr_type(AddressSpace::Generic), "").into_pointer_value();
+        let res_str_chars = self.builder.build_struct_gep(res_str, 2, "").unwrap();
 
-            self.builder.build_call(
-                self.cached_fn(FN_PRINTF),
-                &[
-                    self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(),
-                    self.builder.build_load(res_str_chars, "").into()
-                ],
-                "",
-            );
-        }
-
-        self.builder.build_return(None);
+        self.builder.build_call(
+            self.cached_fn(FN_PRINTF),
+            &[
+                self.builder.build_global_string_ptr("%s\n", "fmt").as_basic_value_enum().into(),
+                self.builder.build_load(res_str_chars, "").into()
+            ],
+            "",
+        );
     }
 
     #[inline]
@@ -906,7 +922,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         is_recursive: bool,
         fn_decl_site_bb: BasicBlock<'ctx>,
     ) -> BasicValueEnum<'ctx> {
-        // self.builder.position_at_end(self.cur_fn.get_last_basic_block().unwrap());
         self.builder.position_at_end(fn_decl_site_bb);
         self.end_scope();
 

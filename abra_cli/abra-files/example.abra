@@ -1,15 +1,4 @@
-val contains_ = (arr: Int[], item: Int) => {
-  for i in arr {
-    if item == i {
-      return true
-    }
-  }
-  false
-}
-
-val arr = [1, 2, 3, 4]
-println(contains_(arr, 4))
-
+1 + 1
 
 
 
