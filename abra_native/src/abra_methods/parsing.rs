@@ -64,7 +64,7 @@ pub struct MethodSpec {
     pub(crate) name: String,
     pub(crate) args: Vec<MethodArgSpec>,
     pub(crate) return_type: TypeRepr,
-    pub(crate) is_static: bool,
+    // pub(crate) is_static: bool,
     pub(crate) is_mut: bool,
     pub(crate) is_variadic: bool,
     pub(crate) is_pseudomethod: bool,
@@ -139,7 +139,7 @@ pub fn parse_method(type_name: &String, type_args: &Vec<String>, method: &mut sy
         name: signature.func_name,
         args: signature.args,
         return_type: signature.return_type,
-        is_static: false,
+        // is_static: false,
         is_mut,
         is_variadic,
         is_pseudomethod: false,
@@ -193,7 +193,7 @@ pub fn parse_pseudomethod(type_args: &Vec<String>, method: &mut syn::ImplItemMet
         name: signature.func_name,
         args: signature.args,
         return_type: signature.return_type,
-        is_static: false,
+        // is_static: false,
         is_mut: false,
         is_variadic,
         is_pseudomethod: true,
@@ -261,7 +261,7 @@ pub fn parse_static_method(type_name: &String, type_args: &Vec<String>, method: 
         name: func_name,
         args,
         return_type,
-        is_static: true,
+        // is_static: true,
         is_mut: false,
         is_variadic,
         is_pseudomethod: false,
@@ -396,7 +396,7 @@ pub fn parse_enum_variant(type_name: &String, type_args: &Vec<String>, method: &
 #[derive(Debug)]
 pub struct EnumVariantDataSpec {
     pub(crate) native_method_name: String,
-    pub(crate) native_method_arity: usize,
+    // pub(crate) native_method_arity: usize,
 }
 
 pub fn parse_enum_variant_data(method: &mut syn::ImplItemMethod) -> Result<Option<EnumVariantDataSpec>, syn::Error> {
@@ -417,12 +417,12 @@ pub fn parse_enum_variant_data(method: &mut syn::ImplItemMethod) -> Result<Optio
         }
         _ => {}
     }
-    let native_method_arity = method.sig.inputs.len();
-    if native_method_arity != 1 {
-        let msg = format!("The function bound via #[abra_enum_variant_data] receives too many parameters; bound functions can only receive 1 parameter (self)");
-        return Err(syn::Error::new(method.sig.inputs.span(), msg));
-    }
+    // let native_method_arity = method.sig.inputs.len();
+    // if native_method_arity != 1 {
+    //     let msg = format!("The function bound via #[abra_enum_variant_data] receives too many parameters; bound functions can only receive 1 parameter (self)");
+    //     return Err(syn::Error::new(method.sig.inputs.span(), msg));
+    // }
 
     let method_name = method.sig.ident.to_string();
-    Ok(Some(EnumVariantDataSpec { native_method_name: method_name, native_method_arity }))
+    Ok(Some(EnumVariantDataSpec { native_method_name: method_name }))
 }

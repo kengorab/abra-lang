@@ -45,7 +45,7 @@ pub fn parse_function(attr_args: HashMap<String, String>, function: &syn::ItemFn
         name: func_name,
         args,
         return_type,
-        is_static: true,
+        // is_static: true,
         is_mut: false,
         is_variadic,
         is_pseudomethod: false,
