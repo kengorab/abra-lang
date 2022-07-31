@@ -2573,8 +2573,18 @@ impl<'a, 'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler
         Ok(res)
     }
 
-    fn visit_return(&mut self, _token: Token, _node: TypedReturnNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_return(&mut self, _token: Token, node: TypedReturnNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedReturnNode { target, .. } = node;
+
+        if let Some(target) = target {
+            let ret_value = self.visit(*target)?;
+            self.builder.build_return(Some(&ret_value));
+        } else {
+            self.builder.build_return(None);
+        }
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
@@ -2814,6 +2824,7 @@ impl CapturedVariableFinder {
             }
             TypedAstNode::ForLoop(_, n) => {
                 self.begin_new_scope();
+                self.visit_binding_pattern(&n.binding);
                 self.find_foreign_variables(&*n.iterator);
                 if let Some(index_ident) = &n.index_ident {
                     let var_name = Token::get_ident_name(index_ident);

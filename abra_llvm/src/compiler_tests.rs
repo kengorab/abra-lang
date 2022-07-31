@@ -1334,3 +1334,71 @@ fn test_while_loops() {
         "1,2,F,4,B,F,7,8,F,B,11,F,13,14,Fb,16,17,F,19,B,",
     ]);
 }
+
+#[test]
+fn test_return_statements() {
+    let input = r#"
+      func contains(arr: Int[], item: Int): Bool {
+        for i in arr {
+          if item == i {
+            return true
+          }
+        }
+        false
+      }
+      val arr = [1, 2, 3, 4]
+      println(contains(arr, 4))
+
+      val contains_ = (arr: Int[], item: Int) => {
+        for i in arr {
+          if item == i {
+            return true
+          }
+        }
+        false
+      }
+      println(contains_(arr, 4))
+
+      func f1(): Int {
+        if true {
+          val x = 12
+          return 24
+        }
+        return 6
+      }
+      println(f1())
+      val f1_ = () => {
+        if true {
+          val x = 12
+          return 24
+        }
+        // todo: `return 6` should work here but it doesn't
+        6
+      }
+      println(f1_())
+
+      func f2(): Int {
+        while true {
+          val x = 12
+          return 24
+        }
+      }
+      println(f2())
+
+      func f3(): Int {
+        for _ in [1, 2, 3] {
+          val x = 12
+          return 24
+        }
+      }
+      println(f3())
+    "#;
+    run_and_verify_output_lines(input, vec![
+        "true",
+        "true",
+        "24",
+        "24",
+        "24",
+        "24",
+    ]);
+}
