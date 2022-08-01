@@ -26,10 +26,18 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
     let module = typecheck(module_id, contents, &mut loader)?;
     loader.add_typed_module(module.clone());
 
+    let mod_idxs = loader.ordering.iter().enumerate().map(|(idx, mod_id)| (mod_id.clone(), idx)).collect();
+
     let context = Context::create();
-    let mut compiler = compiler::Compiler::new(&context);
+    let mut compiler = compiler::Compiler::new(&context, &mod_idxs);
     compiler.initialize();
-    compiler.compile_module(module, 0, true).unwrap();
+
+    let num_mods = loader.ordering.len();
+    for (mod_idx, module_id) in loader.ordering.iter().enumerate() {
+        let typed_module = loader.get_module(module_id).clone();
+        let is_main = mod_idx == num_mods - 1;
+        compiler.compile_module(typed_module, mod_idx, is_main).unwrap();
+    }
     let llvm_module = compiler.finish();
 
     match compile_and_run(&llvm_module) {
@@ -54,9 +62,16 @@ pub fn compile_to_llvm_and_run<'ctx, R>(module_id: ModuleId, contents: &String, 
     let module = typecheck(module_id, contents, &mut loader)?;
     loader.add_typed_module(module.clone());
 
-    let mut compiler = compiler::Compiler::new(&context);
+    let mod_idxs = loader.ordering.iter().enumerate().map(|(idx, mod_id)| (mod_id.clone(), idx)).collect();
+
+    let mut compiler = compiler::Compiler::new(&context, &mod_idxs);
     compiler.initialize();
-    compiler.compile_module(module, 0, true).unwrap();
+    let num_mods = loader.ordering.len();
+    for (mod_idx, module_id) in loader.ordering.iter().enumerate() {
+        let typed_module = loader.get_module(module_id).clone();
+        let is_main = mod_idx == num_mods - 1;
+        compiler.compile_module(typed_module, mod_idx, is_main).unwrap();
+    }
     let llvm_module = compiler.finish();
 
     let output = compile_and_run(&llvm_module).unwrap();

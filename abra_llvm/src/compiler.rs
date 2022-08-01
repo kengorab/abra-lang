@@ -8,10 +8,10 @@ use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType, IntType, PointerType, StructType};
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, CallableValue, FloatValue, FunctionValue, InstructionOpcode, IntValue, PointerValue};
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
-use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, UnaryOp};
+use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModuleId, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
@@ -74,19 +74,19 @@ const VAL_TRUE: u64  = MASK_NAN | 0x0001000000000002;
 const PAYLOAD_MASK_INT: u64 = 0x00000000ffffffff;
 const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Variable<'ctx> {
     is_captured: bool,
     local_ptr: PointerValue<'ctx>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ClosureContext<'ctx> {
     env: PointerValue<'ctx>,
     captured_variables: HashMap<String, usize>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct TypeSpec<'ctx> {
     typ: Type,
     type_id: IntValue<'ctx>,
@@ -94,7 +94,7 @@ struct TypeSpec<'ctx> {
     ctor_fn: FunctionValue<'ctx>
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct EnumSpec<'ctx> {
     typ: Type,
     base_struct_type: StructType<'ctx>,
@@ -102,14 +102,14 @@ struct EnumSpec<'ctx> {
     variants: Vec<EnumVariantSpec<'ctx>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct EnumVariantSpec<'ctx> {
     variant_idx: usize,
     struct_type: StructType<'ctx>,
-    val: Either<PointerValue<'ctx>, BasicValueEnum<'ctx>>,
+    val: PointerValue<'ctx>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Scope<'ctx> {
     name: String,
     fn_depth: usize,
@@ -120,6 +120,20 @@ struct Scope<'ctx> {
     enums: HashMap<String, EnumSpec<'ctx>>,
 }
 
+impl<'ctx> Scope<'ctx> {
+    pub fn new(name: String) -> Scope<'ctx> {
+        Scope {
+            name,
+            fn_depth: 0,
+            fns: HashMap::new(),
+            variables: HashMap::new(),
+            closure_context: None,
+            types: HashMap::new(),
+            enums: HashMap::new(),
+        }
+    }
+}
+
 pub struct Compiler<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
@@ -127,29 +141,32 @@ pub struct Compiler<'ctx> {
     cur_fn: FunctionValue<'ctx>,
     scopes: Vec<Scope<'ctx>>,
     cur_loop: Option<(BasicBlock<'ctx>, BasicBlock<'ctx>)>,
+    module_idx_map: &'ctx HashMap<ModuleId, usize>,
+    exports: Vec<Scope<'ctx>>,
 }
 
 type CompilerError = ();
 
 impl<'ctx> Compiler<'ctx> {
-    pub fn new(context: &'ctx Context) -> Compiler<'ctx> {
+    pub fn new(context: &'ctx Context, module_idx_map: &'ctx HashMap<ModuleId, usize>) -> Compiler<'ctx> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
 
         let entry_fn_type = context.void_type().fn_type(&[], false);
         let entry_fn = module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
 
-        let root_scope = Scope {
-            name: "$0".to_string(),
-            fn_depth: 0,
-            fns: HashMap::new(),
-            variables: HashMap::new(),
-            closure_context: None,
-            types: HashMap::new(),
-            enums: HashMap::new(),
-        };
+        let root_scope = Scope::new("$0".to_string());
 
-        Compiler { context: &context, builder, module, cur_fn: entry_fn, scopes: vec![root_scope], cur_loop: None }
+        Compiler {
+            context: &context,
+            builder,
+            module,
+            cur_fn: entry_fn,
+            scopes: vec![root_scope],
+            cur_loop: None,
+            module_idx_map,
+            exports: Vec::new(),
+        }
     }
 
     pub fn initialize(&mut self) {
@@ -162,10 +179,18 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn compile_module(&mut self, typed_module: TypedModule, mod_idx: usize, is_main: bool) -> Result<(), CompilerError> {
+        // Create a new scope, initializing with bindings defined in prelude if it has already been compiled
         debug_assert!(self.scopes.len() == 1);
-        self.scopes.first_mut()
-            .expect("There should always (and only) be the root scope remaining at the start of a module compilation")
-            .name = format!("${}", mod_idx);
+        if mod_idx != 0 {
+            let prev_root_scope = self.scopes.pop()
+                .expect("There should always (and only) be the root scope remaining at the start of a module compilation");
+            self.exports.push(prev_root_scope);
+
+            self.scopes.push(Scope {
+                name: format!("${}", mod_idx),
+                ..self.exports[0].clone()
+            });
+        };
 
         let main_fn = self.cur_fn;
         let init_fn_type = self.context.void_type().fn_type(&[], false);
@@ -1608,7 +1633,11 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             let fully_qualified_variant_name = self.namespaced_fn_name(Some(&enum_name), &variant_name, true);
             let variant_struct_type = self.context.opaque_struct_type(&fully_qualified_variant_name);
 
-            let val = if let Type::Fn(FnType { arg_types, is_enum_constructor, .. }) = typ {
+            let variant_value_global = self.module.add_global(self.value_t(), None, &fully_qualified_variant_name);
+            variant_value_global.set_linkage(Linkage::Common);
+            variant_value_global.set_initializer(&self.val_none().as_basic_value_enum());
+
+            if let Type::Fn(FnType { arg_types, is_enum_constructor, .. }) = typ {
                 debug_assert!(is_enum_constructor);
                 let default_field_vals = default_field_vals.expect(&format!("Internal error: expected default_field_vals to be present for enum variant constructors"));
 
@@ -1644,31 +1673,24 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 self.cur_fn = old_fn;
                 let variant_fn_display_name = format!("{}.{}", &enum_name, &variant_name);
                 let fn_val = self.compile_function_end(&variant_fn_display_name, func, env_mem, fn_local, false, fn_decl_site_bb);
+                self.builder.build_store(variant_value_global.as_pointer_value(), fn_val);
 
                 variants.push((variant_name, variant_struct_type, arg_names));
-
-                Either::Right(fn_val)
             } else {
                 variant_struct_type.set_body(base_enum_struct_fields.as_slice(), false);
                 let variant_struct_size = variant_struct_type.size_of().unwrap();
-
-                let variant_value_global = self.module.add_global(self.value_t(), None, &fully_qualified_variant_name);
-                variant_value_global.set_linkage(Linkage::Common);
-                variant_value_global.set_initializer(&self.val_none().as_basic_value_enum());
 
                 let mem = emit_alloc_variant(self, idx, variant_struct_size, variant_struct_type, type_id_global.as_pointer_value());
                 let val = self.emit_nan_tagged_obj(mem);
                 self.builder.build_store(variant_value_global.as_pointer_value(), val);
 
                 variants.push((variant_name, variant_struct_type, vec![]));
-
-                Either::Left(variant_value_global.as_pointer_value())
-            };
+            }
 
             variant_specs.push(EnumVariantSpec {
                 variant_idx: idx,
                 struct_type: variant_struct_type,
-                val,
+                val: variant_value_global.as_pointer_value(),
             });
         }
 
@@ -2322,14 +2344,10 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     .values()
                     .find(|spec| spec.typ == *typ)
                     .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ));
-                let variant = match enum_spec.variants[node.field_idx].val {
-                    Either::Left(const_global_ptr) => {
-                        self.builder.build_load(const_global_ptr, "")
-                    },
-                    Either::Right(fn_val) => fn_val,
-                };
+                let variant_value_ptr = enum_spec.variants[node.field_idx].val;
+                let variant_value = self.builder.build_load(variant_value_ptr, "");
 
-                return Ok(variant);
+                return Ok(variant_value);
             }
             // type
             Type::Type(_, _, false) => todo!("Static methods/fields on Types"),
@@ -2638,8 +2656,35 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         todo!()
     }
 
-    fn visit_import_statement(&mut self, _token: Token, _node: TypedImportNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_import_statement(&mut self, _token: Token, node: TypedImportNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedImportNode { imports, alias_name, module_id } = node;
+
+        if alias_name.is_some() { todo!(); }
+
+        let mod_idx = self.module_idx_map.get(&module_id)
+            .expect(&format!("Internal error: could not load module idx for module {:?}", &module_id));
+
+        for import_name in imports {
+            let mod_exports = &self.exports[*mod_idx];
+
+            if let Some(imported_func) = mod_exports.fns.get(&import_name) {
+                let imported_func = imported_func.clone();
+                self.current_scope_mut().fns.insert(import_name, imported_func);
+            } else if let Some(imported_type) = mod_exports.types.get(&import_name) {
+                let imported_type = imported_type.clone();
+                self.current_scope_mut().types.insert(import_name, imported_type);
+            } else if let Some(imported_enum) = mod_exports.enums.get(&import_name) {
+                let imported_enum = imported_enum.clone();
+                self.current_scope_mut().enums.insert(import_name, imported_enum);
+            } else if let Some(_imported_var) = mod_exports.variables.get(&import_name) {
+                todo!()
+            } else {
+                unreachable!("Internal error: import named '{}' is not defined in module {:?}", import_name, module_id);
+            }
+        }
+
+        let res = self.val_none().as_basic_value_enum();
+        Ok(res)
     }
 
     fn visit_nil(&mut self, _token: Token) -> Result<BasicValueEnum<'ctx>, CompilerError> {

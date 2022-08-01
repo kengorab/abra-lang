@@ -1402,3 +1402,34 @@ fn test_return_statements() {
         "24",
     ]);
 }
+
+#[test]
+fn test_imports() {
+    let input = r#"
+      import Person from "./person"
+      import Direction, radsToDegs from "./direction"
+
+      val p = Person(name: "Ken")
+      println(p.name)
+
+      val up = Direction.Up
+      val angle = Direction.Angled(degs: radsToDegs(0.25 * 3.1415))
+      println(up, angle)
+    "#;
+    let modules = vec![
+        ("./person", "export type Person { name: String }"),
+        (
+            "./direction",
+            r#"
+              export enum Direction {
+                Up
+                Angled(degs: Float)
+              }
+
+              export func radsToDegs(rads: Float): Float = rads * 180 / 3.1415
+            "#
+        ),
+    ];
+    let output = test_run_with_modules(input, modules);
+    assert_eq!("Ken\nDirection.Up Direction.Angled(degs: 45.000000)", output);
+}

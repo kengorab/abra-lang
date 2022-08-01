@@ -8,6 +8,12 @@ export enum Size { S, M, L, XL, Custom(size: String) }
 
 export type Shirt {
   color: String
+  size: Size
 }
 
-export func greet(greeting: String) = println("$greeting world")
+export func greet(greeting: String) = println(greeting + " world")
+
+export enum Direction {
+  Up
+  Angled(degs: Float)
+}

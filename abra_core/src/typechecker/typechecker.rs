@@ -1110,7 +1110,7 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                     let module_name = self.module_loader.get_module_name(&self.module_id);
                     let typeref_name = format!("{}/{}", module_name, &new_type_name);
                     let typeref = Type::Reference(typeref_name.clone(), vec![]);
-                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
+                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), type_is_enum);
                     self.add_binding(&new_type_name, &name, &binding_type, false);
                     self.add_type(new_type_name.clone(), None, typeref.clone(), false);
 
@@ -2892,7 +2892,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         Some(typeref) => {
                             let module_name = self.module_loader.get_module_name(&module_id);
                             let typeref_name = format!("{}/{}", module_name, &import_name);
-                            let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
+                            let is_enum = if let Type::Enum(_) = backing_type { true } else { false };
+                            let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), is_enum);
                             self.add_imported_binding(&import_name, import_ident_token, &binding_type);
                             self.add_type(import_name.clone(), node.clone(), typeref.clone(), true);
 

@@ -1,16 +1,7 @@
-func abc() {}
+import Direction from "./example2"
 
-type Foo {
-  func abc(self) {}
-}
-
-enum Bar {
-  Baz(a: Int)
-
-  func abc(self) {}
-}
-
-
+val d = Direction.Angled(degs: 45.0)
+println(d)
 
 
 
