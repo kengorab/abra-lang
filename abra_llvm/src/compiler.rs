@@ -76,8 +76,9 @@ const PAYLOAD_MASK_OBJ: u64 = 0x0000ffffffffffff;
 
 #[derive(Clone, Debug)]
 struct Variable<'ctx> {
+    var_ptr: PointerValue<'ctx>,
     is_captured: bool,
-    local_ptr: PointerValue<'ctx>,
+    is_global: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -673,14 +674,24 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     #[inline]
-    fn visit_binding_pattern(&mut self, pat: BindingPattern, cur_val: BasicValueEnum<'ctx>) {
+    fn visit_binding_pattern(&mut self, pat: BindingPattern, cur_val: BasicValueEnum<'ctx>, is_exported: bool) {
         match pat {
             BindingPattern::Variable(var_name) => {
                 let name = Token::get_ident_name(&var_name);
-                let local_ptr = self.builder.build_alloca(self.value_t(), &name);
+                let var_ptr = if is_exported {
+                    let global = self.module.add_global(self.value_t(), None, &name);
+                    global.set_linkage(Linkage::Common);
+                    global.set_initializer(&self.value_t().const_zero());
+                    let global_ptr = global.as_pointer_value();
+                    self.builder.build_store(global_ptr, cur_val);
+                    global_ptr
+                } else {
+                    let local_ptr = self.builder.build_alloca(self.value_t(), &name);
+                    self.builder.build_store(local_ptr, cur_val);
+                    local_ptr
+                };
 
-                self.current_scope_mut().variables.insert(name, Variable { local_ptr, is_captured: false });
-                self.builder.build_store(local_ptr, cur_val);
+                self.current_scope_mut().variables.insert(name, Variable { var_ptr, is_captured: false, is_global: is_exported });
             }
             BindingPattern::Tuple(_, pats) => {
                 for (idx, pat) in pats.into_iter().enumerate() {
@@ -690,7 +701,7 @@ impl<'ctx> Compiler<'ctx> {
                         &[cur_val.into(), idx.into()],
                         ""
                     ).try_as_basic_value().left().unwrap();
-                    self.visit_binding_pattern(pat, val);
+                    self.visit_binding_pattern(pat, val, is_exported);
                 }
             }
             BindingPattern::Array(_, pats, is_string) => {
@@ -716,9 +727,9 @@ impl<'ctx> Compiler<'ctx> {
                         let r_part = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[parts.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
 
                         if idx == num_pats - 1 {
-                            self.visit_binding_pattern(pat, r_part);
+                            self.visit_binding_pattern(pat, r_part, is_exported);
                         } else {
-                            self.visit_binding_pattern(pat, l_part);
+                            self.visit_binding_pattern(pat, l_part, is_exported);
                             cur_val = r_part;
                             idx = 0;
                         }
@@ -732,7 +743,7 @@ impl<'ctx> Compiler<'ctx> {
                         &[cur_val.into(), idx_val.into()],
                         ""
                     ).try_as_basic_value().left().unwrap();
-                    self.visit_binding_pattern(pat, val);
+                    self.visit_binding_pattern(pat, val, is_exported);
 
                     idx += 1;
                 }
@@ -756,6 +767,11 @@ impl<'ctx> Compiler<'ctx> {
         let containing_scope = self.scopes.iter().rev().find(|sc| sc.variables.contains_key(var_name));
         let containing_scope = containing_scope.expect(&format!("Internal error: no expected outer scope for variable '{}'", var_name));
 
+        let var = containing_scope.variables.get(var_name).expect(&format!("Internal error: variable '{}' not present in its containing scope", var_name));
+        if var.is_global {
+            return var.var_ptr;
+        }
+
         // If the containing scope represents a different function, this is a closed-over variable which is resolved by extracting
         // its value from the closest containing closure scope.
         if containing_scope.fn_depth != self.current_scope().fn_depth {
@@ -771,13 +787,12 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         // Otherwise, consider the non-closed-over variable in its non-closure scope.
-        let Variable { local_ptr, is_captured, .. } = containing_scope.variables.get(var_name).expect(&format!("Internal error: variable '{}' not present in its containing scope", var_name));
-        if *is_captured {
-            let val = self.builder.build_load(*local_ptr, "");
+        if var.is_captured {
+            let val = self.builder.build_load(var.var_ptr, "");
             let ptr = self.emit_extract_nan_tagged_obj(val.into_int_value());
             self.builder.build_pointer_cast(ptr, self.value_t().ptr_type(AddressSpace::Generic), "")
         } else {
-            local_ptr.clone()
+            var.var_ptr
         }
     }
 
@@ -822,28 +837,37 @@ impl<'ctx> Compiler<'ctx> {
 
     fn compile_function_start(
         &mut self,
+        is_exported: bool,
         fn_display_name: &String,
         fully_qualified_fn_name: &String,
         captured_variables: HashMap<String, usize>,
         args: Vec<(/* name: */ String, /* default_value: */ Option<TypedAstNode>)>,
         has_return: bool,
-        create_local: bool,
+        is_method: bool,
     ) -> Result<(FunctionValue<'ctx>, PointerValue<'ctx>, Option<PointerValue<'ctx>>), CompilerError> {
         let num_captured_variables = captured_variables.len();
         let is_closure = !captured_variables.is_empty();
 
         let fn_type = self.gen_llvm_fn_type(has_return, args.len());
         let func = self.module.add_function(&fully_qualified_fn_name, fn_type, Some(Linkage::Private));
-        let fn_local = if create_local {
-            let local_ptr = self.builder.build_alloca(self.value_t(), &fn_display_name);
-            self.current_scope_mut().variables.insert(fn_display_name.clone(), Variable { local_ptr, is_captured: false });
-            Some(local_ptr)
+        let fn_local = if !is_method {
+            let var_ptr = if is_exported {
+                let global = self.module.add_global(self.value_t(), None, &fn_display_name);
+                global.set_linkage(Linkage::Common);
+                global.set_initializer(&self.value_t().const_zero());
+                global.as_pointer_value()
+            } else {
+                self.builder.build_alloca(self.value_t(), &fn_display_name)
+            };
+            self.current_scope_mut().variables.insert(fn_display_name.clone(), Variable { var_ptr, is_captured: false, is_global: is_exported });
+            Some(var_ptr)
         } else {
             None
         };
 
         let env_mem = if !is_closure {
-            self.current_scope_mut().fns.insert(fn_display_name.clone(), func);
+            let name = if is_method { fully_qualified_fn_name } else { fn_display_name };
+            self.current_scope_mut().fns.insert(name.clone(), func);
 
             self.value_t_ptr().const_zero() // Pass `NULL` as env if non-closure
         } else {
@@ -859,6 +883,10 @@ impl<'ctx> Compiler<'ctx> {
                 let var = self.scopes.iter_mut().rev()
                     .find_map(|sc| sc.variables.get_mut(name))
                     .expect(&format!("Internal error: could not find captured variable '{}' in outer scope", name));
+
+                // If the captured variable is a global (ie. for exported variables), we do not need to lift it.
+                if var.is_global { continue; }
+
                 let needs_lift = if !var.is_captured {
                     var.is_captured = true;
                     true
@@ -870,7 +898,7 @@ impl<'ctx> Compiler<'ctx> {
                 // and overwrite stack local value with pointer to heap value. Subsequent accesses of this
                 // variable will need to make an extra dereference through this pointer (see `resolve_ptr_to_variable`).
                 let val = if needs_lift {
-                    let local_ptr = var.local_ptr;
+                    let local_ptr = var.var_ptr;
                     let val = self.builder.build_load(local_ptr, "");
                     let lifted_val_mem = self.builder.build_call(self.cached_fn(FN_MALLOC), &[self.value_t().size_of().into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
                     let lifted_val_mem = self.builder.build_pointer_cast(lifted_val_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
@@ -906,7 +934,7 @@ impl<'ctx> Compiler<'ctx> {
             idx += 2; // Skip over `env` and `num_received_args` params
 
             let param_ptr = self.builder.build_alloca(self.value_t(), &name);
-            self.current_scope_mut().variables.insert(name, Variable { local_ptr: param_ptr, is_captured: false });
+            self.current_scope_mut().variables.insert(name, Variable { var_ptr: param_ptr, is_captured: false, is_global: false });
 
             // If there's a default value for the parameter assign it, making sure to only evaluate the default expression if necessary
             let param_val = func.get_nth_param(idx as u32)
@@ -998,7 +1026,7 @@ impl<'ctx> Compiler<'ctx> {
         let captured_variables = self.find_captured_variables(&args, &node.body);
         let fully_qualified_fn_name = self.namespaced_fn_name(type_name, &fn_name, false);
         let is_method = type_name.is_some();
-        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, !is_method)?;
+        let (func, env_mem, fn_local) = self.compile_function_start(node.is_exported, &fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, is_method)?;
 
         let body_len = node.body.len();
         for (idx, node) in node.body.into_iter().enumerate() {
@@ -1295,7 +1323,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let args = args.into_iter().map(|(tok, _, default_value)| (Token::get_ident_name(&tok), default_value)).collect();
         let captured_variables = self.find_captured_variables(&args, &body);
         let fully_qualified_fn_name = self.namespaced_fn_name(None, &fn_name, false);
-        let (func, env_mem, fn_local) = self.compile_function_start(&fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, true)?;
+        let (func, env_mem, fn_local) = self.compile_function_start(false, &fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, false)?;
 
         let body_len = body.len();
         for (idx, node) in body.into_iter().enumerate() {
@@ -1317,13 +1345,15 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
     }
 
     fn visit_binding_decl(&mut self, _token: Token, node: TypedBindingDeclNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        let expr = if let Some(expr) = node.expr {
+        let TypedBindingDeclNode { is_exported, binding, expr, .. } = node;
+
+        let expr = if let Some(expr) = expr {
             self.visit(*expr)?
         } else {
             self.val_none().as_basic_value_enum()
         };
 
-        self.visit_binding_pattern(node.binding, expr);
+        self.visit_binding_pattern(binding, expr, is_exported);
 
         Ok(self.val_none().as_basic_value_enum())
     }
@@ -1587,7 +1617,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let fully_qualified_enum_name = self.namespaced_type_name(&enum_name);
 
         let max_num_fields = node.variants.iter()
-            .map(|(_, (typ, _))| if let Type::Fn(FnType{arg_types, ..}) = typ { arg_types.len() } else { 0 })
+            .map(|(_, (typ, _))| if let Type::Fn(FnType { arg_types, .. }) = typ { arg_types.len() } else { 0 })
             .max()
             .unwrap_or(0);
         let base_enum_struct_fields = vec![self.cached_type(TYPE_OBJ_HEADER).into(), self.context.i8_type().into()];
@@ -1655,7 +1685,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     .map(|(name, default_val)| (name.clone(), default_val))
                     .collect();
                 let captured_variables = self.find_captured_variables(&args, &vec![]);
-                let (func, env_mem, fn_local) = self.compile_function_start(&variant_name, &fully_qualified_variant_name, captured_variables, args, true, false)?;
+                let (func, env_mem, fn_local) = self.compile_function_start(false, &variant_name, &fully_qualified_variant_name, captured_variables, args, true, true)?;
 
                 let mem = emit_alloc_variant(self, idx, variant_struct_size, variant_struct_type, type_id_global.as_pointer_value());
                 let mem = self.builder.build_pointer_cast(mem, variant_struct_type.ptr_type(AddressSpace::Generic), "");
@@ -2081,7 +2111,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         self.begin_new_scope("then-block".to_string());
         self.builder.position_at_end(then_bb);
         if let Some(cond_binding_pat) = node.condition_binding {
-            self.visit_binding_pattern(cond_binding_pat, cond_val);
+            self.visit_binding_pattern(cond_binding_pat, cond_val, false);
         }
         let mut last_value = self.val_none().as_basic_value_enum();
         let mut terminates_early = false;
@@ -2518,10 +2548,10 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         self.builder.position_at_end(loop_body_bb);
         let item_pair_val = self.builder.build_call(self.cached_fn(FN_ARRAY_GET), &[self.builder.build_load(iter_local, "").into(), self.builder.build_load(idx_local, "").into()], "").try_as_basic_value().left().unwrap();
         let pair_l_val = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[item_pair_val.into(), self.context.i32_type().const_zero().into()], "").try_as_basic_value().left().unwrap();
-        self.visit_binding_pattern(binding, pair_l_val);
+        self.visit_binding_pattern(binding, pair_l_val, false);
         if let Some(ident_tok) = index_ident {
             let pair_r_val = self.builder.build_call(self.cached_fn(FN_TUPLE_GET), &[item_pair_val.into(), self.context.i32_type().const_int(1, false).into()], "").try_as_basic_value().left().unwrap();
-            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), pair_r_val);
+            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), pair_r_val, false);
         }
 
         let mut terminates_early = false;
@@ -2584,7 +2614,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
         self.builder.position_at_end(loop_body_bb);
         if let Some(ident_tok) = condition_binding {
-            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), cond_val);
+            self.visit_binding_pattern(BindingPattern::Variable(ident_tok), cond_val, false);
         }
 
         let mut terminates_early = false;
@@ -2676,8 +2706,9 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             } else if let Some(imported_enum) = mod_exports.enums.get(&import_name) {
                 let imported_enum = imported_enum.clone();
                 self.current_scope_mut().enums.insert(import_name, imported_enum);
-            } else if let Some(_imported_var) = mod_exports.variables.get(&import_name) {
-                todo!()
+            } else if let Some(imported_var) = mod_exports.variables.get(&import_name) {
+                let imported_var = imported_var.clone();
+                self.current_scope_mut().variables.insert(import_name, imported_var);
             } else {
                 unreachable!("Internal error: import named '{}' is not defined in module {:?}", import_name, module_id);
             }

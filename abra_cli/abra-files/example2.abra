@@ -17,3 +17,11 @@ export enum Direction {
   Up
   Angled(degs: Float)
 }
+
+export val names: String[] = []
+
+var idx = 0
+export func addName(name: String) {
+  names[idx] = name
+  idx += 1
+}

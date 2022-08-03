@@ -1,17 +1,13 @@
-import Direction from "./example2"
+import names, addName from "./example2"
 
-val d = Direction.Angled(degs: 45.0)
-println(d)
-
-
-
+println(names)
+addName("Ken")
+println(names)
 
 
-
-
-
-
-
+//import greet from "./example2"
+//
+//greet("hello")
 
 
 

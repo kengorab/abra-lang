@@ -244,6 +244,7 @@ pub struct TypedBindingDeclNode {
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
     pub scope_depth: usize,
+    pub is_exported: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -257,6 +258,7 @@ pub struct TypedFunctionDeclNode {
     pub scope_depth: usize,
     pub is_recursive: bool,
     pub fn_type: FnType,
+    pub is_exported: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1640,14 +1640,15 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         }
 
         let binding_idents = self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
-        if let Some(token) = export_token {
+        let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
                 return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             for (name, typ) in binding_idents {
                 self.exports.insert(name, ExportedValue::Binding(typ));
             }
-        }
+            true
+        } else { false };
 
         let scope_depth = self.scopes.len() - 1;
         let node = TypedBindingDeclNode {
@@ -1655,6 +1656,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             binding,
             expr: typed_expr.map(Box::new),
             scope_depth,
+            is_exported,
         };
         Ok(TypedAstNode::BindingDecl(token, node))
     }
@@ -1786,7 +1788,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             self.exports.insert(func_name.clone(), export);
         }
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, fn_type }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, fn_type, is_exported }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {

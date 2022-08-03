@@ -1408,6 +1408,7 @@ fn test_imports() {
     let input = r#"
       import Person from "./person"
       import Direction, radsToDegs from "./direction"
+      import names, addName from "./names"
 
       val p = Person(name: "Ken")
       println(p.name)
@@ -1415,6 +1416,11 @@ fn test_imports() {
       val up = Direction.Up
       val angle = Direction.Angled(degs: radsToDegs(0.25 * 3.1415))
       println(up, angle)
+
+      print(names, "")
+      addName("Meg")
+      addName("Ken")
+      println(names)
     "#;
     let modules = vec![
         ("./person", "export type Person { name: String }"),
@@ -1429,7 +1435,44 @@ fn test_imports() {
               export func radsToDegs(rads: Float): Float = rads * 180 / 3.1415
             "#
         ),
+        (
+            "./names",
+            r#"
+              export val names: String[] = []
+              var idx = 0
+              export func addName(name: String) {
+                names[idx] = name
+                idx += 1
+              }
+              export func getNames(): String[] = names
+            "#
+        ),
     ];
     let output = test_run_with_modules(input, modules);
-    assert_eq!("Ken\nDirection.Up Direction.Angled(degs: 45.000000)", output);
+    assert_eq!("Ken\nDirection.Up Direction.Angled(degs: 45.000000)\n[] [Meg, Ken]", output);
+
+    let input = r#"
+      import addName, getNames from "./names"
+      val names: String[] = []
+
+      addName("Ken")
+      addName("Meg")
+
+      println(getNames(), names)
+    "#;
+    let output = test_run_with_modules(input, vec![
+        (
+            "./names",
+            r#"
+              export val names: String[] = []
+              var idx = 0
+              export func addName(name: String) {
+                names[idx] = name
+                idx += 1
+              }
+              export func getNames(): String[] = names
+            "#
+        ),
+    ]);
+    assert_eq!("[Ken, Meg] []", output);
 }
