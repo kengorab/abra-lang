@@ -1,14 +1,27 @@
-import names, addName from "./example2"
-
-println(names)
-addName("Ken")
-println(names)
-
-
-//import greet from "./example2"
+//func foo() {
+//  val i: Int? = 1
 //
-//greet("hello")
+//  val x = match i {
+//    None v => "None: " + v
+//    2 v => "const case: " + v
+//    _ v => {
+//      println("wildcard: " + v)
+//      return
+//    }
+//  }
+//
+//  println("x:", x)
+//  println("after match")
+//}
+//foo()
 
+val d = match ("a", 12, false) {
+  ("a", 12, false) => 1000
+  ("b", 24, true) => 2000
+  ("c", 48, false) => 3000
+  _ => 4000
+}
+println(d)
 
 
 /* TODO: Function hoisting

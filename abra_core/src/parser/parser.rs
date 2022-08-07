@@ -967,7 +967,11 @@ impl Parser {
     }
 
     fn parse_match_case_pattern(&mut self) -> Result<(Token, MatchCaseType), ParseErrorKind> {
-        let valid_tokens = vec![TokenType::Ident, TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool, TokenType::LParen];
+        let const_expr_tokens = vec![TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool];
+        let valid_case_start_tokens = vec![
+            vec![TokenType::Ident, TokenType::LParen],
+            const_expr_tokens.clone()
+        ].concat();
         match self.expect_peek()? {
             Token::Int(_, _) | Token::Float(_, _) | Token::String(_, _) | Token::Bool(_, _) => {
                 let token = self.expect_next()?;
@@ -992,12 +996,12 @@ impl Parser {
                         Token::RParen(_) => {
                             let rparen_token = self.expect_next()?;
                             if exprs.is_empty() {
-                                return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, rparen_token));
+                                return Err(ParseErrorKind::ExpectedOneOf(const_expr_tokens, rparen_token));
                             } else {
                                 break;
                             }
                         }
-                        t => return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone())),
+                        t => return Err(ParseErrorKind::ExpectedOneOf(const_expr_tokens, t.clone())),
                     };
                 }
                 Ok((lparen_token.clone(), MatchCaseType::Tuple(lparen_token, exprs)))
@@ -1070,7 +1074,7 @@ impl Parser {
                 };
                 Ok((case_token, match_type))
             }
-            t => return Err(ParseErrorKind::ExpectedOneOf(valid_tokens, t.clone())),
+            t => return Err(ParseErrorKind::ExpectedOneOf(valid_case_start_tokens, t.clone())),
         }
     }
 
@@ -4759,7 +4763,7 @@ mod tests {
 
         let error = parse("match a { * => 456 }").unwrap_err();
         let expected = ParseErrorKind::ExpectedOneOf(
-            vec![TokenType::Ident, TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool, TokenType::LParen],
+            vec![TokenType::Ident, TokenType::LParen, TokenType::None, TokenType::Int, TokenType::Float, TokenType::String, TokenType::Bool],
             Token::Star(Position::new(1, 11)),
         );
         assert_eq!(expected, error);

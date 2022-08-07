@@ -1476,3 +1476,49 @@ fn test_imports() {
     ]);
     assert_eq!("[Ken, Meg] []", output);
 }
+
+#[test]
+fn test_match_statements_and_expressions() {
+    let setup = r#"
+      func test(value: Int | String | Float? | (Bool, Int)): (String, String) {
+        match value {
+          None v => ("case 0", v + "")
+          1 v => ("case 1", v + "")
+          2 v => ("case 2", v + "")
+          "three" v => ("case 3", v + "")
+          "four" v => ("case 4", v + "")
+          (true, 1) v => ("case 5", v + "")
+          (false, 2) v => ("case 6", v + "")
+          _ v => ("wildcard", v + "")
+        }
+      }
+
+      var flag = false
+      func testWithReturn(value: Int?): String {
+        flag = false
+        val s = match value {
+          None => return "early return"
+          _ i => "number: " + i
+        }
+        flag = true
+
+        s
+      }
+    "#;
+    let cases = vec![
+        ("test(None)", "(case 0, None)"),
+        ("test(0)", "(wildcard, 0)"),
+        ("test(1)", "(case 1, 1)"),
+        ("test(2)", "(case 2, 2)"),
+        ("test(\"three\")", "(case 3, three)"),
+        ("test(\"four\")", "(case 4, four)"),
+        ("test(\"five\")", "(wildcard, five)"),
+        ("test((true, 1))", "(case 5, (true, 1))"),
+        ("test((false, 2))", "(case 6, (false, 2))"),
+        ("test((true, 2))", "(wildcard, (true, 2))"),
+        //
+        ("(testWithReturn(None), flag)", "(early return, false)"),
+        ("(testWithReturn(123), flag)", "(number: 123, true)"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}

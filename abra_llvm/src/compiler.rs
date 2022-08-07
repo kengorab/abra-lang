@@ -13,7 +13,7 @@ use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModuleId, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
-use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
@@ -223,7 +223,7 @@ impl<'ctx> Compiler<'ctx> {
     pub fn finish(self) -> Module<'ctx> {
         self.builder.build_return(None);
 
-        // self.module.print_to_stderr();
+        self.module.print_to_stderr();
 
         self.module
     }
@@ -1259,7 +1259,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     res.into()
                 }
             }
-            _ => todo!()
+            (ltype, rtype, op) => unimplemented!("Internal error: no operator {:?} defined for types {:?} and {:?}", op, ltype, rtype),
         };
 
         Ok(value)
@@ -2678,12 +2678,152 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         Ok(res)
     }
 
-    fn visit_match_statement(&mut self, _is_stmt: bool, _token: Token, _node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_match_statement(&mut self, is_stmt: bool, token: Token, node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let TypedMatchNode { target, branches, .. } = node;
+
+        let target = self.visit(*target)?;
+        let target_local = self.builder.build_alloca(self.value_t(), "$match_target");
+        self.builder.build_store(target_local, target);
+
+        let ret_local = if !is_stmt {
+            Some(self.builder.build_alloca(self.value_t(), "$match_ret"))
+        } else { None };
+
+        let match_end_bb = self.context.append_basic_block(self.cur_fn, "match_end");
+        let num_branches = branches.len();
+        for (idx, (kind, alias, body)) in branches.into_iter().enumerate() {
+            let target_val = self.builder.build_load(target_local, "");
+
+            self.begin_new_scope(format!("match-case-{}", idx));
+            let mut terminates_early = false;
+            let mut last_value = self.val_none().as_basic_value_enum();
+            match kind {
+                TypedMatchKind::Wildcard => {
+                    debug_assert!(idx == num_branches - 1);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                    }
+                    // break;
+                }
+                TypedMatchKind::None => {
+                    let cond = self.builder.build_int_compare(IntPredicate::EQ, target_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), "cond");
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                        self.builder.build_unconditional_branch(match_end_bb);
+                    }
+                    self.builder.position_at_end(else_bb);
+                }
+                TypedMatchKind::Type { .. } => {}
+                TypedMatchKind::EnumVariant { .. } => {}
+                TypedMatchKind::Constant { node } => {
+                    let const_val = self.visit(node)?;
+
+                    let cond_val = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[target_val.into(), const_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond");
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                        self.builder.build_unconditional_branch(match_end_bb);
+                    }
+                    self.builder.position_at_end(else_bb);
+                }
+                TypedMatchKind::Tuple { nodes } => {
+                    let items = nodes.into_iter()
+                        .map(|n| self.visit(n).map(|v| v.into()))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let tuple_case_val = self.alloc_tuple_obj(items);
+                    let cond_val = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[target_val.into(), tuple_case_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond");
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                        self.builder.build_unconditional_branch(match_end_bb);
+                    }
+                    self.builder.position_at_end(else_bb);
+                }
+            }
+
+            if idx == num_branches - 1 && !terminates_early {
+                self.builder.build_unconditional_branch(match_end_bb);
+            }
+            self.end_scope();
+        }
+        self.builder.position_at_end(match_end_bb);
+
+        if let Some(ret_local) = ret_local {
+            Ok(self.builder.build_load(ret_local, ""))
+        } else {
+            Ok(self.val_none().as_basic_value_enum())
+        }
     }
 
-    fn visit_match_expression(&mut self, _token: Token, _node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
-        todo!()
+    fn visit_match_expression(&mut self, token: Token, node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        self.visit_match_statement(false, token, node)
     }
 
     fn visit_import_statement(&mut self, _token: Token, node: TypedImportNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
