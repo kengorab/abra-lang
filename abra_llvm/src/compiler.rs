@@ -25,6 +25,7 @@ const FN_POWF64: &str = "llvm.pow.f64";
 const FN_MALLOC: &str = "GC_malloc";
 const FN_DOUBLE_TO_VALUE_T: &str = "double_to_value_t";
 const FN_VALUE_T_TO_DOUBLE: &str = "value_t_to_double";
+const FN_TYPE_ID_FOR_VAL: &str = "type_id_for_val";
 const FN_STRING_ALLOC: &str = "string_alloc";
 const FN_STRING_CONCAT: &str = "string_concat";
 const FN_STRING_GET: &str = "string_get";
@@ -90,7 +91,7 @@ struct ClosureContext<'ctx> {
 #[derive(Clone, Debug)]
 struct TypeSpec<'ctx> {
     typ: Type,
-    type_id: IntValue<'ctx>,
+    type_id_ptr: PointerValue<'ctx>,
     struct_type: StructType<'ctx>,
     ctor_fn: FunctionValue<'ctx>
 }
@@ -99,7 +100,7 @@ struct TypeSpec<'ctx> {
 struct EnumSpec<'ctx> {
     typ: Type,
     base_struct_type: StructType<'ctx>,
-    type_id: IntValue<'ctx>,
+    type_id_ptr: PointerValue<'ctx>,
     variants: Vec<EnumVariantSpec<'ctx>>,
 }
 
@@ -223,7 +224,7 @@ impl<'ctx> Compiler<'ctx> {
     pub fn finish(self) -> Module<'ctx> {
         self.builder.build_return(None);
 
-        self.module.print_to_stderr();
+        // self.module.print_to_stderr();
 
         self.module
     }
@@ -278,6 +279,11 @@ impl<'ctx> Compiler<'ctx> {
             Type::Int | Type::Float | Type::Bool | Type::String | Type::Array(_) | Type::Tuple(_) | Type::Map(_, _) | Type::Set(_) => true,
             _ => false,
         }
+    }
+
+    fn builtin_type_id(&self, type_name: &String) -> Option<IntValue<'ctx>> {
+        self.module.get_global(&format!("type_id_{}", &type_name))
+            .map(|g| self.builder.build_load(g.as_pointer_value(), "").into_int_value())
     }
 
     fn init_builtin_type(&self, type_id_name: &str, methods: &[(&str, FunctionType<'ctx>)]) {
@@ -381,6 +387,7 @@ impl<'ctx> Compiler<'ctx> {
         self.module.add_function(FN_POWF64, f64.fn_type(&[f64.into(), f64.into()], false), None);
         self.module.add_function(FN_DOUBLE_TO_VALUE_T, value_t.fn_type(&[f64.into()], false), None);
         self.module.add_function(FN_VALUE_T_TO_DOUBLE, f64.fn_type(&[value_t.into()], false), None);
+        self.module.add_function(FN_TYPE_ID_FOR_VAL, i32.fn_type(&[value_t.into()], false), None);
         self.module.add_function(FN_STRING_ALLOC, value_t.fn_type(&[i32.into(), str.into()], false), None);
         self.module.add_function(FN_STRING_CONCAT, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_STRING_GET, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
@@ -1424,7 +1431,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             ctor_fn
         };
 
-        let type_spec = TypeSpec { typ: node.self_type, type_id, struct_type, ctor_fn };
+        let type_spec = TypeSpec { typ: node.self_type, type_id_ptr: type_id_global.as_pointer_value(), struct_type, ctor_fn };
         self.current_scope_mut().types.insert(type_name.clone(), type_spec);
 
         let num_methods = node.methods.len();
@@ -1724,7 +1731,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             });
         }
 
-        let enum_spec = EnumSpec { typ: node.self_type, type_id, base_struct_type, variants: variant_specs };
+        let enum_spec = EnumSpec { typ: node.self_type, type_id_ptr: type_id_global.as_pointer_value(), base_struct_type, variants: variant_specs };
         self.current_scope_mut().enums.insert(enum_name.clone(), enum_spec);
 
         let num_methods = node.methods.len();
@@ -2744,7 +2751,46 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     }
                     self.builder.position_at_end(else_bb);
                 }
-                TypedMatchKind::Type { .. } => {}
+                TypedMatchKind::Type { type_name, args } => {
+                    debug_assert!(args.is_none(), "Destructuring is not yet implemented for type");
+
+                    let type_id = if let Some(builtin_type_id) = self.builtin_type_id(&type_name) {
+                        builtin_type_id
+                    } else {
+                        let type_id_ptr = self.scopes[0].types.get(&type_name)
+                            .map(|t| t.type_id_ptr)
+                            .or_else(|| self.scopes[0].enums.get(&type_name).map(|t| t.type_id_ptr))
+                            .expect(&format!("Could not find type '{}' in scope", type_name));
+                        self.builder.build_load(type_id_ptr, "").into_int_value()
+                    };
+
+                    let target_type_id = self.builder.build_call(self.cached_fn(FN_TYPE_ID_FOR_VAL), &[target_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+
+                    let cond = self.builder.build_int_compare(IntPredicate::EQ, target_type_id, type_id, "cond");
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                        self.builder.build_unconditional_branch(match_end_bb);
+                    }
+                    self.builder.position_at_end(else_bb);
+                }
                 TypedMatchKind::EnumVariant { .. } => {}
                 TypedMatchKind::Constant { node } => {
                     let const_val = self.visit(node)?;

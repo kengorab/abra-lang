@@ -1,27 +1,24 @@
-//func foo() {
-//  val i: Int? = 1
-//
-//  val x = match i {
-//    None v => "None: " + v
-//    2 v => "const case: " + v
-//    _ v => {
-//      println("wildcard: " + v)
-//      return
-//    }
-//  }
-//
-//  println("x:", x)
-//  println("after match")
-//}
-//foo()
-
-val d = match ("a", 12, false) {
-  ("a", 12, false) => 1000
-  ("b", 24, true) => 2000
-  ("c", 48, false) => 3000
-  _ => 4000
+type Person { name: String }
+enum Color {
+  Red
+  RGB(r: Int, g: Int, b: Int)
 }
-println(d)
+
+func test(value: Int | String | Float? | (Bool, Int) | Person | Color): (String, String) {
+  match value {
+    None v => ("case 0", v + "")
+    1 v => ("case 1", v + "")
+    2 v => ("case 2", v + "")
+    "three" v => ("case 3", v + "")
+    "four" v => ("case 4", v + "")
+    (true, 1) v => ("case 5", v + "")
+    (false, 2) v => ("case 6", v + "")
+    Person v => ("case 7", v + "")
+    Color v => ("case 8", v + "")
+    _ v => ("wildcard", v + "")
+  }
+}
+println(test(Color.RGB(r: 1, g: 2, b: 3)))
 
 
 /* TODO: Function hoisting

@@ -1480,7 +1480,10 @@ fn test_imports() {
 #[test]
 fn test_match_statements_and_expressions() {
     let setup = r#"
-      func test(value: Int | String | Float? | (Bool, Int)): (String, String) {
+      type Person { name: String }
+      enum Color { Red, RGB(r: Int, g: Int, b: Int) }
+
+      func test(value: Int | String | Float? | (Bool, Int) | Person | Color): (String, String) {
         match value {
           None v => ("case 0", v + "")
           1 v => ("case 1", v + "")
@@ -1489,6 +1492,8 @@ fn test_match_statements_and_expressions() {
           "four" v => ("case 4", v + "")
           (true, 1) v => ("case 5", v + "")
           (false, 2) v => ("case 6", v + "")
+          Person v => ("case 7", v + "")
+          Color v => ("case 8", v + "")
           _ v => ("wildcard", v + "")
         }
       }
@@ -1515,6 +1520,9 @@ fn test_match_statements_and_expressions() {
         ("test(\"five\")", "(wildcard, five)"),
         ("test((true, 1))", "(case 5, (true, 1))"),
         ("test((false, 2))", "(case 6, (false, 2))"),
+        ("test(Person(name: \"Meg\"))", "(case 7, Person(name: Meg))"),
+        ("test(Color.Red)", "(case 8, Color.Red)"),
+        ("test(Color.RGB(r: 1, g: 2, b: 3))", "(case 8, Color.RGB(r: 1, g: 2, b: 3))"),
         ("test((true, 2))", "(wildcard, (true, 2))"),
         //
         ("(testWithReturn(None), flag)", "(early return, false)"),
