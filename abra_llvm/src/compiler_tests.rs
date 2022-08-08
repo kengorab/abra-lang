@@ -1529,4 +1529,39 @@ fn test_match_statements_and_expressions() {
         ("(testWithReturn(123), flag)", "(number: 123, true)"),
     ];
     run_test_cases_with_setup(setup, cases);
+
+    let input = r#"
+      enum Foo {
+        Bar(baz: String, qux: Int)
+      }
+      func abc(foo: Foo): Int {
+        match foo {
+          Foo.Bar("asdf", 12) => 1
+          Foo.Bar("asdf", q) => 2
+          Foo.Bar(b, 12) => 3
+          Foo.Bar(b, q) => b.length + q
+        }
+      }
+      println(
+        abc(Foo.Bar("asdf", 24)), // => 2
+        abc(Foo.Bar("zxcv", 12)), // => 3
+        abc(Foo.Bar("asdf", 12)), // => 1
+        abc(Foo.Bar("zxcv", 0)),  // => 4
+      )
+
+      enum Point {
+        TwoD(coord: (Int, Int)),
+        ThreeD(coord: (Int, Int, Int))
+      }
+      val p = Point.ThreeD(coord: (1, 2, 3))
+      val s = match p {
+        Point.TwoD((x, y)) => x + y
+        Point.ThreeD((x, y, z)) => x + y + z
+      }
+      println(s)
+    "#;
+    run_and_verify_output_lines(input, vec![
+        "2 3 1 4",
+        "6"
+    ]);
 }

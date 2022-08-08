@@ -13,7 +13,7 @@ use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModuleId, UnaryOp};
 use abra_core::typechecker::typechecker::TypedModule;
-use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
+use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchCaseArgument, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
 
 const ENTRY_FN_NAME: &str = "__mod_entry";
@@ -2791,7 +2791,109 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     }
                     self.builder.position_at_end(else_bb);
                 }
-                TypedMatchKind::EnumVariant { .. } => {}
+                TypedMatchKind::EnumVariant { enum_name, variant_idx, args, .. } => {
+                    let enum_spec = self.scopes[0].enums.get(&enum_name).expect(&format!("Could not find enum '{}' in scope", enum_name));
+                    let variant_spec = &enum_spec.variants[variant_idx];
+
+                    let target_type_id = self.builder.build_call(self.cached_fn(FN_TYPE_ID_FOR_VAL), &[target_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, target_type_id, self.builder.build_load(enum_spec.type_id_ptr, "").into_int_value(), "cond");
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    let then_val = self.context.bool_type().const_zero();
+                    self.builder.build_unconditional_branch(cont_bb);
+                    let then_bb = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(else_bb);
+                    let target_as_enum = self.emit_extract_nan_tagged_obj(target_val.into_int_value());
+                    let target_as_enum = self.builder.build_cast(InstructionOpcode::BitCast, target_as_enum, enum_spec.base_struct_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                    let target_as_variant = self.builder.build_cast(InstructionOpcode::BitCast, target_as_enum, variant_spec.struct_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                    let else_val = {
+                        let variant_idx_slot = self.builder.build_struct_gep(target_as_enum, 1, "").unwrap();
+                        let variant_idx = self.builder.build_load(variant_idx_slot, "").into_int_value();
+
+                        let cond = self.builder.build_int_compare(IntPredicate::NE, variant_idx, self.context.i8_type().const_int(variant_spec.variant_idx as u64, false), "cond");
+                        let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                        let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                        let cont_bb = self.context.append_basic_block(self.cur_fn, "cont");
+                        self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                        self.builder.position_at_end(then_bb);
+                        let then_val = self.context.bool_type().const_zero();
+                        self.builder.build_unconditional_branch(cont_bb);
+                        let then_bb = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(else_bb);
+                        let else_val = if let Some(args) = &args {
+                            // TODO: Make these short-circuit to avoid unnecessary equality checks
+                            let mut cond = self.context.bool_type().const_int(1, false);
+                            for (idx, (_, arg)) in args.iter().enumerate() {
+                                if let TypedMatchCaseArgument::Literal(lit_node) = arg {
+                                    let lit_val = self.visit(lit_node.clone())?;
+                                    let field_val = self.builder.build_load(self.builder.build_struct_gep(target_as_variant, (idx + 2) as u32, "").unwrap(), "").into_int_value();
+                                    cond = self.builder.build_and(
+                                        cond,
+                                        self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[lit_val.into(), field_val.into()], "").try_as_basic_value().left().unwrap().into_int_value(),
+                                        ""
+                                    );
+                                }
+                            }
+                            cond
+                        } else {
+                            self.context.bool_type().const_int(1, false)
+                        };
+                        self.builder.build_unconditional_branch(cont_bb);
+                        let else_bb = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(cont_bb);
+                        let phi = self.builder.build_phi(self.context.bool_type(), "");
+                        phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                        phi.as_basic_value().into_int_value()
+                    };
+                    self.builder.build_unconditional_branch(cont_bb);
+                    let else_bb = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(cont_bb);
+                    let phi = self.builder.build_phi(self.context.bool_type(), "");
+                    phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
+                    let cond = phi.as_basic_value().into_int_value();
+
+
+                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
+                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
+                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+                    self.builder.position_at_end(then_bb);
+                    if let Some(alias) = alias {
+                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+                    }
+                    if let Some(args) = args {
+                        for (idx, (_, arg)) in args.into_iter().enumerate() {
+                            if let TypedMatchCaseArgument::Pattern(pat) = arg {
+                                let field_val = self.builder.build_load(self.builder.build_struct_gep(target_as_variant, (idx + 2) as u32, "").unwrap(), "");
+                                self.visit_binding_pattern(pat, field_val, false);
+                            }
+                        }
+                    }
+                    for node in body {
+                        let terminates = node.all_branches_terminate().is_some();
+                        last_value = self.visit(node)?;
+                        if terminates {
+                            last_value = self.val_none().as_basic_value_enum();
+                            terminates_early = true;
+                        }
+                    }
+                    if !terminates_early {
+                        if let Some(ret_local) = ret_local {
+                            self.builder.build_store(ret_local, last_value);
+                        }
+                        self.builder.build_unconditional_branch(match_end_bb);
+                    }
+                    self.builder.position_at_end(else_bb);
+                }
                 TypedMatchKind::Constant { node } => {
                     let const_val = self.visit(node)?;
 
@@ -3162,8 +3264,15 @@ impl CapturedVariableFinder {
             TypedAstNode::Accessor(_, n) => self.find_foreign_variables(&*n.target),
             TypedAstNode::MatchStatement(_, n) | TypedAstNode::MatchExpression(_, n) => {
                 self.find_foreign_variables(&*n.target);
-                for (_, binding, body) in &n.branches {
+                for (kind, binding, body) in &n.branches {
                     self.begin_new_scope();
+                    if let TypedMatchKind::EnumVariant { args: Some(args), .. } = kind {
+                        for (_, arg) in args {
+                            if let TypedMatchCaseArgument::Pattern(pat) = arg {
+                                self.visit_binding_pattern(pat);
+                            }
+                        }
+                    }
                     if let Some(binding) = binding {
                         self.add_variable_to_cur_scope(binding.clone());
                     }
