@@ -878,3 +878,19 @@ void prelude__print(value_t* _env, int8_t _num_rcv_args, value_t varargs) {
 void prelude__println(value_t* _env, int8_t _num_rcv_args, value_t varargs) {
   printf("%s\n", print_impl(varargs));
 }
+
+value_t prelude__range(value_t* _env, int8_t num_rcv_args, value_t _from, value_t _to, value_t _increment) {
+  int32_t from = AS_INT(_from);
+  int32_t to = AS_INT(_to);
+  int32_t increment = num_rcv_args < 3 || _increment == VAL_NONE ? 1 : AS_INT(_increment);
+
+  size_t size = ceil(abs(to - from) / (double)increment);
+  Array* values = AS_OBJ(array_alloc(size), Array);
+  size_t i = 0;
+  while (from < to) {
+    values->items[i++] = TAG_INT(from);
+    from += increment;
+  }
+
+  return TAG_OBJ(values);
+}

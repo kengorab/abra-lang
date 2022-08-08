@@ -173,5 +173,6 @@ value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t
 // ------------------------ PRELUDE FUNCTIONS ------------------------
 void prelude__print(value_t* _env, int8_t _num_rcv_args, value_t varargs);
 void prelude__println(value_t* _env, int8_t _num_rcv_args, value_t varargs);
+value_t prelude__range(value_t* _env, int8_t num_rcv_args, value_t _from, value_t _to, value_t _increment);
 
 #endif

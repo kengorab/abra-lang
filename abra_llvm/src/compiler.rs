@@ -262,6 +262,8 @@ impl<'ctx> Compiler<'ctx> {
         self.current_scope_mut().fns.insert("println".to_string(), println);
         let print = self.module.add_function("prelude__print", self.gen_llvm_fn_type(false, 1), None);
         self.current_scope_mut().fns.insert("print".to_string(), print);
+        let range = self.module.add_function("prelude__range", self.gen_llvm_fn_type(true, 3), None);
+        self.current_scope_mut().fns.insert("range".to_string(), range);
 
         self.init_int_type();
         self.init_float_type();
@@ -271,6 +273,7 @@ impl<'ctx> Compiler<'ctx> {
         self.init_tuple_type();
         self.init_map_type();
         self.init_set_type();
+        self.init_function_type();
         self.init_function_type();
     }
 
@@ -2476,6 +2479,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 }
             }
             _ => {
+                dbg!(&target_type);
                 let type_spec = self.scopes[0].types
                     .values()
                     .find(|spec| spec.typ == target_type)

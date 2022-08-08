@@ -1,33 +1,6 @@
-type Person { name: String }
-enum Color {
-  Red
-  RGB(r: Int, g: Int, b: Int)
-}
-
-//func test(value: Int | String | Float? | (Bool, Int) | Person | Color): (String, String) {
-//  match value {
-//    None v => ("case 0", v + "")
-//    1 v => ("case 1", v + "")
-//    2 v => ("case 2", v + "")
-//    "three" v => ("case 3", v + "")
-//    "four" v => ("case 4", v + "")
-//    (true, 1) v => ("case 5", v + "")
-//    (false, 2) v => ("case 6", v + "")
-//    Person v => ("case 7", v + "")
-//    Color v => ("case 8", v + "")
-//    _ v => ("wildcard", v + "")
-//  }
-//}
-//println(test(Color.RGB(r: 1, g: 2, b: 3)))
-
-val c = Color.RGB(r: 1, g: 2, b: 3)
-match c {
-  Color.Red => println("Red")
-  Color.RGB(1, 3, 2) => println("RGB 1")
-  Color.RGB(r, g, 3) c2 => println("RGB 2", r, g, c2)
-  _ => println("catchall")
-}
-
+println(range(0, 10))
+println(range(0, 10, 3))
+println(range(0, 10, 2))
 
 /* TODO: Function hoisting
 val hello = "Hello"
