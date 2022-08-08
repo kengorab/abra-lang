@@ -32,6 +32,10 @@ uint32_t value_hash(value_t v);
 
 #define DBG(v) printf("`" #v "` => %s\n", AS_OBJ(value_to_string(v), String)->chars);
 
+// ------------------------ UTILITIES ------------------------
+value_t build_argv_array(int argc, char** argv);
+value_t build_envp_map(char** envp);
+
 // ------------------------ TYPE MANAGEMENT ------------------------
 const uint32_t TOSTRING_IDX = 0;
 typedef value_t (*tostring_method_t)(value_t*, int8_t, value_t);

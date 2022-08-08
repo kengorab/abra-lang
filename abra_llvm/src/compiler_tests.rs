@@ -869,7 +869,7 @@ fn test_enums_base_functionality() {
         // hash (simple)
         (
             "#{Color.Red, Color.Green, Color.Blue, Color.Blue, Color.Green, Color.Red}",
-            "#{Color.Red, Color.Green, Color.Blue}"
+            "#{Color.Blue, Color.Red, Color.Green}"
         ),
         // hash (complex)
         (
@@ -878,7 +878,7 @@ fn test_enums_base_functionality() {
         ),
         (
             "#{Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 11, g: 12, b: 13), Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 2, g: 1, b: 3)}",
-            "#{Color.RGB(r: 11, g: 12, b: 13), Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 2, g: 1, b: 3)}"
+            "#{Color.RGB(r: 1, g: 2, b: 3), Color.RGB(r: 2, g: 1, b: 3), Color.RGB(r: 11, g: 12, b: 13)}"
         ),
     ];
     run_test_cases_with_setup(setup, cases);

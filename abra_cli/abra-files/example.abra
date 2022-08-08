@@ -1,6 +1,4 @@
-println(range(0, 10))
-println(range(0, 10, 3))
-println(range(0, 10, 2))
+println(process)
 
 /* TODO: Function hoisting
 val hello = "Hello"

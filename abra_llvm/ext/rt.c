@@ -13,6 +13,46 @@ value_t vtable_lookup(value_t value, uint32_t idx) {
   return vtable[type_id][idx];
 }
 
+// ------------------------ UTILITIES ------------------------
+value_t build_argv_array(int argc, char** argv) {
+    Array* arr = AS_OBJ(array_alloc(argc), Array);
+
+    for (int i = 0; i < argc; i++) {
+        char* str = argv[i];
+        arr->items[i] = string_alloc(strlen(str), str);
+    }
+
+    return TAG_OBJ(arr);
+}
+
+value_t build_envp_map(char** envp) {
+    int32_t size = 0;
+    for (char** env = envp; *env != 0; env++) { size += 1; }
+
+    value_t m = map_alloc(size);
+    Map* env = AS_OBJ(m, Map);
+
+    for (char** env = envp; *env != 0; env++) {
+        char* var = *env;
+        int var_len = strlen(var);
+
+        int split_idx = 0;
+        while (var[split_idx] != '=') { split_idx += 1; }
+
+        char* var_name = GC_MALLOC(sizeof(char) * split_idx);
+        memcpy(var_name, var, split_idx);
+        value_t var_name_str = string_alloc(split_idx, var_name);
+
+        char* var_value = GC_MALLOC(sizeof(char) * (var_len - split_idx - 1));
+        memcpy(var_value, var + split_idx + 1, (var_len - split_idx - 1));
+        value_t var_value_str = string_alloc((var_len - split_idx - 1), var_value);
+
+        map_insert(m, var_name_str, var_value_str);
+    }
+
+    return TAG_OBJ(env);
+}
+
 // ------------------------ TYPE MANAGEMENT ------------------------
 uint32_t type_id_for_val(value_t value) {
   if (IS_INT(value)) return type_id_Int;

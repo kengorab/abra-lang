@@ -15,6 +15,13 @@ mod compiler_tests;
 
 mod compiler;
 
+const ADDL_PRELUDE_CONTENTS: &str = r#"
+type Process_ {
+  args: String[]
+  env: Map<String, String>
+}
+"#;
+
 #[cfg(not(test))]
 pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module_reader: &mut R) -> Result<(), Error>
     where R: ModuleReader
@@ -23,6 +30,8 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
 
     let mut loader = ModuleLoader::new(module_reader);
 
+    let supplemental_prelude_module = typecheck(ModuleId::External("prelude.1".to_string()), &ADDL_PRELUDE_CONTENTS.to_string(), &mut loader)?;
+
     let module = typecheck(module_id, contents, &mut loader)?;
     loader.add_typed_module(module.clone());
 
@@ -30,7 +39,7 @@ pub fn compile_to_llvm_and_run<R>(module_id: ModuleId, contents: &String, module
 
     let context = Context::create();
     let mut compiler = compiler::Compiler::new(&context, &mod_idxs);
-    compiler.initialize();
+    compiler.initialize(supplemental_prelude_module);
 
     let num_mods = loader.ordering.len();
     for (mod_idx, module_id) in loader.ordering.iter().enumerate() {
@@ -59,13 +68,15 @@ pub fn compile_to_llvm_and_run<'ctx, R>(module_id: ModuleId, contents: &String, 
 {
     let mut loader = ModuleLoader::new(module_reader);
 
+    let supplemental_prelude_module = typecheck(ModuleId::External("prelude.1".to_string()), &ADDL_PRELUDE_CONTENTS.to_string(), &mut loader)?;
+
     let module = typecheck(module_id, contents, &mut loader)?;
     loader.add_typed_module(module.clone());
 
     let mod_idxs = loader.ordering.iter().enumerate().map(|(idx, mod_id)| (mod_id.clone(), idx)).collect();
 
     let mut compiler = compiler::Compiler::new(&context, &mod_idxs);
-    compiler.initialize();
+    compiler.initialize(supplemental_prelude_module);
     let num_mods = loader.ordering.len();
     for (mod_idx, module_id) in loader.ordering.iter().enumerate() {
         let typed_module = loader.get_module(module_id).clone();

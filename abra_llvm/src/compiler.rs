@@ -49,6 +49,8 @@ const FN_FUNCTION_BIND: &str = "function_bind";
 const FN_FUNCTION_CALL: &str = "function_call";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
+const FN_BUILD_ARGV_ARRAY: &str = "build_argv_array";
+const FN_BUILD_ENVP_MAP: &str = "build_envp_map";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
 const FN_VALUE_EQ: &str = "value_eq";
 const FN_VALUE_HASH: &str = "value_hash";
@@ -154,7 +156,10 @@ impl<'ctx> Compiler<'ctx> {
         let builder = context.create_builder();
         let module = context.create_module("__main");
 
-        let entry_fn_type = context.void_type().fn_type(&[], false);
+        let argc_t = context.i32_type();
+        let argv_t = context.i8_type().ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic);
+        let envp_t = context.i8_type().ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic);
+        let entry_fn_type = context.void_type().fn_type(&[argc_t.into(), argv_t.into(), envp_t.into()], false);
         let entry_fn = module.add_function(ENTRY_FN_NAME, entry_fn_type, None);
 
         let root_scope = Scope::new("$0".to_string());
@@ -171,13 +176,16 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    pub fn initialize(&mut self) {
-        let prelude_init_fn = self.prelude_init();
+    pub fn initialize(&mut self, supplemental_prelude_module: TypedModule) {
+        let prelude_init_fn = self.prelude_init(supplemental_prelude_module);
 
-        // Begin emitting code in the entry function, starting with `$prelude_init()`
+        // Begin emitting code in the entry function, starting with `$prelude_init(argc, argv, envp)`
         let entry_fn_bb = self.context.append_basic_block(self.cur_fn, "");
         self.builder.position_at_end(entry_fn_bb);
-        self.builder.build_call(prelude_init_fn, &[], "");
+        let argc = self.cur_fn.get_nth_param(0).unwrap();
+        let argv = self.cur_fn.get_nth_param(1).unwrap();
+        let envp = self.cur_fn.get_nth_param(2).unwrap();
+        self.builder.build_call(prelude_init_fn, &[argc.into(), argv.into(), envp.into()], "");
     }
 
     pub fn compile_module(&mut self, typed_module: TypedModule, mod_idx: usize, is_main: bool) -> Result<(), CompilerError> {
@@ -265,6 +273,11 @@ impl<'ctx> Compiler<'ctx> {
         let range = self.module.add_function("prelude__range", self.gen_llvm_fn_type(true, 3), None);
         self.current_scope_mut().fns.insert("range".to_string(), range);
 
+        let process = self.module.add_global(self.value_t(), None, "process");
+        process.set_linkage(Linkage::Common);
+        process.set_initializer(&self.value_t().const_zero());
+        self.current_scope_mut().variables.insert("process".to_string(), Variable { var_ptr: process.as_pointer_value(), is_captured: false, is_global: true });
+
         self.init_int_type();
         self.init_float_type();
         self.init_bool_type();
@@ -273,7 +286,6 @@ impl<'ctx> Compiler<'ctx> {
         self.init_tuple_type();
         self.init_map_type();
         self.init_set_type();
-        self.init_function_type();
         self.init_function_type();
     }
 
@@ -372,7 +384,7 @@ impl<'ctx> Compiler<'ctx> {
         ]);
     }
 
-    fn prelude_init(&mut self) -> FunctionValue<'ctx> {
+    fn prelude_init(&mut self, supplemental_prelude_module: TypedModule) -> FunctionValue<'ctx> {
         self.module.add_global(self.context.i32_type(), None, "next_type_id");
 
         let value_t = self.value_t();
@@ -414,6 +426,8 @@ impl<'ctx> Compiler<'ctx> {
         self.module.add_function(FN_FUNCTION_CALL, value_t.fn_type(&[value_t.into(), bool.into(), i8.into(), i8.into()], true), None);
         self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_BUILD_ARGV_ARRAY, value_t.fn_type(&[i32.into(), i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic).into()], false), None);
+        self.module.add_function(FN_BUILD_ENVP_MAP, value_t.fn_type(&[i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
         self.module.add_function(FN_VALUE_EQ, bool.fn_type(&[value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_VALUE_HASH, i32.fn_type(&[value_t.into()], false), None);
@@ -467,12 +481,40 @@ impl<'ctx> Compiler<'ctx> {
         );
 
         // Prelude initialization function
-        let init_fn_type = void.fn_type(&[], false);
+        let argc_t = i32;
+        let argv_t = i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic);
+        let envp_t = i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic);
+        let init_fn_type = void.fn_type(&[argc_t.into(), argv_t.into(), envp_t.into()], false);
         let init_fn = self.module.add_function("$prelude_init", init_fn_type, None);
         let init_fn_bb = self.context.append_basic_block(init_fn, "");
         self.builder.position_at_end(init_fn_bb);
+        let prev_fn = self.cur_fn;
+        self.cur_fn = init_fn;
+
         self.init_prelude();
+
+        // HACK: compile supplemental prelude module's ast into the $prelude_init function's body
+        for mut node in supplemental_prelude_module.typed_nodes {
+            if let TypedAstNode::TypeDecl(_, n) = &mut node {
+                // HACK: Since the typechecker would prevent duplicate names which collide with auto-imported prelude types,
+                // these "supplemental" end in underscore. We need to remove them in order to have proper toStrings, etc.
+                if let Token::Ident(_, s) = &mut n.name { *s = s.replace("_", "") } else { unreachable!() }
+            }
+            self.visit(node).unwrap();
+        }
+
+        // HACK: initialize `process` global
+        let process_type_spec= self.current_scope().types.get("Process").unwrap();
+        let argc = self.cur_fn.get_nth_param(0).unwrap();
+        let argv = self.cur_fn.get_nth_param(1).unwrap();
+        let envp = self.cur_fn.get_nth_param(2).unwrap();
+        let argv_array = self.builder.build_call(self.cached_fn(FN_BUILD_ARGV_ARRAY), &[argc.into(), argv.into()], "").try_as_basic_value().left().unwrap();
+        let envp_map = self.builder.build_call(self.cached_fn(FN_BUILD_ENVP_MAP), &[envp.into()], "").try_as_basic_value().left().unwrap();
+        let process_inst = self.builder.build_call(process_type_spec.ctor_fn, &[argv_array.into(), envp_map.into()], "").try_as_basic_value().left().unwrap();
+        self.builder.build_store(self.current_scope().variables.get("process").unwrap().var_ptr, process_inst);
+
         self.builder.build_return(None);
+        self.cur_fn = prev_fn;
 
         init_fn
     }
@@ -2479,7 +2521,6 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 }
             }
             _ => {
-                dbg!(&target_type);
                 let type_spec = self.scopes[0].types
                     .values()
                     .find(|spec| spec.typ == target_type)
