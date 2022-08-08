@@ -2702,54 +2702,16 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             let target_val = self.builder.build_load(target_local, "");
 
             self.begin_new_scope(format!("match-case-{}", idx));
+            let mut destructuring_data = None;
             let mut terminates_early = false;
             let mut last_value = self.val_none().as_basic_value_enum();
-            match kind {
+            let cond = match kind {
                 TypedMatchKind::Wildcard => {
                     debug_assert!(idx == num_branches - 1);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
-                    }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                    }
-                    // break;
+                    self.context.bool_type().const_int(1, false)
                 }
                 TypedMatchKind::None => {
-                    let cond = self.builder.build_int_compare(IntPredicate::EQ, target_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), "cond");
-                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-                    self.builder.position_at_end(then_bb);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
-                    }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                        self.builder.build_unconditional_branch(match_end_bb);
-                    }
-                    self.builder.position_at_end(else_bb);
+                    self.builder.build_int_compare(IntPredicate::EQ, target_val.into_int_value(), self.context.i64_type().const_int(VAL_NONE, false), "cond")
                 }
                 TypedMatchKind::Type { type_name, args } => {
                     debug_assert!(args.is_none(), "Destructuring is not yet implemented for type");
@@ -2766,30 +2728,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
                     let target_type_id = self.builder.build_call(self.cached_fn(FN_TYPE_ID_FOR_VAL), &[target_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
 
-                    let cond = self.builder.build_int_compare(IntPredicate::EQ, target_type_id, type_id, "cond");
-                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-                    self.builder.position_at_end(then_bb);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
-                    }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                        self.builder.build_unconditional_branch(match_end_bb);
-                    }
-                    self.builder.position_at_end(else_bb);
+                    self.builder.build_int_compare(IntPredicate::EQ, target_type_id, type_id, "cond")
                 }
                 TypedMatchKind::EnumVariant { enum_name, variant_idx, args, .. } => {
                     let enum_spec = self.scopes[0].enums.get(&enum_name).expect(&format!("Could not find enum '{}' in scope", enum_name));
@@ -2861,67 +2800,14 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                     phi.add_incoming(&[(&then_val, then_bb), (&else_val, else_bb)]);
                     let cond = phi.as_basic_value().into_int_value();
 
-
-                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-                    self.builder.position_at_end(then_bb);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
-                    }
-                    if let Some(args) = args {
-                        for (idx, (_, arg)) in args.into_iter().enumerate() {
-                            if let TypedMatchCaseArgument::Pattern(pat) = arg {
-                                let field_val = self.builder.build_load(self.builder.build_struct_gep(target_as_variant, (idx + 2) as u32, "").unwrap(), "");
-                                self.visit_binding_pattern(pat, field_val, false);
-                            }
-                        }
-                    }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                        self.builder.build_unconditional_branch(match_end_bb);
-                    }
-                    self.builder.position_at_end(else_bb);
+                    destructuring_data = args.map(|args| (args, target_as_variant));
+                    cond
                 }
                 TypedMatchKind::Constant { node } => {
                     let const_val = self.visit(node)?;
 
                     let cond_val = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[target_val.into(), const_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
-                    let cond = self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond");
-                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
-
-                    self.builder.position_at_end(then_bb);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
-                    }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                        self.builder.build_unconditional_branch(match_end_bb);
-                    }
-                    self.builder.position_at_end(else_bb);
+                    self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond")
                 }
                 TypedMatchKind::Tuple { nodes } => {
                     let items = nodes.into_iter()
@@ -2929,32 +2815,42 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                         .collect::<Result<Vec<_>, _>>()?;
                     let tuple_case_val = self.alloc_tuple_obj(items);
                     let cond_val = self.builder.build_call(self.cached_fn(FN_VALUE_EQ), &[target_val.into(), tuple_case_val.into()], "").try_as_basic_value().left().unwrap().into_int_value();
-                    let cond = self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond");
-                    let then_bb = self.context.append_basic_block(self.cur_fn, "then");
-                    let else_bb = self.context.append_basic_block(self.cur_fn, "else");
-                    self.builder.build_conditional_branch(cond, then_bb, else_bb);
+                    self.builder.build_int_compare(IntPredicate::NE, cond_val, self.context.bool_type().const_zero(), "cond")
+                }
+            };
 
-                    self.builder.position_at_end(then_bb);
-                    if let Some(alias) = alias {
-                        self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+            let then_bb = self.context.append_basic_block(self.cur_fn, &format!("match-case-{}-then", idx));
+            let else_bb = self.context.append_basic_block(self.cur_fn, &format!("match-case-{}-else", idx));
+            self.builder.build_conditional_branch(cond, then_bb, else_bb);
+
+            self.builder.position_at_end(then_bb);
+            if let Some(alias) = alias {
+                self.visit_binding_pattern(BindingPattern::Variable(Token::Ident(token.get_position(), alias)), target_val, false);
+            }
+            if let Some((args, obj)) = destructuring_data {
+                for (idx, (_, arg)) in args.into_iter().enumerate() {
+                    if let TypedMatchCaseArgument::Pattern(pat) = arg {
+                        let idx = idx + 2; // account for obj_header_t and variant_idx
+                        let field_val = self.builder.build_load(self.builder.build_struct_gep(obj, idx as u32, "").unwrap(), "");
+                        self.visit_binding_pattern(pat, field_val, false);
                     }
-                    for node in body {
-                        let terminates = node.all_branches_terminate().is_some();
-                        last_value = self.visit(node)?;
-                        if terminates {
-                            last_value = self.val_none().as_basic_value_enum();
-                            terminates_early = true;
-                        }
-                    }
-                    if !terminates_early {
-                        if let Some(ret_local) = ret_local {
-                            self.builder.build_store(ret_local, last_value);
-                        }
-                        self.builder.build_unconditional_branch(match_end_bb);
-                    }
-                    self.builder.position_at_end(else_bb);
                 }
             }
+            for node in body {
+                let terminates = node.all_branches_terminate().is_some();
+                last_value = self.visit(node)?;
+                if terminates {
+                    last_value = self.val_none().as_basic_value_enum();
+                    terminates_early = true;
+                }
+            }
+            if !terminates_early {
+                if let Some(ret_local) = ret_local {
+                    self.builder.build_store(ret_local, last_value);
+                }
+                self.builder.build_unconditional_branch(match_end_bb);
+            }
+            self.builder.position_at_end(else_bb);
 
             if idx == num_branches - 1 && !terminates_early {
                 self.builder.build_unconditional_branch(match_end_bb);
