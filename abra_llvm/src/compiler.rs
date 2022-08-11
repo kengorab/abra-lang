@@ -49,6 +49,8 @@ const FN_FUNCTION_BIND: &str = "function_bind";
 const FN_FUNCTION_CALL: &str = "function_call";
 const FN_VTABLE_ALLOC_ENTRY: &str = "vtable_alloc_entry";
 const FN_VTABLE_LOOKUP: &str = "vtable_lookup";
+const FN_VTABLE_LOOKUP_STATIC: &str = "vtable_lookup_static";
+const FN_VTABLE_INSERT: &str = "vtable_insert";
 const FN_BUILD_ARGV_ARRAY: &str = "build_argv_array";
 const FN_BUILD_ENVP_MAP: &str = "build_envp_map";
 const FN_VALUE_TO_STRING: &str = "value_to_string";
@@ -301,7 +303,7 @@ impl<'ctx> Compiler<'ctx> {
             .map(|g| self.builder.build_load(g.as_pointer_value(), "").into_int_value())
     }
 
-    fn init_builtin_type(&self, type_id_name: &str, methods: &[(&str, FunctionType<'ctx>)]) {
+    fn init_builtin_type(&self, type_id_name: &str, methods: &[(&str, FunctionType<'ctx>)], static_methods: &[(&str, FunctionType<'ctx>)]) {
         // Increment the type_id counter
         let type_id = self.incr_next_type_id();
         let new_type_id = self.module.add_global(self.context.i32_type(), None, type_id_name);
@@ -310,13 +312,21 @@ impl<'ctx> Compiler<'ctx> {
         // Allocate vtable space for the type's methods
         let type_id = self.builder.build_load(new_type_id.as_pointer_value(), "").into_int_value();
         let num_methods = self.context.i32_type().const_int(methods.len() as u64, false);
-        let vtable_entry = self.builder.build_call(self.cached_fn(FN_VTABLE_ALLOC_ENTRY), &[type_id.into(), num_methods.into()], "").try_as_basic_value().left().unwrap().into_pointer_value();
+        let num_static = self.context.i32_type().const_int(static_methods.len() as u64, false);
+        self.builder.build_call(self.cached_fn(FN_VTABLE_ALLOC_ENTRY), &[type_id.into(), num_methods.into(), num_static.into()], "");
 
-        // Store the methods in the vtable
+        // Store the instance and static methods in the vtable
         for (idx, (method_name, method_type)) in methods.iter().enumerate() {
-            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
+            let idx = self.context.i32_type().const_int(idx as u64, false);
             let fn_ptr = self.module.add_function(method_name, method_type.clone(), None).as_global_value().as_pointer_value();
-            self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+            let fn_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+            self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), idx.into(), self.context.bool_type().const_zero().into(), fn_val.into()], "");
+        }
+        for (idx, (method_name, method_type)) in static_methods.iter().enumerate() {
+            let idx = self.context.i32_type().const_int(idx as u64, false);
+            let fn_ptr = self.module.add_function(method_name, method_type.clone(), None).as_global_value().as_pointer_value();
+            let fn_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+            self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), idx.into(), self.context.bool_type().const_int(1, false).into(), fn_val.into()], "");
         }
     }
 
@@ -324,20 +334,20 @@ impl<'ctx> Compiler<'ctx> {
         self.init_builtin_type("type_id_Int", &[
             ("prelude__Int__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Int__abs", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_float_type(&self) {
         self.init_builtin_type("type_id_Float", &[
             ("prelude__Float__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Float__floor", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_bool_type(&self) {
         self.init_builtin_type("type_id_Bool", &[
             ("prelude__Bool__toString", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_string_type(&self) {
@@ -345,7 +355,7 @@ impl<'ctx> Compiler<'ctx> {
             ("prelude__String__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__String__toLower", self.gen_llvm_fn_type(true, 1)),
             ("prelude__String__toUpper", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_array_type(&self) {
@@ -353,21 +363,27 @@ impl<'ctx> Compiler<'ctx> {
             ("prelude__Array__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Array__isEmpty", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Array__enumerate", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_tuple_type(&self) {
         self.init_builtin_type("type_id_Tuple", &[
             ("prelude__Tuple__toString", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_map_type(&self) {
-        self.init_builtin_type("type_id_Map", &[
-            ("prelude__Map__toString", self.gen_llvm_fn_type(true, 1)),
-            ("prelude__Map__isEmpty", self.gen_llvm_fn_type(true, 1)),
-            ("prelude__Map__enumerate", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        self.init_builtin_type(
+            "type_id_Map",
+            &[
+                ("prelude__Map__toString", self.gen_llvm_fn_type(true, 1)),
+                ("prelude__Map__isEmpty", self.gen_llvm_fn_type(true, 1)),
+                ("prelude__Map__enumerate", self.gen_llvm_fn_type(true, 1)),
+            ],
+            &[
+                ("prelude__Map__fromPairs", self.gen_llvm_fn_type(true, 1)),
+            ],
+        );
     }
 
     fn init_set_type(&self) {
@@ -375,13 +391,13 @@ impl<'ctx> Compiler<'ctx> {
             ("prelude__Set__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Set__isEmpty", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Set__enumerate", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn init_function_type(&self) {
         self.init_builtin_type("type_id_Function", &[
             ("prelude__Function__toString", self.gen_llvm_fn_type(true, 1)),
-        ]);
+        ], &[]);
     }
 
     fn prelude_init(&mut self, supplemental_prelude_module: TypedModule) -> FunctionValue<'ctx> {
@@ -424,8 +440,10 @@ impl<'ctx> Compiler<'ctx> {
         self.module.add_function(FN_FUNCTION_ALLOC, value_t.fn_type(&[str.into(), value_t.into(), value_t.ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_FUNCTION_BIND, value_t.fn_type(&[value_t.into(), value_t.into()], false), None);
         self.module.add_function(FN_FUNCTION_CALL, value_t.fn_type(&[value_t.into(), bool.into(), i8.into(), i8.into()], true), None);
-        self.module.add_function(FN_VTABLE_ALLOC_ENTRY, i64.ptr_type(AddressSpace::Generic).fn_type(&[i32.into(), i32.into()], false), None);
+        self.module.add_function(FN_VTABLE_ALLOC_ENTRY, void.fn_type(&[i32.into(), i32.into(), i32.into()], false), None);
         self.module.add_function(FN_VTABLE_LOOKUP, value_t.fn_type(&[value_t.into(), i32.into()], false), None);
+        self.module.add_function(FN_VTABLE_LOOKUP_STATIC, value_t.fn_type(&[i32.into(), i32.into()], false), None);
+        self.module.add_function(FN_VTABLE_INSERT, void.fn_type(&[i32.into(), i32.into(), bool.into(), value_t.into()], false), None);
         self.module.add_function(FN_BUILD_ARGV_ARRAY, value_t.fn_type(&[i32.into(), i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_BUILD_ENVP_MAP, value_t.fn_type(&[i8.ptr_type(AddressSpace::Generic).ptr_type(AddressSpace::Generic).into()], false), None);
         self.module.add_function(FN_VALUE_TO_STRING, value_t.fn_type(&[value_t.into()], false), None);
@@ -1065,7 +1083,7 @@ impl<'ctx> Compiler<'ctx> {
     fn compile_function(
         &mut self,
         fn_name: String,
-        type_name: Option<&String>,
+        type_name: Option<(&String, /* is_static: */ bool)>,
         node: TypedFunctionDeclNode,
     ) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let old_fn = self.cur_fn;
@@ -1076,7 +1094,11 @@ impl<'ctx> Compiler<'ctx> {
             .map(|(tok, _, _, default_value)| (Token::get_ident_name(&tok), default_value))
             .collect();
         let captured_variables = self.find_captured_variables(&args, &node.body);
-        let fully_qualified_fn_name = self.namespaced_fn_name(type_name, &fn_name, false);
+        let fully_qualified_fn_name = if let Some((type_name, is_static)) = type_name {
+            self.namespaced_fn_name(Some(type_name), &fn_name, is_static)
+        } else {
+            self.namespaced_fn_name(None, &fn_name, false)
+        };
         let is_method = type_name.is_some();
         let (func, env_mem, fn_local) = self.compile_function_start(node.is_exported, &fn_name, &fully_qualified_fn_name, captured_variables, args, has_return, is_method)?;
 
@@ -1097,6 +1119,38 @@ impl<'ctx> Compiler<'ctx> {
         let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, node.is_recursive, fn_decl_site_bb);
 
         Ok(fn_val)
+    }
+
+    fn lookup_function_static(&self, type_name: &String, typ: &Type, is_enum: bool, field_idx: usize) -> (IntValue<'ctx>, bool) {
+        let mut is_builtin = true;
+        let type_id_ptr = if is_enum {
+            self.scopes[0].enums
+                .values()
+                .find(|spec| spec.typ == *typ)
+                .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ))
+                .type_id_ptr
+        } else {
+            match type_name.as_str() {
+                "prelude/String" => self.module.get_global("type_id_String").unwrap().as_pointer_value(),
+                "prelude/Array" => self.module.get_global("type_id_Array").unwrap().as_pointer_value(),
+                "prelude/Map" => self.module.get_global("type_id_Map").unwrap().as_pointer_value(),
+                "prelude/Set" => self.module.get_global("type_id_Set").unwrap().as_pointer_value(),
+                _ => {
+                    is_builtin = false;
+                    self.scopes[0].types
+                        .values()
+                        .find(|spec| spec.typ == *typ)
+                        .expect(&format!("Internal error: could not find type '{:?}' in scope", typ))
+                        .type_id_ptr
+                }
+            }
+        };
+        let type_id = self.builder.build_load(type_id_ptr, "").into_int_value();
+        let idx = self.context.i32_type().const_int(field_idx as u64, false);
+
+        let fn_val_as_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP_STATIC), &[type_id.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+
+        (fn_val_as_value_t, is_builtin)
     }
 }
 
@@ -1480,14 +1534,15 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         self.current_scope_mut().types.insert(type_name.clone(), type_spec);
 
         let num_methods = node.methods.len();
-        let vtable_entry = self.builder.build_call(
+        self.builder.build_call(
             self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
             &[
                 type_id.into(),
-                self.context.i32_type().const_int((num_methods + 3) as u64, false).into()
+                self.context.i32_type().const_int((num_methods + 3) as u64, false).into(),
+                self.context.i32_type().const_zero().into(),
             ],
             "",
-        ).try_as_basic_value().left().unwrap().into_pointer_value();
+        );
 
         // Find the potential user-defined toString method definition for the current type
         let (mut tostring_method_defs, method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
@@ -1497,7 +1552,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let tostring_fn_val = if let Some(tostring_method_def) = tostring_method_defs.pop() {
             let (name, node) = tostring_method_def;
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = node { decl_node } else { unreachable!() };
-            self.compile_function(name, Some(&type_name), decl_node)?
+            self.compile_function(name, Some((&type_name, false)), decl_node)?
         } else {
             let old_fn = self.cur_fn;
 
@@ -1548,8 +1603,8 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
             self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap()
         };
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), ""));
+        let tostring_fn_val = self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(0, false).into(), self.context.bool_type().const_zero().into(), tostring_fn_val.into()], "");
 
         // Generate eq method
         let eq_fn = {
@@ -1604,8 +1659,8 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             eq_fn
         };
         let fn_ptr = eq_fn.as_global_value().as_pointer_value();
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(1, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(1, false).into(), self.context.bool_type().const_zero().into(), fn_ptr.into()], "");
 
         // Generate hash method
         let hash_fn = {
@@ -1649,16 +1704,23 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             hash_fn
         };
         let fn_ptr = hash_fn.as_global_value().as_pointer_value();
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(2, false).into(), self.context.bool_type().const_zero().into(), fn_ptr.into()], "");
 
         // Generate user-defined methods
         for (idx, (name, decl_node)) in method_defs.into_iter().enumerate() {
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node { decl_node } else { unreachable!() };
-            let fn_val = self.compile_function(name, Some(&type_name), decl_node)?;
+            let fn_val = self.compile_function(name, Some((&type_name, false)), decl_node)?;
             let idx = idx + 3; // +3 to account for toString, eq, hash
-            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
-            self.builder.build_store(slot, fn_val);
+            self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(idx as u64, false).into(), self.context.bool_type().const_zero().into(), fn_val.into()], "");
+        }
+
+        for (idx, (_, _, node)) in node.static_fields.into_iter().enumerate() {
+            if let Some(TypedAstNode::FunctionDecl(_, decl_node)) = node {
+                let name = Token::get_ident_name(&decl_node.name);
+                let fn_val = self.compile_function(name, Some((&type_name, true)), decl_node)?;
+                self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(idx as u64, false).into(), self.context.bool_type().const_int(1, false).into(), fn_val.into()], "");
+            }
         }
 
         Ok(self.val_none().as_basic_value_enum())
@@ -1780,14 +1842,15 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         self.current_scope_mut().enums.insert(enum_name.clone(), enum_spec);
 
         let num_methods = node.methods.len();
-        let vtable_entry = self.builder.build_call(
+        self.builder.build_call(
             self.cached_fn(FN_VTABLE_ALLOC_ENTRY),
             &[
                 type_id.into(),
-                self.context.i32_type().const_int((num_methods + 3) as u64, false).into()
+                self.context.i32_type().const_int((num_methods + 3) as u64, false).into(),
+                self.context.i32_type().const_zero().into(),
             ],
             "",
-        ).try_as_basic_value().left().unwrap().into_pointer_value();
+        );
 
         // Find the potential user-defined toString method definition for the current type
         let (mut tostring_method_defs, method_defs): (Vec<_>, Vec<_>) = node.methods.into_iter().partition(|(name, _)| name == "toString");
@@ -1797,7 +1860,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         let tostring_fn_val = if let Some(tostring_method_def) = tostring_method_defs.pop() {
             let (name, node) = tostring_method_def;
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = node { decl_node } else { unreachable!() };
-            self.compile_function(name, Some(&enum_name), decl_node)?
+            self.compile_function(name, Some((&enum_name, false)), decl_node)?
         } else {
             let old_fn = self.cur_fn;
 
@@ -1869,8 +1932,8 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.value_t(), "").into();
             self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, self.value_t_ptr().const_zero().into()], "").try_as_basic_value().left().unwrap()
         };
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(0, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), ""));
+        let tostring_fn_val = self.builder.build_cast(InstructionOpcode::PtrToInt, tostring_fn_val, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(0, false).into(), self.context.bool_type().const_zero().into(), tostring_fn_val.into()], "");
 
         // Generate eq method
         let eq_fn = {
@@ -1952,8 +2015,8 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             eq_fn
         };
         let fn_ptr = eq_fn.as_global_value().as_pointer_value();
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(1, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(1, false).into(), self.context.bool_type().const_zero().into(), fn_ptr.into()], "");
 
         // Generate hash method
         let hash_fn = {
@@ -2022,16 +2085,15 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             hash_fn
         };
         let fn_ptr = hash_fn.as_global_value().as_pointer_value();
-        let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(2, false)], "") };
-        self.builder.build_store(slot, self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), ""));
+        let fn_ptr = self.builder.build_cast(InstructionOpcode::PtrToInt, fn_ptr, self.context.i64_type(), "");
+        self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(2, false).into(), self.context.bool_type().const_zero().into(), fn_ptr.into()], "");
 
         // Generate user-defined methods
         for (idx, (name, decl_node)) in method_defs.into_iter().enumerate() {
             let decl_node = if let TypedAstNode::FunctionDecl(_, decl_node) = decl_node { decl_node } else { unreachable!() };
-            let fn_val = self.compile_function(name, Some(&enum_name), decl_node)?;
+            let fn_val = self.compile_function(name, Some((&enum_name, false)), decl_node)?;
             let idx = idx + 3; // +3 to account for toString, eq, hash
-            let slot = unsafe { self.builder.build_gep(vtable_entry, &[self.context.i32_type().const_int(idx as u64, false)], "") };
-            self.builder.build_store(slot, fn_val);
+            self.builder.build_call(self.cached_fn(FN_VTABLE_INSERT), &[type_id.into(), self.context.i32_type().const_int(idx as u64, false).into(), self.context.bool_type().const_zero().into(), fn_val.into()], "");
         }
 
         Ok(self.val_none().as_basic_value_enum())
@@ -2290,50 +2352,85 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             // as its `self` arg, and any env in case the function is a closure.
             // If `y` is _not_ a method of `x`, we are just invoking a field of `x` which happens to be a function. This is handled in
             // the case below.
-            TypedAstNode::Accessor(_, TypedAccessorNode { typ, target, field_idx, is_opt_safe, is_method, field_ident, .. }) if is_method && !is_opt_safe => {
-                let target_type = target.get_type();
-                let field_idx = if Compiler::is_builtin_type(&target_type) {
-                    field_idx
+            TypedAstNode::Accessor(_, accessor_node) if accessor_node.is_method && !accessor_node.is_opt_safe => {
+                let target_type = accessor_node.target.get_type();
+                let (ret_type, arg_types) = if let Type::Fn(FnType { ret_type, arg_types, .. }) = &accessor_node.typ { (ret_type, arg_types) } else { unreachable!() };
+                if let Type::Type(type_name, typ, is_enum) = &target_type {
+                    let (fn_val_as_value_t, is_builtin) = self.lookup_function_static(&type_name, &typ, *is_enum, accessor_node.field_idx);
+                    let (fn_ptr_as_int, env_ptr) = if is_builtin {
+                        (fn_val_as_value_t, self.value_t_ptr().const_zero().into())
+                    } else {
+                        let fn_val_ptr = self.builder.build_pointer_cast(
+                            self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
+                            self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
+                            ""
+                        );
+                        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
+                        let fn_ptr_as_int = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+
+                        let env_ptr_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
+                        let env_ptr = self.builder.build_load(env_ptr_ptr, "");
+
+                        (fn_ptr_as_int, env_ptr)
+                    };
+
+                    let mut args = vec![env_ptr.into(), self.context.i8_type().const_int((num_passed_args) as u64, false).into()];
+                    args.append(&mut passed_args(self, node.args)?);
+
+                    let num_args = arg_types.len();
+                    let fn_type = self.gen_llvm_fn_type(**ret_type != Type::Unit, num_args);
+                    let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_as_int, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                    let callable = CallableValue::try_from(fn_ptr).unwrap();
+                    let res = self.builder.build_call(callable, args.as_slice(), "");
+                    let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else { res.try_as_basic_value().left().unwrap() };
+
+                    res
                 } else {
-                    let field_name = Token::get_ident_name(&field_ident);
-                    if field_name == "toString" { 0 } else { field_idx + 2 }
-                };
+                    let TypedAccessorNode { typ, target, field_idx, field_ident, .. } = accessor_node;
 
-                let (ret_type, arg_types) = if let Type::Fn(FnType { ret_type, arg_types, .. }) = typ { (ret_type, arg_types) } else { unreachable!() };
-                let num_args = arg_types.len() + 1;
+                    let field_idx = if Compiler::is_builtin_type(&target_type) {
+                        field_idx
+                    } else {
+                        let field_name = Token::get_ident_name(&field_ident);
+                        if field_name == "toString" { 0 } else { field_idx + 2 }
+                    };
 
-                let rcv = self.visit(*target)?;
+                    let (ret_type, arg_types) = if let Type::Fn(FnType { ret_type, arg_types, .. }) = typ { (ret_type, arg_types) } else { unreachable!() };
+                    let num_args = arg_types.len() + 1;
 
-                let idx = self.context.i32_type().const_int(field_idx as u64, false);
-                let fn_val_as_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
+                    let rcv = self.visit(*target)?;
 
-                let (fn_ptr_as_int, env_ptr) = if Compiler::is_builtin_type(&target_type) {
-                    (fn_val_as_value_t, self.value_t_ptr().const_zero().into())
-                } else {
-                    let fn_val_ptr = self.builder.build_pointer_cast(
-                        self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
-                        self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
-                        ""
-                    );
-                    let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
-                    let fn_ptr_as_int = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
+                    let idx = self.context.i32_type().const_int(field_idx as u64, false);
+                    let fn_val_as_value_t = self.builder.build_call(self.cached_fn(FN_VTABLE_LOOKUP), &[rcv.into(), idx.into()], "").try_as_basic_value().left().unwrap().into_int_value();
 
-                    let env_ptr_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
-                    let env_ptr = self.builder.build_load(env_ptr_ptr, "");
+                    let (fn_ptr_as_int, env_ptr) = if Compiler::is_builtin_type(&target_type) {
+                        (fn_val_as_value_t, self.value_t_ptr().const_zero().into())
+                    } else {
+                        let fn_val_ptr = self.builder.build_pointer_cast(
+                            self.emit_extract_nan_tagged_obj(fn_val_as_value_t),
+                            self.cached_type(TYPE_FUNCTION).ptr_type(AddressSpace::Generic),
+                            ""
+                        );
+                        let fn_ptr_value_t = self.builder.build_struct_gep(fn_val_ptr, 2, "").unwrap();
+                        let fn_ptr_as_int = self.builder.build_load(fn_ptr_value_t, "").into_int_value();
 
-                    (fn_ptr_as_int, env_ptr)
-                };
+                        let env_ptr_ptr = self.builder.build_struct_gep(fn_val_ptr, 3, "").unwrap();
+                        let env_ptr = self.builder.build_load(env_ptr_ptr, "");
 
-                let mut args = vec![env_ptr.into(), self.context.i8_type().const_int((num_passed_args + 1) as u64, false).into(), rcv.into()];
-                args.append(&mut passed_args(self, node.args)?);
+                        (fn_ptr_as_int, env_ptr)
+                    };
 
-                let fn_type = self.gen_llvm_fn_type(*ret_type != Type::Unit, num_args);
-                let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_as_int, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
-                let callable = CallableValue::try_from(fn_ptr).unwrap();
-                let res = self.builder.build_call(callable, args.as_slice(), "");
-                let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else { res.try_as_basic_value().left().unwrap() };
+                    let mut args = vec![env_ptr.into(), self.context.i8_type().const_int((num_passed_args + 1) as u64, false).into(), rcv.into()];
+                    args.append(&mut passed_args(self, node.args)?);
 
-                res
+                    let fn_type = self.gen_llvm_fn_type(*ret_type != Type::Unit, num_args);
+                    let fn_ptr = self.builder.build_cast(InstructionOpcode::IntToPtr, fn_ptr_as_int, fn_type.ptr_type(AddressSpace::Generic), "").into_pointer_value();
+                    let callable = CallableValue::try_from(fn_ptr).unwrap();
+                    let res = self.builder.build_call(callable, args.as_slice(), "");
+                    let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else { res.try_as_basic_value().left().unwrap() };
+
+                    res
+                }
             }
             // If the invokee is any other expression, there's not much we can know about it. We have no choice but to rely on the dynamic
             // nature of the `function_call` function from the runtime lib to handle invocation.
@@ -2418,27 +2515,30 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             return self.visit(transformed_node);
         }
 
+        let field_name = Token::get_ident_name(&node.field_ident);
         let target_type = node.target.get_type();
-        match target_type {
-            // enum
-            Type::Type(_, typ, true) => {
-                let enum_spec = self.scopes[0].enums
-                    .values()
-                    .find(|spec| spec.typ == *typ)
-                    .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ));
-                let variant_value_ptr = enum_spec.variants[node.field_idx].val;
-                let variant_value = self.builder.build_load(variant_value_ptr, "");
+        if let Type::Type(_, typ, true) = target_type {
+            let enum_spec = self.scopes[0].enums
+                .values()
+                .find(|spec| spec.typ == *typ)
+                .expect(&format!("Internal error: could not find enum '{:?}' in scope", typ));
+            let variant_value_ptr = enum_spec.variants[node.field_idx].val;
+            let variant_value = self.builder.build_load(variant_value_ptr, "");
 
-                return Ok(variant_value);
-            }
-            // type
-            Type::Type(_, _, false) => todo!("Static methods/fields on Types"),
-            _ => {}
+            return Ok(variant_value);
+        } else if let Type::Type(type_name, typ, false) = target_type {
+            let (fn_val_as_value_t, is_builtin) = self.lookup_function_static(&type_name, &typ, false, node.field_idx);
+            let fn_val_as_value_t = if is_builtin {
+                let fn_name_val = self.builder.build_global_string_ptr(&field_name, "").as_pointer_value().into();
+                let null_ptr = self.value_t_ptr().const_zero();
+                self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_val_as_value_t.into(), null_ptr.into()], "").try_as_basic_value().left().unwrap()
+            } else {
+                fn_val_as_value_t.as_basic_value_enum()
+            };
+            return Ok(fn_val_as_value_t);
         }
 
         let target = self.visit(*node.target)?;
-
-        let field_name = Token::get_ident_name(&node.field_ident);
 
         if node.is_method {
             let idx = if Compiler::is_builtin_type(&target_type) {

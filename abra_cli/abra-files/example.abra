@@ -1,4 +1,13 @@
-println(process)
+val message = "Hello World"
+
+type A {
+  func abc(): String = "Hello!"
+  func def(): String = message + "!"
+}
+
+println(A.abc, A.abc(), A.def, A.def())
+
+println(Map.fromPairs, Map.fromPairs([("a", 2), ("b", 3)]))
 
 /* TODO: Function hoisting
 val hello = "Hello"

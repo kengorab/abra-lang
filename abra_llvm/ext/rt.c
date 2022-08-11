@@ -2,15 +2,40 @@
 #include "rt.h"
 
 // ------------------------ VTABLE ------------------------
-value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
-  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
+//value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
+//  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
+//  vtable[type_id] = entry;
+//  return entry;
+//}
+//
+//value_t vtable_lookup(value_t value, uint32_t idx) {
+//  uint32_t type_id = type_id_for_val(value);
+//  return vtable[type_id][idx];
+//}
+
+void vtable_alloc_entry(uint32_t type_id, uint32_t num_instance, uint32_t num_static) {
+  vtable_entry_t entry = {
+    .instance_methods = GC_MALLOC(sizeof(value_t) * num_instance),
+    .static_methods = GC_MALLOC(sizeof(value_t) * num_static),
+  };
   vtable[type_id] = entry;
-  return entry;
 }
 
 value_t vtable_lookup(value_t value, uint32_t idx) {
   uint32_t type_id = type_id_for_val(value);
-  return vtable[type_id][idx];
+  return vtable[type_id].instance_methods[idx];
+}
+
+value_t vtable_lookup_static(uint32_t type_id, uint32_t idx) {
+  return vtable[type_id].static_methods[idx];
+}
+
+void vtable_insert(uint32_t type_id, uint32_t idx, bool is_static, value_t fn_ptr) {
+  if (is_static) {
+    vtable[type_id].static_methods[idx] = fn_ptr;
+  } else {
+    vtable[type_id].instance_methods[idx] = fn_ptr;
+  }
 }
 
 // ------------------------ UTILITIES ------------------------
@@ -641,6 +666,20 @@ void map_insert(value_t _self, value_t key, value_t value) {
 value_t map_get(value_t _self, value_t key) {
   Map* self = AS_OBJ(_self, Map);
   return hashmap_get(&self->hash, key);
+}
+
+value_t prelude__Map__fromPairs(value_t* _env, int8_t _num_rcv_args, value_t _pairs) {
+    Array* pairs = AS_OBJ(_pairs, Array);
+
+    value_t map = map_alloc(pairs->length);
+    for (int i = 0; i < pairs->length; i++) {
+        Tuple* pair = AS_OBJ(pairs->items[i], Tuple);
+        value_t key = pair->items[0];
+        value_t val = pair->items[1];
+        hashmap_insert(&AS_OBJ(map, Map)->hash, key, val);
+    }
+
+    return map;
 }
 
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {

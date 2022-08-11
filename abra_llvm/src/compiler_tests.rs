@@ -831,6 +831,28 @@ fn test_types_fields() {
 }
 
 #[test]
+fn test_types_static_methods() {
+    let setup = r#"
+      val message = "Hello World"
+
+      type A {
+        func abc(): String = "Hello!"
+        func def(): String = message + "!"
+      }
+    "#;
+    let cases = vec![
+        ("A.abc", "<func abc>"),
+        ("A.abc()", "Hello!"),
+        ("A.def", "<func def>"),
+        ("A.def()", "Hello World!"),
+        // Test builtin types
+        ("Map.fromPairs", "<func fromPairs>"),
+        ("Map.fromPairs([])", "{}"),
+    ];
+    run_test_cases_with_setup(setup, cases);
+}
+
+#[test]
 fn test_enums_base_functionality() {
     let setup = r#"
       val defaultGray = 0.5

@@ -12,9 +12,17 @@
 #include "hashmap.h"
 
 // ------------------------ VTABLE ------------------------
-value_t* vtable[256];
-value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size);
+typedef struct vtable_entry_t {
+  value_t* instance_methods;
+  value_t* static_methods;
+} vtable_entry_t;
+
+vtable_entry_t vtable[256];
+
+void vtable_alloc_entry(uint32_t type_id, uint32_t num_instance, uint32_t num_static);
 value_t vtable_lookup(value_t value, uint32_t idx);
+value_t vtable_lookup_static(uint32_t type_id, uint32_t idx);
+void vtable_insert(uint32_t type_id, uint32_t idx, bool is_static, value_t fn_ptr);
 
 // ------------------------ INTRINSICS ------------------------
 void range_endpoints(int32_t len, int32_t* start, int32_t* end);
@@ -133,6 +141,9 @@ typedef struct Map {
 value_t map_alloc(int32_t size);
 void map_insert(value_t _self, value_t key, value_t value);
 value_t map_get(value_t _self, value_t key);
+
+// Map static
+value_t prelude__Map__fromPairs(value_t* _env, int8_t _num_rcv_args, value_t _pairs);
 
 // Map methods
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
