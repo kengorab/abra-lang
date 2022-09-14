@@ -12,6 +12,7 @@ use itertools::Itertools;
 use abra_core::common::typed_ast_visitor::TypedAstVisitor;
 use abra_core::lexer::tokens::Token;
 use abra_core::parser::ast::{BinaryOp, BindingPattern, IndexingMode, ModuleId, UnaryOp};
+use abra_core::parser::ast::ModuleId::External;
 use abra_core::typechecker::typechecker::TypedModule;
 use abra_core::typechecker::typed_ast::{AssignmentTargetKind, TypedAccessorNode, TypedArrayNode, TypedAssignmentNode, TypedAstNode, TypedBinaryNode, TypedBindingDeclNode, TypedEnumDeclNode, TypedForLoopNode, TypedFunctionDeclNode, TypedGroupedNode, TypedIdentifierNode, TypedIfNode, TypedImportNode, TypedIndexingNode, TypedInstantiationNode, TypedInvocationNode, TypedLambdaNode, TypedLiteralNode, TypedMapNode, TypedMatchCaseArgument, TypedMatchKind, TypedMatchNode, TypedReturnNode, TypedSetNode, TypedTupleNode, TypedTypeDeclField, TypedTypeDeclNode, TypedUnaryNode, TypedWhileLoopNode};
 use abra_core::typechecker::types::{FnType, Type};
@@ -204,6 +205,20 @@ impl<'ctx> Compiler<'ctx> {
             });
         };
 
+        match &typed_module.module_id {
+            External(m) if m == "prelude" => { /* no-op, initialized above */ }
+            External(m) if m == "io" => {
+                let read_file = self.module.add_function("io__readFile", self.gen_llvm_fn_type(true, 1), None);
+                self.current_scope_mut().fns.insert("readFile".to_string(), read_file);
+
+                let prompt = self.module.add_function("prompt", self.gen_llvm_fn_type(true, 1), None);
+                self.current_scope_mut().fns.insert("prompt".to_string(), prompt);
+
+                return Ok(())
+            }
+            _ => {}
+        }
+
         let main_fn = self.cur_fn;
         let init_fn_type = self.context.void_type().fn_type(&[], false);
         let mod_init_fn = self.module.add_function(&format!("${}", mod_idx), init_fn_type, None);
@@ -355,6 +370,18 @@ impl<'ctx> Compiler<'ctx> {
             ("prelude__String__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__String__toLower", self.gen_llvm_fn_type(true, 1)),
             ("prelude__String__toUpper", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__String__padLeft", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__trim", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__String__trimStart", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__trimEnd", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__split", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__splitAt", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__lines", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__String__chars", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__String__parseInt", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__String__parseFloat", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__String__concat", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__String__replaceAll", self.gen_llvm_fn_type(true, 3)),
         ], &[]);
     }
 
@@ -363,6 +390,33 @@ impl<'ctx> Compiler<'ctx> {
             ("prelude__Array__toString", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Array__isEmpty", self.gen_llvm_fn_type(true, 1)),
             ("prelude__Array__enumerate", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__push", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__Array__pop", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__popFront", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__splitAt", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__concat", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__map", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__filter", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__reduce", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__Array__forEach", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__join", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__contains", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__find", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__findIndex", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__any", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__all", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__none", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__sortBy", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__dedupe", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__dedupeBy", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__partition", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__tally", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__tallyBy", self.gen_llvm_fn_type(true, 2)),
+            ("prelude__Array__asSet", self.gen_llvm_fn_type(true, 1)),
+            ("prelude__Array__getOrDefault", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__Array__getOrElse", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__Array__update", self.gen_llvm_fn_type(true, 3)),
+            ("prelude__Array__reverse", self.gen_llvm_fn_type(true, 1)),
         ], &[]);
     }
 
@@ -517,6 +571,17 @@ impl<'ctx> Compiler<'ctx> {
                 // HACK: Since the typechecker would prevent duplicate names which collide with auto-imported prelude types,
                 // these "supplemental" end in underscore. We need to remove them in order to have proper toStrings, etc.
                 if let Token::Ident(_, s) = &mut n.name { *s = s.replace("_", "") } else { unreachable!() }
+                if let Type::Reference(name, _) = &mut n.self_type {
+                    *name = name.replace("prelude.1/", "prelude/").replace("_", "");
+                }
+            }
+            if let TypedAstNode::EnumDecl(_, n) = &mut node {
+                // HACK: Since the typechecker would prevent duplicate names which collide with auto-imported prelude types,
+                // these "supplemental" end in underscore. We need to remove them in order to have proper toStrings, etc.
+                if let Token::Ident(_, s) = &mut n.name { *s = s.replace("_", "") } else { unreachable!() }
+                if let Type::Reference(name, _) = &mut n.self_type {
+                    *name = name.replace("prelude.1/", "").replace("_", "");
+                }
             }
             self.visit(node).unwrap();
         }
@@ -874,8 +939,12 @@ impl<'ctx> Compiler<'ctx> {
         let mut context = HashSet::new();
         context.insert("println".to_string());
         context.insert("print".to_string());
+        context.insert("range".to_string());
         context.insert("None".to_string());
 
+        for builtin_type in vec!["Int", "Float", "Bool", "String", "Array", "Map", "Set"] {
+            context.insert(builtin_type.to_string());
+        }
         for type_name in self.scopes[0].types.keys() {
             context.insert(type_name.clone());
         }
@@ -950,9 +1019,10 @@ impl<'ctx> Compiler<'ctx> {
             let env_mem = self.builder.build_pointer_cast(env_mem, self.value_t().ptr_type(AddressSpace::Generic), "");
 
             for (name, idx) in &captured_variables {
+                let sc_name = self.scopes[0].name.clone();
                 let var = self.scopes.iter_mut().rev()
                     .find_map(|sc| sc.variables.get_mut(name))
-                    .expect(&format!("Internal error: could not find captured variable '{}' in outer scope", name));
+                    .expect(&format!("Internal error: could not find captured variable '{}' in outer scope ({})\n({} : {:?})", name, fully_qualified_fn_name, sc_name, self.module_idx_map.clone()));
 
                 // If the captured variable is a global (ie. for exported variables), we do not need to lift it.
                 if var.is_global { continue; }
@@ -1058,6 +1128,7 @@ impl<'ctx> Compiler<'ctx> {
         env_mem: PointerValue<'ctx>,
         fn_local: Option<PointerValue<'ctx>>,
         is_recursive: bool,
+        is_exported: bool,
         fn_decl_site_bb: BasicBlock<'ctx>,
     ) -> BasicValueEnum<'ctx> {
         self.builder.position_at_end(fn_decl_site_bb);
@@ -1067,13 +1138,13 @@ impl<'ctx> Compiler<'ctx> {
         let fn_ptr_val = self.builder.build_cast(InstructionOpcode::PtrToInt, func.as_global_value().as_pointer_value(), self.value_t(), "").into();
         let fn_val = self.builder.build_call(self.cached_fn(FN_FUNCTION_ALLOC), &[fn_name_val, fn_ptr_val, env_mem.into()], "").try_as_basic_value().left().unwrap();
         if let Some(fn_local) = fn_local {
-            if is_recursive {
+            if is_exported || !is_recursive {
+                self.builder.build_store(fn_local, fn_val);
+            } else {
                 let val = self.builder.build_load(fn_local, "");
                 let ptr = self.emit_extract_nan_tagged_obj(val.into_int_value());
                 let ptr = self.builder.build_pointer_cast(ptr, self.value_t().ptr_type(AddressSpace::Generic), "");
                 self.builder.build_store(ptr, fn_val);
-            } else {
-                self.builder.build_store(fn_local, fn_val);
             }
         }
 
@@ -1104,19 +1175,24 @@ impl<'ctx> Compiler<'ctx> {
 
         let body_len = node.body.len();
         for (idx, node) in node.body.into_iter().enumerate() {
+            let terminates = node.all_branches_terminate().is_some();
             let value = self.visit(node)?;
 
             if idx == body_len - 1 {
-                if has_return {
-                    self.builder.build_return(Some(&value.as_basic_value_enum()));
+                if !terminates {
+                    if has_return {
+                        self.builder.build_return(Some(&value.as_basic_value_enum()));
+                    } else {
+                        self.builder.build_return(None);
+                    }
                 } else {
-                    self.builder.build_return(None);
+                    self.builder.build_unreachable();
                 }
             }
         }
 
         self.cur_fn = old_fn;
-        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, node.is_recursive, fn_decl_site_bb);
+        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, node.is_recursive, node.is_exported, fn_decl_site_bb);
 
         Ok(fn_val)
     }
@@ -1445,7 +1521,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         }
 
         self.cur_fn = old_fn;
-        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, false, fn_decl_site_bb);
+        let fn_val = self.compile_function_end(&fn_name, func, env_mem, fn_local, false, false, fn_decl_site_bb);
 
         Ok(fn_val)
     }
@@ -1816,7 +1892,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
                 self.cur_fn = old_fn;
                 let variant_fn_display_name = format!("{}.{}", &enum_name, &variant_name);
-                let fn_val = self.compile_function_end(&variant_fn_display_name, func, env_mem, fn_local, false, fn_decl_site_bb);
+                let fn_val = self.compile_function_end(&variant_fn_display_name, func, env_mem, fn_local, false, false, fn_decl_site_bb);
                 self.builder.build_store(variant_value_global.as_pointer_value(), fn_val);
 
                 variants.push((variant_name, variant_struct_type, arg_names));
@@ -2228,17 +2304,17 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             self.visit_binding_pattern(cond_binding_pat, cond_val, false);
         }
         let mut last_value = self.val_none().as_basic_value_enum();
-        let mut terminates_early = false;
+        let mut if_terminates_early = false;
         for node in node.if_block {
             let terminates = node.all_branches_terminate().is_some();
             last_value = self.visit(node)?;
             if terminates {
                 last_value = self.val_none().as_basic_value_enum();
-                terminates_early = true;
+                if_terminates_early = true;
             }
         }
         let then_val = last_value;
-        if !terminates_early {
+        if !if_terminates_early {
             self.builder.build_unconditional_branch(cont_bb);
         }
         let then_bb = self.builder.get_insert_block().unwrap();
@@ -2247,27 +2323,32 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
         self.begin_new_scope("else-block".to_string());
         self.builder.position_at_end(else_bb);
         let mut last_value = self.val_none().as_basic_value_enum();
-        let mut terminates_early = false;
+        let mut else_terminates_early = false;
         if let Some(nodes) = node.else_block {
             for node in nodes {
                 let terminates = node.all_branches_terminate().is_some();
                 last_value = self.visit(node)?;
                 if terminates {
                     last_value = self.val_none().as_basic_value_enum();
-                    terminates_early = true;
+                    else_terminates_early = true;
                 }
             }
         }
         let else_val = last_value;
-        if !terminates_early {
+        if !else_terminates_early {
             self.builder.build_unconditional_branch(cont_bb);
         }
         let else_bb = self.builder.get_insert_block().unwrap();
         self.end_scope();
 
         self.builder.position_at_end(cont_bb);
+        if if_terminates_early && else_terminates_early {
+            // If control flow stops after this if-else node, we should remove the cont block as it
+            // will be empty, which is not allowed.
+            unsafe { cont_bb.delete() }.unwrap();
+        }
 
-        let res = if is_stmt {
+        let res = if is_stmt || (if_terminates_early && else_terminates_early) {
             self.val_none().as_basic_value_enum()
         } else {
             let phi = self.builder.build_phi(self.value_t(), "");
@@ -2302,7 +2383,9 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
                 args.append(&mut passed_args(self, node.args)?);
 
                 let res = self.builder.build_call(fn_value, args.as_slice(), "");
-                let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else { res.try_as_basic_value().left().unwrap() };
+                let res = if node.typ == Type::Unit { self.val_none().as_basic_value_enum() } else {
+                    res.try_as_basic_value().left().expect(&format!("({} : {:?}): {:?}", self.scopes[0].name, &self.module_idx_map, token))
+                };
 
                 return Ok(res);
             }
@@ -2833,6 +2916,7 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
     fn visit_match_statement(&mut self, is_stmt: bool, token: Token, node: TypedMatchNode) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let TypedMatchNode { target, branches, .. } = node;
 
+        let mut all_branches_terminate = true;
         let target = self.visit(*target)?;
         let target_local = self.builder.build_alloca(self.value_t(), "$match_target");
         self.builder.build_store(target_local, target);
@@ -2997,14 +3081,22 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
             }
             self.builder.position_at_end(else_bb);
 
-            if idx == num_branches - 1 && !terminates_early {
-                self.builder.build_unconditional_branch(match_end_bb);
+            if idx == num_branches - 1  {
+                if terminates_early {
+                    self.builder.build_unreachable();
+                } else {
+                    self.builder.build_unconditional_branch(match_end_bb);
+                }
             }
             self.end_scope();
+            all_branches_terminate = all_branches_terminate && terminates_early;
         }
         self.builder.position_at_end(match_end_bb);
 
-        if let Some(ret_local) = ret_local {
+        if all_branches_terminate {
+            self.builder.build_unreachable();
+            Ok(self.val_none().as_basic_value_enum())
+        } else if let Some(ret_local) = ret_local {
             Ok(self.builder.build_load(ret_local, ""))
         } else {
             Ok(self.val_none().as_basic_value_enum())
@@ -3028,7 +3120,12 @@ impl<'ctx> TypedAstVisitor<BasicValueEnum<'ctx>, CompilerError> for Compiler<'ct
 
             if let Some(imported_func) = mod_exports.fns.get(&import_name) {
                 let imported_func = imported_func.clone();
-                self.current_scope_mut().fns.insert(import_name, imported_func);
+                self.current_scope_mut().fns.insert(import_name.clone(), imported_func);
+                self.current_scope_mut().variables.insert(import_name, Variable {
+                    var_ptr: imported_func.as_global_value().as_pointer_value(),
+                    is_captured: false,
+                    is_global: true
+                });
             } else if let Some(imported_type) = mod_exports.types.get(&import_name) {
                 let imported_type = imported_type.clone();
                 self.current_scope_mut().types.insert(import_name, imported_type);

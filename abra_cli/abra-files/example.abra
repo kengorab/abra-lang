@@ -1,27 +1,25 @@
-val message = "Hello World"
-
-type A {
-  func abc(): String = "Hello!"
-  func def(): String = message + "!"
-}
-
-println(A.abc, A.abc(), A.def, A.def())
-
-println(Map.fromPairs, Map.fromPairs([("a", 2), ("b", 3)]))
-
-/* TODO: Function hoisting
-val hello = "Hello"
-
-type Person {
-  name: String
-
-  func greet(self) {
-    sayHello(hello)
+func foo(s: String, i: Int) {
+  match i {
+    1 => {
+      println(s)
+      println(s.toUpper())
+    }
+    _ => {
+      val f = () => s
+      println(f())
+    }
+  }
+  match i {
+    1 => {
+      println(s)
+      println(s.toUpper())
+    }
+    _ => {
+      val f = () => s
+      println(f())
+    }
   }
 }
 
-func sayHello(msg: String) = println(msg)
-
-val me = Person(name: "Ken")
-me.greet()
-*/
+foo("hello", 1)
+//foo("hello", 1)

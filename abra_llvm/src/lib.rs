@@ -20,6 +20,11 @@ type Process_ {
   args: String[]
   env: Map<String, String>
 }
+
+enum Result_<V, E> {
+  Ok(value: V)
+  Err(error: E)
+}
 "#;
 
 #[cfg(not(test))]

@@ -756,7 +756,7 @@ fn test_types_base_functionality() {
         ("Person(name: \"Human\", age: 30) == Person(name: \"Human\")", "true"),
         (
             "#{Person(name: \"Human\", age: 30), Person(name: \"Human\"), Person(name: \"Other Human\", age: 31)}",
-            "#{Person(name: Human, age: 30), Person(name: Other Human, age: 31)}"
+            "#{Person(name: Other Human, age: 31), Person(name: Human, age: 30)}"
         ),
     ];
     run_test_cases_with_setup(setup, cases);
@@ -891,7 +891,7 @@ fn test_enums_base_functionality() {
         // hash (simple)
         (
             "#{Color.Red, Color.Green, Color.Blue, Color.Blue, Color.Green, Color.Red}",
-            "#{Color.Blue, Color.Red, Color.Green}"
+            "#{Color.Green, Color.Blue, Color.Red}"
         ),
         // hash (complex)
         (
@@ -1414,10 +1414,30 @@ fn test_return_statements() {
         }
       }
       println(f3())
+
+      func f4(): Int {
+        if true {
+          return 24
+        } else {
+          return 6
+        }
+      }
+      println(f4())
+
+      func f5(i = 5): Int {
+        val s = match i {
+          4 => "asdf"
+          _ => return 24
+        }
+        s.length
+      }
+      println(f5())
     "#;
     run_and_verify_output_lines(input, vec![
         "true",
         "true",
+        "24",
+        "24",
         "24",
         "24",
         "24",

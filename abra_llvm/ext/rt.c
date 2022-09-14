@@ -2,17 +2,6 @@
 #include "rt.h"
 
 // ------------------------ VTABLE ------------------------
-//value_t* vtable_alloc_entry(uint32_t type_id, uint32_t size) {
-//  value_t* entry = GC_MALLOC(sizeof(value_t) * size);
-//  vtable[type_id] = entry;
-//  return entry;
-//}
-//
-//value_t vtable_lookup(value_t value, uint32_t idx) {
-//  uint32_t type_id = type_id_for_val(value);
-//  return vtable[type_id][idx];
-//}
-
 void vtable_alloc_entry(uint32_t type_id, uint32_t num_instance, uint32_t num_static) {
   vtable_entry_t entry = {
     .instance_methods = GC_MALLOC(sizeof(value_t) * num_instance),
@@ -40,46 +29,47 @@ void vtable_insert(uint32_t type_id, uint32_t idx, bool is_static, value_t fn_pt
 
 // ------------------------ UTILITIES ------------------------
 value_t build_argv_array(int argc, char** argv) {
-    Array* arr = AS_OBJ(array_alloc(argc), Array);
+  Array* arr = AS_OBJ(array_alloc(argc), Array);
 
-    for (int i = 0; i < argc; i++) {
-        char* str = argv[i];
-        arr->items[i] = string_alloc(strlen(str), str);
-    }
+  for (int i = 0; i < argc; i++) {
+    char* str = argv[i];
+    arr->items[i] = string_alloc(strlen(str), str);
+  }
 
-    return TAG_OBJ(arr);
+  return TAG_OBJ(arr);
 }
 
 value_t build_envp_map(char** envp) {
-    int32_t size = 0;
-    for (char** env = envp; *env != 0; env++) { size += 1; }
+  int32_t size = 0;
+  for (char** env = envp; *env != 0; env++) { size += 1; }
 
-    value_t m = map_alloc(size);
-    Map* env = AS_OBJ(m, Map);
+  value_t m = map_alloc(size);
+  Map* env = AS_OBJ(m, Map);
 
-    for (char** env = envp; *env != 0; env++) {
-        char* var = *env;
-        int var_len = strlen(var);
+  for (char** env = envp; *env != 0; env++) {
+    char* var = *env;
+    int var_len = strlen(var);
 
-        int split_idx = 0;
-        while (var[split_idx] != '=') { split_idx += 1; }
+    int split_idx = 0;
+    while (var[split_idx] != '=') { split_idx += 1; }
 
-        char* var_name = GC_MALLOC(sizeof(char) * split_idx);
-        memcpy(var_name, var, split_idx);
-        value_t var_name_str = string_alloc(split_idx, var_name);
+    char* var_name = GC_MALLOC(sizeof(char) * split_idx);
+    memcpy(var_name, var, split_idx);
+    value_t var_name_str = string_alloc(split_idx, var_name);
 
-        char* var_value = GC_MALLOC(sizeof(char) * (var_len - split_idx - 1));
-        memcpy(var_value, var + split_idx + 1, (var_len - split_idx - 1));
-        value_t var_value_str = string_alloc((var_len - split_idx - 1), var_value);
+    char* var_value = GC_MALLOC(sizeof(char) * (var_len - split_idx - 1));
+    memcpy(var_value, var + split_idx + 1, (var_len - split_idx - 1));
+    value_t var_value_str = string_alloc((var_len - split_idx - 1), var_value);
 
-        map_insert(m, var_name_str, var_value_str);
-    }
+    map_insert(m, var_name_str, var_value_str);
+  }
 
-    return TAG_OBJ(env);
+  return TAG_OBJ(env);
 }
 
 // ------------------------ TYPE MANAGEMENT ------------------------
 uint32_t type_id_for_val(value_t value) {
+  if (value == VAL_NONE) return type_id_None;
   if (IS_INT(value)) return type_id_Int;
   if (IS_FLOAT(value)) return type_id_Float;
   if (value == VAL_TRUE || value == VAL_FALSE) return type_id_Bool;
@@ -478,6 +468,7 @@ value_t prelude__String__toString(value_t* _env, int8_t _num_rcv_args, value_t s
   return self;
 }
 
+// func toLower(self): String
 value_t prelude__String__toLower(value_t* _env, int8_t _num_rcv_args, value_t _self) {
   String* self = AS_OBJ(_self, String);
 
@@ -490,6 +481,7 @@ value_t prelude__String__toLower(value_t* _env, int8_t _num_rcv_args, value_t _s
   return string_alloc(self->size, chars);
 }
 
+// func toUpper(self): String
 value_t prelude__String__toUpper(value_t* _env, int8_t _num_rcv_args, value_t _self) {
   String* self = AS_OBJ(_self, String);
 
@@ -502,16 +494,99 @@ value_t prelude__String__toUpper(value_t* _env, int8_t _num_rcv_args, value_t _s
   return string_alloc(self->size, chars);
 }
 
+// func padLeft(self, totalSize: Int, padding = ""): String
+value_t prelude__String__padLeft(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _totalSize, value_t _padding) {
+  UNIMPLEMENTED
+}
+
+// func trim(self): String
+value_t prelude__String__trim(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func trimStart(self, pattern = ""): String
+value_t prelude__String__trimStart(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern) {
+  UNIMPLEMENTED
+}
+
+// func trimEnd(self, pattern = ""): String
+value_t prelude__String__trimEnd(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern) {
+  UNIMPLEMENTED
+}
+
+// func split(self, splitter: String): String[]
+value_t prelude__String__split(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _splitter) {
+  UNIMPLEMENTED
+}
+
+// func splitAt(self, index: Int): (String, String)
+value_t prelude__String__splitAt(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _index) {
+  UNIMPLEMENTED
+}
+
+// func lines(self): String[]
+value_t prelude__String__lines(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func chars(self): String[]
+value_t prelude__String__chars(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func parseInt(self, radix = 10): Int?
+value_t prelude__String__parseInt(value_t* _env, int8_t num_rcv_args, value_t _self, value_t _radix) {
+  String* self = AS_OBJ(_self, String);
+  int radix = num_rcv_args < 2 || _radix == VAL_NONE
+    ? 10
+    : AS_INT(_radix);
+
+  int64_t val = strtoll(self->chars, NULL, radix);
+  if (val == 0) {
+    for (int i = 0; i < self->size; ++i) {
+      char c = self->chars[i];
+      if (c == '0') break;
+      if (!isdigit(c)) return VAL_NONE;
+    }
+  }
+  return TAG_INT(val);
+}
+
+// func parseFloat(self): Float?
+value_t prelude__String__parseFloat(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func concat(self, str: Any, *others: Any[]): String
+value_t prelude__String__concat(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _str, value_t _others) {
+  UNIMPLEMENTED
+}
+
+// func replaceAll(self, pattern: String, replacement: String): String
+value_t prelude__String__replaceAll(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern, value_t _replacement) {
+  UNIMPLEMENTED
+}
+
 // ------------------------ ARRAY ------------------------
 value_t array_alloc(int32_t length) {
   Array* array = GC_MALLOC(sizeof(Array));
-  value_t* array_items = GC_MALLOC(sizeof(value_t) * length);
+  int32_t capacity = length == 0 ? 1 : length;
+  value_t* array_items = GC_MALLOC(sizeof(value_t) * capacity);
 
   array->h.type_id = type_id_Array;
   array->length = length;
-  array->capacity = length;
+  array->capacity = capacity;
   array->items = array_items;
   return TAG_OBJ(array);
+}
+
+void array_grow_if_needed(Array* self, int32_t max_idx) {
+    if (max_idx >= self->capacity) {
+        while (max_idx >= self->capacity) {
+            self->capacity *= 2;
+        }
+        self->items = GC_REALLOC(self->items, sizeof(value_t) * self->capacity);
+    }
 }
 
 void array_insert(value_t _self, value_t _idx, value_t item) {
@@ -520,12 +595,12 @@ void array_insert(value_t _self, value_t _idx, value_t item) {
 
   if (idx < -self->length) return;
   if (idx < 0) idx += self->length;
+  array_grow_if_needed(self, idx);
+
   if (idx >= self->length) {
     int32_t old_size = self->length;
     int32_t new_size = idx + 1;
-    self->items = GC_REALLOC(self->items, sizeof(value_t) * new_size);
     self->length = new_size;
-
     for (int i = old_size; i < new_size; i++) {
       self->items[i] = VAL_NONE;
     }
@@ -592,12 +667,14 @@ value_t prelude__Array__toString(value_t* _env, int8_t _num_rcv_args, value_t _s
   return values_to_string(self->length, self->items, 1, "[", 1, "]", 2, ", ");
 }
 
+// func isEmpty(self): Bool
 value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self) {
   Array* self = AS_OBJ(_self, Array);
 
   return self->length == 0 ? VAL_TRUE : VAL_FALSE;
 }
 
+// func enumerate(self): (T, Int)[]
 value_t prelude__Array__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self) {
   Array* self = AS_OBJ(_self, Array);
 
@@ -609,6 +686,184 @@ value_t prelude__Array__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _
   }
 
   return TAG_OBJ(pairs);
+}
+
+// func push(self, item: T, *others: T[])
+void prelude__Array__push(value_t* _env, int8_t num_rcv_args, value_t _self, value_t item, value_t _others) {
+  Array* self = AS_OBJ(_self, Array);
+
+  int32_t others_len = num_rcv_args < 3 || _others == VAL_NONE
+    ? 0
+    : AS_OBJ(_others, Array)->length;
+
+  int32_t new_length = self->length + others_len + 1;
+  array_grow_if_needed(self, new_length);
+  self->items[self->length++] = item;
+
+  if (others_len > 0) {
+    Array* others = AS_OBJ(_others, Array);
+    for (int i = 0; i < others->length; i++) {
+      self->items[self->length++] = others->items[i];
+    }
+  }
+}
+
+// func pop(self): T?
+value_t prelude__Array__pop(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func popFront(self): T?
+value_t prelude__Array__popFront(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func splitAt(self, index: Int): (T[], T[])
+value_t prelude__Array__splitAt(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _index) {
+  UNIMPLEMENTED
+}
+
+// func concat(self, other: T[]): T[]
+value_t prelude__Array__concat(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _other) {
+  Array* self = AS_OBJ(_self, Array);
+  Array* other = AS_OBJ(_other, Array);
+
+  value_t new_array = array_alloc(self->length + other->length);
+
+  int insert_idx = 0;
+  for (int i = 0; i < self->length; i++) {
+    AS_OBJ(new_array, Array)->items[insert_idx++] = self->items[i];
+  }
+  for (int i = 0; i < other->length; i++) {
+    AS_OBJ(new_array, Array)->items[insert_idx++] = other->items[i];
+  }
+
+  return new_array;
+}
+
+// func map<U>(self, fn: (T) => U): U[]
+value_t prelude__Array__map(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  Array* self = AS_OBJ(_self, Array);
+  value_t new = array_alloc(self->length);
+  Array* new_arr = AS_OBJ(new, Array);
+
+  for (int i = 0; i < self->length; i++) {
+    new_arr->items[i] = function_call(_fn, true, 1, 1, self->items[i]);
+  }
+
+  return new;
+}
+
+// func filter(self, fn: (T) => Bool): T[]
+value_t prelude__Array__filter(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func reduce<U>(self, initialValue: U, fn: (U, T) => U): U
+value_t prelude__Array__reduce(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _initialValue, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func forEach(self, fn: (T) => Unit)
+void prelude__Array__forEach(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func join(self, joiner = ""): String
+value_t prelude__Array__join(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _joiner) {
+  UNIMPLEMENTED
+}
+
+// func contains(self, item: T): Bool
+value_t prelude__Array__contains(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t item) {
+  Array* self = AS_OBJ(_self, Array);
+  for (int i = 0; i < self->length; i++) {
+    if (value_eq(self->items[i], item)) {
+      return VAL_TRUE;
+    }
+  }
+
+  return VAL_FALSE;
+}
+
+// func find<U>(self, fn: (T) => (Bool | U?)): T?
+value_t prelude__Array__find(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func findIndex<U>(self, fn: (T) => (Bool | U?)): (T, Int)?
+value_t prelude__Array__findIndex(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func any<U>(self, fn: (T) => (Bool | U?)): Bool
+value_t prelude__Array__any(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func all<U>(self, fn: (T) => (Bool | U?)): Bool
+value_t prelude__Array__all(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func none<U>(self, fn: (T) => (Bool | U?)): Bool
+value_t prelude__Array__none(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func sortBy(self, fn: (T) => Int, reverse = false): T[]
+value_t prelude__Array__sortBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn, value_t _reverse) {
+  UNIMPLEMENTED
+}
+
+// func dedupe(self): T[]
+value_t prelude__Array__dedupe(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func dedupeBy<U>(self, fn: (T) => U): T[]
+value_t prelude__Array__dedupeBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func partition<U>(self, fn: (T) => U): Map<U, T[]>
+value_t prelude__Array__partition(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func tally(self): Map<T, Int>
+value_t prelude__Array__tally(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func tallyBy<U>(self, fn: (T) => U): Map<U, Int>
+value_t prelude__Array__tallyBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func asSet(self): Set<T>
+value_t prelude__Array__asSet(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
+}
+
+// func getOrDefault(self, key: Int, default: T): T
+value_t prelude__Array__getOrDefault(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _default) {
+  UNIMPLEMENTED
+}
+
+// func getOrElse(self, key: Int, fn: () => T): T
+value_t prelude__Array__getOrElse(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func update(self, key: Int, fn: (T) => T)
+void prelude__Array__update(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _fn) {
+  UNIMPLEMENTED
+}
+
+// func reverse(self): T[]
+value_t prelude__Array__reverse(value_t* _env, int8_t _num_rcv_args, value_t _self) {
+  UNIMPLEMENTED
 }
 
 // ------------------------ TUPLE ------------------------
@@ -669,17 +924,17 @@ value_t map_get(value_t _self, value_t key) {
 }
 
 value_t prelude__Map__fromPairs(value_t* _env, int8_t _num_rcv_args, value_t _pairs) {
-    Array* pairs = AS_OBJ(_pairs, Array);
+  Array* pairs = AS_OBJ(_pairs, Array);
 
-    value_t map = map_alloc(pairs->length);
-    for (int i = 0; i < pairs->length; i++) {
-        Tuple* pair = AS_OBJ(pairs->items[i], Tuple);
-        value_t key = pair->items[0];
-        value_t val = pair->items[1];
-        hashmap_insert(&AS_OBJ(map, Map)->hash, key, val);
-    }
+  value_t map = map_alloc(pairs->length);
+  for (int i = 0; i < pairs->length; i++) {
+    Tuple* pair = AS_OBJ(pairs->items[i], Tuple);
+    value_t key = pair->items[0];
+    value_t val = pair->items[1];
+    hashmap_insert(&AS_OBJ(map, Map)->hash, key, val);
+  }
 
-    return map;
+  return map;
 }
 
 value_t prelude__Map__toString(value_t* _env, int8_t _num_rcv_args, value_t _self) {
@@ -972,4 +1227,13 @@ value_t prelude__range(value_t* _env, int8_t num_rcv_args, value_t _from, value_
   }
 
   return TAG_OBJ(values);
+}
+
+// ------------------------ IO FUNCTIONS ------------------------
+value_t io__readFile(value_t* _env, int8_t num_rcv_args, value_t _path) {
+    return VAL_NONE;
+}
+
+value_t io__prompt(value_t* _env, int8_t num_rcv_args, value_t _msg) {
+    return string_alloc(6, "hello!");
 }

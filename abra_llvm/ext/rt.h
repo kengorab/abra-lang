@@ -39,6 +39,11 @@ bool value_eq(value_t v1, value_t v2);
 uint32_t value_hash(value_t v);
 
 #define DBG(v) printf("`" #v "` => %s\n", AS_OBJ(value_to_string(v), String)->chars);
+#define UNIMPLEMENTED                                                          \
+  do {                                                                         \
+    printf("%s:%d: Unimplemented function %s\n", __FILE__, __LINE__, __func__);\
+    exit(1);                                                                   \
+  } while (0);
 
 // ------------------------ UTILITIES ------------------------
 value_t build_argv_array(int argc, char** argv);
@@ -51,6 +56,8 @@ const uint32_t EQ_IDX = 1;
 typedef value_t (*eq_method_t)(value_t*, int8_t, value_t, value_t);
 const uint32_t HASH_IDX = 2;
 typedef value_t (*hash_method_t)(value_t*, int8_t, value_t);
+
+uint32_t type_id_None = UINT32_MAX;
 
 uint32_t next_type_id = 0;
 uint32_t type_id_for_val(value_t value);
@@ -92,6 +99,18 @@ value_t string_split(value_t _self, int32_t idx);
 value_t prelude__String__toString(value_t* _env, int8_t _num_rcv_args, value_t self);
 value_t prelude__String__toLower(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__String__toUpper(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__String__padLeft(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _totalSize, value_t _padding);
+value_t prelude__String__trim(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__String__trimStart(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern);
+value_t prelude__String__trimEnd(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern);
+value_t prelude__String__split(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _splitter);
+value_t prelude__String__splitAt(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _index);
+value_t prelude__String__lines(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__String__chars(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__String__parseInt(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _radix);
+value_t prelude__String__parseFloat(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__String__concat(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _str, value_t _others);
+value_t prelude__String__replaceAll(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _pattern, value_t _replacement);
 
 // ------------------------ ARRAY ------------------------
 uint32_t type_id_Array;
@@ -113,6 +132,33 @@ value_t array_split(value_t _self, int32_t idx);
 value_t prelude__Array__toString(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__Array__isEmpty(value_t* _env, int8_t _num_rcv_args, value_t _self);
 value_t prelude__Array__enumerate(value_t* _env, int8_t _num_rcv_args, value_t _self);
+void prelude__Array__push(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _item, value_t _others);
+value_t prelude__Array__pop(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__popFront(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__splitAt(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _index);
+value_t prelude__Array__concat(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _other);
+value_t prelude__Array__map(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__filter(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__reduce(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _initialValue, value_t _fn);
+void prelude__Array__forEach(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__join(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _joiner);
+value_t prelude__Array__contains(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _item);
+value_t prelude__Array__find(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__findIndex(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__any(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__all(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__none(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__sortBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn, value_t _reverse);
+value_t prelude__Array__dedupe(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__dedupeBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__partition(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__tally(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__tallyBy(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _fn);
+value_t prelude__Array__asSet(value_t* _env, int8_t _num_rcv_args, value_t _self);
+value_t prelude__Array__getOrDefault(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _default);
+value_t prelude__Array__getOrElse(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _fn);
+void prelude__Array__update(value_t* _env, int8_t _num_rcv_args, value_t _self, value_t _key, value_t _fn);
+value_t prelude__Array__reverse(value_t* _env, int8_t _num_rcv_args, value_t _self);
 
 // ------------------------ TUPLE ------------------------
 uint32_t type_id_Tuple;
@@ -189,5 +235,8 @@ value_t prelude__Function__toString(value_t* _env, int8_t _num_rcv_args, value_t
 void prelude__print(value_t* _env, int8_t _num_rcv_args, value_t varargs);
 void prelude__println(value_t* _env, int8_t _num_rcv_args, value_t varargs);
 value_t prelude__range(value_t* _env, int8_t num_rcv_args, value_t _from, value_t _to, value_t _increment);
+
+// ------------------------ IO FUNCTIONS ------------------------
+value_t io__readFile(value_t* _env, int8_t num_rcv_args, value_t _path);
 
 #endif

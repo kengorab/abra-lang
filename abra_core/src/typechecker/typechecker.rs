@@ -1104,22 +1104,23 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     }
 
-                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-                    // reference we must look it up by name in self.referencable_types. This level of indirection
-                    // allows for cyclic/self-referential types.
-                    let module_name = self.module_loader.get_module_name(&self.module_id);
-                    let typeref_name = format!("{}/{}", module_name, &new_type_name);
-                    let typeref = Type::Reference(typeref_name.clone(), vec![]);
-                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), type_is_enum);
-                    self.add_binding(&new_type_name, &name, &binding_type, false);
-                    self.add_type(new_type_name.clone(), None, typeref.clone(), false);
-
                     let type_arg_names = type_args.iter()
                         .map(|name| {
                             let name = Token::get_ident_name(name);
                             (name.clone(), Type::Generic(name))
                         })
                         .collect::<Vec<(String, Type)>>();
+
+                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
+                    // reference we must look it up by name in self.referencable_types. This level of indirection
+                    // allows for cyclic/self-referential types.
+                    let module_name = self.module_loader.get_module_name(&self.module_id);
+                    let typeref_name = format!("{}/{}", module_name, &new_type_name);
+                    let typeref = Type::Reference(typeref_name.clone(), type_arg_names.iter().map(|(_, t)| t.clone()).collect());
+                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), type_is_enum);
+                    self.add_binding(&new_type_name, &name, &binding_type, false);
+                    self.add_type(new_type_name.clone(), None, typeref.clone(), false);
+
                     let referencable_type = if type_is_enum {
                         let typedef = EnumType { name: new_type_name.clone(), type_args: type_arg_names, variants: vec![], static_fields: vec![], methods: vec![] };
                         Type::Enum(typedef)
