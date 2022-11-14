@@ -1104,22 +1104,23 @@ impl<'a, R: 'a + ModuleReader> Typechecker<'a, R> {
                         }
                     }
 
-                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
-                    // reference we must look it up by name in self.referencable_types. This level of indirection
-                    // allows for cyclic/self-referential types.
-                    let module_name = self.module_loader.get_module_name(&self.module_id);
-                    let typeref_name = format!("{}/{}", module_name, &new_type_name);
-                    let typeref = Type::Reference(typeref_name.clone(), vec![]);
-                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
-                    self.add_binding(&new_type_name, &name, &binding_type, false);
-                    self.add_type(new_type_name.clone(), None, typeref.clone(), false);
-
                     let type_arg_names = type_args.iter()
                         .map(|name| {
                             let name = Token::get_ident_name(name);
                             (name.clone(), Type::Generic(name))
                         })
                         .collect::<Vec<(String, Type)>>();
+
+                    // The type embedded in TypedAstNodes of this type will be a Reference - to materialize this
+                    // reference we must look it up by name in self.referencable_types. This level of indirection
+                    // allows for cyclic/self-referential types.
+                    let module_name = self.module_loader.get_module_name(&self.module_id);
+                    let typeref_name = format!("{}/{}", module_name, &new_type_name);
+                    let typeref = Type::Reference(typeref_name.clone(), type_arg_names.iter().map(|(_, t)| t.clone()).collect());
+                    let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), type_is_enum);
+                    self.add_binding(&new_type_name, &name, &binding_type, false);
+                    self.add_type(new_type_name.clone(), None, typeref.clone(), false);
+
                     let referencable_type = if type_is_enum {
                         let typedef = EnumType { name: new_type_name.clone(), type_args: type_arg_names, variants: vec![], static_fields: vec![], methods: vec![] };
                         Type::Enum(typedef)
@@ -1640,14 +1641,15 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         }
 
         let binding_idents = self.visit_binding_pattern(&mut binding, &typ, is_mutable)?;
-        if let Some(token) = export_token {
+        let is_exported = if let Some(token) = export_token {
             if self.scopes.len() != 1 {
                 return Err(TypecheckerErrorKind::InvalidExportDepth { token });
             }
             for (name, typ) in binding_idents {
                 self.exports.insert(name, ExportedValue::Binding(typ));
             }
-        }
+            true
+        } else { false };
 
         let scope_depth = self.scopes.len() - 1;
         let node = TypedBindingDeclNode {
@@ -1655,6 +1657,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             binding,
             expr: typed_expr.map(Box::new),
             scope_depth,
+            is_exported,
         };
         Ok(TypedAstNode::BindingDecl(token, node))
     }
@@ -1748,9 +1751,9 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // ...we pop off the scope, add the function there, and then push the scope back on. We also add the
         // return type to the fn's scope (this is used when visiting returns later on).
         let type_args = type_args.iter().map(|t| Token::get_ident_name(t)).collect();
-        let func_type = Type::Fn(FnType { arg_types, type_args, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false });
+        let fn_type = FnType { arg_types, type_args, ret_type: Box::new(ret_type.clone()), is_variadic, is_enum_constructor: false };
         let mut scope = self.scopes.pop().unwrap();
-        self.add_binding(&func_name, &name, &func_type, false);
+        self.add_binding(&func_name, &name, &Type::Fn(fn_type.clone()), false);
         if let ScopeKind::Function(fn_scope_kind) = &mut scope.kind {
             fn_scope_kind.return_type = ret_type.clone();
         } else { unreachable!(); }
@@ -1786,7 +1789,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
             self.exports.insert(func_name.clone(), export);
         }
 
-        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive }))
+        Ok(TypedAstNode::FunctionDecl(token, TypedFunctionDeclNode { name, args, ret_type, body, scope_depth, is_recursive, fn_type, is_exported }))
     }
 
     fn visit_type_decl(&mut self, token: Token, node: TypeDeclNode) -> Result<TypedAstNode, TypecheckerErrorKind> {
@@ -1822,7 +1825,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         let typeref = Type::Reference(typeref_name.clone(), type_arg_names);
         let ScopeBinding(_, binding_type, _) = self.get_binding_mut(&new_type_name).unwrap();
         *binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
-        self.cur_typedef = Some(typeref);
+        self.cur_typedef = Some(typeref.clone());
 
         // Insert Generics for all type_args present
         let mut scope = Scope::new(ScopeKind::TypeDef);
@@ -1904,7 +1907,7 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // this TypeDeclNode and add static fields and methods, but this allows for methods to reference
         // fields of instances of this current type within their bodies.
         let (_, node) = self.get_type_mut(&new_type_name).unwrap();
-        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, fields: typed_fields, static_fields: vec![], methods: vec![] });
+        let type_decl_node = TypedAstNode::TypeDecl(token, TypedTypeDeclNode { name, self_type: typeref, fields: typed_fields, static_fields: vec![], methods: vec![] });
         *node = Some(type_decl_node.clone());
 
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(false, methods, field_names)?;
@@ -2053,8 +2056,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
         // Record EnumDecl for enum, registering the freshly-typed variants. Later on, we'll mutate
         // this EnumDecl node and add static fields and methods, but this allows for methods to reference
         // variants of this current enum within their bodies.
-        let (_, node) = self.get_type_mut(&new_enum_name).unwrap();
-        let enum_decl_node = TypedAstNode::EnumDecl(token, TypedEnumDeclNode { name, variants: variant_nodes, static_fields: vec![], methods: vec![] });
+        let (self_type, node) = self.get_type_mut(&new_enum_name).unwrap();
+        let enum_decl_node = TypedAstNode::EnumDecl(token, TypedEnumDeclNode { name, self_type: self_type.clone(), variants: variant_nodes, static_fields: vec![], methods: vec![] });
         *node = Some(enum_decl_node);
 
         let (static_fields, typed_methods) = self.typecheck_typedef_methods_phase_2(true, methods, variant_names)?;
@@ -2892,7 +2895,8 @@ impl<'a, R: ModuleReader> AstVisitor<TypedAstNode, TypecheckerErrorKind> for Typ
                         Some(typeref) => {
                             let module_name = self.module_loader.get_module_name(&module_id);
                             let typeref_name = format!("{}/{}", module_name, &import_name);
-                            let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), false);
+                            let is_enum = if let Type::Enum(_) = backing_type { true } else { false };
+                            let binding_type = Type::Type(typeref_name.clone(), Box::new(typeref.clone()), is_enum);
                             self.add_imported_binding(&import_name, import_ident_token, &binding_type);
                             self.add_type(import_name.clone(), node.clone(), typeref.clone(), true);
 

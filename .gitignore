@@ -1,4 +1,5 @@
 /target
+/ext
 **/*.rs.bk
 .idea
 .DS_Store
@@ -8,6 +9,4 @@ abra_wasm/pkg
 abra_wasm/js-tests/node_modules
 
 **/.abra
-ext
-abra_core/src/transpile/target/c/libgc
-cmake-build-debug
+libgc

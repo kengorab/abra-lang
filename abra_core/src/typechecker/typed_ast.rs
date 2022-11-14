@@ -1,4 +1,4 @@
-use crate::typechecker::types::Type;
+use crate::typechecker::types::{FnType, Type};
 use crate::parser::ast::{UnaryOp, BinaryOp, IndexingMode, LambdaNode, BindingPattern, ModuleId};
 use crate::lexer::tokens::Token;
 use crate::typechecker::typechecker::Scope;
@@ -244,6 +244,7 @@ pub struct TypedBindingDeclNode {
     pub expr: Option<Box<TypedAstNode>>,
     pub is_mutable: bool,
     pub scope_depth: usize,
+    pub is_exported: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -251,17 +252,20 @@ pub struct TypedFunctionDeclNode {
     // Must be a Token::Ident
     pub name: Token,
     // Tokens represent arg idents, and must be Token::Ident
-    pub args: Vec<(Token, Type, bool, Option<TypedAstNode>)>,
+    pub args: Vec<(/* token: */ Token, /* type: */ Type, /* is_vararg: */ bool, /* default_value: */ Option<TypedAstNode>)>,
     pub ret_type: Type,
     pub body: Vec<TypedAstNode>,
     pub scope_depth: usize,
     pub is_recursive: bool,
+    pub fn_type: FnType,
+    pub is_exported: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypedTypeDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    pub self_type: Type,
     // Tokens represent arg idents, and must be Token::Ident
     pub fields: Vec<TypedTypeDeclField>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,
@@ -285,6 +289,7 @@ pub enum EnumVariantKind {
 pub struct TypedEnumDeclNode {
     // Must be a Token::Ident
     pub name: Token,
+    pub self_type: Type,
     // Tokens represent arg idents, and must be Token::Ident
     pub variants: Vec<(Token, (Type, Option<Vec<Option<TypedAstNode>>>))>,
     pub static_fields: Vec<(Token, Type, Option<TypedAstNode>)>,

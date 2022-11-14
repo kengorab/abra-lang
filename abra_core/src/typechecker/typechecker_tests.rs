@@ -940,6 +940,7 @@ fn typecheck_binding_decl() -> TestResult {
             is_mutable: false,
             expr: Some(Box::new(int_literal!((1, 11), 123))),
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -959,6 +960,7 @@ fn typecheck_binding_decl() -> TestResult {
             is_mutable: true,
             expr: None,
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1056,6 +1058,7 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 },
             ))),
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1096,6 +1099,7 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 },
             ))),
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1126,6 +1130,7 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
             is_mutable: false,
             expr: Some(Box::new(string_literal!((1, 18), "hello"))),
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1200,6 +1205,7 @@ fn typecheck_binding_decl_destructuring() -> TestResult {
                 },
             ))),
             scope_depth: 0,
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1309,6 +1315,14 @@ fn typecheck_function_decl() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Int),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1335,6 +1349,14 @@ fn typecheck_function_decl() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![("a".to_string(), Type::Int, false)],
+                type_args: vec![],
+                ret_type: Box::new(Type::Int),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1365,12 +1387,21 @@ fn typecheck_function_decl() -> TestResult {
                             )
                         )),
                         scope_depth: 1,
+                        is_exported: false,
                     },
                 ),
                 identifier!((1, 36), "a", Type::Array(Box::new(Type::Int)), 1),
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Array(Box::new(Type::Int))),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -1812,6 +1843,7 @@ fn typecheck_type_decl() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((1, 15), "name"),
@@ -1840,6 +1872,7 @@ fn typecheck_type_decl() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((1, 15), "name"),
@@ -1993,6 +2026,7 @@ fn typecheck_type_decl_methods() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((2, 1), "name"),
@@ -2036,6 +2070,14 @@ fn typecheck_type_decl_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
+                            is_exported: false,
                         },
                     ),
                 ),
@@ -2082,6 +2124,14 @@ fn typecheck_type_decl_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
+                            is_exported: false,
                         },
                     ),
                 ),
@@ -2119,6 +2169,7 @@ fn typecheck_type_decl_static_methods() -> TestResult {
         Token::Type(Position::new(1, 1)),
         TypedTypeDeclNode {
             name: ident_token!((1, 6), "Person"),
+            self_type: Type::Reference("./test/Person".to_string(), vec![]),
             fields: vec![
                 TypedTypeDeclField {
                     ident: ident_token!((2, 1), "name"),
@@ -2141,6 +2192,14 @@ fn typecheck_type_decl_static_methods() -> TestResult {
                             ],
                             scope_depth: 1,
                             is_recursive: false,
+                            fn_type: FnType {
+                                arg_types: vec![],
+                                type_args: vec![],
+                                ret_type: Box::new(Type::String),
+                                is_variadic: false,
+                                is_enum_constructor: false
+                            },
+                            is_exported: false,
                         },
                     )),
                 ),
@@ -2479,6 +2538,7 @@ fn typecheck_enum_decl() -> TestResult {
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "Temp"),
+            self_type: Type::Reference("./test/Temp".to_string(), vec![]),
             static_fields: vec![],
             methods: vec![],
             variants: vec![
@@ -2496,12 +2556,13 @@ fn typecheck_enum_decl() -> TestResult {
     assert_eq!(expected, module.typed_nodes[0]);
 
     let module = test_typecheck("\
-          enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
-        ")?;
+      enum AngleMode { Radians(rads: Float), Degrees(degs: Float) }\
+    ")?;
     let expected = TypedAstNode::EnumDecl(
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "AngleMode"),
+            self_type: Type::Reference("./test/AngleMode".to_string(), vec![]),
             static_fields: vec![],
             methods: vec![],
             variants: vec![
@@ -2538,12 +2599,13 @@ fn typecheck_enum_decl() -> TestResult {
 
     // Verify that constructor variants can have default arg values that are themselves enum variants
     let module = test_typecheck("\
-          enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
-        ")?;
+      enum Color { Red, Darken(base: Color = Color.Red, amount: Float = 10.0) }\
+    ")?;
     let expected = TypedAstNode::EnumDecl(
         Token::Enum(Position::new(1, 1)),
         TypedEnumDeclNode {
             name: ident_token!((1, 6), "Color"),
+            self_type: Type::Reference("./test/Color".to_string(), vec![]),
             methods: vec![],
             static_fields: vec![],
             variants: vec![
@@ -2821,6 +2883,7 @@ fn typecheck_ident() -> TestResult {
                 is_mutable: false,
                 expr: Some(Box::new(int_literal!((1, 11), 123))),
                 scope_depth: 0,
+                is_exported: false,
             },
         ),
         identifier!((2, 1), "abc", Type::Int, 0),
@@ -2862,6 +2925,7 @@ fn typecheck_assignment_identifier() -> TestResult {
                 is_mutable: true,
                 expr: Some(Box::new(int_literal!((1, 11), 123))),
                 scope_depth: 0,
+                is_exported: false,
             },
         ),
         TypedAstNode::Assignment(
@@ -3437,6 +3501,7 @@ fn typecheck_if_statement_scopes() -> TestResult {
                         is_mutable: false,
                         expr: Some(Box::new(string_literal!((1, 20), "hello"))),
                         scope_depth: 1,
+                        is_exported: false,
                     },
                 ),
                 identifier!((1, 28), "a", Type::String, 1),
@@ -3473,6 +3538,7 @@ fn typecheck_if_statement_scopes() -> TestResult {
                         is_mutable: false,
                         expr: Some(Box::new(string_literal!((2, 20), "world"))),
                         scope_depth: 1,
+                        is_exported: false,
                     },
                 ),
                 TypedAstNode::Binary(
@@ -3570,6 +3636,14 @@ fn typecheck_if_expression_conversion_to_statement() -> TestResult {
             ret_type: Type::Unit,
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![],
+                type_args: vec![],
+                ret_type: Box::new(Type::Unit),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);
@@ -3988,6 +4062,7 @@ fn typecheck_while_loop() -> TestResult {
                         scope_depth: 1,
                         is_mutable: false,
                         expr: Some(Box::new(int_literal!((2, 9), 1))),
+                        is_exported: false,
                     },
                 ),
                 TypedAstNode::Binary(
@@ -4753,6 +4828,14 @@ fn typecheck_lambda_closure() -> TestResult {
             ],
             scope_depth: 0,
             is_recursive: false,
+            fn_type: FnType {
+                arg_types: vec![("x".to_string(), Type::Int, false)],
+                type_args: vec![],
+                ret_type: Box::new(Type::Fn(FnType { arg_types: vec![("_".to_string(), Type::Int, false)], type_args: vec![], ret_type: Box::new(Type::Int), is_variadic: false, is_enum_constructor: false })),
+                is_variadic: false,
+                is_enum_constructor: false
+            },
+            is_exported: false,
         },
     );
     assert_eq!(expected, module.typed_nodes[0]);

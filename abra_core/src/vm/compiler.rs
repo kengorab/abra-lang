@@ -1147,7 +1147,7 @@ impl<'a> TypedAstVisitor<(), ()> for Compiler<'a> {
 
     fn visit_type_decl(&mut self, token: Token, node: TypedTypeDeclNode) -> Result<(), ()> {
         let line = token.get_position().line;
-        let TypedTypeDeclNode { name, fields, methods, static_fields } = node;
+        let TypedTypeDeclNode { name, fields, methods, static_fields, .. } = node;
 
         let type_name = Token::get_ident_name(&name);
 

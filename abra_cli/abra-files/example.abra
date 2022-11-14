@@ -1,4 +1,25 @@
-import prompt from "io"
+func foo(s: String, i: Int) {
+  match i {
+    1 => {
+      println(s)
+      println(s.toUpper())
+    }
+    _ => {
+      val f = () => s
+      println(f())
+    }
+  }
+  match i {
+    1 => {
+      println(s)
+      println(s.toUpper())
+    }
+    _ => {
+      val f = () => s
+      println(f())
+    }
+  }
+}
 
-val msg = prompt("Name > ")
-println("message:", msg)
+foo("hello", 1)
+//foo("hello", 1)

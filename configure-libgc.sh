@@ -5,6 +5,7 @@
 
 EXT_DIR="ext"
 C_TARGET_ROOT="abra_core/src/transpile/target/c"
+LLVM_TARGET_ROOT="abra_llvm/ext"
 
 echo "Make $EXT_DIR dir"
 echo "============"
@@ -37,12 +38,24 @@ if [ ! -d "$C_TARGET_ROOT/libgc" ]; then
   echo "Creating $C_TARGET_ROOT/libgc directory"
   mkdir "$C_TARGET_ROOT/libgc"
 fi
+if [ ! -d "$LLVM_TARGET_ROOT" ]; then
+  mkdir "$LLVM_TARGET_ROOT"
+fi
+if [ ! -d "$LLVM_TARGET_ROOT/libgc" ]; then
+  echo "Creating $LLVM_TARGET_ROOT/libgc directory"
+  mkdir "$LLVM_TARGET_ROOT/libgc"
+fi
 
 if [ -d "$C_TARGET_ROOT/libgc/include" ]; then
   echo "Removing existing $C_TARGET_ROOT/libgc/include directory"
   rm -rf "$C_TARGET_ROOT/libgc/include"
 fi
 cp -R "$EXT_DIR/bdwgc/include" "$C_TARGET_ROOT/libgc/."
+if [ -d "$LLVM_TARGET_ROOT/libgc/include" ]; then
+  echo "Removing existing $LLVM_TARGET_ROOT/libgc/include directory"
+  rm -rf "$LLVM_TARGET_ROOT/libgc/include"
+fi
+cp -R "$EXT_DIR/bdwgc/include" "$LLVM_TARGET_ROOT/libgc/."
 
 if [ -d "$C_TARGET_ROOT/libgc/lib" ]; then
   echo "Removing existing $C_TARGET_ROOT/libgc/lib directory"
@@ -50,9 +63,11 @@ if [ -d "$C_TARGET_ROOT/libgc/lib" ]; then
 fi
 mkdir "$C_TARGET_ROOT/libgc/lib"
 cp "$EXT_DIR/bdwgc/libgc.a" "$C_TARGET_ROOT/libgc/lib/."
-
-ls "$C_TARGET_ROOT/abra/include"
-ls "$C_TARGET_ROOT/libgc/include"
-ls "$C_TARGET_ROOT/libgc/lib"
+if [ -d "$LLVM_TARGET_ROOT/libgc/lib" ]; then
+  echo "Removing existing $LLVM_TARGET_ROOT/libgc/lib directory"
+  rm -rf "$LLVM_TARGET_ROOT/libgc/lib"
+fi
+mkdir "$LLVM_TARGET_ROOT/libgc/lib"
+cp "$EXT_DIR/bdwgc/libgc.a" "$LLVM_TARGET_ROOT/libgc/lib/."
 
 echo "All done!"
