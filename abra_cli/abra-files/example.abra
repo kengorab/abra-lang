@@ -1,25 +1,4 @@
-func foo(s: String, i: Int) {
-  match i {
-    1 => {
-      println(s)
-      println(s.toUpper())
-    }
-    _ => {
-      val f = () => s
-      println(f())
-    }
-  }
-  match i {
-    1 => {
-      println(s)
-      println(s.toUpper())
-    }
-    _ => {
-      val f = () => s
-      println(f())
-    }
-  }
-}
-
-foo("hello", 1)
-//foo("hello", 1)
+24
+1.2
+true
+"hello"

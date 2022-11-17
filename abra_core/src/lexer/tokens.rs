@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Position { pub line: usize, pub col: usize }
 
 impl Position {
@@ -276,3 +276,5 @@ impl Token {
         }
     }
 }
+
+impl Eq for Token {}
