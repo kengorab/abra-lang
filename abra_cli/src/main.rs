@@ -118,7 +118,7 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
             match e {
                 Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&file_name, &contents)),
                 Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Either::Right(_) => todo!("Error output for TypeError")
+                Either::Right(e) => eprintln!("{:?}", e), // TODO: Proper error output
             }
             std::process::exit(1);
         }

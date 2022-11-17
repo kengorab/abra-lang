@@ -3,8 +3,8 @@ use itertools::Either;
 use crate::parser;
 use crate::parser::parser::ParseResult;
 use crate::lexer::lexer_error::LexerError;
-use crate::lexer::tokens::Token;
-use crate::parser::ast::{AstLiteralNode, AstNode};
+use crate::lexer::tokens::{Range, Token};
+use crate::parser::ast::{AstLiteralNode, AstNode, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -57,12 +57,12 @@ pub struct Project {
     pub modules: Vec<TypedModule>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ModuleId {
     pub id: usize,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TypeId {
     pub module_id: ModuleId,
     pub id: usize,
@@ -81,15 +81,26 @@ pub struct TypedModule {
     pub code: Vec<TypedNode>,
 }
 
-#[derive(Debug)]
-pub struct Span {
-    start: (usize, usize),
-    end: (usize, usize),
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum TypedNode {
-    Literal { token: Token, value: TypedLiteral, type_id: TypeId }
+    Literal { token: Token, value: TypedLiteral, type_id: TypeId },
+    Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
+}
+
+impl TypedNode {
+    fn type_id(&self) -> &TypeId {
+        match self {
+            TypedNode::Literal { type_id, .. } => type_id,
+            TypedNode::Unary { expr, .. } => expr.type_id(),
+        }
+    }
+
+    fn span(&self) -> Range {
+        match self {
+            TypedNode::Literal { token, .. } => token.get_range(),
+            TypedNode::Unary { token, expr, .. } => token.get_range().expand(&expr.span()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -110,8 +121,10 @@ pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID
 
 pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 
-#[derive(Debug)]
-pub enum TypeError {}
+#[derive(Debug, PartialEq)]
+pub enum TypeError {
+    TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
+}
 
 pub struct Typechecker2<'a, L: LoadModule> {
     module_loader: &'a L,
@@ -215,7 +228,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 AstLiteralNode::BoolLiteral(b) => Ok(TypedNode::Literal { token, value: TypedLiteral::Bool(b), type_id: PRELUDE_BOOL_TYPE_ID }),
                 AstLiteralNode::StringLiteral(s) => Ok(TypedNode::Literal { token, value: TypedLiteral::String(s), type_id: PRELUDE_STRING_TYPE_ID })
             }
-            AstNode::Unary(_, _) |
+            AstNode::Unary(token, n) => {
+                let UnaryNode { op, expr } = n;
+
+                let typed_expr = self.typecheck_expression(*expr)?;
+                let type_id = typed_expr.type_id();
+
+                let span = token.get_range().expand(&typed_expr.span());
+                match op {
+                    UnaryOp::Minus if *type_id != PRELUDE_INT_TYPE_ID && *type_id != PRELUDE_FLOAT_TYPE_ID => {
+                        Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], received: *type_id })
+                    }
+                    UnaryOp::Negate if *type_id != PRELUDE_BOOL_TYPE_ID => {
+                        Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *type_id })
+                    }
+                    _ => Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr) })
+                }
+            }
             AstNode::Binary(_, _) |
             AstNode::Grouped(_, _) |
             AstNode::Array(_, _) |

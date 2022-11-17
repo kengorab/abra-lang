@@ -92,7 +92,7 @@ impl Hash for AstLiteralNode {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UnaryOp {
     Minus,
     Negate,

@@ -1,3 +1,5 @@
+use std::cmp::{max, min};
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Position { pub line: usize, pub col: usize }
 
@@ -21,6 +23,13 @@ impl Range {
             start: start.clone(),
             end: Position { line: start.line, col: start.col + length },
         }
+    }
+
+    pub fn expand(&self, other: &Range) -> Range {
+        let start = Position::new(min(self.start.line, other.start.line), min(self.start.col, other.start.col));
+        let end = Position::new(max(self.end.line, other.end.line), max(self.end.col, other.end.col));
+
+        Self { start, end }
     }
 }
 
