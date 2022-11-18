@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::UnaryOp;
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -60,6 +60,7 @@ fn typecheck_prelude() {
             Type::Builtin(PRELUDE_STRING_TYPE_ID.id),
         ],
         code: vec![],
+        scopes: vec![],
     };
     assert_eq!(&expected, prelude_module);
 }
@@ -126,6 +127,80 @@ fn typecheck_failure_unary() {
         span: Range { start: Position::new(1, 1), end: Position::new(1, 2) },
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_binding_declaration() {
+    let project = test_typecheck(r#"
+      val x = 24
+      var y: Bool
+      var z: String = "hello"
+    "#).unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "x".to_string(),
+            type_id: PRELUDE_INT_TYPE_ID,
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+        },
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+            name: "y".to_string(),
+            type_id: PRELUDE_BOOL_TYPE_ID,
+            is_mutable: true,
+            is_initialized: false,
+            defined_span: Range { start: Position::new(3, 11), end: Position::new(3, 11) },
+        },
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
+            name: "z".to_string(),
+            type_id: PRELUDE_STRING_TYPE_ID,
+            is_mutable: true,
+            is_initialized: true,
+            defined_span: Range { start: Position::new(4, 11), end: Position::new(4, 11) },
+        },
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+}
+
+#[test]
+fn typecheck_failure_binding_declaration() {
+    let Either::Right(err) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
+    assert_eq!(expected, err);
+
+    let Either::Right(err) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
+    assert_eq!(expected, err);
+
+    let Either::Right(err) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateBinding {
+        span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
+        original_span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+    };
+    assert_eq!(expected, err);
+
+    let Either::Right(err) = test_typecheck("val x").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MissingBindingInitializer {
+        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        is_also_missing_type_hint: true,
+    };
+    assert_eq!(expected, err);
+    let Either::Right(err) = test_typecheck("val x: Int").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MissingBindingInitializer {
+        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        is_also_missing_type_hint: false,
+    };
+    assert_eq!(expected, err);
+    let Either::Right(err) = test_typecheck("var x").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MissingBindingInitializer {
+        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        is_also_missing_type_hint: true,
     };
     assert_eq!(expected, err);
 }
