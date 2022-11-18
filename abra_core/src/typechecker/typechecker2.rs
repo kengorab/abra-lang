@@ -115,6 +115,7 @@ pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
     Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
+    Grouped { token: Token, expr: Box<TypedNode> },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -126,6 +127,7 @@ impl TypedNode {
             // Expressions
             TypedNode::Literal { type_id, .. } => type_id,
             TypedNode::Unary { expr, .. } => expr.type_id(),
+            TypedNode::Grouped { expr, .. } => expr.type_id(),
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -137,6 +139,7 @@ impl TypedNode {
             // Expressions
             TypedNode::Literal { token, .. } => token.get_range(),
             TypedNode::Unary { token, expr, .. } => token.get_range().expand(&expr.span()),
+            TypedNode::Grouped { token, expr } => token.get_range().expand(&expr.span()),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -376,7 +379,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn typecheck_expression(&mut self, node: AstNode, _type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
+    fn typecheck_expression(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         match node {
             AstNode::Literal(token, n) => match n {
                 AstLiteralNode::IntLiteral(i) => Ok(TypedNode::Literal { token, value: TypedLiteral::Int(i), type_id: PRELUDE_INT_TYPE_ID }),
@@ -402,7 +405,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
             }
             AstNode::Binary(_, _) |
-            AstNode::Grouped(_, _) |
+            AstNode::Grouped(token, n) => {
+                let typed_expr = self.typecheck_expression(*n.expr, type_hint)?;
+                Ok(TypedNode::Grouped { token, expr: Box::new(typed_expr) })
+            }
             AstNode::Array(_, _) |
             AstNode::Set(_, _) |
             AstNode::Map(_, _) |
