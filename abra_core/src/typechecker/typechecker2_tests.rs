@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::UnaryOp;
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, PRELUDE_UNKNOWN_TYPE_ID};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -67,7 +67,11 @@ fn typecheck_prelude() {
             Struct {
                 id: StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
                 name: "Array".to_string(),
-            }
+            },
+            Struct {
+                id: StructId { module_id: PRELUDE_MODULE_ID, id: 1 },
+                name: "Tuple".to_string(),
+            },
         ],
         code: vec![],
         scopes: vec![],
@@ -143,31 +147,31 @@ fn typecheck_failure_unary() {
 
 #[test]
 fn typecheck_array() {
-    let mut project = test_typecheck("[1, 2, 3]").unwrap();
+    let project = test_typecheck("[1, 2, 3]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
     assert_eq!(expected, type_id);
 
-    let mut project = test_typecheck("[[1, 2], [3]]").unwrap();
+    let project = test_typecheck("[[1, 2], [3]]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
-    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![int_array_type_id]));
+    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![int_array_type_id])).unwrap();
     assert_eq!(expected, type_id);
 
-    let mut project = test_typecheck("val a: Int[] = [1, 2, 3]").unwrap();
+    let project = test_typecheck("val a: Int[] = [1, 2, 3]").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
     assert_eq!(expected, type_id);
 
-    let mut project = test_typecheck("val a: Int[] = []").unwrap();
+    let project = test_typecheck("val a: Int[] = []").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
     assert_eq!(expected, type_id);
 
-    let mut project = test_typecheck("val a: Int[][] = [[]]").unwrap();
+    let project = test_typecheck("val a: Int[][] = [[]]").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let inner_type_id = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
-    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![inner_type_id]));
+    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![inner_type_id])).unwrap();
     assert_eq!(expected, type_id);
 }
 
@@ -200,6 +204,64 @@ fn typecheck_failure_array() {
     let (_, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
+        type_id: PRELUDE_UNKNOWN_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_tuple() {
+    let project = test_typecheck("(1, 2, 3)").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("([1, 2], 3, \"hello\")").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![int_array_type_id, PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val a: (Int, Bool, String[]) = (1, true, [\"3\"])").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let string_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_STRING_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_INT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, string_array_type_id])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val a: ((Int, Int), (Int, Int)) = ((1, 2), (3, 4))").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![inner_type_id, inner_type_id])).unwrap();
+    assert_eq!(expected, type_id);
+}
+
+#[test]
+fn typecheck_failure_tuple() {
+    let (project, Either::Right(err)) = test_typecheck("val a: Int[] = (true, 43)").unwrap_err() else { unreachable!() };
+    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let bool_int_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 16), end: Position::new(1, 24) },
+        expected: vec![int_array_type_id],
+        received: bool_int_tuple_type_id,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val a: (Bool, Float) = (true, 43)").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 31), end: Position::new(1, 32) },
+        expected: vec![PRELUDE_FLOAT_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("val a: (Bool, Float, Bool) = (true, 4.3)").unwrap_err() else { unreachable!() };
+    let bool_float_bool_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
+    let bool_float_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_tuple_struct_id, vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID])).unwrap();
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 30), end: Position::new(1, 39) },
+        expected: vec![bool_float_bool_tuple_type_id],
+        received: bool_float_tuple_type_id,
     };
     assert_eq!(expected, err);
 }
@@ -244,36 +306,39 @@ fn typecheck_binding_declaration() {
 #[test]
 fn typecheck_failure_binding_declaration() {
     let (_, Either::Right(err)) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
-    let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
-    assert_eq!(expected, err);
-
-    let (_, Either::Right(err)) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
-    let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
+    let expected = TypeError::UnknownType {
+        span: Range { start: Position::new(1, 8), end: Position::new(1, 12) },
+        name: "Bogus".to_string(),
+    };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateBinding {
+        token: Token::Ident(Position::new(2, 5), "x".to_string()),
         span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
-        original_span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        original_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("val x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
-        is_also_missing_type_hint: true,
+        ident_token: Token::Ident(Position::new(1, 5), "x".to_string()),
+        is_mutable: false,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val x: Int").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
-        is_also_missing_type_hint: false,
+        ident_token: Token::Ident(Position::new(1, 5), "x".to_string()),
+        is_mutable: false,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("var x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
-        is_also_missing_type_hint: true,
+        ident_token: Token::Ident(Position::new(1, 5), "x".to_string()),
+        is_mutable: true,
     };
     assert_eq!(expected, err);
 }

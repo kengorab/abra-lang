@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use itertools::Either;
+use itertools::{Either, Itertools};
 use crate::parser;
 use crate::parser::parser::ParseResult;
 use crate::lexer::lexer_error::LexerError;
@@ -58,13 +58,18 @@ pub struct Project {
 
     // cached values
     pub prelude_array_struct_id: StructId,
+    pub prelude_tuple_struct_id: StructId,
 }
 
 impl Default for Project {
     fn default() -> Self {
         let placeholder_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: 0 };
 
-        Self { modules: vec![], prelude_array_struct_id: placeholder_struct_id }
+        Self {
+            modules: vec![],
+            prelude_array_struct_id: placeholder_struct_id,
+            prelude_tuple_struct_id: placeholder_struct_id,
+        }
     }
 }
 
@@ -75,19 +80,68 @@ impl Project {
         &module.types[*id]
     }
 
-    pub fn add_or_find_type_id(&mut self, module_id: &ModuleId, ty: Type) -> TypeId {
-        let current_module = &mut self.modules[module_id.id];
+    pub fn get_struct_by_id(&self, struct_id: &StructId) -> &Struct {
+        let StructId { module_id: ModuleId { id: module_id }, id } = struct_id;
+        let module = &self.modules[*module_id];
+        &module.structs[*id]
+    }
 
-        for (idx, t) in current_module.types.iter().enumerate() {
-            if t == &ty {
-                return TypeId { module_id: current_module.id, id: idx };
+    pub fn find_type_id(&self, module_id: &ModuleId, ty: &Type) -> Option<TypeId> {
+        let module = &self.modules[module_id.id];
+        for (idx, t) in module.types.iter().enumerate() {
+            if t == ty {
+                return Some(TypeId { module_id: module.id, id: idx });
             }
         }
 
-        let type_id = TypeId { module_id: current_module.id, id: current_module.types.len() };
-        current_module.types.push(ty);
+        None
+    }
 
-        type_id
+    pub fn add_or_find_type_id(&mut self, module_id: &ModuleId, ty: Type) -> TypeId {
+        if let Some(type_id) = self.find_type_id(&module_id, &ty) {
+            type_id
+        } else {
+            let module = &mut self.modules[module_id.id];
+            let type_id = TypeId { module_id: module.id, id: module.types.len() };
+            module.types.push(ty);
+
+            type_id
+        }
+    }
+
+    pub fn type_repr(&self, type_id: &TypeId) -> String {
+        let ty = self.get_type_by_id(type_id);
+        match ty {
+            Type::Builtin(builtin_id) => {
+                if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
+                    "Unit".to_string()
+                } else if *builtin_id == PRELUDE_INT_TYPE_ID.id {
+                    "Int".to_string()
+                } else if *builtin_id == PRELUDE_FLOAT_TYPE_ID.id {
+                    "Float".to_string()
+                } else if *builtin_id == PRELUDE_BOOL_TYPE_ID.id {
+                    "Bool".to_string()
+                } else if *builtin_id == PRELUDE_STRING_TYPE_ID.id {
+                    "String".to_string()
+                } else {
+                    unreachable!("Unknown builtin type: {}", builtin_id)
+                }
+            }
+            Type::GenericInstance(struct_id, generic_ids) => {
+                if *struct_id == self.prelude_array_struct_id {
+                    debug_assert!(generic_ids.len() == 1, "An array should have and only 1 generic type");
+                    let inner_type_repr = self.type_repr(&generic_ids[0]);
+                    format!("{}[]", inner_type_repr)
+                } else if *struct_id == self.prelude_tuple_struct_id {
+                    let inner_type_reprs = generic_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+                    format!("({})", inner_type_reprs)
+                } else {
+                    let struct_ = self.get_struct_by_id(struct_id);
+                    let inner_type_reprs = generic_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+                    format!("{}<{}>", struct_.name, inner_type_reprs)
+                }
+            }
+        }
     }
 }
 
@@ -165,6 +219,7 @@ pub enum TypedNode {
     Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -178,6 +233,7 @@ impl TypedNode {
             TypedNode::Unary { expr, .. } => expr.type_id(),
             TypedNode::Grouped { expr, .. } => expr.type_id(),
             TypedNode::Array { type_id, .. } => type_id,
+            TypedNode::Tuple { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -191,6 +247,7 @@ impl TypedNode {
             TypedNode::Unary { token, expr, .. } => token.get_range().expand(&expr.span()),
             TypedNode::Grouped { token, expr } => token.get_range().expand(&expr.span()),
             TypedNode::Array { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
+            TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -220,22 +277,128 @@ pub enum TypedLiteral {
 impl Eq for TypedLiteral {}
 
 pub const PRELUDE_MODULE_ID: ModuleId = ModuleId { id: 0 };
-pub const PRELUDE_UNKNOWN_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 0 };
-pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 1 };
-pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 2 };
-pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 3 };
-pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 4 };
-pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 5 };
+pub const PRELUDE_UNKNOWN_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: usize::MAX };
+pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 0 };
+pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 1 };
+pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 2 };
+pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 3 };
+pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 4 };
 
 pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
-    UnknownType { span: Range },
-    MissingBindingInitializer { span: Range, is_also_missing_type_hint: bool },
-    DuplicateBinding { span: Range, original_span: Range },
-    ForbiddenAssignment { span: Range },
+    UnknownType { span: Range, name: String },
+    MissingBindingInitializer { span: Range, ident_token: Token, is_mutable: bool },
+    DuplicateBinding { token: Token, span: Range, original_span: Option<Range> },
+    ForbiddenAssignment { span: Range, type_id: TypeId },
+}
+
+impl TypeError {
+    const INDENT_AMOUNT: usize = 2;
+
+    fn get_underline(left_padding: usize, length: usize) -> String {
+        format!("{}{}", " ".repeat(left_padding), "^".repeat(length))
+    }
+
+    fn indent() -> String {
+        " ".repeat(Self::INDENT_AMOUNT)
+    }
+
+    fn get_underlined_line(lines: &Vec<&str>, span: &Range) -> String {
+        debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
+
+        let line = lines.get(span.start.line - 1).expect("There should be a line");
+        let length = span.end.col - span.start.col + 1;
+        let underline = Self::get_underline(2 * Self::INDENT_AMOUNT + span.start.col, length);
+        let indent = Self::indent();
+        format!("{}|{}{}\n{}", indent, indent, line, underline)
+    }
+
+    pub fn message(&self, project: &Project, file_name: &String, source: &String) -> String {
+        let span = match self {
+            TypeError::TypeMismatch { span, .. } |
+            TypeError::UnknownType { span, .. } |
+            TypeError::MissingBindingInitializer { span, .. } |
+            TypeError::DuplicateBinding { span, .. } |
+            TypeError::ForbiddenAssignment { span, .. } => span
+        };
+        let lines: Vec<&str> = source.split("\n").collect();
+        let cursor_line = Self::get_underlined_line(&lines, span);
+
+        let msg = match self {
+            TypeError::TypeMismatch { expected, received, .. } => {
+                let multiple_expected = expected.len() > 1;
+                let expected = expected.iter().map(|type_id| project.type_repr(type_id)).join(", ");
+                let received = project.type_repr(received);
+
+                format!(
+                    "Type mismatch\n{}\n\
+                    Expected{}{}\n\
+                    but instead saw: {}",
+                    cursor_line,
+                    if multiple_expected { " one of: " } else { ": " }, expected,
+                    received
+                )
+            }
+            TypeError::UnknownType { name, .. } => {
+                format!(
+                    "Unknown type '{}'\n{}\n\
+                    No type with that name is visible in current scope",
+                    name, cursor_line
+                )
+            }
+            TypeError::MissingBindingInitializer { ident_token, is_mutable, .. } => {
+                let ident = Token::get_ident_name(&ident_token);
+                let msg = if *is_mutable {
+                    "Since it's a 'var', you can provide an initial value or a type annotation"
+                } else {
+                    "Since it's a 'val', you must provide an initial value"
+                };
+
+                format!(
+                    "Could not determine type of {} variable '{}'\n{}\n{}",
+                    if *is_mutable { "mutable" } else { "immutable" },
+                    ident, cursor_line, msg
+                )
+            }
+            TypeError::DuplicateBinding { token, original_span, .. } => {
+                let ident = Token::get_ident_name(&token);
+                let first_msg = format!("Duplicate variable '{}'\n{}", &ident, cursor_line);
+
+                let second_msg = if let Some(original_span) = original_span {
+                    let pos = &original_span.start;
+                    let cursor_line = Self::get_underlined_line(&lines, original_span);
+                    format!("Already declared in scope at ({}:{})\n{}", pos.line, pos.col, cursor_line)
+                } else {
+                    "Already declared as built-in value".to_string()
+                };
+
+                format!("{}\n{}", first_msg, second_msg)
+            }
+            TypeError::ForbiddenAssignment { type_id, .. } => {
+                if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
+                    format!(
+                        "Could not determine type\n{}\n\
+                        Please use an explicit type annotation to denote the type",
+                        cursor_line
+                    )
+                } else if *type_id == PRELUDE_UNIT_TYPE_ID {
+                    format!(
+                        "Forbidden type for variable\n{}\n\
+                        Variables cannot be of type {}",
+                        cursor_line, project.type_repr(&PRELUDE_UNIT_TYPE_ID)
+                    )
+                } else {
+                    unreachable!("No other types of forbidden assignments")
+                }
+            }
+        };
+
+        let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
+        format!("{}\n{}", error_line, msg)
+    }
 }
 
 pub struct Typechecker2<'a, L: LoadModule> {
@@ -274,7 +437,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     "Float" => Ok(PRELUDE_FLOAT_TYPE_ID),
                     "Bool" => Ok(PRELUDE_BOOL_TYPE_ID),
                     "String" => Ok(PRELUDE_STRING_TYPE_ID),
-                    _ => Err(TypeError::UnknownType { span: ident.get_range() })
+                    _ => Err(TypeError::UnknownType { span: ident.get_range(), name: ident_name })
                 }
             }
             TypeIdentifier::Array { inner } => {
@@ -282,20 +445,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let ty = Type::GenericInstance(self.project.prelude_array_struct_id, vec![inner]);
                 Ok(self.add_or_find_type_id(ty))
             }
-            TypeIdentifier::Tuple { .. } |
+            TypeIdentifier::Tuple { types } => {
+                let mut inners = vec![];
+                for type_identifier in types {
+                    inners.push(self.resolve_type_identifier(type_identifier)?);
+                }
+                let ty = Type::GenericInstance(self.project.prelude_tuple_struct_id, inners);
+                Ok(self.add_or_find_type_id(ty))
+            }
             TypeIdentifier::Option { .. } |
             TypeIdentifier::Union { .. } |
             TypeIdentifier::Func { .. } => todo!()
         }
     }
 
-    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: Range) -> Result<VarId, TypeError> {
+    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, token: &Token) -> Result<VarId, TypeError> {
         let current_scope_idx = self.current_scope;
         let current_scope = &mut self.current_module_mut().scopes[current_scope_idx];
 
+        let span = token.get_range();
         for var in &current_scope.vars {
             if var.name == name {
-                return Err(TypeError::DuplicateBinding { span, original_span: var.defined_span.clone() });
+                return Err(TypeError::DuplicateBinding { token: token.clone(), span, original_span: Some(var.defined_span.clone()) });
             }
         }
 
@@ -321,6 +492,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let array_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
         prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string() });
         self.project.prelude_array_struct_id = array_struct_id;
+
+        let tuple_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string() });
+        self.project.prelude_tuple_struct_id = tuple_struct_id;
 
         self.project.modules.push(prelude_module);
     }
@@ -388,7 +563,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let BindingPattern::Variable(var_token) = &binding else { unimplemented!() };
                 let var_name = Token::get_ident_name(&var_token);
-                let var_span = var_token.get_range();
 
                 let type_hint_id = if let Some(type_identifier) = type_ann {
                     Some(self.resolve_type_identifier(&type_identifier)?)
@@ -396,12 +570,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let mut vars = vec![];
                 let typed_expr = match (type_hint_id, expr) {
-                    (None, None) => return Err(TypeError::MissingBindingInitializer { span: var_token.get_range(), is_also_missing_type_hint: true }),
+                    (None, None) => return Err(TypeError::MissingBindingInitializer { span: var_token.get_range(), ident_token: var_token.clone(), is_mutable }),
                     (Some(type_hint_id), None) => {
                         if !is_mutable {
-                            return Err(TypeError::MissingBindingInitializer { span: var_token.get_range(), is_also_missing_type_hint: false });
+                            return Err(TypeError::MissingBindingInitializer { span: var_token.get_range(), ident_token: var_token.clone(), is_mutable });
                         }
-                        let var_id = self.add_variable_to_current_scope(var_name, type_hint_id, is_mutable, false, var_span)?;
+                        let var_id = self.add_variable_to_current_scope(var_name, type_hint_id, is_mutable, false, var_token)?;
                         vars.push(var_id);
 
                         None
@@ -410,10 +584,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
                         if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
-                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span() });
+                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id });
                         }
 
-                        let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, true, var_span)?;
+                        let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, true, var_token)?;
                         vars.push(var_id);
 
                         Some(Box::new(typed_expr))
@@ -427,7 +601,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::TypeMismatch { span, expected: vec![type_hint_id], received: *type_id });
                         }
 
-                        let var_id = self.add_variable_to_current_scope(var_name, type_hint_id, is_mutable, true, var_span)?;
+                        let var_id = self.add_variable_to_current_scope(var_name, type_hint_id, is_mutable, true, var_token)?;
                         vars.push(var_id);
 
                         Some(Box::new(typed_expr))
@@ -512,7 +686,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     typed_items.push(typed_item);
                 }
 
-                let type_id = match inner_type_id  {
+                let type_id = match inner_type_id {
                     None => PRELUDE_UNKNOWN_TYPE_ID,
                     Some(inner_type_id) => self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_array_struct_id, vec![inner_type_id])),
                 };
@@ -520,8 +694,51 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Array { token, items: typed_items, type_id })
             }
             AstNode::Set(_, _) |
-            AstNode::Map(_, _) |
-            AstNode::Tuple(_, _) |
+            AstNode::Map(_, _) => todo!(),
+            AstNode::Tuple(token, items) => {
+                let mut inner_type_ids = None;
+                if let Some(type_hint_id) = &type_hint {
+                    let ty = self.project.get_type_by_id(&type_hint_id);
+                    if let Type::GenericInstance(struct_id, generic_ids) = ty {
+                        if *struct_id == self.project.prelude_tuple_struct_id {
+                            inner_type_ids = Some(generic_ids.clone());
+                        }
+                    }
+                }
+
+                let mut typed_items = vec![];
+                let mut typed_item_ids = vec![];
+                for (idx, item) in items.into_iter().enumerate() {
+                    let typed_item = match inner_type_ids.as_ref().and_then(|type_ids| type_ids.get(idx).map(|i| *i)) {
+                        None => self.typecheck_expression(item, None)?,
+                        Some(type_id) => {
+                            let typed_item = self.typecheck_expression(item, Some(type_id))?;
+                            let current_value_type_id = typed_item.type_id();
+                            if type_id != *current_value_type_id {
+                                let span = typed_item.span();
+                                return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
+                            }
+
+                            typed_item
+                        }
+                    };
+                    typed_item_ids.push(*typed_item.type_id());
+                    typed_items.push(typed_item);
+                }
+
+                let received_type_ids = typed_items.iter().map(|i| *i.type_id()).collect();
+                let type_id = self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_tuple_struct_id, received_type_ids));
+
+                if let Some(inner_type_ids) = &inner_type_ids {
+                    if typed_items.len() != inner_type_ids.len() {
+                        let span = token.get_range().expand(&typed_items.last().map(|i| i.span()).unwrap_or(token.get_range()));
+                        let expected = self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_tuple_struct_id, inner_type_ids.clone()));
+                        return Err(TypeError::TypeMismatch { span, expected: vec![expected], received: type_id });
+                    }
+                }
+
+                Ok(TypedNode::Tuple { token, items: typed_items, type_id })
+            }
             AstNode::Identifier(_, _) |
             AstNode::Assignment(_, _) |
             AstNode::Indexing(_, _) |
