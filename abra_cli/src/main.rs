@@ -124,7 +124,7 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
         }
     }
 
-    dbg!(&project);
+    // dbg!(&project);
 
     Ok(())
 }

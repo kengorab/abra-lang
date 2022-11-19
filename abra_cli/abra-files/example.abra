@@ -1,1 +1,1 @@
-val x: Bool = 24
+val a: Int[] = [true, 43]

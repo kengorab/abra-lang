@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::UnaryOp;
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -31,7 +31,7 @@ impl LoadModule for TestModuleLoader {
 
 const TEST_MODULE_NAME: &str = "test";
 
-fn test_typecheck(input: &str) -> Result<Project, TypecheckError> {
+fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
     let module_id = parser::ast::ModuleId::parse_module_path(&format!("{}", TEST_MODULE_NAME)).unwrap();
 
     let loader = TestModuleLoader::new(vec![
@@ -42,7 +42,10 @@ fn test_typecheck(input: &str) -> Result<Project, TypecheckError> {
     let mut tc = Typechecker2::new(&loader, &mut project);
     tc.typecheck_prelude();
 
-    tc.typecheck_module(&module_id).map(|_| project)
+    match tc.typecheck_module(&module_id) {
+        Ok(_) => Ok(project),
+        Err(e) => Err((project, e))
+    }
 }
 
 #[test]
@@ -54,10 +57,17 @@ fn typecheck_prelude() {
         id: PRELUDE_MODULE_ID,
         name: "prelude".to_string(),
         types: vec![
+            Type::Builtin(PRELUDE_UNIT_TYPE_ID.id),
             Type::Builtin(PRELUDE_INT_TYPE_ID.id),
             Type::Builtin(PRELUDE_FLOAT_TYPE_ID.id),
             Type::Builtin(PRELUDE_BOOL_TYPE_ID.id),
             Type::Builtin(PRELUDE_STRING_TYPE_ID.id),
+        ],
+        structs: vec![
+            Struct {
+                id: StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
+                name: "Array".to_string(),
+            }
         ],
         code: vec![],
         scopes: vec![],
@@ -66,7 +76,7 @@ fn typecheck_prelude() {
 }
 
 #[test]
-fn typecheck_literals() {
+fn typecheck_literal() {
     let project = test_typecheck("1 2.34\ntrue \"hello\"").unwrap();
     let module = &project.modules[1];
     assert_eq!(ModuleId { id: 1 }, module.id);
@@ -114,7 +124,7 @@ fn typecheck_unary() {
 
 #[test]
 fn typecheck_failure_unary() {
-    let Either::Right(err) = test_typecheck("-true").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("-true").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
         expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
@@ -122,11 +132,74 @@ fn typecheck_failure_unary() {
     };
     assert_eq!(expected, err);
 
-    let Either::Right(err) = test_typecheck("!1").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("!1").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 1), end: Position::new(1, 2) },
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_array() {
+    let mut project = test_typecheck("[1, 2, 3]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    assert_eq!(expected, type_id);
+
+    let mut project = test_typecheck("[[1, 2], [3]]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let int_array_type_id = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![int_array_type_id]));
+    assert_eq!(expected, type_id);
+
+    let mut project = test_typecheck("val a: Int[] = [1, 2, 3]").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    assert_eq!(expected, type_id);
+
+    let mut project = test_typecheck("val a: Int[] = []").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    assert_eq!(expected, type_id);
+
+    let mut project = test_typecheck("val a: Int[][] = [[]]").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let inner_type_id = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID]));
+    let expected = project.add_or_find_type_id(&ModuleId { id: 1 }, Type::GenericInstance(project.prelude_array_struct_id, vec![inner_type_id]));
+    assert_eq!(expected, type_id);
+}
+
+#[test]
+fn typecheck_failure_array() {
+    let (_, Either::Right(err)) = test_typecheck("[1, true, 3]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 5), end: Position::new(1, 8) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val a: Int[] = [true, false]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 17), end: Position::new(1, 20) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val a: Int[][] = [[true]]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 20), end: Position::new(1, 23) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
     };
     assert_eq!(expected, err);
 }
@@ -170,34 +243,34 @@ fn typecheck_binding_declaration() {
 
 #[test]
 fn typecheck_failure_binding_declaration() {
-    let Either::Right(err) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
     assert_eq!(expected, err);
 
-    let Either::Right(err) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownType { span: Range { start: Position::new(1, 8), end: Position::new(1, 12) } };
     assert_eq!(expected, err);
 
-    let Either::Right(err) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateBinding {
         span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
         original_span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
     };
     assert_eq!(expected, err);
 
-    let Either::Right(err) = test_typecheck("val x").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
         is_also_missing_type_hint: true,
     };
     assert_eq!(expected, err);
-    let Either::Right(err) = test_typecheck("val x: Int").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val x: Int").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
         is_also_missing_type_hint: false,
     };
     assert_eq!(expected, err);
-    let Either::Right(err) = test_typecheck("var x").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("var x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
         is_also_missing_type_hint: true,
