@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::UnaryOp;
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, PRELUDE_UNKNOWN_TYPE_ID};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, PRELUDE_UNKNOWN_TYPE_ID, Scope, TypeId};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -53,6 +53,7 @@ fn typecheck_prelude() {
     let project = test_typecheck("").unwrap();
     let prelude_module = &project.modules[0];
 
+    let prelude_scope_id = ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 };
     let expected = TypedModule {
         id: PRELUDE_MODULE_ID,
         name: "prelude".to_string(),
@@ -62,6 +63,11 @@ fn typecheck_prelude() {
             Type::Builtin(PRELUDE_FLOAT_TYPE_ID.id),
             Type::Builtin(PRELUDE_BOOL_TYPE_ID.id),
             Type::Builtin(PRELUDE_STRING_TYPE_ID.id),
+            Type::Generic("T".to_string()), // From `None` definition
+            Type::GenericInstance(
+                StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
+                vec![project.find_type_id(&PRELUDE_MODULE_ID, &Type::Generic("T".to_string())).unwrap()],
+            ),
         ],
         structs: vec![
             Struct {
@@ -82,7 +88,22 @@ fn typecheck_prelude() {
             },
         ],
         code: vec![],
-        scopes: vec![],
+        scopes: vec![
+            Scope {
+                id: prelude_scope_id,
+                parent: None,
+                vars: vec![
+                    Variable {
+                        id: VarId { scope_id: prelude_scope_id, id: 0 },
+                        name: "None".to_string(),
+                        type_id: TypeId { module_id: PRELUDE_MODULE_ID, id: 6 },
+                        is_mutable: false,
+                        is_initialized: true,
+                        defined_span: None,
+                    }
+                ],
+            }
+        ],
     };
     assert_eq!(&expected, prelude_module);
 }
@@ -339,6 +360,80 @@ fn typecheck_failure_set() {
 }
 
 #[test]
+fn typecheck_none() {
+    let project = test_typecheck("val x: Int? = None").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "x".to_string(),
+            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        },
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+
+    let project = test_typecheck("val x: Int[]? = None").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "x".to_string(),
+            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap())).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        },
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+
+    let project = test_typecheck("val x: (Int?)[] = [None]").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "x".to_string(),
+            type_id: project.find_type_id(
+                &ModuleId { id: 1 },
+                &project.array_type(
+                    project.find_type_id(
+                        &ModuleId { id: 1 },
+                        &project.option_type(PRELUDE_INT_TYPE_ID),
+                    ).unwrap()
+                ),
+            ).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        },
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+}
+
+#[test]
+fn typecheck_failure_none() {
+    let (project, Either::Right(err)) = test_typecheck("val x = None").unwrap_err() else { unreachable!() };
+    let none_var = &project.prelude_module().scopes[0].vars[0];
+    assert_eq!("None", none_var.name);
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 12) },
+        type_id: none_var.type_id,
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("val x = [None]").unwrap_err() else { unreachable!() };
+    let none_var = &project.prelude_module().scopes[0].vars[0];
+    assert_eq!("None", none_var.name);
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
+        type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(none_var.type_id)).unwrap(),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
 fn typecheck_binding_declaration() {
     let project = test_typecheck(r#"
       val x = 24
@@ -353,7 +448,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+            defined_span: Some(Range { start: Position::new(2, 11), end: Position::new(2, 11) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -361,7 +456,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_BOOL_TYPE_ID,
             is_mutable: true,
             is_initialized: false,
-            defined_span: Range { start: Position::new(3, 11), end: Position::new(3, 11) },
+            defined_span: Some(Range { start: Position::new(3, 11), end: Position::new(3, 11) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -369,7 +464,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: true,
             is_initialized: true,
-            defined_span: Range { start: Position::new(4, 11), end: Position::new(4, 11) },
+            defined_span: Some(Range { start: Position::new(4, 11), end: Position::new(4, 11) }),
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -385,7 +480,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 12), end: Position::new(2, 12) },
+            defined_span: Some(Range { start: Position::new(2, 12), end: Position::new(2, 12) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -393,7 +488,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_FLOAT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 15), end: Position::new(2, 15) },
+            defined_span: Some(Range { start: Position::new(2, 15), end: Position::new(2, 15) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -401,7 +496,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 19), end: Position::new(2, 19) },
+            defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 3 },
@@ -409,7 +504,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 23), end: Position::new(2, 23) },
+            defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 4 },
@@ -417,7 +512,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 28), end: Position::new(2, 28) },
+            defined_span: Some(Range { start: Position::new(2, 28), end: Position::new(2, 28) }),
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 5 },
@@ -425,7 +520,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Range { start: Position::new(2, 31), end: Position::new(2, 31) },
+            defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);

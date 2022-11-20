@@ -128,6 +128,23 @@ impl Project {
         }
     }
 
+    pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
+        let mut scope_id = &Some(*scope_id);
+        while let Some(ScopeId { module_id: ModuleId { id: module_id }, id }) = scope_id {
+            let scope = &self.modules[*module_id].scopes[*id];
+
+            for var in &scope.vars {
+                if var.name == *name {
+                    return Some(var);
+                }
+            }
+
+            scope_id = &scope.parent;
+        }
+
+        None
+    }
+
     pub fn option_type(&self, inner_type_id: TypeId) -> Type {
         Type::GenericInstance(self.prelude_option_struct_id, vec![inner_type_id])
     }
@@ -141,10 +158,16 @@ impl Project {
     }
 
     pub fn type_repr(&self, type_id: &TypeId) -> String {
+        if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
+            return "_".to_string();
+        }
+
         let ty = self.get_type_by_id(type_id);
         match ty {
             Type::Builtin(builtin_id) => {
-                if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
+                if *builtin_id == PRELUDE_UNKNOWN_TYPE_ID.id {
+                    "_".to_string()
+                } else if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
                     "Unit".to_string()
                 } else if *builtin_id == PRELUDE_INT_TYPE_ID.id {
                     "Int".to_string()
@@ -158,6 +181,7 @@ impl Project {
                     unreachable!("Unknown builtin type: {}", builtin_id)
                 }
             }
+            Type::Generic(name) => name.to_string(),
             Type::GenericInstance(struct_id, generic_ids) => {
                 if *struct_id == self.prelude_option_struct_id {
                     debug_assert!(generic_ids.len() == 1, "An option should have and only 1 generic type");
@@ -206,6 +230,7 @@ pub struct Struct {
 #[derive(Debug, Eq, PartialEq)]
 pub enum Type {
     Builtin(/* prelude_type_idx: */ usize),
+    Generic(String),
     GenericInstance(StructId, Vec<TypeId>),
 }
 
@@ -218,6 +243,7 @@ pub struct ScopeId {
 #[derive(Debug, PartialEq)]
 pub struct Scope {
     pub id: ScopeId,
+    pub parent: Option<ScopeId>,
     pub vars: Vec<Variable>,
 }
 
@@ -234,7 +260,7 @@ pub struct Variable {
     pub type_id: TypeId,
     pub is_mutable: bool,
     pub is_initialized: bool,
-    pub defined_span: Range,
+    pub defined_span: Option<Range>, // Variables with no defined_span are builtins
 }
 
 #[derive(Debug, PartialEq)]
@@ -256,6 +282,7 @@ pub enum TypedNode {
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Identifier { token: Token, var_id: VarId, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -271,6 +298,7 @@ impl TypedNode {
             TypedNode::Array { type_id, .. } => type_id,
             TypedNode::Tuple { type_id, .. } => type_id,
             TypedNode::Set { type_id, .. } => type_id,
+            TypedNode::Identifier { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -286,6 +314,7 @@ impl TypedNode {
             TypedNode::Array { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Set { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
+            TypedNode::Identifier { token, .. } => token.get_range(),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -335,6 +364,7 @@ pub enum DestructuringMismatchKind {
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
     UnknownType { span: Range, name: String },
+    UnknownIdentifier { span: Range, token: Token },
     MissingBindingInitializer { span: Range, is_mutable: bool },
     DuplicateBinding { token: Token, span: Range, original_span: Option<Range> },
     ForbiddenAssignment { span: Range, type_id: TypeId },
@@ -367,6 +397,7 @@ impl TypeError {
         let span = match self {
             TypeError::TypeMismatch { span, .. } |
             TypeError::UnknownType { span, .. } |
+            TypeError::UnknownIdentifier { span, .. } |
             TypeError::MissingBindingInitializer { span, .. } |
             TypeError::DuplicateBinding { span, .. } |
             TypeError::ForbiddenAssignment { span, .. } |
@@ -398,6 +429,22 @@ impl TypeError {
                     name, cursor_line
                 )
             }
+            TypeError::UnknownIdentifier { token, .. } => {
+                let ident = Token::get_ident_name(token);
+                if &ident == "_" {
+                    format!(
+                        "Unknown identifier '{}'\n{}\n\
+                        The _ represents an anonymous identifier; please give the variable a name if you want to reference it",
+                        ident, cursor_line
+                    )
+                } else {
+                    format!(
+                        "Unknown identifier '{}'\n{}\n\
+                        No variable with that name is visible in current scope",
+                        ident, cursor_line
+                    )
+                }
+            }
             TypeError::MissingBindingInitializer { is_mutable, .. } => {
                 let msg = if *is_mutable {
                     "Since 'var' was used, you can provide an initial value or a type annotation"
@@ -426,20 +473,18 @@ impl TypeError {
                 format!("{}\n{}", first_msg, second_msg)
             }
             TypeError::ForbiddenAssignment { type_id, .. } => {
-                if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
-                    format!(
-                        "Could not determine type\n{}\n\
-                        Please use an explicit type annotation to denote the type",
-                        cursor_line
-                    )
-                } else if *type_id == PRELUDE_UNIT_TYPE_ID {
+                if *type_id == PRELUDE_UNIT_TYPE_ID {
                     format!(
                         "Forbidden type for variable\n{}\n\
                         Variables cannot be of type {}",
                         cursor_line, project.type_repr(&PRELUDE_UNIT_TYPE_ID)
                     )
                 } else {
-                    unreachable!("No other types of forbidden assignments")
+                    format!(
+                        "Could not determine type\n{}\n\
+                        Please use an explicit type annotation to denote the type",
+                        cursor_line
+                    )
                 }
             }
             TypeError::DestructuringMismatch { kind, type_id, .. } => {
@@ -506,7 +551,69 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn type_satisfies_other(&self, base_type: &TypeId, target_type: &TypeId) -> bool {
-        base_type == target_type
+        let base_ty = self.project.get_type_by_id(base_type);
+        let target_ty = self.project.get_type_by_id(target_type);
+
+        match (base_ty, target_ty) {
+            (Type::Builtin(idx1), Type::Builtin(idx2)) => idx1 == idx2,
+            (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
+                if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
+                    return false;
+                }
+                for (generic_type_id_1, generic_type_id_2) in generic_ids_1.iter().zip(generic_ids_2.iter()) {
+                    if !self.type_satisfies_other(generic_type_id_1, generic_type_id_2) {
+                        return false;
+                    }
+                }
+
+                true
+            }
+            _ => false
+        }
+    }
+
+    fn substitute_generics(&mut self, hint_type_id: &TypeId, var_type_id: &TypeId) -> TypeId {
+        let hint_ty = self.project.get_type_by_id(&hint_type_id);
+        let var_ty = self.project.get_type_by_id(&var_type_id);
+
+        match (hint_ty, var_ty) {
+            (Type::Generic(_), _) => unreachable!("The hint should always be a concrete (non-generic) type"),
+            (_, Type::Builtin(_)) => *var_type_id,
+            (_, Type::Generic(_)) => *hint_type_id,
+            (Type::GenericInstance(hint_struct_id, hint_generic_ids), Type::GenericInstance(var_struct_id, var_generic_ids)) => {
+                if var_struct_id == hint_struct_id && hint_generic_ids.len() == var_generic_ids.len() {
+                    let hint_generic_ids = hint_generic_ids.clone();
+                    let var_generic_ids = var_generic_ids.clone();
+                    let var_struct_id = *var_struct_id;
+
+                    let mut new_var_generic_ids = vec![];
+                    for (hint_generic_type_id, var_generic_type_id) in hint_generic_ids.iter().zip(var_generic_ids.iter()) {
+                        new_var_generic_ids.push(self.substitute_generics(hint_generic_type_id, var_generic_type_id));
+                    }
+                    self.add_or_find_type_id(Type::GenericInstance(var_struct_id, new_var_generic_ids))
+                } else {
+                    *var_type_id
+                }
+            }
+            _ => *var_type_id
+        }
+    }
+
+    fn type_contains_generics(&self, type_id: &TypeId) -> bool {
+        let ty = self.project.get_type_by_id(type_id);
+        match ty {
+            Type::Builtin(_) => false,
+            Type::Generic(_) => true,
+            Type::GenericInstance(_, generic_ids) => {
+                for type_id in generic_ids {
+                    if self.type_contains_generics(type_id) {
+                        return true;
+                    }
+                }
+
+                false
+            }
+        }
     }
 
     fn resolve_type_identifier(&mut self, type_identifier: &TypeIdentifier) -> Result<TypeId, TypeError> {
@@ -566,12 +673,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let span = token.get_range();
         for var in &current_scope.vars {
             if var.name == name {
-                return Err(TypeError::DuplicateBinding { token: token.clone(), span, original_span: Some(var.defined_span.clone()) });
+                return Err(TypeError::DuplicateBinding { token: token.clone(), span, original_span: var.defined_span.clone() });
             }
         }
 
         let id = VarId { scope_id: current_scope.id, id: current_scope.vars.len() };
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: span };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span) };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -583,6 +690,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         debug_assert!(self.project.modules.is_empty());
 
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), types: vec![], structs: vec![], code: vec![], scopes: vec![] };
+
         prelude_module.types.push(Type::Builtin(PRELUDE_UNIT_TYPE_ID.id));
         prelude_module.types.push(Type::Builtin(PRELUDE_INT_TYPE_ID.id));
         prelude_module.types.push(Type::Builtin(PRELUDE_FLOAT_TYPE_ID.id));
@@ -605,7 +713,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string() });
         self.project.prelude_set_struct_id = set_struct_id;
 
+
         self.project.modules.push(prelude_module);
+
+        // TODO: Generics should be scoped, either to a function or a type. This scopes the generic `T` to the _module_ level, which is clumsy.
+        let generic_t_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, Type::Generic("T".to_string()));
+        let none_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, self.project.option_type(generic_t_type_id));
+        self.project.modules[0].scopes.push(Scope {
+            id: ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 },
+            parent: None,
+            vars: vec![
+                Variable {
+                    id: VarId { scope_id: ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 }, id: 0 },
+                    name: "None".to_string(),
+                    type_id: none_type_id,
+                    is_mutable: false,
+                    is_initialized: true,
+                    defined_span: None,
+                }
+            ],
+        });
     }
 
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
@@ -617,9 +744,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             unimplemented!("Typechecking imports");
         }
 
+        let prelude_scope_id = ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 };
+
         let id = ModuleId { id: self.project.modules.len() };
         let scope_id = ScopeId { module_id: id, id: 0 };
-        let root_scope = Scope { id: scope_id, vars: vec![] };
+        let root_scope = Scope { id: scope_id, parent: Some(prelude_scope_id), vars: vec![] };
         self.project.modules.push(TypedModule {
             id,
             name: file_name,
@@ -687,7 +816,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (None, Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
-                        if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
+                        if *type_id == PRELUDE_UNKNOWN_TYPE_ID || self.type_contains_generics(type_id) {
                             return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id });
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
@@ -949,7 +1078,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Tuple { token, items: typed_items, type_id })
             }
-            AstNode::Identifier(_, _) |
+            AstNode::Identifier(token, n) => {
+                debug_assert!(n.is_none(), "Not implemented yet");
+
+                let name = Token::get_ident_name(&token);
+                let scope_id = ScopeId { module_id: self.current_module().id, id: self.current_scope };
+                let variable = self.project.find_variable_by_name(&scope_id, &name);
+                let Some(Variable { id, type_id, .. }) = variable else {
+                    return Err(TypeError::UnknownIdentifier { span: token.get_range(), token });
+                };
+                let var_id = *id;
+                let mut var_type_id = *type_id;
+
+                if let Some(type_hint) = type_hint {
+                    var_type_id = self.substitute_generics(&type_hint, &var_type_id);
+                }
+
+                Ok(TypedNode::Identifier { token, var_id, type_id: var_type_id })
+            }
             AstNode::Assignment(_, _) |
             AstNode::Indexing(_, _) |
             AstNode::Accessor(_, _) |
