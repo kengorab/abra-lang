@@ -1,4 +1,1 @@
-//val a: Int[] = (true, 43)
-//val a: (Bool, Float) = (true, 43)
-//val a: (Bool, Float, Bool) = (true, 4.3)
-val a: (Bool, Float, Bool, Float) = (true, 4.3, false, 2.1)
+val s: Set<Int> = #{1, 2, 3}

@@ -59,6 +59,7 @@ pub struct Project {
     // cached values
     pub prelude_array_struct_id: StructId,
     pub prelude_tuple_struct_id: StructId,
+    pub prelude_set_struct_id: StructId,
 }
 
 impl Default for Project {
@@ -69,11 +70,16 @@ impl Default for Project {
             modules: vec![],
             prelude_array_struct_id: placeholder_struct_id,
             prelude_tuple_struct_id: placeholder_struct_id,
+            prelude_set_struct_id: placeholder_struct_id,
         }
     }
 }
 
 impl Project {
+    pub fn prelude_module(&self) -> &TypedModule {
+        &self.modules[PRELUDE_MODULE_ID.id]
+    }
+
     pub fn get_type_by_id(&self, type_id: &TypeId) -> &Type {
         let TypeId { module_id: ModuleId { id: module_id }, id } = type_id;
         let module = &self.modules[*module_id];
@@ -84,6 +90,17 @@ impl Project {
         let StructId { module_id: ModuleId { id: module_id }, id } = struct_id;
         let module = &self.modules[*module_id];
         &module.structs[*id]
+    }
+
+    pub fn get_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
+        let module = &self.modules[module_id.id];
+        module.structs.iter()
+            .find(|s| s.name == *name)
+            .or_else(|| {
+                // If struct cannot be found in current module, look in the prelude module
+                self.prelude_module().structs.iter()
+                    .find(|s| s.name == *name)
+            })
     }
 
     pub fn find_type_id(&self, module_id: &ModuleId, ty: &Type) -> Option<TypeId> {
@@ -220,6 +237,7 @@ pub enum TypedNode {
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -234,6 +252,7 @@ impl TypedNode {
             TypedNode::Grouped { expr, .. } => expr.type_id(),
             TypedNode::Array { type_id, .. } => type_id,
             TypedNode::Tuple { type_id, .. } => type_id,
+            TypedNode::Set { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -248,6 +267,7 @@ impl TypedNode {
             TypedNode::Grouped { token, expr } => token.get_range().expand(&expr.span()),
             TypedNode::Array { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
+            TypedNode::Set { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -418,9 +438,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.modules.last_mut().expect("Internal error: there must always be a module being typechecked")
     }
 
+    fn current_module(&self) -> &TypedModule {
+        self.project.modules.last().expect("Internal error: there must always be a module being typechecked")
+    }
+
     fn add_or_find_type_id(&mut self, ty: Type) -> TypeId {
         let current_module_id = self.current_module_mut().id;
         self.project.add_or_find_type_id(&current_module_id, ty)
+    }
+
+    fn get_struct_by_name(&self, name: &String) -> Option<&Struct> {
+        let current_module_id = self.current_module().id;
+        self.project.get_struct_by_name(&current_module_id, name)
     }
 
     fn type_satisfies_other(&self, base_type: &TypeId, target_type: &TypeId) -> bool {
@@ -429,7 +458,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn resolve_type_identifier(&mut self, type_identifier: &TypeIdentifier) -> Result<TypeId, TypeError> {
         match type_identifier {
-            TypeIdentifier::Normal { ident, .. } => {
+            TypeIdentifier::Normal { ident, type_args } => {
                 let ident_name = Token::get_ident_name(ident);
                 match ident_name.as_str() {
                     "Unit" => Ok(PRELUDE_UNIT_TYPE_ID),
@@ -437,7 +466,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     "Float" => Ok(PRELUDE_FLOAT_TYPE_ID),
                     "Bool" => Ok(PRELUDE_BOOL_TYPE_ID),
                     "String" => Ok(PRELUDE_STRING_TYPE_ID),
-                    _ => Err(TypeError::UnknownType { span: ident.get_range(), name: ident_name })
+                    _ => {
+                        let struct_id = self.get_struct_by_name(&ident_name)
+                            .ok_or_else(|| TypeError::UnknownType { span: ident.get_range(), name: ident_name })?
+                            .id;
+
+                        let mut generic_ids = vec![];
+                        if let Some(type_args) = type_args {
+                            for type_arg_identifier in type_args {
+                                let type_id = self.resolve_type_identifier(type_arg_identifier)?;
+                                generic_ids.push(type_id);
+                            }
+                        }
+
+                        Ok(self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids)))
+                    }
                 }
             }
             TypeIdentifier::Array { inner } => {
@@ -496,6 +539,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let tuple_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
         prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string() });
         self.project.prelude_tuple_struct_id = tuple_struct_id;
+
+        let set_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string() });
+        self.project.prelude_set_struct_id = set_struct_id;
 
         self.project.modules.push(prelude_module);
     }
@@ -693,7 +740,42 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Array { token, items: typed_items, type_id })
             }
-            AstNode::Set(_, _) |
+            AstNode::Set(token, n) => {
+                let mut inner_type_id = None;
+                if let Some(type_hint_id) = &type_hint {
+                    let ty = self.project.get_type_by_id(&type_hint_id);
+                    if let Type::GenericInstance(struct_id, generic_ids) = ty {
+                        if *struct_id == self.project.prelude_set_struct_id {
+                            inner_type_id = Some(generic_ids[0]);
+                        }
+                    }
+                }
+
+                let mut typed_items = vec![];
+                for item in n.items {
+                    let typed_item = self.typecheck_expression(item, inner_type_id)?;
+                    let current_value_type_id = typed_item.type_id();
+
+                    match inner_type_id {
+                        None => inner_type_id = Some(*current_value_type_id),
+                        Some(type_id) => {
+                            if type_id != *current_value_type_id {
+                                let span = typed_item.span();
+                                return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
+                            }
+                        }
+                    }
+
+                    typed_items.push(typed_item);
+                }
+
+                let type_id = match inner_type_id {
+                    None => PRELUDE_UNKNOWN_TYPE_ID,
+                    Some(inner_type_id) => self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_set_struct_id, vec![inner_type_id])),
+                };
+
+                Ok(TypedNode::Set { token, items: typed_items, type_id })
+            }
             AstNode::Map(_, _) => todo!(),
             AstNode::Tuple(token, items) => {
                 let mut inner_type_ids = None;

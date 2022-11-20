@@ -72,6 +72,10 @@ fn typecheck_prelude() {
                 id: StructId { module_id: PRELUDE_MODULE_ID, id: 1 },
                 name: "Tuple".to_string(),
             },
+            Struct {
+                id: StructId { module_id: PRELUDE_MODULE_ID, id: 2 },
+                name: "Set".to_string(),
+            },
         ],
         code: vec![],
         scopes: vec![],
@@ -262,6 +266,70 @@ fn typecheck_failure_tuple() {
         span: Range { start: Position::new(1, 30), end: Position::new(1, 39) },
         expected: vec![bool_float_bool_tuple_type_id],
         received: bool_float_tuple_type_id,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_set() {
+    let project = test_typecheck("#{1, 2, 3}").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("#{[1, 2], [3]}").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_array_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![int_array_type_id])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val s: Set<Int> = #{1, 2, 3}").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val s: Set<Int> = #{}").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val s: Set<Set<Int>> = #{#{}}").unwrap();
+    let type_id = project.modules[1].scopes[0].vars[0].type_id;
+    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId { id: 1 }, &Type::GenericInstance(project.prelude_set_struct_id, vec![inner_type_id])).unwrap();
+    assert_eq!(expected, type_id);
+}
+
+#[test]
+fn typecheck_failure_set() {
+    let (_, Either::Right(err)) = test_typecheck("#{1, true, 3}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 6), end: Position::new(1, 9) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val s: Set<Int> = #{true, false}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 21), end: Position::new(1, 24) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val s: Set<Set<Int>> = #{#{true}}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 28), end: Position::new(1, 31) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
+        type_id: PRELUDE_UNKNOWN_TYPE_ID,
     };
     assert_eq!(expected, err);
 }
