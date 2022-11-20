@@ -1,4 +1,4 @@
-use crate::lexer::tokens::Token;
+use crate::lexer::tokens::{Range, Token};
 use std::path::Path;
 use std::hash::{Hash, Hasher};
 
@@ -172,6 +172,28 @@ impl BindingPattern {
             BindingPattern::Variable(ident) => ident,
             BindingPattern::Tuple(lparen_tok, _) => lparen_tok,
             BindingPattern::Array(lbrack_tok, _, _) => lbrack_tok,
+        }
+    }
+
+    pub fn get_span(&self) -> Range {
+        match self {
+            BindingPattern::Variable(ident_token) => ident_token.get_range(),
+            BindingPattern::Tuple(lparen_token, patterns) => {
+                let start = lparen_token.get_range();
+                if let Some(span) = patterns.last().map(|i| i.get_span()) {
+                    start.expand(&span)
+                } else {
+                    start
+                }
+            }
+            BindingPattern::Array(lbrack_token, patterns, _) => {
+                let start = lbrack_token.get_range();
+                if let Some(span) = patterns.last().map(|(p, _)| p.get_span()) {
+                    start.expand(&span)
+                } else {
+                    start
+                }
+            }
         }
     }
 }

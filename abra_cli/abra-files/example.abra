@@ -1,1 +1,2 @@
-val s: Set<Int> = #{1, 2, 3}
+//val (a, b, c) = 1
+//val [a, *b, c] = "asdf"
