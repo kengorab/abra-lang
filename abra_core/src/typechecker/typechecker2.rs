@@ -274,7 +274,8 @@ pub struct Variable {
     pub type_id: TypeId,
     pub is_mutable: bool,
     pub is_initialized: bool,
-    pub defined_span: Option<Range>, // Variables with no defined_span are builtins
+    // Variables with no defined_span are builtins
+    pub defined_span: Option<Range>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -294,11 +295,13 @@ pub struct Function {
     pub body: Vec<TypedNode>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct FunctionParam {
     pub name: String,
     pub type_id: TypeId,
-    pub defined_span: Option<Range>, // Params with no defined_span are builtins
+    // Params with no defined_span are builtins
+    pub defined_span: Option<Range>,
+    pub default_value: Option<TypedNode>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -918,7 +921,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let mut params = vec![];
             for (ident, type_ident, is_vararg, default_value) in args {
                 if *is_vararg { unimplemented!("Internal error: variadic parameters") }
-                if default_value.is_some() { unimplemented!("Internal error: default-valued parameters") }
 
                 let arg_name = Token::get_ident_name(ident);
                 if seen_arg_names.contains(&arg_name) {
@@ -930,9 +932,37 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 if let Some(type_ident) = type_ident {
                     param_type_id = Some(self.resolve_type_identifier(type_ident)?);
                 }
-                let type_id = param_type_id.expect("At this point, type annotations are required since default values are not implemented yet");
+                let typed_default_value_expr = if let Some(default_value) = default_value {
+                    // TODO: Handling retries for first-pass function typechecking with default-value expressions which reference code that hasn't been visited yet
+                    // For example:
+                    //   func foo(bar = baz()) = ...
+                    //   func baz() = ...
+                    // This would fail because `baz` doesn't yet exist when typechecking `foo`.
+                    Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
+                } else { None };
+                let type_id = match (param_type_id, &typed_default_value_expr) {
+                    (None, None) => unreachable!("Internal error: should have failed to parse"),
+                    (Some(param_type_id), None) => param_type_id,
+                    (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
+                    (Some(param_type_id), Some(typed_default_value_expr)) => {
+                        let default_value_type_id = typed_default_value_expr.type_id();
+                        if !self.type_satisfies_other(default_value_type_id, &param_type_id) {
+                            return Err(TypeError::TypeMismatch {
+                                span: typed_default_value_expr.span(),
+                                expected: vec![param_type_id],
+                                received: *default_value_type_id,
+                            });
+                        }
+                        param_type_id
+                    }
+                };
 
-                params.push(FunctionParam { name: arg_name, type_id, defined_span: Some(ident.get_range()) });
+                params.push(FunctionParam {
+                    name: arg_name,
+                    type_id,
+                    defined_span: Some(ident.get_range()),
+                    default_value: typed_default_value_expr,
+                });
             }
 
             let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
@@ -956,10 +986,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let func = self.project.get_func_by_id(&func_id);
             let func_name = func.name.clone();
             let return_type_id = func.return_type_id;
-            for FunctionParam { name, type_id, defined_span } in func.params.clone() {
-                let Some(defined_span) = defined_span else {
-                    unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known");
-                };
+            // Why: rust cannot guarantee that `add_variable_to_current_scope` won't modify `func`; intermediate variable solves
+            let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
+            for (name, type_id, defined_span, ..) in params {
+                let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
+                let defined_span = defined_span.clone();
 
                 self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
             }

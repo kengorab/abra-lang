@@ -603,6 +603,7 @@ fn typecheck_function_declaration() {
                     name: "x".to_string(),
                     type_id: PRELUDE_BOOL_TYPE_ID,
                     defined_span: Some(Range { start: Position::new(2, 10), end: Position::new(2, 10) }),
+                    default_value: None,
                 }
             ],
             return_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -657,6 +658,9 @@ fn typecheck_function_declaration() {
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
+
+    assert!(test_typecheck("func foo(x: Bool[] = []) {}").is_ok());
+    assert!(test_typecheck("func foo(x = 12): Int = x").is_ok());
 }
 
 #[test]
@@ -685,6 +689,31 @@ fn typecheck_failure_function_declaration() {
         func_name: "foo".to_string(),
         expected: PRELUDE_INT_TYPE_ID,
         received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Default-valued parameter tests
+
+    let (_, Either::Right(err)) = test_typecheck("func foo(a = x) {}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownIdentifier {
+        span: Range { start: Position::new(1, 14), end: Position::new(1, 14) },
+        token: Token::Ident(Position::new(1, 14), "x".to_string()),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("func foo(a: Bool[] = [1, 2]) {}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 23), end: Position::new(1, 23) },
+        expected: vec![PRELUDE_BOOL_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("func foo(a: Bool = [1, 2]) {}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 20), end: Position::new(1, 24) },
+        expected: vec![PRELUDE_BOOL_TYPE_ID],
+        received: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
