@@ -1,10 +1,11 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use itertools::{Either, Itertools};
 use crate::parser;
 use crate::parser::parser::ParseResult;
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -94,7 +95,19 @@ impl Project {
         &module.structs[*id]
     }
 
-    pub fn get_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
+    pub fn get_func_by_id(&self, func_id: &FuncId) -> &Function {
+        let FuncId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = func_id;
+        let scope = &self.modules[*module_id].scopes[*scope_id];
+        &scope.funcs[*id]
+    }
+
+    pub fn get_func_by_id_mut(&mut self, func_id: &FuncId) -> &mut Function {
+        let FuncId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = func_id;
+        let scope = &mut self.modules[*module_id].scopes[*scope_id];
+        &mut scope.funcs[*id]
+    }
+
+    pub fn find_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
         let module = &self.modules[module_id.id];
         module.structs.iter()
             .find(|s| s.name == *name)
@@ -245,6 +258,7 @@ pub struct Scope {
     pub id: ScopeId,
     pub parent: Option<ScopeId>,
     pub vars: Vec<Variable>,
+    pub funcs: Vec<Function>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -263,11 +277,37 @@ pub struct Variable {
     pub defined_span: Option<Range>, // Variables with no defined_span are builtins
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct FuncId {
+    pub scope_id: ScopeId,
+    pub id: usize,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Function {
+    pub id: FuncId,
+    pub name: String,
+    pub params: Vec<FunctionParam>,
+    pub return_type_id: TypeId,
+    // Functions with no defined_span are builtins
+    pub defined_span: Option<Range>,
+    pub body: Vec<TypedNode>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionParam {
+    pub name: String,
+    pub type_id: TypeId,
+    pub defined_span: Option<Range>, // Params with no defined_span are builtins
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
     pub types: Vec<Type>,
+    // TODO: is this necessary?
+    pub functions: Vec<FuncId>,
     pub structs: Vec<Struct>,
     pub code: Vec<TypedNode>,
     pub scopes: Vec<Scope>,
@@ -366,10 +406,12 @@ pub enum TypeError {
     UnknownType { span: Range, name: String },
     UnknownIdentifier { span: Range, token: Token },
     MissingBindingInitializer { span: Range, is_mutable: bool },
-    DuplicateBinding { token: Token, span: Range, original_span: Option<Range> },
+    DuplicateBinding { span: Range, name: String, original_span: Option<Range> },
     ForbiddenAssignment { span: Range, type_id: TypeId },
     DestructuringMismatch { span: Range, kind: DestructuringMismatchKind, type_id: TypeId },
     DuplicateSplat { span: Range },
+    DuplicateParameter { span: Range, name: String },
+    ReturnTypeMismatch { span: Range, func_name: String, expected: TypeId, received: TypeId },
 }
 
 impl TypeError {
@@ -402,7 +444,9 @@ impl TypeError {
             TypeError::DuplicateBinding { span, .. } |
             TypeError::ForbiddenAssignment { span, .. } |
             TypeError::DestructuringMismatch { span, .. } |
-            TypeError::DuplicateSplat { span } => span
+            TypeError::DuplicateSplat { span } |
+            TypeError::DuplicateParameter { span, .. } |
+            TypeError::ReturnTypeMismatch { span, .. } => span
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -458,9 +502,8 @@ impl TypeError {
                     cursor_line, msg
                 )
             }
-            TypeError::DuplicateBinding { token, original_span, .. } => {
-                let ident = Token::get_ident_name(&token);
-                let first_msg = format!("Duplicate variable '{}'\n{}", &ident, cursor_line);
+            TypeError::DuplicateBinding { name, original_span, .. } => {
+                let first_msg = format!("Duplicate name '{}'\n{}", &name, cursor_line);
 
                 let second_msg = if let Some(original_span) = original_span {
                     let pos = &original_span.start;
@@ -512,6 +555,22 @@ impl TypeError {
                     cursor_line
                 )
             }
+            TypeError::DuplicateParameter { name, .. } => {
+                format!("Duplicate parameter '{}'\n{}", &name, cursor_line)
+            }
+            TypeError::ReturnTypeMismatch { expected, received, func_name, .. } => {
+                let expected_repr = project.type_repr(expected);
+                let received_repr = project.type_repr(received);
+
+                format!(
+                    "Return type mismatch for function '{}'\n{}\n\
+                    Expected: {}\n\
+                    but instead saw: {}",
+                    func_name, cursor_line,
+                    expected_repr,
+                    received_repr,
+                )
+            }
         };
 
         let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
@@ -547,7 +606,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn get_struct_by_name(&self, name: &String) -> Option<&Struct> {
         let current_module_id = self.current_module().id;
-        self.project.get_struct_by_name(&current_module_id, name)
+        self.project.find_struct_by_name(&current_module_id, name)
     }
 
     fn type_satisfies_other(&self, base_type: &TypeId, target_type: &TypeId) -> bool {
@@ -666,22 +725,73 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, token: &Token) -> Result<VarId, TypeError> {
+    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Range) -> Result<VarId, TypeError> {
         let current_scope_idx = self.current_scope;
         let current_scope = &mut self.current_module_mut().scopes[current_scope_idx];
 
-        let span = token.get_range();
+        // let span = token.get_range();
         for var in &current_scope.vars {
             if var.name == name {
-                return Err(TypeError::DuplicateBinding { token: token.clone(), span, original_span: var.defined_span.clone() });
+                return Err(TypeError::DuplicateBinding { span: span.clone(), name, original_span: var.defined_span.clone() });
             }
         }
 
         let id = VarId { scope_id: current_scope.id, id: current_scope.vars.len() };
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span) };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()) };
         current_scope.vars.push(var);
 
         Ok(id)
+    }
+
+    fn add_function_to_current_scope(&mut self, name_token: &Token, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
+        let current_scope_idx = self.current_scope;
+        let current_scope = &mut self.current_module_mut().scopes[current_scope_idx];
+
+        let name = Token::get_ident_name(name_token);
+        let span = name_token.get_range();
+        for func in &current_scope.funcs {
+            if func.name == name {
+                return Err(TypeError::DuplicateBinding { span, name, original_span: func.defined_span.clone() });
+            }
+        }
+
+        let id = FuncId { scope_id: current_scope.id, id: current_scope.funcs.len() };
+        let func = Function { id, name, params, return_type_id, defined_span: Some(span), body: vec![] };
+        current_scope.funcs.push(func);
+
+        Ok(id)
+    }
+
+    fn begin_child_scope(&mut self) -> ScopeId {
+        let current_scope_id = self.current_scope;
+        let current_module = self.current_module_mut();
+        let current_scope = &current_module.scopes[current_scope_id];
+        let new_scope_id = ScopeId { module_id: current_module.id, id: current_module.scopes.len() };
+
+        let child_scope = Scope {
+            id: new_scope_id,
+            parent: Some(current_scope.id),
+            vars: vec![],
+            funcs: vec![],
+        };
+        current_module.scopes.push(child_scope);
+
+        self.current_scope = new_scope_id.id;
+
+        new_scope_id
+    }
+
+    fn end_child_scope(&mut self) -> ScopeId {
+        let current_scope_id = self.current_scope;
+        let current_module = self.current_module_mut();
+        let current_scope = &current_module.scopes[current_scope_id];
+
+        let Some(parent) = current_scope.parent else {
+            unreachable!("Internal error: a child scope must always have a parent");
+        };
+        self.current_scope = parent.id;
+
+        parent
     }
 
     /* TYPECHECKING */
@@ -689,7 +799,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_prelude(&mut self) {
         debug_assert!(self.project.modules.is_empty());
 
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), types: vec![], structs: vec![], code: vec![], scopes: vec![] };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), types: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
 
         prelude_module.types.push(Type::Builtin(PRELUDE_UNIT_TYPE_ID.id));
         prelude_module.types.push(Type::Builtin(PRELUDE_INT_TYPE_ID.id));
@@ -732,6 +842,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     defined_span: None,
                 }
             ],
+            funcs: vec![], // TODO: Add println, print, and range
         });
     }
 
@@ -748,11 +859,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let id = ModuleId { id: self.project.modules.len() };
         let scope_id = ScopeId { module_id: id, id: 0 };
-        let root_scope = Scope { id: scope_id, parent: Some(prelude_scope_id), vars: vec![] };
+        let root_scope = Scope { id: scope_id, parent: Some(prelude_scope_id), vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
             id,
             name: file_name,
             types: vec![],
+            functions: vec![],
             structs: vec![],
             code: vec![],
             scopes: vec![root_scope],
@@ -771,19 +883,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         for node in nodes {
             match node {
-                n @ AstNode::FunctionDecl(_, _) => func_decls.push(n),
+                AstNode::FunctionDecl(token, node) => func_decls.push((token, node)),
                 n @ AstNode::TypeDecl(_, _) => type_decls.push(n),
                 n @ AstNode::EnumDecl(_, _) => enum_decls.push(n),
                 n => code.push(n),
             }
         }
 
-        debug_assert!(func_decls.is_empty());
+        let func_ids = self.typecheck_functions_pass_1(&func_decls)?;
+        self.typecheck_functions_pass_2(func_ids, func_decls)?;
+
         debug_assert!(type_decls.is_empty());
         debug_assert!(enum_decls.is_empty());
 
         for node in code {
-            let typed_node = self.typecheck_statement(node)?;
+            let typed_node = self.typecheck_statement(node, None)?;
 
             let current_module = self.current_module_mut();
             current_module.code.push(typed_node);
@@ -792,7 +906,93 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_statement(&mut self, node: AstNode) -> Result<TypedNode, TypeError> {
+    fn typecheck_functions_pass_1(&mut self, func_decls: &Vec<(Token, FunctionDeclNode)>) -> Result<Vec<FuncId>, TypeError> {
+        let mut func_ids = vec![];
+
+        for (_, node) in func_decls {
+            let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
+            if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+            if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
+
+            let mut seen_arg_names = HashSet::new();
+            let mut params = vec![];
+            for (ident, type_ident, is_vararg, default_value) in args {
+                if *is_vararg { unimplemented!("Internal error: variadic parameters") }
+                if default_value.is_some() { unimplemented!("Internal error: default-valued parameters") }
+
+                let arg_name = Token::get_ident_name(ident);
+                if seen_arg_names.contains(&arg_name) {
+                    return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: arg_name });
+                }
+                seen_arg_names.insert(arg_name.clone());
+
+                let mut param_type_id = None;
+                if let Some(type_ident) = type_ident {
+                    param_type_id = Some(self.resolve_type_identifier(type_ident)?);
+                }
+                let type_id = param_type_id.expect("At this point, type annotations are required since default values are not implemented yet");
+
+                params.push(FunctionParam { name: arg_name, type_id, defined_span: Some(ident.get_range()) });
+            }
+
+            let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
+            if let Some(ret_type) = ret_type {
+                return_type_id = self.resolve_type_identifier(ret_type)?;
+            }
+            let func_id = self.add_function_to_current_scope(name, params, return_type_id)?;
+            self.current_module_mut().functions.push(func_id);
+            func_ids.push(func_id);
+        }
+
+        Ok(func_ids)
+    }
+
+    fn typecheck_functions_pass_2(&mut self, func_ids: Vec<FuncId>, func_decls: Vec<(Token, FunctionDeclNode)>) -> Result<(), TypeError> {
+        debug_assert!(func_ids.len() == func_decls.len(), "There should be a FuncId generated for each function declaration");
+
+        for (func_id, (_, node)) in func_ids.into_iter().zip(func_decls.into_iter()) {
+            self.begin_child_scope();
+
+            let func = self.project.get_func_by_id(&func_id);
+            let func_name = func.name.clone();
+            let return_type_id = func.return_type_id;
+            for FunctionParam { name, type_id, defined_span } in func.params.clone() {
+                let Some(defined_span) = defined_span else {
+                    unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known");
+                };
+
+                self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
+            }
+
+            let mut body = vec![];
+            let num_nodes = node.body.len();
+            for (idx, node) in node.body.into_iter().enumerate() {
+                let is_last = idx == num_nodes - 1;
+                let type_hint = if is_last {
+                    Some(return_type_id)
+                } else {
+                    None
+                };
+                let typed_node = self.typecheck_statement(node, type_hint)?;
+                let type_id = typed_node.type_id();
+
+                if (is_last && return_type_id != PRELUDE_UNIT_TYPE_ID) && !self.type_satisfies_other(type_id, &return_type_id) {
+                    return Err(TypeError::ReturnTypeMismatch { span: typed_node.span(), func_name, expected: return_type_id, received: *type_id });
+                }
+
+                body.push(typed_node);
+            }
+
+            let func = self.project.get_func_by_id_mut(&func_id);
+            func.body = body;
+
+            self.end_child_scope();
+        }
+
+        Ok(())
+    }
+
+    fn typecheck_statement(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
         match node {
             AstNode::BindingDecl(token, n) => {
                 let BindingDeclNode { export_token, binding, type_ann, expr, is_mutable } = n;
@@ -850,7 +1050,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             AstNode::TypeDecl(_, _) |
             AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
             AstNode::ImportStatement(_, _) => unreachable!("Internal error: imports should have been handled before typechecking the body"),
-            n => self.typecheck_expression(n, None)
+            n => self.typecheck_expression(n, type_hint)
         }
     }
 
@@ -859,7 +1059,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Variable(var_token) => {
                 let var_name = Token::get_ident_name(&var_token);
 
-                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, var_token)?;
+                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, &var_token.get_range())?;
                 var_ids.push(var_id);
             }
             BindingPattern::Tuple(_, patterns) => {

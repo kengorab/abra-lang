@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
-use crate::parser::ast::UnaryOp;
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, PRELUDE_UNKNOWN_TYPE_ID, Scope, TypeId};
+use crate::parser::ast::{BindingPattern, UnaryOp};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, PRELUDE_UNKNOWN_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -69,6 +69,7 @@ fn typecheck_prelude() {
                 vec![project.find_type_id(&PRELUDE_MODULE_ID, &Type::Generic("T".to_string())).unwrap()],
             ),
         ],
+        functions: vec![],
         structs: vec![
             Struct {
                 id: StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
@@ -102,6 +103,7 @@ fn typecheck_prelude() {
                         defined_span: None,
                     }
                 ],
+                funcs: vec![],
             }
         ],
     };
@@ -537,8 +539,8 @@ fn typecheck_failure_binding_declaration() {
 
     let (_, Either::Right(err)) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateBinding {
-        token: Token::Ident(Position::new(2, 5), "x".to_string()),
         span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
+        name: "x".to_string(),
         original_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
     };
     assert_eq!(expected, err);
@@ -559,6 +561,130 @@ fn typecheck_failure_binding_declaration() {
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
         is_mutable: true,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_function_declaration() {
+    let project = test_typecheck("func foo(): Int = 24").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Function {
+            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "foo".to_string(),
+            params: vec![],
+            return_type_id: PRELUDE_INT_TYPE_ID,
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            body: vec![
+                TypedNode::Literal {
+                    token: Token::Int(Position::new(1, 19), 24),
+                    value: TypedLiteral::Int(24),
+                    type_id: PRELUDE_INT_TYPE_ID,
+                }
+            ],
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].funcs);
+
+    let project = test_typecheck("\
+      val x = 24\n\
+      func foo(x: Bool) {\n\
+        val y = !x\n\
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Function {
+            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "foo".to_string(),
+            params: vec![
+                FunctionParam {
+                    name: "x".to_string(),
+                    type_id: PRELUDE_BOOL_TYPE_ID,
+                    defined_span: Some(Range { start: Position::new(2, 10), end: Position::new(2, 10) }),
+                }
+            ],
+            return_type_id: PRELUDE_UNIT_TYPE_ID,
+            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            body: vec![
+                TypedNode::BindingDeclaration {
+                    token: Token::Val(Position::new(3, 1)),
+                    pattern: BindingPattern::Variable(Token::Ident(Position::new(3, 5), "y".to_string())),
+                    vars: vec![
+                        VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 1 }, id: 1 }
+                    ],
+                    expr: Some(Box::new(TypedNode::Unary {
+                        token: Token::Bang(Position::new(3, 9)),
+                        op: UnaryOp::Negate,
+                        expr: Box::new(TypedNode::Identifier {
+                            token: Token::Ident(Position::new(3, 10), "x".to_string()),
+                            var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 1 }, id: 0 },
+                            type_id: PRELUDE_BOOL_TYPE_ID,
+                        }),
+                    })),
+                },
+            ],
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].funcs);
+
+    let project = test_typecheck("func foo(): (Bool, Bool)[] = []").unwrap();
+    let module = &project.modules[1];
+    let bool_bool_tuple_array_type_id = project.find_type_id(
+        &ModuleId { id: 1 },
+        &project.array_type(
+            project.find_type_id(
+                &ModuleId { id: 1 },
+                &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID]),
+            ).unwrap()
+        ),
+    ).unwrap();
+    let expected = vec![
+        Function {
+            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "foo".to_string(),
+            params: vec![],
+            return_type_id: bool_bool_tuple_array_type_id,
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            body: vec![
+                TypedNode::Array {
+                    token: Token::LBrack(Position::new(1, 30), false),
+                    items: vec![],
+                    type_id: bool_bool_tuple_array_type_id,
+                },
+            ],
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].funcs);
+}
+
+#[test]
+fn typecheck_failure_function_declaration() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int): Int = a\n\
+      func foo(b: Bool): Bool = b\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateBinding {
+        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        name: "foo".to_string(),
+        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("func foo(a: Int, a: Bool) = a").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateParameter {
+        span: Range { start: Position::new(1, 18), end: Position::new(1, 18) },
+        name: "a".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("func foo(a: Bool): Int = a").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ReturnTypeMismatch {
+        span: Range { start: Position::new(1, 26), end: Position::new(1, 26) },
+        func_name: "foo".to_string(),
+        expected: PRELUDE_INT_TYPE_ID,
+        received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
 }
