@@ -107,6 +107,18 @@ impl Project {
         &mut scope.funcs[*id]
     }
 
+    pub fn get_var_by_id(&self, var_id: &VarId) -> &Variable {
+        let VarId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = var_id;
+        let scope = &self.modules[*module_id].scopes[*scope_id];
+        &scope.vars[*id]
+    }
+
+    pub fn get_var_by_id_mut(&mut self, var_id: &VarId) -> &mut Variable {
+        let VarId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = var_id;
+        let scope = &mut self.modules[*module_id].scopes[*scope_id];
+        &mut scope.vars[*id]
+    }
+
     pub fn find_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
         let module = &self.modules[module_id.id];
         module.structs.iter()
@@ -276,6 +288,7 @@ pub struct Variable {
     pub is_initialized: bool,
     // Variables with no defined_span are builtins
     pub defined_span: Option<Range>,
+    pub is_captured: bool,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -293,6 +306,7 @@ pub struct Function {
     // Functions with no defined_span are builtins
     pub defined_span: Option<Range>,
     pub body: Vec<TypedNode>,
+    pub captured_vars: Vec<VarId>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -585,11 +599,12 @@ pub struct Typechecker2<'a, L: LoadModule> {
     module_loader: &'a L,
     project: &'a mut Project,
     current_scope: usize,
+    current_function: Option<FuncId>,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope: 0 }
+        Typechecker2 { module_loader, project, current_scope: 0, current_function: None }
     }
 
     /* UTILITIES */
@@ -732,7 +747,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_scope_idx = self.current_scope;
         let current_scope = &mut self.current_module_mut().scopes[current_scope_idx];
 
-        // let span = token.get_range();
         for var in &current_scope.vars {
             if var.name == name {
                 return Err(TypeError::DuplicateBinding { span: span.clone(), name, original_span: var.defined_span.clone() });
@@ -740,7 +754,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let id = VarId { scope_id: current_scope.id, id: current_scope.vars.len() };
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()) };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -759,7 +773,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let id = FuncId { scope_id: current_scope.id, id: current_scope.funcs.len() };
-        let func = Function { id, name, params, return_type_id, defined_span: Some(span), body: vec![] };
+        let func = Function { id, name, params, return_type_id, defined_span: Some(span), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
 
         Ok(id)
@@ -795,6 +809,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope = parent.id;
 
         parent
+    }
+
+    fn scope_contains_other(&self, inner: &ScopeId, outer: &ScopeId) -> bool {
+        // if inner == outer {
+        //     return true;
+        // }
+
+        let inner_scope = &self.project.modules[inner.module_id.id].scopes[inner.id];
+        let mut parent = inner_scope.parent;
+        while let Some(parent_id) = parent {
+            if parent_id == *outer {
+                return true;
+            }
+
+            let parent_scope = &self.project.modules[parent_id.module_id.id].scopes[parent_id.id];
+            parent = parent_scope.parent;
+        }
+
+        false
     }
 
     /* TYPECHECKING */
@@ -843,6 +876,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     is_mutable: false,
                     is_initialized: true,
                     defined_span: None,
+                    is_captured: false,
                 }
             ],
             funcs: vec![], // TODO: Add println, print, and range
@@ -882,34 +916,45 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut func_decls = Vec::new();
         let mut type_decls = Vec::new();
         let mut enum_decls = Vec::new();
-        let mut code = Vec::new();
 
-        for node in nodes {
+        for node in &nodes {
             match node {
                 AstNode::FunctionDecl(token, node) => func_decls.push((token, node)),
                 n @ AstNode::TypeDecl(_, _) => type_decls.push(n),
                 n @ AstNode::EnumDecl(_, _) => enum_decls.push(n),
-                n => code.push(n),
+                _ => {}
             }
         }
 
-        let func_ids = self.typecheck_functions_pass_1(&func_decls)?;
-        self.typecheck_functions_pass_2(func_ids, func_decls)?;
+        let func_ids = self.typecheck_functions_pass_1(func_decls)?;
 
         debug_assert!(type_decls.is_empty());
         debug_assert!(enum_decls.is_empty());
 
-        for node in code {
-            let typed_node = self.typecheck_statement(node, None)?;
+        let mut fn_idx = 0;
+        for node in nodes {
+            match node {
+                AstNode::FunctionDecl(token, decl_node) => {
+                    debug_assert!(fn_idx < func_ids.len(), "There should be a FuncId for each declaration in this block");
 
-            let current_module = self.current_module_mut();
-            current_module.code.push(typed_node);
+                    let func_id = func_ids[fn_idx];
+                    fn_idx += 1;
+
+                    self.typecheck_function_pass_2(func_id, (token, decl_node))?;
+                }
+                node => {
+                    let typed_node = self.typecheck_statement(node, None)?;
+
+                    let current_module = self.current_module_mut();
+                    current_module.code.push(typed_node);
+                }
+            }
         }
 
         Ok(())
     }
 
-    fn typecheck_functions_pass_1(&mut self, func_decls: &Vec<(Token, FunctionDeclNode)>) -> Result<Vec<FuncId>, TypeError> {
+    fn typecheck_functions_pass_1(&mut self, func_decls: Vec<(&Token, &FunctionDeclNode)>) -> Result<Vec<FuncId>, TypeError> {
         let mut func_ids = vec![];
 
         for (_, node) in func_decls {
@@ -977,48 +1022,49 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_ids)
     }
 
-    fn typecheck_functions_pass_2(&mut self, func_ids: Vec<FuncId>, func_decls: Vec<(Token, FunctionDeclNode)>) -> Result<(), TypeError> {
-        debug_assert!(func_ids.len() == func_decls.len(), "There should be a FuncId generated for each function declaration");
+    fn typecheck_function_pass_2(&mut self, func_id: FuncId, func_decl: (Token, FunctionDeclNode)) -> Result<(), TypeError> {
+        let (_, node) = func_decl;
+        let orig_func_id = self.current_function;
+        self.current_function = Some(func_id);
 
-        for (func_id, (_, node)) in func_ids.into_iter().zip(func_decls.into_iter()) {
-            self.begin_child_scope();
+        self.begin_child_scope();
 
-            let func = self.project.get_func_by_id(&func_id);
-            let func_name = func.name.clone();
-            let return_type_id = func.return_type_id;
-            // Why: rust cannot guarantee that `add_variable_to_current_scope` won't modify `func`; intermediate variable solves
-            let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
-            for (name, type_id, defined_span, ..) in params {
-                let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
-                let defined_span = defined_span.clone();
+        let func = self.project.get_func_by_id(&func_id);
+        let func_name = func.name.clone();
+        let return_type_id = func.return_type_id;
+        // Why: rust cannot guarantee that `add_variable_to_current_scope` won't modify `func`; intermediate variable solves
+        let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
+        for (name, type_id, defined_span, ..) in params {
+            let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
+            let defined_span = defined_span.clone();
 
-                self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
-            }
-
-            let mut body = vec![];
-            let num_nodes = node.body.len();
-            for (idx, node) in node.body.into_iter().enumerate() {
-                let is_last = idx == num_nodes - 1;
-                let type_hint = if is_last {
-                    Some(return_type_id)
-                } else {
-                    None
-                };
-                let typed_node = self.typecheck_statement(node, type_hint)?;
-                let type_id = typed_node.type_id();
-
-                if (is_last && return_type_id != PRELUDE_UNIT_TYPE_ID) && !self.type_satisfies_other(type_id, &return_type_id) {
-                    return Err(TypeError::ReturnTypeMismatch { span: typed_node.span(), func_name, expected: return_type_id, received: *type_id });
-                }
-
-                body.push(typed_node);
-            }
-
-            let func = self.project.get_func_by_id_mut(&func_id);
-            func.body = body;
-
-            self.end_child_scope();
+            self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
         }
+
+        let mut body = vec![];
+        let num_nodes = node.body.len();
+        for (idx, node) in node.body.into_iter().enumerate() {
+            let is_last = idx == num_nodes - 1;
+            let type_hint = if is_last {
+                Some(return_type_id)
+            } else {
+                None
+            };
+            let typed_node = self.typecheck_statement(node, type_hint)?;
+            let type_id = typed_node.type_id();
+
+            if (is_last && return_type_id != PRELUDE_UNIT_TYPE_ID) && !self.type_satisfies_other(type_id, &return_type_id) {
+                return Err(TypeError::ReturnTypeMismatch { span: typed_node.span(), func_name, expected: return_type_id, received: *type_id });
+            }
+
+            body.push(typed_node);
+        }
+
+        let func = self.project.get_func_by_id_mut(&func_id);
+        func.body = body;
+
+        self.end_child_scope();
+        self.current_function = orig_func_id;
 
         Ok(())
     }
@@ -1148,8 +1194,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             *type_id
                         }
                     } else {
-                        // self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_option_struct_id, vec![inner_type_id]))
-                        self.add_or_find_type_id(self.project.option_type(inner_type_id)) //Type::GenericInstance(self.project.prelude_option_struct_id, vec![inner_type_id]))
+                        self.add_or_find_type_id(self.project.option_type(inner_type_id))
                     };
 
                     self.typecheck_binding_pattern(is_mutable, is_initialized, pattern, &type_id, var_ids)?;
@@ -1323,6 +1368,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let Some(type_hint) = type_hint {
                     var_type_id = self.substitute_generics(&type_hint, &var_type_id);
+                }
+
+                if let Some(func_id) = self.current_function {
+                    if !self.scope_contains_other(&var_id.scope_id, &func_id.scope_id) {
+                        let var = self.project.get_var_by_id_mut(&var_id);
+                        var.is_captured = true;
+
+                        let func = self.project.get_func_by_id_mut(&func_id);
+                        func.captured_vars.push(var_id);
+                    }
                 }
 
                 Ok(TypedNode::Identifier { token, var_id, type_id: var_type_id })

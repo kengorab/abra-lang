@@ -1,1 +1,5 @@
-func foo(a: Bool[] = [1]): Int = -a
+val a = 123
+
+func foo(): Int {
+  -a
+}

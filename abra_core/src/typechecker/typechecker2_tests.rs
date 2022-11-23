@@ -101,6 +101,7 @@ fn typecheck_prelude() {
                         is_mutable: false,
                         is_initialized: true,
                         defined_span: None,
+                        is_captured: false,
                     }
                 ],
                 funcs: vec![],
@@ -373,6 +374,7 @@ fn typecheck_none() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            is_captured: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -387,6 +389,7 @@ fn typecheck_none() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            is_captured: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -409,6 +412,7 @@ fn typecheck_none() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            is_captured: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -451,6 +455,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 11), end: Position::new(2, 11) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -459,6 +464,7 @@ fn typecheck_binding_declaration() {
             is_mutable: true,
             is_initialized: false,
             defined_span: Some(Range { start: Position::new(3, 11), end: Position::new(3, 11) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -467,6 +473,7 @@ fn typecheck_binding_declaration() {
             is_mutable: true,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(4, 11), end: Position::new(4, 11) }),
+            is_captured: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -483,6 +490,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 12), end: Position::new(2, 12) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -491,6 +499,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 15), end: Position::new(2, 15) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -499,6 +508,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 3 },
@@ -507,6 +517,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 4 },
@@ -515,6 +526,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 28), end: Position::new(2, 28) }),
+            is_captured: false,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 5 },
@@ -523,6 +535,7 @@ fn typecheck_binding_declaration() {
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
+            is_captured: false,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -567,6 +580,7 @@ fn typecheck_failure_binding_declaration() {
 
 #[test]
 fn typecheck_function_declaration() {
+    // Simple example
     let project = test_typecheck("func foo(): Int = 24").unwrap();
     let module = &project.modules[1];
     let expected = vec![
@@ -583,10 +597,12 @@ fn typecheck_function_declaration() {
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
+            captured_vars: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
 
+    // Test referencing parameters and having inner expressions
     let project = test_typecheck("\
       val x = 24\n\
       func foo(x: Bool) {\n\
@@ -626,10 +642,12 @@ fn typecheck_function_declaration() {
                     })),
                 },
             ],
+            captured_vars: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
 
+    // Test using return type as hint
     let project = test_typecheck("func foo(): (Bool, Bool)[] = []").unwrap();
     let module = &project.modules[1];
     let bool_bool_tuple_array_type_id = project.find_type_id(
@@ -655,9 +673,47 @@ fn typecheck_function_declaration() {
                     type_id: bool_bool_tuple_array_type_id,
                 },
             ],
+            captured_vars: vec![],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
+
+    // Test captured variables
+    let project = test_typecheck("\
+      val x = 24\n\
+      func foo(): Int = x\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Function {
+            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "foo".to_string(),
+            params: vec![],
+            return_type_id: PRELUDE_INT_TYPE_ID,
+            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            body: vec![
+                TypedNode::Identifier {
+                    token: Token::Ident(Position::new(2, 19), "x".to_string()),
+                    var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+                    type_id: PRELUDE_INT_TYPE_ID,
+                }
+            ],
+            captured_vars: vec![
+                VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            ],
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].funcs);
+    let expected = Variable {
+        id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+        name: "x".to_string(),
+        type_id: PRELUDE_INT_TYPE_ID,
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        is_captured: true,
+    };
+    assert_eq!(expected, module.scopes[0].vars[0]);
 
     assert!(test_typecheck("func foo(x: Bool[] = []) {}").is_ok());
     assert!(test_typecheck("func foo(x = 12): Int = x").is_ok());
