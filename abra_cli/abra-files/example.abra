@@ -1,5 +1,10 @@
-val a = 123
+func foo(a: Int, b: Bool, c = 123): Int = -1
 
-func foo(): Int {
-  -a
-}
+//val a = 123
+//a()
+
+//foo(1, true, false)
+//foo(b: true)
+//foo(a: 1, b: true, a: 4)
+//foo(123, b: true)
+foo(a: 123, true)

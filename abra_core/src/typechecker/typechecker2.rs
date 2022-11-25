@@ -5,7 +5,7 @@ use crate::parser;
 use crate::parser::parser::ParseResult;
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -182,6 +182,10 @@ impl Project {
         Type::GenericInstance(self.prelude_tuple_struct_id, inner_type_ids)
     }
 
+    pub fn function_type(&self, param_type_ids: Vec<TypeId>, return_type_id: TypeId) -> Type {
+        Type::Function(param_type_ids, return_type_id)
+    }
+
     pub fn type_repr(&self, type_id: &TypeId) -> String {
         if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
             return "_".to_string();
@@ -225,6 +229,11 @@ impl Project {
                     format!("{}<{}>", struct_.name, inner_type_reprs)
                 }
             }
+            Type::Function(param_type_ids, return_type_id) => {
+                let param_reprs = param_type_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+                let return_repr = self.type_repr(return_type_id);
+                format!("({}) => {}", param_reprs, return_repr)
+            }
         }
     }
 }
@@ -257,6 +266,7 @@ pub enum Type {
     Builtin(/* prelude_type_idx: */ usize),
     Generic(String),
     GenericInstance(StructId, Vec<TypeId>),
+    Function(Vec<TypeId>, TypeId),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -289,6 +299,7 @@ pub struct Variable {
     // Variables with no defined_span are builtins
     pub defined_span: Option<Range>,
     pub is_captured: bool,
+    pub alias: Option<FuncId>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -340,6 +351,7 @@ pub enum TypedNode {
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_id: TypeId },
+    Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -356,6 +368,7 @@ impl TypedNode {
             TypedNode::Tuple { type_id, .. } => type_id,
             TypedNode::Set { type_id, .. } => type_id,
             TypedNode::Identifier { type_id, .. } => type_id,
+            TypedNode::Invocation { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -372,6 +385,27 @@ impl TypedNode {
             TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Set { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Identifier { token, .. } => token.get_range(),
+            TypedNode::Invocation { target, arguments, .. } => {
+                let start = target.span();
+                let mut max = None;
+                for arg in arguments {
+                    if let Some(arg) = arg {
+                        let arg_span = arg.span();
+                        match &max {
+                            None => max = Some(arg_span),
+                            Some(max_span) => if arg_span.end.line > max_span.end.line && arg_span.end.col > max_span.end.col {
+                                max = Some(arg_span)
+                            }
+                        }
+                    }
+                }
+
+                if let Some(max) = &max {
+                    start.expand(max)
+                } else {
+                    start
+                }
+            }
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -429,6 +463,11 @@ pub enum TypeError {
     DuplicateSplat { span: Range },
     DuplicateParameter { span: Range, name: String },
     ReturnTypeMismatch { span: Range, func_name: String, expected: TypeId, received: TypeId },
+    IllegalInvocation { span: Range, type_id: TypeId },
+    UnexpectedArgumentName { span: Range, arg_name: String },
+    MixedArgumentType { span: Range },
+    DuplicateArgumentLabel { span: Range, name: String },
+    InvalidArity { span: Range, num_required_args: usize, num_provided_args: usize },
 }
 
 impl TypeError {
@@ -463,7 +502,12 @@ impl TypeError {
             TypeError::DestructuringMismatch { span, .. } |
             TypeError::DuplicateSplat { span } |
             TypeError::DuplicateParameter { span, .. } |
-            TypeError::ReturnTypeMismatch { span, .. } => span
+            TypeError::ReturnTypeMismatch { span, .. } |
+            TypeError::IllegalInvocation { span, .. } |
+            TypeError::UnexpectedArgumentName { span, .. } |
+            TypeError::MixedArgumentType { span, .. } |
+            TypeError::DuplicateArgumentLabel { span, .. } |
+            TypeError::InvalidArity { span, .. } => span,
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -588,6 +632,44 @@ impl TypeError {
                     received_repr,
                 )
             }
+            TypeError::IllegalInvocation { type_id, .. } => {
+                format!(
+                    "Cannot invoke target as function\n{}\n\
+                    Type {} is not callable",
+                    cursor_line, project.type_repr(type_id)
+                )
+            }
+
+            TypeError::UnexpectedArgumentName { arg_name, .. } => {
+                format!(
+                    "Unexpected argument label '{}'\n{}\n\
+                    This function doesn't have a parameter called '{}'",
+                    arg_name, cursor_line, arg_name,
+                )
+            }
+            TypeError::MixedArgumentType { .. } => {
+                format!(
+                    "Invalid function call\n{}\n\
+                    Cannot mix named and positional arguments.",
+                    cursor_line
+                )
+            }
+            TypeError::DuplicateArgumentLabel { name, .. } => {
+                format!(
+                    "Duplicate parameter name '{}'\n{}\n\
+                    A value has already been passed for this parameter",
+                    name, cursor_line,
+                )
+            }
+            TypeError::InvalidArity { num_required_args, num_provided_args, .. } => {
+                format!(
+                    "Incorrect arity for invocation\n{}\n\
+                    Expected {} required argument{}, but {} {} passed",
+                    cursor_line,
+                    num_required_args, if *num_required_args == 1 { "" } else { "s" },
+                    num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
+                )
+            }
         };
 
         let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
@@ -690,6 +772,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 false
             }
+            Type::Function(param_type_ids, return_type_id) => {
+                if self.type_contains_generics(return_type_id) {
+                    return true;
+                }
+
+                for type_id in param_type_ids {
+                    if self.type_contains_generics(type_id) {
+                        return true;
+                    }
+                }
+
+                false
+            }
         }
     }
 
@@ -754,7 +849,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let id = VarId { scope_id: current_scope.id, id: current_scope.vars.len() };
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: None };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -772,11 +867,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let id = FuncId { scope_id: current_scope.id, id: current_scope.funcs.len() };
-        let func = Function { id, name, params, return_type_id, defined_span: Some(span), body: vec![], captured_vars: vec![] };
+        let param_type_ids = params.iter().map(|p| p.type_id).collect();
+
+        let func_id = FuncId { scope_id: current_scope.id, id: current_scope.funcs.len() };
+        let func = Function { id: func_id, name: name.clone(), params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
 
-        Ok(id)
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type(param_type_ids, return_type_id));
+        let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
+        let variable = self.project.get_var_by_id_mut(&fn_var_id);
+        variable.alias = Some(func_id);
+
+        Ok(func_id)
     }
 
     fn begin_child_scope(&mut self) -> ScopeId {
@@ -877,6 +979,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     is_initialized: true,
                     defined_span: None,
                     is_captured: false,
+                    alias: None,
                 }
             ],
             funcs: vec![], // TODO: Add println, print, and range
@@ -1384,8 +1487,87 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             AstNode::Assignment(_, _) |
             AstNode::Indexing(_, _) |
-            AstNode::Accessor(_, _) |
-            AstNode::Invocation(_, _) |
+            AstNode::Accessor(_, _) => todo!(),
+            AstNode::Invocation(token, n) => {
+                let InvocationNode { target, args } = n;
+
+                let typed_target = self.typecheck_expression(*target, None)?;
+                let (params_data, return_type_id) = match &typed_target {
+                    TypedNode::Identifier { var_id, type_id, .. } => {
+                        let var = self.project.get_var_by_id(var_id);
+                        if let Some(alias_func_id) = var.alias {
+                            let function = self.project.get_func_by_id(&alias_func_id);
+
+                            let params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
+                            (params_data, function.return_type_id)
+                        } else {
+                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *type_id });
+                        }
+                    }
+                    _ => unimplemented!("Internal error: invocation of target expression not implemented")
+                };
+
+                let num_required_args = params_data.len();
+                let num_provided_args = args.len();
+
+                let mut seen_labels = HashSet::new();
+                let mut typed_arguments = (0..params_data.len()).map(|_| None).collect_vec();
+                for (idx, (label, arg_node)) in args.into_iter().enumerate() {
+                    let (param_idx, _, param_type_id, _) = if let Some(label) = label {
+                        if idx > 0 && seen_labels.is_empty() {
+                            return Err(TypeError::MixedArgumentType { span: label.get_range() });
+                        }
+
+                        let label_name = Token::get_ident_name(&label);
+                        if seen_labels.contains(&label_name) {
+                            return Err(TypeError::DuplicateArgumentLabel { span: label.get_range(), name: label_name });
+                        }
+                        let Some(param_data) = params_data.iter().find(|(_, param_name, _, _)| *param_name == label_name) else {
+                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name });
+                        };
+                        if idx >= params_data.len() {
+                            // This _should_ be unreachable given the two cases above, but just in case let's return an error here as well
+                            return Err(TypeError::InvalidArity { span: label.get_range(), num_required_args, num_provided_args });
+                        }
+
+                        seen_labels.insert(label_name);
+
+                        param_data
+                    } else if idx > 0 && !seen_labels.is_empty() {
+                        return Err(TypeError::MixedArgumentType { span: arg_node.get_token().get_range() });
+                    } else {
+                        if idx >= params_data.len() {
+                            let span = typed_target.span().expand(&token.get_range());
+                            return Err(TypeError::InvalidArity { span, num_required_args, num_provided_args });
+                        }
+
+                        &params_data[idx]
+                    };
+
+                    let typed_arg_value = self.typecheck_expression(arg_node, Some(*param_type_id))?;
+                    let arg_type_id = typed_arg_value.type_id();
+                    if !self.type_satisfies_other(arg_type_id, param_type_id) {
+                        return Err(TypeError::TypeMismatch { span: typed_arg_value.span(), expected: vec![*param_type_id], received: *arg_type_id });
+                    }
+
+                    typed_arguments[*param_idx] = Some(typed_arg_value);
+                }
+
+                for (param_idx, _, _, param_is_optional) in params_data {
+                    if typed_arguments[param_idx] == None && !param_is_optional {
+                        let span = typed_target.span().expand(&token.get_range());
+                        return Err(TypeError::InvalidArity { span, num_required_args, num_provided_args });
+                    }
+                }
+
+                let type_id = if let Some(type_hint_id) = type_hint {
+                    self.substitute_generics(&type_hint_id, &return_type_id)
+                } else {
+                    return_type_id
+                };
+
+                Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
+            }
             AstNode::IfExpression(_, _) |
             AstNode::MatchExpression(_, _) |
             AstNode::Lambda(_, _) |

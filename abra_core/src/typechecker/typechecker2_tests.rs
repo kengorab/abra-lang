@@ -102,6 +102,7 @@ fn typecheck_prelude() {
                         is_initialized: true,
                         defined_span: None,
                         is_captured: false,
+                        alias: None,
                     }
                 ],
                 funcs: vec![],
@@ -375,6 +376,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
+            alias: None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -390,6 +392,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
+            alias: None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -413,6 +416,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
+            alias: None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -456,6 +460,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 11), end: Position::new(2, 11) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -465,6 +470,7 @@ fn typecheck_binding_declaration() {
             is_initialized: false,
             defined_span: Some(Range { start: Position::new(3, 11), end: Position::new(3, 11) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -474,6 +480,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(4, 11), end: Position::new(4, 11) }),
             is_captured: false,
+            alias: None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -491,6 +498,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 12), end: Position::new(2, 12) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
@@ -500,6 +508,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 15), end: Position::new(2, 15) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
@@ -509,6 +518,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 3 },
@@ -518,6 +528,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 4 },
@@ -527,6 +538,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 28), end: Position::new(2, 28) }),
             is_captured: false,
+            alias: None,
         },
         Variable {
             id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 5 },
@@ -536,6 +548,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
             is_captured: false,
+            alias: None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -694,26 +707,39 @@ fn typecheck_function_declaration() {
             body: vec![
                 TypedNode::Identifier {
                     token: Token::Ident(Position::new(2, 19), "x".to_string()),
-                    var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+                    var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![
-                VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+                VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
             ],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
-    let expected = Variable {
-        id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
-        name: "x".to_string(),
-        type_id: PRELUDE_INT_TYPE_ID,
-        is_mutable: false,
-        is_initialized: true,
-        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
-        is_captured: true,
-    };
-    assert_eq!(expected, module.scopes[0].vars[0]);
+    let expected = vec![
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            name: "foo".to_string(),
+            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.function_type(vec![], PRELUDE_INT_TYPE_ID)).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            is_captured: false,
+            alias: Some(FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 }),
+        },
+        Variable {
+            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+            name: "x".to_string(),
+            type_id: PRELUDE_INT_TYPE_ID,
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            is_captured: true,
+            alias: None,
+        },
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
 
     assert!(test_typecheck("func foo(x: Bool[] = []) {}").is_ok());
     assert!(test_typecheck("func foo(x = 12): Int = x").is_ok());
@@ -770,6 +796,126 @@ fn typecheck_failure_function_declaration() {
         span: Range { start: Position::new(1, 20), end: Position::new(1, 24) },
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_invocation() {
+    let project = test_typecheck("\
+      func foo(a: Int[], b = true): Int = 24\n\
+      foo([])\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        TypedNode::Invocation {
+            target: Box::new(TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 1), "foo".to_string()),
+                var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+                type_id: project.find_type_id(
+                    &ModuleId { id: 1 },
+                    &project.function_type(
+                        vec![
+                            project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+                            PRELUDE_BOOL_TYPE_ID,
+                        ],
+                        PRELUDE_INT_TYPE_ID,
+                    ),
+                ).unwrap(),
+            }),
+            arguments: vec![
+                Some(TypedNode::Array {
+                    token: Token::LBrack(Position::new(2, 5), false),
+                    items: vec![],
+                    type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+                }),
+                None,
+            ],
+            type_id: PRELUDE_INT_TYPE_ID,
+        }
+    ];
+    assert_eq!(expected, module.code);
+}
+
+#[test]
+fn typecheck_failure_invocation() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      val a = 1\n\
+      a()\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::IllegalInvocation {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        type_id: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(1, b: true)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MixedArgumentType {
+        span: Range { start: Position::new(2, 8), end: Position::new(2, 8) },
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(a: 1, true)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MixedArgumentType {
+        span: Range { start: Position::new(2, 11), end: Position::new(2, 14) },
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(a: 1, a: 2)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateArgumentLabel {
+        span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+        name: "a".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(a: 1, d: 2)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnexpectedArgumentName {
+        span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+        arg_name: "d".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(123, true, 456, false)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidArity {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        num_required_args: 3,
+        num_provided_args: 4,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(123)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidArity {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        num_required_args: 3,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b: Bool, c = 123): Int = a\n\
+      foo(a: 123)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidArity {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        num_required_args: 3,
+        num_provided_args: 1,
     };
     assert_eq!(expected, err);
 }
