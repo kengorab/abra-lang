@@ -1,10 +1,38 @@
-func foo(a: Int, b: Bool, c = 123): Int = -1
+// TODO: Make this work
+// func foo(a: Int, b: Bool, c = bar()): Int = -1
+// func bar(): Int = 123
 
-//val a = 123
-//a()
+//val ab = "ab"
+//val m = {
+//  b: 123,
+//  a: None,
+//  //b: "hello",
+//  c: None,
+//}
 
-//foo(1, true, false)
-//foo(b: true)
-//foo(a: 1, b: true, a: 4)
-//foo(123, b: true)
-foo(a: 123, true)
+val i: Int = {
+  a: [],
+  b: [1, 2, 3]
+}
+
+
+// TODO: this should infer the first element to be of type Set<Int>
+//val s = #{#{}, #{1, 2, 3}}
+// TODO: This should infer None to be of type Int?
+//val s = #{None, 123}
+
+// TODO: this should infer the first element to be of type Int[]
+//val a = [[], [1, 2, 3]]
+// TODO: This should infer None to be of type Int?
+//val a = [None, 123]
+
+// TODO: this should fail gracefully ('please supply type annotation')
+//val t = ({}, { a: true })
+
+// TODO: write test for this
+//val i: Int?? = 12
+
+// TODO: write test for this, should output
+//   Expected: Int
+//   but instead saw: Int?
+//val i: Int = None

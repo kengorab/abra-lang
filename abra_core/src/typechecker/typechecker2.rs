@@ -62,6 +62,7 @@ pub struct Project {
     pub prelude_array_struct_id: StructId,
     pub prelude_tuple_struct_id: StructId,
     pub prelude_set_struct_id: StructId,
+    pub prelude_map_struct_id: StructId,
 }
 
 impl Default for Project {
@@ -74,6 +75,7 @@ impl Default for Project {
             prelude_array_struct_id: placeholder_struct_id,
             prelude_tuple_struct_id: placeholder_struct_id,
             prelude_set_struct_id: placeholder_struct_id,
+            prelude_map_struct_id: placeholder_struct_id,
         }
     }
 }
@@ -170,7 +172,18 @@ impl Project {
         None
     }
 
-    pub fn option_type(&self, inner_type_id: TypeId) -> Type {
+    pub fn option_type(&self, mut inner_type_id: TypeId) -> Type {
+        let mut inner = self.get_type_by_id(&inner_type_id);
+        loop {
+            match inner {
+                Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.prelude_option_struct_id => {
+                    inner_type_id = generic_ids[0];
+                    inner = self.get_type_by_id(&inner_type_id);
+                }
+                _ => break
+            }
+        }
+
         Type::GenericInstance(self.prelude_option_struct_id, vec![inner_type_id])
     }
 
@@ -350,6 +363,7 @@ pub enum TypedNode {
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
+    Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
 
@@ -367,6 +381,7 @@ impl TypedNode {
             TypedNode::Array { type_id, .. } => type_id,
             TypedNode::Tuple { type_id, .. } => type_id,
             TypedNode::Set { type_id, .. } => type_id,
+            TypedNode::Map { type_id, .. } => type_id,
             TypedNode::Identifier { type_id, .. } => type_id,
             TypedNode::Invocation { type_id, .. } => type_id,
 
@@ -384,6 +399,7 @@ impl TypedNode {
             TypedNode::Array { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Set { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
+            TypedNode::Map { token, items, .. } => token.get_range().expand(&items.last().map(|(_, v)| v.span()).unwrap_or(token.get_range())),
             TypedNode::Identifier { token, .. } => token.get_range(),
             TypedNode::Invocation { target, arguments, .. } => {
                 let start = target.span();
@@ -482,7 +498,7 @@ impl TypeError {
     }
 
     fn get_underlined_line(lines: &Vec<&str>, span: &Range) -> String {
-        debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
+        // debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
 
         let line = lines.get(span.start.line - 1).expect("There should be a line");
         let length = span.end.col - span.start.col + 1;
@@ -714,6 +730,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let target_ty = self.project.get_type_by_id(target_type);
 
         match (base_ty, target_ty) {
+            (Type::Generic(_), Type::Generic(_)) => base_type == target_type,
             (Type::Builtin(idx1), Type::Builtin(idx2)) => idx1 == idx2,
             (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                 if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
@@ -727,6 +744,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 true
             }
+            (Type::GenericInstance(struct_id, _), _) if *struct_id == self.project.prelude_option_struct_id => {
+                false
+            }
+            (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == self.project.prelude_option_struct_id => {
+                self.type_satisfies_other(base_type, &generic_ids[0])
+            }
             _ => false
         }
     }
@@ -734,11 +757,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn substitute_generics(&mut self, hint_type_id: &TypeId, var_type_id: &TypeId) -> TypeId {
         let hint_ty = self.project.get_type_by_id(&hint_type_id);
         let var_ty = self.project.get_type_by_id(&var_type_id);
+        // dbg!(self.project.type_repr(&hint_type_id));
+        // dbg!(self.project.type_repr(&var_type_id));
 
         match (hint_ty, var_ty) {
             (Type::Generic(_), _) => unreachable!("The hint should always be a concrete (non-generic) type"),
             (_, Type::Builtin(_)) => *var_type_id,
             (_, Type::Generic(_)) => *hint_type_id,
+            (_, Type::GenericInstance(var_struct_id, var_generic_ids)) if *var_struct_id == self.project.prelude_option_struct_id => {
+                let generic_id = var_generic_ids[0];
+                let inner = self.substitute_generics(&hint_type_id, &generic_id);
+                self.add_or_find_type_id(self.project.option_type(inner))
+            }
             (Type::GenericInstance(hint_struct_id, hint_generic_ids), Type::GenericInstance(var_struct_id, var_generic_ids)) => {
                 if var_struct_id == hint_struct_id && hint_generic_ids.len() == var_generic_ids.len() {
                     let hint_generic_ids = hint_generic_ids.clone();
@@ -961,6 +991,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string() });
         self.project.prelude_set_struct_id = set_struct_id;
 
+        let map_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string() });
+        self.project.prelude_map_struct_id = map_struct_id;
 
         self.project.modules.push(prelude_module);
 
@@ -1412,7 +1445,79 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Set { token, items: typed_items, type_id })
             }
-            AstNode::Map(_, _) => todo!(),
+            AstNode::Map(token, n) => {
+                let mut key_type_id = None;
+                let mut val_type_id = None;
+                if let Some(type_hint_id) = &type_hint {
+                    let ty = self.project.get_type_by_id(&type_hint_id);
+                    if let Type::GenericInstance(struct_id, generic_ids) = ty {
+                        if *struct_id == self.project.prelude_map_struct_id {
+                            key_type_id = Some(generic_ids[0]);
+                            val_type_id = Some(generic_ids[1]);
+                        }
+                    }
+                }
+
+                let mut typed_items = vec![];
+                for (key_node, val_node) in n.items {
+                    let typed_key_node = self.typecheck_expression(key_node, key_type_id)?;
+                    let key_node_type_id = *typed_key_node.type_id();
+
+                    // The logic for determining the type of the key and value is the same. If no previous type value has been discovered yet,
+                    // then that becomes the working type `W`. Otherwise, when discovering new type `T`:
+                    //   1. Substitute any generics in `W` with respect to `T` (eg. { a: [], b: [1, 2, 3] })
+                    //   2. If `T` is assignable to `W` (eg. they're both Int), then continue on. Otherwise:
+                    //     2a. Attempt to expand `W` to include `T`. If `W` can be assignable to `T`, then the broader type `T` becomes the new `W` (eg. { a: 123, b: None })
+                    //     2b. If not, then we arrive at a mismatch and raise a TypeError
+
+                    match key_type_id {
+                        None => key_type_id = Some(key_node_type_id),
+                        Some(mut type_id) => {
+                            if self.type_contains_generics(&type_id) {
+                                type_id = self.substitute_generics(&key_node_type_id, &type_id);
+                                key_type_id = Some(type_id);
+                            }
+                            if !self.type_satisfies_other(&key_node_type_id, &type_id) {
+                                if self.type_satisfies_other(&type_id, &key_node_type_id) {
+                                    key_type_id = Some(type_id);
+                                } else {
+                                    let span = typed_key_node.span();
+                                    return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: key_node_type_id });
+                                }
+                            }
+                        }
+                    }
+
+                    let typed_val_node = self.typecheck_expression(val_node, val_type_id)?;
+                    let val_node_type_id = *typed_val_node.type_id();
+                    match val_type_id {
+                        None => val_type_id = Some(val_node_type_id),
+                        Some(mut type_id) => {
+                            if self.type_contains_generics(&type_id) {
+                                type_id = self.substitute_generics(&val_node_type_id, &type_id);
+                                val_type_id = Some(type_id);
+                            }
+                            if !self.type_satisfies_other(&val_node_type_id, &type_id) {
+                                if self.type_satisfies_other(&type_id, &val_node_type_id) {
+                                    val_type_id = Some(val_node_type_id);
+                                } else {
+                                    let span = typed_val_node.span();
+                                    return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: val_node_type_id });
+                                }
+                            }
+                        }
+                    }
+
+                    typed_items.push((typed_key_node, typed_val_node));
+                }
+
+                let type_id = match (key_type_id, val_type_id) {
+                    (Some(key_type_id), Some(val_type_id)) => self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_map_struct_id, vec![key_type_id, val_type_id])),
+                    _ => PRELUDE_UNKNOWN_TYPE_ID,
+                };
+
+                Ok(TypedNode::Map { token, items: typed_items, type_id })
+            }
             AstNode::Tuple(token, items) => {
                 let mut inner_type_ids = None;
                 if let Some(type_hint_id) = &type_hint {
