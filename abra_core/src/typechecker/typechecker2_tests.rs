@@ -53,42 +53,42 @@ fn typecheck_prelude() {
     let project = test_typecheck("").unwrap();
     let prelude_module = &project.modules[0];
 
-    let prelude_scope_id = ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 };
+    let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
     let expected = TypedModule {
         id: PRELUDE_MODULE_ID,
         name: "prelude".to_string(),
         types: vec![
-            Type::Builtin(PRELUDE_UNIT_TYPE_ID.id),
-            Type::Builtin(PRELUDE_INT_TYPE_ID.id),
-            Type::Builtin(PRELUDE_FLOAT_TYPE_ID.id),
-            Type::Builtin(PRELUDE_BOOL_TYPE_ID.id),
-            Type::Builtin(PRELUDE_STRING_TYPE_ID.id),
+            Type::Builtin(PRELUDE_UNIT_TYPE_ID.1),
+            Type::Builtin(PRELUDE_INT_TYPE_ID.1),
+            Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1),
+            Type::Builtin(PRELUDE_BOOL_TYPE_ID.1),
+            Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
             Type::Generic("T".to_string()), // From `None` definition
             Type::GenericInstance(
-                StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
+                StructId(PRELUDE_MODULE_ID, 0),
                 vec![project.find_type_id(&PRELUDE_MODULE_ID, &Type::Generic("T".to_string())).unwrap()],
             ),
         ],
         functions: vec![],
         structs: vec![
             Struct {
-                id: StructId { module_id: PRELUDE_MODULE_ID, id: 0 },
+                id: StructId(PRELUDE_MODULE_ID, 0),
                 name: "Option".to_string(),
             },
             Struct {
-                id: StructId { module_id: PRELUDE_MODULE_ID, id: 1 },
+                id: StructId(PRELUDE_MODULE_ID, 1),
                 name: "Array".to_string(),
             },
             Struct {
-                id: StructId { module_id: PRELUDE_MODULE_ID, id: 2 },
+                id: StructId(PRELUDE_MODULE_ID, 2),
                 name: "Tuple".to_string(),
             },
             Struct {
-                id: StructId { module_id: PRELUDE_MODULE_ID, id: 3 },
+                id: StructId(PRELUDE_MODULE_ID, 3),
                 name: "Set".to_string(),
             },
             Struct {
-                id: StructId { module_id: PRELUDE_MODULE_ID, id: 4 },
+                id: StructId(PRELUDE_MODULE_ID, 4),
                 name: "Map".to_string(),
             },
         ],
@@ -99,9 +99,9 @@ fn typecheck_prelude() {
                 parent: None,
                 vars: vec![
                     Variable {
-                        id: VarId { scope_id: prelude_scope_id, id: 0 },
+                        id: VarId(prelude_scope_id, 0),
                         name: "None".to_string(),
-                        type_id: TypeId { module_id: PRELUDE_MODULE_ID, id: 6 },
+                        type_id: TypeId(PRELUDE_MODULE_ID, 6),
                         is_mutable: false,
                         is_initialized: true,
                         defined_span: None,
@@ -120,7 +120,7 @@ fn typecheck_prelude() {
 fn typecheck_literal() {
     let project = test_typecheck("1 2.34\ntrue \"hello\"").unwrap();
     let module = &project.modules[1];
-    assert_eq!(ModuleId { id: 1 }, module.id);
+    assert_eq!(ModuleId(1), module.id);
     assert_eq!(format!("./{}", TEST_MODULE_NAME), module.name);
     assert!(module.types.is_empty());
 
@@ -186,46 +186,46 @@ fn typecheck_failure_unary() {
 fn typecheck_array() {
     let project = test_typecheck("[1, 2, 3]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("[[1, 2], [3]]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(int_array_type_id)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
     // Test deferred generic inference
     let project = test_typecheck("[[], [1, 2, 3]]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(int_array_type_id)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("[None, 123]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(int_opt_type_id)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("[123, None]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(int_opt_type_id)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val a: Int[] = [1, 2, 3]").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val a: Int[] = []").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val a: Int[][] = [[]]").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(inner_type_id)).unwrap();
+    let inner_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.array_type(inner_type_id)).unwrap();
     assert_eq!(expected, type_id);
 }
 
@@ -258,7 +258,7 @@ fn typecheck_failure_array() {
     let (project, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(project.find_type_id(&ModuleId { id: 1 }, &Type::Generic("T_Array".to_string())).unwrap())).unwrap(),
+        type_id: project.find_type_id(&ModuleId(1), &project.array_type(project.find_type_id(&ModuleId(1), &Type::Generic("T_Array".to_string())).unwrap())).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -267,33 +267,33 @@ fn typecheck_failure_array() {
 fn typecheck_tuple() {
     let project = test_typecheck("(1, 2, 3)").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("([1, 2], 3, \"hello\")").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![int_array_type_id, PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![int_array_type_id, PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val a: (Int, Bool, String[]) = (1, true, [\"3\"])").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let string_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_STRING_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, string_array_type_id])).unwrap();
+    let string_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_STRING_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, string_array_type_id])).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val a: ((Int, Int), (Int, Int)) = ((1, 2), (3, 4))").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![inner_type_id, inner_type_id])).unwrap();
+    let inner_type_id = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![inner_type_id, inner_type_id])).unwrap();
     assert_eq!(expected, type_id);
 }
 
 #[test]
 fn typecheck_failure_tuple() {
     let (project, Either::Right(err)) = test_typecheck("val a: Int[] = (true, 43)").unwrap_err() else { unreachable!() };
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let bool_int_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let bool_int_tuple_type_id = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 16), end: Position::new(1, 24) },
         expected: vec![int_array_type_id],
@@ -310,8 +310,8 @@ fn typecheck_failure_tuple() {
     assert_eq!(expected, err);
 
     let (project, Either::Right(err)) = test_typecheck("val a: (Bool, Float, Bool) = (true, 4.3)").unwrap_err() else { unreachable!() };
-    let bool_float_bool_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
-    let bool_float_tuple_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID])).unwrap();
+    let bool_float_bool_tuple_type_id = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
+    let bool_float_tuple_type_id = project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID])).unwrap();
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 30), end: Position::new(1, 39) },
         expected: vec![bool_float_bool_tuple_type_id],
@@ -324,46 +324,46 @@ fn typecheck_failure_tuple() {
 fn typecheck_set() {
     let project = test_typecheck("#{1, 2, 3}").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("#{[1, 2], [3]}").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(int_array_type_id)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
     // Test deferred generic inference
     let project = test_typecheck("#{#{}, #{1, 2, 3}}").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_set_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(int_set_type_id)).unwrap();
+    let int_set_type_id = project.find_type_id(&ModuleId(1), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(int_set_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("#{None, 123}").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(int_opt_type_id)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("#{123, None}").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(int_opt_type_id)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val s: Set<Int> = #{1, 2, 3}").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val s: Set<Int> = #{}").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val s: Set<Set<Int>> = #{#{}}").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.set_type(inner_type_id)).unwrap();
+    let inner_type_id = project.find_type_id(&ModuleId(1), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.set_type(inner_type_id)).unwrap();
     assert_eq!(expected, type_id);
 }
 
@@ -396,7 +396,7 @@ fn typecheck_failure_set() {
     let (project, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
-        type_id: project.find_type_id(&ModuleId { id: 1 }, &project.set_type(project.find_type_id(&ModuleId { id: 1 }, &Type::Generic("T_Set".to_string())).unwrap())).unwrap(),
+        type_id: project.find_type_id(&ModuleId(1), &project.set_type(project.find_type_id(&ModuleId(1), &Type::Generic("T_Set".to_string())).unwrap())).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -405,45 +405,45 @@ fn typecheck_failure_set() {
 fn typecheck_map() {
     let project = test_typecheck("{ a: true, b: !false }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_STRING_TYPE_ID, PRELUDE_BOOL_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_STRING_TYPE_ID, PRELUDE_BOOL_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("{ (true): 1, (false): 2 }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("{ ([1, 2, 3]): 1, ([3, 4, 5]): 2 }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(int_array_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(int_array_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     // Test generic inference in values
     let project = test_typecheck("{ a: 123, b: None }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_STRING_TYPE_ID, int_opt_type_id)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_STRING_TYPE_ID, int_opt_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ a: None, b: 123 }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ a: [], b: [1, 2, 3] }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_STRING_TYPE_ID, int_array_type_id)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_STRING_TYPE_ID, int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ a: [1, 2, 3], b: [] }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_array_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_STRING_TYPE_ID, int_array_type_id)).unwrap();
+    let int_array_type_id = project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_STRING_TYPE_ID, int_array_type_id)).unwrap();
     assert_eq!(expected, type_id);
 
     // Test option inference in keys
     let project = test_typecheck("{ (None): 123, 456: 789 }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    let int_opt_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(int_opt_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
+    let int_opt_type_id = project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(int_opt_type_id, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("{ 123: 123, (None): 456 }").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
@@ -451,18 +451,18 @@ fn typecheck_map() {
 
     let project = test_typecheck("val m: Map<Int, Int> = { 1: 2, 3: 4 }").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val m: Map<Bool, Int> = {}").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!(expected, type_id);
 
     let project = test_typecheck("val m: Map<Int, Map<Int, Int>> = {}").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
-    let inner_type_id = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
-    let expected = project.find_type_id(&ModuleId { id: 1 }, &project.map_type(PRELUDE_INT_TYPE_ID, inner_type_id)).unwrap();
+    let inner_type_id = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ModuleId(1), &project.map_type(PRELUDE_INT_TYPE_ID, inner_type_id)).unwrap();
     assert_eq!(expected, type_id);
     let project = test_typecheck("val m: Map<Int, Map<Int, Int>> = { 1: {} }").unwrap();
     let type_id = project.modules[1].scopes[0].vars[0].type_id;
@@ -499,9 +499,9 @@ fn typecheck_failure_map() {
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
         type_id: {
-            let key_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::Generic("K_Map".to_string())).unwrap();
-            let val_type_id = project.find_type_id(&ModuleId { id: 1 }, &Type::Generic("V_Map".to_string())).unwrap();
-            project.find_type_id(&ModuleId { id: 1 }, &project.map_type(key_type_id, val_type_id)).unwrap()
+            let key_type_id = project.find_type_id(&ModuleId(1), &Type::Generic("K_Map".to_string())).unwrap();
+            let val_type_id = project.find_type_id(&ModuleId(1), &Type::Generic("V_Map".to_string())).unwrap();
+            project.find_type_id(&ModuleId(1), &project.map_type(key_type_id, val_type_id)).unwrap()
         },
     };
     assert_eq!(expected, err);
@@ -513,9 +513,9 @@ fn typecheck_none() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
@@ -529,9 +529,9 @@ fn typecheck_none() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
@@ -548,9 +548,9 @@ fn typecheck_none() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "x".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap())).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.option_type(project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap())).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
@@ -564,13 +564,13 @@ fn typecheck_none() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "x".to_string(),
             type_id: project.find_type_id(
-                &ModuleId { id: 1 },
+                &ModuleId(1),
                 &project.array_type(
                     project.find_type_id(
-                        &ModuleId { id: 1 },
+                        &ModuleId(1),
                         &project.option_type(PRELUDE_INT_TYPE_ID),
                     ).unwrap()
                 ),
@@ -601,7 +601,7 @@ fn typecheck_failure_none() {
     assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
-        type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(none_var.type_id)).unwrap(),
+        type_id: project.find_type_id(&ModuleId(1), &project.array_type(none_var.type_id)).unwrap(),
     };
     assert_eq!(expected, err);
 
@@ -609,7 +609,7 @@ fn typecheck_failure_none() {
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 14), end: Position::new(1, 17) },
         expected: vec![PRELUDE_INT_TYPE_ID],
-        received: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        received: project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -624,7 +624,7 @@ fn typecheck_binding_declaration() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "x".to_string(),
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
@@ -634,7 +634,7 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+            id: VarId(ScopeId(ModuleId(1), 0), 1),
             name: "y".to_string(),
             type_id: PRELUDE_BOOL_TYPE_ID,
             is_mutable: true,
@@ -644,7 +644,7 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
+            id: VarId(ScopeId(ModuleId(1), 0), 2),
             name: "z".to_string(),
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: true,
@@ -662,7 +662,7 @@ fn typecheck_binding_declaration() {
     let module = &project.modules[1];
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "a".to_string(),
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
@@ -672,7 +672,7 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+            id: VarId(ScopeId(ModuleId(1), 0), 1),
             name: "b".to_string(),
             type_id: PRELUDE_FLOAT_TYPE_ID,
             is_mutable: false,
@@ -682,9 +682,9 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 2 },
+            id: VarId(ScopeId(ModuleId(1), 0), 2),
             name: "c".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
@@ -692,9 +692,9 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 3 },
+            id: VarId(ScopeId(ModuleId(1), 0), 3),
             name: "d".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
@@ -702,7 +702,7 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 4 },
+            id: VarId(ScopeId(ModuleId(1), 0), 4),
             name: "e".to_string(),
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: false,
@@ -712,9 +712,9 @@ fn typecheck_binding_declaration() {
             alias: None,
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 5 },
+            id: VarId(ScopeId(ModuleId(1), 0), 5),
             name: "f".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
@@ -769,7 +769,7 @@ fn typecheck_function_declaration() {
     let module = &project.modules[1];
     let expected = vec![
         Function {
-            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: FuncId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
@@ -796,7 +796,7 @@ fn typecheck_function_declaration() {
     let module = &project.modules[1];
     let expected = vec![
         Function {
-            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: FuncId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
             params: vec![
                 FunctionParam {
@@ -813,14 +813,14 @@ fn typecheck_function_declaration() {
                     token: Token::Val(Position::new(3, 1)),
                     pattern: BindingPattern::Variable(Token::Ident(Position::new(3, 5), "y".to_string())),
                     vars: vec![
-                        VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 1 }, id: 1 }
+                        VarId(ScopeId(ModuleId(1), 1), 1)
                     ],
                     expr: Some(Box::new(TypedNode::Unary {
                         token: Token::Bang(Position::new(3, 9)),
                         op: UnaryOp::Negate,
                         expr: Box::new(TypedNode::Identifier {
                             token: Token::Ident(Position::new(3, 10), "x".to_string()),
-                            var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 1 }, id: 0 },
+                            var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                             type_id: PRELUDE_BOOL_TYPE_ID,
                         }),
                     })),
@@ -835,17 +835,17 @@ fn typecheck_function_declaration() {
     let project = test_typecheck("func foo(): (Bool, Bool)[] = []").unwrap();
     let module = &project.modules[1];
     let bool_bool_tuple_array_type_id = project.find_type_id(
-        &ModuleId { id: 1 },
+        &ModuleId(1),
         &project.array_type(
             project.find_type_id(
-                &ModuleId { id: 1 },
+                &ModuleId(1),
                 &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID]),
             ).unwrap()
         ),
     ).unwrap();
     let expected = vec![
         Function {
-            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: FuncId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
             params: vec![],
             return_type_id: bool_bool_tuple_array_type_id,
@@ -870,7 +870,7 @@ fn typecheck_function_declaration() {
     let module = &project.modules[1];
     let expected = vec![
         Function {
-            id: FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: FuncId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
@@ -878,29 +878,29 @@ fn typecheck_function_declaration() {
             body: vec![
                 TypedNode::Identifier {
                     token: Token::Ident(Position::new(2, 19), "x".to_string()),
-                    var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+                    var_id: VarId(ScopeId(ModuleId(1), 0), 1),
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
             captured_vars: vec![
-                VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+                VarId(ScopeId(ModuleId(1), 0), 1),
             ],
         }
     ];
     assert_eq!(expected, module.scopes[0].funcs);
     let expected = vec![
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
-            type_id: project.find_type_id(&ModuleId { id: 1 }, &project.function_type(vec![], PRELUDE_INT_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ModuleId(1), &project.function_type(vec![], PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
             is_captured: false,
-            alias: Some(FuncId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 }),
+            alias: Some(FuncId(ScopeId(ModuleId(1), 0), 0)),
         },
         Variable {
-            id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 1 },
+            id: VarId(ScopeId(ModuleId(1), 0), 1),
             name: "x".to_string(),
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
@@ -966,7 +966,7 @@ fn typecheck_failure_function_declaration() {
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(1, 20), end: Position::new(1, 24) },
         expected: vec![PRELUDE_BOOL_TYPE_ID],
-        received: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        received: project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -982,12 +982,12 @@ fn typecheck_invocation() {
         TypedNode::Invocation {
             target: Box::new(TypedNode::Identifier {
                 token: Token::Ident(Position::new(2, 1), "foo".to_string()),
-                var_id: VarId { scope_id: ScopeId { module_id: ModuleId { id: 1 }, id: 0 }, id: 0 },
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
                 type_id: project.find_type_id(
-                    &ModuleId { id: 1 },
+                    &ModuleId(1),
                     &project.function_type(
                         vec![
-                            project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+                            project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
                             PRELUDE_BOOL_TYPE_ID,
                         ],
                         PRELUDE_INT_TYPE_ID,
@@ -998,7 +998,7 @@ fn typecheck_invocation() {
                 Some(TypedNode::Array {
                     token: Token::LBrack(Position::new(2, 5), false),
                     items: vec![],
-                    type_id: project.find_type_id(&ModuleId { id: 1 }, &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+                    type_id: project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
                 }),
                 None,
             ],

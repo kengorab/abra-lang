@@ -67,7 +67,7 @@ pub struct Project {
 
 impl Default for Project {
     fn default() -> Self {
-        let placeholder_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: 0 };
+        let placeholder_struct_id = StructId(PRELUDE_MODULE_ID, 0);
 
         Self {
             modules: vec![],
@@ -82,47 +82,47 @@ impl Default for Project {
 
 impl Project {
     pub fn prelude_module(&self) -> &TypedModule {
-        &self.modules[PRELUDE_MODULE_ID.id]
+        &self.modules[PRELUDE_MODULE_ID.0]
     }
 
     pub fn get_type_by_id(&self, type_id: &TypeId) -> &Type {
-        let TypeId { module_id: ModuleId { id: module_id }, id } = type_id;
-        let module = &self.modules[*module_id];
-        &module.types[*id]
+        let TypeId(ModuleId(module_idx), idx) = type_id;
+        let module = &self.modules[*module_idx];
+        &module.types[*idx]
     }
 
     pub fn get_struct_by_id(&self, struct_id: &StructId) -> &Struct {
-        let StructId { module_id: ModuleId { id: module_id }, id } = struct_id;
-        let module = &self.modules[*module_id];
-        &module.structs[*id]
+        let StructId(ModuleId(module_idx), idx) = struct_id;
+        let module = &self.modules[*module_idx];
+        &module.structs[*idx]
     }
 
     pub fn get_func_by_id(&self, func_id: &FuncId) -> &Function {
-        let FuncId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = func_id;
-        let scope = &self.modules[*module_id].scopes[*scope_id];
-        &scope.funcs[*id]
+        let FuncId(ScopeId(ModuleId(module_idx), scope_idx), idx) = func_id;
+        let scope = &self.modules[*module_idx].scopes[*scope_idx];
+        &scope.funcs[*idx]
     }
 
     pub fn get_func_by_id_mut(&mut self, func_id: &FuncId) -> &mut Function {
-        let FuncId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = func_id;
-        let scope = &mut self.modules[*module_id].scopes[*scope_id];
-        &mut scope.funcs[*id]
+        let FuncId(ScopeId(ModuleId(module_idx), scope_idx), idx) = func_id;
+        let scope = &mut self.modules[*module_idx].scopes[*scope_idx];
+        &mut scope.funcs[*idx]
     }
 
     pub fn get_var_by_id(&self, var_id: &VarId) -> &Variable {
-        let VarId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = var_id;
-        let scope = &self.modules[*module_id].scopes[*scope_id];
-        &scope.vars[*id]
+        let VarId(ScopeId(ModuleId(module_idx), scope_idx), idx) = var_id;
+        let scope = &self.modules[*module_idx].scopes[*scope_idx];
+        &scope.vars[*idx]
     }
 
     pub fn get_var_by_id_mut(&mut self, var_id: &VarId) -> &mut Variable {
-        let VarId { scope_id: ScopeId { module_id: ModuleId { id: module_id }, id: scope_id }, id } = var_id;
-        let scope = &mut self.modules[*module_id].scopes[*scope_id];
-        &mut scope.vars[*id]
+        let VarId(ScopeId(ModuleId(module_idx), scope_idx), idx) = var_id;
+        let scope = &mut self.modules[*module_idx].scopes[*scope_idx];
+        &mut scope.vars[*idx]
     }
 
     pub fn find_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
-        let module = &self.modules[module_id.id];
+        let module = &self.modules[module_id.0];
         module.structs.iter()
             .find(|s| s.name == *name)
             .or_else(|| {
@@ -133,10 +133,10 @@ impl Project {
     }
 
     pub fn find_type_id(&self, module_id: &ModuleId, ty: &Type) -> Option<TypeId> {
-        let module = &self.modules[module_id.id];
+        let module = &self.modules[module_id.0];
         for (idx, t) in module.types.iter().enumerate() {
             if t == ty {
-                return Some(TypeId { module_id: module.id, id: idx });
+                return Some(TypeId(module.id, idx));
             }
         }
 
@@ -147,8 +147,8 @@ impl Project {
         if let Some(type_id) = self.find_type_id(&module_id, &ty) {
             type_id
         } else {
-            let module = &mut self.modules[module_id.id];
-            let type_id = TypeId { module_id: module.id, id: module.types.len() };
+            let module = &mut self.modules[module_id.0];
+            let type_id = TypeId(module.id, module.types.len());
             module.types.push(ty);
 
             type_id
@@ -157,8 +157,8 @@ impl Project {
 
     pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
         let mut scope_id = &Some(*scope_id);
-        while let Some(ScopeId { module_id: ModuleId { id: module_id }, id }) = scope_id {
-            let scope = &self.modules[*module_id].scopes[*id];
+        while let Some(ScopeId(ModuleId(module_idx), idx)) = scope_id {
+            let scope = &self.modules[*module_idx].scopes[*idx];
 
             for var in &scope.vars {
                 if var.name == *name {
@@ -211,15 +211,15 @@ impl Project {
         let ty = self.get_type_by_id(type_id);
         match ty {
             Type::Builtin(builtin_id) => {
-                if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
+                if *builtin_id == PRELUDE_UNIT_TYPE_ID.1 {
                     "Unit".to_string()
-                } else if *builtin_id == PRELUDE_INT_TYPE_ID.id {
+                } else if *builtin_id == PRELUDE_INT_TYPE_ID.1 {
                     "Int".to_string()
-                } else if *builtin_id == PRELUDE_FLOAT_TYPE_ID.id {
+                } else if *builtin_id == PRELUDE_FLOAT_TYPE_ID.1 {
                     "Float".to_string()
-                } else if *builtin_id == PRELUDE_BOOL_TYPE_ID.id {
+                } else if *builtin_id == PRELUDE_BOOL_TYPE_ID.1 {
                     "Bool".to_string()
-                } else if *builtin_id == PRELUDE_STRING_TYPE_ID.id {
+                } else if *builtin_id == PRELUDE_STRING_TYPE_ID.1 {
                     "String".to_string()
                 } else {
                     unreachable!("Unknown builtin type: {}", builtin_id)
@@ -254,28 +254,20 @@ impl Project {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct ModuleId {
-    pub id: usize,
-}
+pub struct ModuleId(/* idx: */ pub usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct TypeId {
-    pub module_id: ModuleId,
-    // TODO: Bind TypeId to ScopeId, rather than ModuleId
-    pub id: usize,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct StructId {
-    pub module_id: ModuleId,
-    pub id: usize,
-}
+pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Struct {
     pub id: StructId,
     pub name: String,
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+// TODO: Bind TypeId to ScopeId, rather than ModuleId
+pub struct TypeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Type {
@@ -286,10 +278,7 @@ pub enum Type {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct ScopeId {
-    pub module_id: ModuleId,
-    pub id: usize,
-}
+pub struct ScopeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
@@ -300,10 +289,7 @@ pub struct Scope {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct VarId {
-    pub scope_id: ScopeId,
-    pub id: usize,
-}
+pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
 pub struct Variable {
@@ -319,10 +305,7 @@ pub struct Variable {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct FuncId {
-    pub scope_id: ScopeId,
-    pub id: usize,
-}
+pub struct FuncId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
 pub struct Function {
@@ -453,12 +436,12 @@ pub enum TypedLiteral {
 
 impl Eq for TypedLiteral {}
 
-pub const PRELUDE_MODULE_ID: ModuleId = ModuleId { id: 0 };
-pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 0 };
-pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 1 };
-pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 2 };
-pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 3 };
-pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 4 };
+pub const PRELUDE_MODULE_ID: ModuleId = ModuleId(0);
+pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 0);
+pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 1);
+pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 2);
+pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 3);
+pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 4);
 
 pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 
@@ -879,7 +862,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let id = VarId { scope_id: current_scope.id, id: current_scope.vars.len() };
+        let id = VarId(current_scope.id, current_scope.vars.len());
         let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: None };
         current_scope.vars.push(var);
 
@@ -900,7 +883,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let param_type_ids = params.iter().map(|p| p.type_id).collect();
 
-        let func_id = FuncId { scope_id: current_scope.id, id: current_scope.funcs.len() };
+        let func_id = FuncId(current_scope.id, current_scope.funcs.len());
         let func = Function { id: func_id, name: name.clone(), params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
 
@@ -916,7 +899,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_scope_id = self.current_scope;
         let current_module = self.current_module_mut();
         let current_scope = &current_module.scopes[current_scope_id];
-        let new_scope_id = ScopeId { module_id: current_module.id, id: current_module.scopes.len() };
+        let new_scope_id = ScopeId(current_module.id, current_module.scopes.len());
 
         let child_scope = Scope {
             id: new_scope_id,
@@ -926,7 +909,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         };
         current_module.scopes.push(child_scope);
 
-        self.current_scope = new_scope_id.id;
+        self.current_scope = new_scope_id.1;
 
         new_scope_id
     }
@@ -939,20 +922,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let Some(parent) = current_scope.parent else {
             unreachable!("Internal error: a child scope must always have a parent");
         };
-        self.current_scope = parent.id;
+        let ScopeId(_, parent_scope_idx) = parent;
+        self.current_scope = parent_scope_idx;
 
         parent
     }
 
     fn scope_contains_other(&self, inner: &ScopeId, outer: &ScopeId) -> bool {
-        let inner_scope = &self.project.modules[inner.module_id.id].scopes[inner.id];
+        let ScopeId(inner_scope_module_id, inner_scope_idx) = inner;
+        let inner_scope = &self.project.modules[inner_scope_module_id.0].scopes[*inner_scope_idx];
         let mut parent = inner_scope.parent;
         while let Some(parent_id) = parent {
             if parent_id == *outer {
                 return true;
             }
 
-            let parent_scope = &self.project.modules[parent_id.module_id.id].scopes[parent_id.id];
+            let ScopeId(ModuleId(parent_scope_module_idx), parent_scope_idx) = parent_id;
+            let parent_scope = &self.project.modules[parent_scope_module_idx].scopes[parent_scope_idx];
             parent = parent_scope.parent;
         }
 
@@ -991,29 +977,29 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), types: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
 
-        prelude_module.types.push(Type::Builtin(PRELUDE_UNIT_TYPE_ID.id));
-        prelude_module.types.push(Type::Builtin(PRELUDE_INT_TYPE_ID.id));
-        prelude_module.types.push(Type::Builtin(PRELUDE_FLOAT_TYPE_ID.id));
-        prelude_module.types.push(Type::Builtin(PRELUDE_BOOL_TYPE_ID.id));
-        prelude_module.types.push(Type::Builtin(PRELUDE_STRING_TYPE_ID.id));
+        prelude_module.types.push(Type::Builtin(PRELUDE_UNIT_TYPE_ID.1));
+        prelude_module.types.push(Type::Builtin(PRELUDE_INT_TYPE_ID.1));
+        prelude_module.types.push(Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1));
+        prelude_module.types.push(Type::Builtin(PRELUDE_BOOL_TYPE_ID.1));
+        prelude_module.types.push(Type::Builtin(PRELUDE_STRING_TYPE_ID.1));
 
-        let option_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string() });
         self.project.prelude_option_struct_id = option_struct_id;
 
-        let array_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string() });
         self.project.prelude_array_struct_id = array_struct_id;
 
-        let tuple_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string() });
         self.project.prelude_tuple_struct_id = tuple_struct_id;
 
-        let set_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string() });
         self.project.prelude_set_struct_id = set_struct_id;
 
-        let map_struct_id = StructId { module_id: PRELUDE_MODULE_ID, id: prelude_module.structs.len() };
+        let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string() });
         self.project.prelude_map_struct_id = map_struct_id;
 
@@ -1023,11 +1009,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let generic_t_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, Type::Generic("T".to_string()));
         let none_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, self.project.option_type(generic_t_type_id));
         self.project.modules[0].scopes.push(Scope {
-            id: ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 },
+            id: ScopeId(PRELUDE_MODULE_ID, 0),
             parent: None,
             vars: vec![
                 Variable {
-                    id: VarId { scope_id: ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 }, id: 0 },
+                    id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
                     name: "None".to_string(),
                     type_id: none_type_id,
                     is_mutable: false,
@@ -1050,13 +1036,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             unimplemented!("Typechecking imports");
         }
 
-        let prelude_scope_id = ScopeId { module_id: PRELUDE_MODULE_ID, id: 0 };
+        let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
 
-        let id = ModuleId { id: self.project.modules.len() };
-        let scope_id = ScopeId { module_id: id, id: 0 };
+        let module_id = ModuleId(self.project.modules.len());
+        let scope_id = ScopeId(module_id, 0);
         let root_scope = Scope { id: scope_id, parent: Some(prelude_scope_id), vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
-            id,
+            id: module_id,
             name: file_name,
             types: vec![],
             functions: vec![],
@@ -1579,7 +1565,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 debug_assert!(n.is_none(), "Not implemented yet");
 
                 let name = Token::get_ident_name(&token);
-                let scope_id = ScopeId { module_id: self.current_module().id, id: self.current_scope };
+                let scope_id = ScopeId(self.current_module().id, self.current_scope);
                 let variable = self.project.find_variable_by_name(&scope_id, &name);
                 let Some(Variable { id, type_id, .. }) = variable else {
                     return Err(TypeError::UnknownIdentifier { span: token.get_range(), token });
@@ -1592,7 +1578,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 if let Some(func_id) = self.current_function {
-                    if !self.scope_contains_other(&var_id.scope_id, &func_id.scope_id) {
+                    let VarId(var_scope_id, _) = var_id;
+                    let FuncId(func_scope_id, _) = func_id;
+
+                    if !self.scope_contains_other(&var_scope_id, &func_scope_id) {
                         let var = self.project.get_var_by_id_mut(&var_id);
                         var.is_captured = true;
 
