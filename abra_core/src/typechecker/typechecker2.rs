@@ -195,21 +195,23 @@ impl Project {
         Type::GenericInstance(self.prelude_tuple_struct_id, inner_type_ids)
     }
 
+    pub fn set_type(&self, inner_type_id: TypeId) -> Type {
+        Type::GenericInstance(self.prelude_set_struct_id, vec![inner_type_id])
+    }
+
+    pub fn map_type(&self, key_type_id: TypeId, val_type_id: TypeId) -> Type {
+        Type::GenericInstance(self.prelude_map_struct_id, vec![key_type_id, val_type_id])
+    }
+
     pub fn function_type(&self, param_type_ids: Vec<TypeId>, return_type_id: TypeId) -> Type {
         Type::Function(param_type_ids, return_type_id)
     }
 
     pub fn type_repr(&self, type_id: &TypeId) -> String {
-        if *type_id == PRELUDE_UNKNOWN_TYPE_ID {
-            return "_".to_string();
-        }
-
         let ty = self.get_type_by_id(type_id);
         match ty {
             Type::Builtin(builtin_id) => {
-                if *builtin_id == PRELUDE_UNKNOWN_TYPE_ID.id {
-                    "_".to_string()
-                } else if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
+                if *builtin_id == PRELUDE_UNIT_TYPE_ID.id {
                     "Unit".to_string()
                 } else if *builtin_id == PRELUDE_INT_TYPE_ID.id {
                     "Int".to_string()
@@ -259,6 +261,7 @@ pub struct ModuleId {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct TypeId {
     pub module_id: ModuleId,
+    // TODO: Bind TypeId to ScopeId, rather than ModuleId
     pub id: usize,
 }
 
@@ -451,7 +454,6 @@ pub enum TypedLiteral {
 impl Eq for TypedLiteral {}
 
 pub const PRELUDE_MODULE_ID: ModuleId = ModuleId { id: 0 };
-pub const PRELUDE_UNKNOWN_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: usize::MAX };
 pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 0 };
 pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 1 };
 pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId { module_id: PRELUDE_MODULE_ID, id: 2 };
@@ -731,6 +733,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match (base_ty, target_ty) {
             (Type::Generic(_), Type::Generic(_)) => base_type == target_type,
+            (_, Type::Generic(_)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
             (Type::Builtin(idx1), Type::Builtin(idx2)) => idx1 == idx2,
             (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                 if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
@@ -757,8 +760,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn substitute_generics(&mut self, hint_type_id: &TypeId, var_type_id: &TypeId) -> TypeId {
         let hint_ty = self.project.get_type_by_id(&hint_type_id);
         let var_ty = self.project.get_type_by_id(&var_type_id);
-        // dbg!(self.project.type_repr(&hint_type_id));
-        // dbg!(self.project.type_repr(&var_type_id));
 
         match (hint_ty, var_ty) {
             (Type::Generic(_), _) => unreachable!("The hint should always be a concrete (non-generic) type"),
@@ -944,10 +945,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn scope_contains_other(&self, inner: &ScopeId, outer: &ScopeId) -> bool {
-        // if inner == outer {
-        //     return true;
-        // }
-
         let inner_scope = &self.project.modules[inner.module_id.id].scopes[inner.id];
         let mut parent = inner_scope.parent;
         while let Some(parent_id) = parent {
@@ -960,6 +957,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         false
+    }
+
+    /// Unifying types. For input type `input_type_id`, and target/hint type `hint_type_id`:
+    /// 1) Substitute any generics in `input_type_id` using type data from `hint_type_id` (eg. `{ a: [], b: [1] }`).
+    /// 2) If `hint_type_id` is assignable to `input_type_id` (eg. they're both `Int`), then continue on, returning
+    ///    the `input_type_id` with all possible generic substitutions performed.
+    /// 3) Otherwise, attempt to expand `input_type_id` to include `hint_type_id`. If `input_type_id` can be
+    ///    assignable to `hint_type_id`, then `hint_type_id` is a broader type, and `input_type_id` becomes
+    ///    `hint_type_id` (eg. `{ a: 123, b: None }`). If not, then the types do not overlap and `None` is returned.
+    fn unify_types(&mut self, input_type_id: &TypeId, hint_type_id: &TypeId) -> Option<TypeId> {
+        let mut input_type_id = *input_type_id;
+
+        if self.type_contains_generics(&input_type_id) {
+            input_type_id = self.substitute_generics(hint_type_id, &input_type_id);
+        }
+
+        if !self.type_satisfies_other(&hint_type_id, &input_type_id) {
+            if self.type_satisfies_other(&input_type_id, &hint_type_id) {
+                input_type_id = *hint_type_id;
+            } else {
+                return None;
+            }
+        }
+
+        Some(input_type_id)
     }
 
     /* TYPECHECKING */
@@ -1229,7 +1251,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (None, Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
-                        if *type_id == PRELUDE_UNKNOWN_TYPE_ID || self.type_contains_generics(type_id) {
+                        if self.type_contains_generics(type_id) {
                             return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id });
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
@@ -1244,7 +1266,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             let span = typed_expr.span();
                             return Err(TypeError::TypeMismatch { span, expected: vec![type_hint_id], received: *type_id });
                         }
-                        self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
+                        self.typecheck_binding_pattern(is_mutable, true, &binding, &type_hint_id, &mut var_ids)?;
 
                         Some(Box::new(typed_expr))
                     }
@@ -1392,10 +1414,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     match inner_type_id {
                         None => inner_type_id = Some(*current_value_type_id),
                         Some(type_id) => {
-                            if type_id != *current_value_type_id {
+                            let Some(unified_type) = self.unify_types(&type_id, current_value_type_id) else {
                                 let span = typed_item.span();
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
-                            }
+                            };
+                            inner_type_id = Some(unified_type);
                         }
                     }
 
@@ -1403,7 +1426,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 let type_id = match inner_type_id {
-                    None => PRELUDE_UNKNOWN_TYPE_ID,
+                    None => {
+                        let inner_type_id = self.add_or_find_type_id(Type::Generic("T_Array".to_string()));
+                        self.add_or_find_type_id(self.project.array_type(inner_type_id))
+                    }
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.array_type(inner_type_id)),
                 };
 
@@ -1428,10 +1454,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     match inner_type_id {
                         None => inner_type_id = Some(*current_value_type_id),
                         Some(type_id) => {
-                            if type_id != *current_value_type_id {
+                            let Some(unified_type) = self.unify_types(&type_id, current_value_type_id) else {
                                 let span = typed_item.span();
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
-                            }
+                            };
+                            inner_type_id = Some(unified_type);
                         }
                     }
 
@@ -1439,8 +1466,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 let type_id = match inner_type_id {
-                    None => PRELUDE_UNKNOWN_TYPE_ID,
-                    Some(inner_type_id) => self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_set_struct_id, vec![inner_type_id])),
+                    None => {
+                        let inner_type_id = self.add_or_find_type_id(Type::Generic("T_Set".to_string()));
+                        self.add_or_find_type_id(self.project.set_type(inner_type_id))
+                    }
+                    Some(inner_type_id) => self.add_or_find_type_id(self.project.set_type(inner_type_id)),
                 };
 
                 Ok(TypedNode::Set { token, items: typed_items, type_id })
@@ -1463,28 +1493,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_key_node = self.typecheck_expression(key_node, key_type_id)?;
                     let key_node_type_id = *typed_key_node.type_id();
 
-                    // The logic for determining the type of the key and value is the same. If no previous type value has been discovered yet,
-                    // then that becomes the working type `W`. Otherwise, when discovering new type `T`:
-                    //   1. Substitute any generics in `W` with respect to `T` (eg. { a: [], b: [1, 2, 3] })
-                    //   2. If `T` is assignable to `W` (eg. they're both Int), then continue on. Otherwise:
-                    //     2a. Attempt to expand `W` to include `T`. If `W` can be assignable to `T`, then the broader type `T` becomes the new `W` (eg. { a: 123, b: None })
-                    //     2b. If not, then we arrive at a mismatch and raise a TypeError
-
                     match key_type_id {
                         None => key_type_id = Some(key_node_type_id),
-                        Some(mut type_id) => {
-                            if self.type_contains_generics(&type_id) {
-                                type_id = self.substitute_generics(&key_node_type_id, &type_id);
-                                key_type_id = Some(type_id);
-                            }
-                            if !self.type_satisfies_other(&key_node_type_id, &type_id) {
-                                if self.type_satisfies_other(&type_id, &key_node_type_id) {
-                                    key_type_id = Some(type_id);
-                                } else {
-                                    let span = typed_key_node.span();
-                                    return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: key_node_type_id });
-                                }
-                            }
+                        Some(type_id) => {
+                            let Some(unified_type) = self.unify_types(&type_id, &key_node_type_id) else {
+                                let span = typed_key_node.span();
+                                return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: key_node_type_id });
+                            };
+                            key_type_id = Some(unified_type);
                         }
                     }
 
@@ -1492,19 +1508,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let val_node_type_id = *typed_val_node.type_id();
                     match val_type_id {
                         None => val_type_id = Some(val_node_type_id),
-                        Some(mut type_id) => {
-                            if self.type_contains_generics(&type_id) {
-                                type_id = self.substitute_generics(&val_node_type_id, &type_id);
-                                val_type_id = Some(type_id);
-                            }
-                            if !self.type_satisfies_other(&val_node_type_id, &type_id) {
-                                if self.type_satisfies_other(&type_id, &val_node_type_id) {
-                                    val_type_id = Some(val_node_type_id);
-                                } else {
-                                    let span = typed_val_node.span();
-                                    return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: val_node_type_id });
-                                }
-                            }
+                        Some(type_id) => {
+                            let Some(unified_type) = self.unify_types(&type_id, &val_node_type_id) else {
+                                let span = typed_val_node.span();
+                                return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: val_node_type_id });
+                            };
+                            val_type_id = Some(unified_type);
                         }
                     }
 
@@ -1512,8 +1521,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 let type_id = match (key_type_id, val_type_id) {
-                    (Some(key_type_id), Some(val_type_id)) => self.add_or_find_type_id(Type::GenericInstance(self.project.prelude_map_struct_id, vec![key_type_id, val_type_id])),
-                    _ => PRELUDE_UNKNOWN_TYPE_ID,
+                    (Some(key_type_id), Some(val_type_id)) => self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id)),
+                    _ => {
+                        let key_type_id = self.add_or_find_type_id(Type::Generic("K_Map".to_string()));
+                        let val_type_id = self.add_or_find_type_id(Type::Generic("V_Map".to_string()));
+                        self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id))
+                    }
                 };
 
                 Ok(TypedNode::Map { token, items: typed_items, type_id })
