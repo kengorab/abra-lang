@@ -1136,14 +1136,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         for node in &nodes {
             match node {
-                AstNode::FunctionDecl(token, node) => func_decls.push((token, node)),
+                AstNode::FunctionDecl(_, node) => func_decls.push(node),
                 n @ AstNode::TypeDecl(_, _) => type_decls.push(n),
                 n @ AstNode::EnumDecl(_, _) => enum_decls.push(n),
                 _ => {}
             }
         }
 
-        let func_ids = self.typecheck_functions_pass_1(func_decls)?;
+        let mut func_ids = vec![];
+        for node in func_decls {
+            let func_id = self.typecheck_function_pass_1(node)?;
+            func_ids.push(func_id);
+        }
 
         debug_assert!(type_decls.is_empty());
         debug_assert!(enum_decls.is_empty());
@@ -1151,13 +1155,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut fn_idx = 0;
         for node in nodes {
             match node {
-                AstNode::FunctionDecl(token, decl_node) => {
+                AstNode::FunctionDecl(_, decl_node) => {
                     debug_assert!(fn_idx < func_ids.len(), "There should be a FuncId for each declaration in this block");
 
                     let func_id = func_ids[fn_idx];
                     fn_idx += 1;
 
-                    self.typecheck_function_pass_2(func_id, (token, decl_node))?;
+                    self.typecheck_function_pass_2(func_id, decl_node)?;
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
@@ -1171,76 +1175,70 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_functions_pass_1(&mut self, func_decls: Vec<(&Token, &FunctionDeclNode)>) -> Result<Vec<FuncId>, TypeError> {
-        let mut func_ids = vec![];
+    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
+        let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
+        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+        if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
 
-        for (_, node) in func_decls {
-            let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
-            if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
-            if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
+        let mut seen_arg_names = HashSet::new();
+        let mut params = vec![];
+        for (ident, type_ident, is_vararg, default_value) in args {
+            if *is_vararg { unimplemented!("Internal error: variadic parameters") }
 
-            let mut seen_arg_names = HashSet::new();
-            let mut params = vec![];
-            for (ident, type_ident, is_vararg, default_value) in args {
-                if *is_vararg { unimplemented!("Internal error: variadic parameters") }
+            let arg_name = Token::get_ident_name(ident);
+            if seen_arg_names.contains(&arg_name) {
+                return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: arg_name });
+            }
+            seen_arg_names.insert(arg_name.clone());
 
-                let arg_name = Token::get_ident_name(ident);
-                if seen_arg_names.contains(&arg_name) {
-                    return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: arg_name });
-                }
-                seen_arg_names.insert(arg_name.clone());
-
-                let mut param_type_id = None;
-                if let Some(type_ident) = type_ident {
-                    param_type_id = Some(self.resolve_type_identifier(type_ident)?);
-                }
-                let typed_default_value_expr = if let Some(default_value) = default_value {
-                    // TODO: Handling retries for first-pass function typechecking with default-value expressions which reference code that hasn't been visited yet
-                    // For example:
-                    //   func foo(bar = baz()) = ...
-                    //   func baz() = ...
-                    // This would fail because `baz` doesn't yet exist when typechecking `foo`.
-                    Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
-                } else { None };
-                let type_id = match (param_type_id, &typed_default_value_expr) {
-                    (None, None) => unreachable!("Internal error: should have failed to parse"),
-                    (Some(param_type_id), None) => param_type_id,
-                    (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
-                    (Some(param_type_id), Some(typed_default_value_expr)) => {
-                        let default_value_type_id = typed_default_value_expr.type_id();
-                        if !self.type_satisfies_other(default_value_type_id, &param_type_id) {
-                            return Err(TypeError::TypeMismatch {
-                                span: typed_default_value_expr.span(),
-                                expected: vec![param_type_id],
-                                received: *default_value_type_id,
-                            });
-                        }
-                        param_type_id
+            let mut param_type_id = None;
+            if let Some(type_ident) = type_ident {
+                param_type_id = Some(self.resolve_type_identifier(type_ident)?);
+            }
+            let typed_default_value_expr = if let Some(default_value) = default_value {
+                // TODO: Handling retries for first-pass function typechecking with default-value expressions which reference code that hasn't been visited yet
+                // For example:
+                //   func foo(bar = baz()) = ...
+                //   func baz() = ...
+                // This would fail because `baz` doesn't yet exist when typechecking `foo`.
+                Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
+            } else { None };
+            let type_id = match (param_type_id, &typed_default_value_expr) {
+                (None, None) => unreachable!("Internal error: should have failed to parse"),
+                (Some(param_type_id), None) => param_type_id,
+                (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
+                (Some(param_type_id), Some(typed_default_value_expr)) => {
+                    let default_value_type_id = typed_default_value_expr.type_id();
+                    if !self.type_satisfies_other(default_value_type_id, &param_type_id) {
+                        return Err(TypeError::TypeMismatch {
+                            span: typed_default_value_expr.span(),
+                            expected: vec![param_type_id],
+                            received: *default_value_type_id,
+                        });
                     }
-                };
+                    param_type_id
+                }
+            };
 
-                params.push(FunctionParam {
-                    name: arg_name,
-                    type_id,
-                    defined_span: Some(ident.get_range()),
-                    default_value: typed_default_value_expr,
-                });
-            }
-
-            let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
-            if let Some(ret_type) = ret_type {
-                return_type_id = self.resolve_type_identifier(ret_type)?;
-            }
-            let func_id = self.add_function_to_current_scope(name, params, return_type_id)?;
-            self.current_module_mut().functions.push(func_id);
-            func_ids.push(func_id);
+            params.push(FunctionParam {
+                name: arg_name,
+                type_id,
+                defined_span: Some(ident.get_range()),
+                default_value: typed_default_value_expr,
+            });
         }
 
-        Ok(func_ids)
+        let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
+        if let Some(ret_type) = ret_type {
+            return_type_id = self.resolve_type_identifier(ret_type)?;
+        }
+        let func_id = self.add_function_to_current_scope(name, params, return_type_id)?;
+        self.current_module_mut().functions.push(func_id);
+
+        Ok(func_id)
     }
 
-    fn typecheck_function_pass_2(&mut self, func_id: FuncId, func_decl: (Token, FunctionDeclNode)) -> Result<(), TypeError> {
-        let (_, node) = func_decl;
+    fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
         let orig_func_id = self.current_function;
         self.current_function = Some(func_id);
 
