@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -53,21 +53,17 @@ fn typecheck_prelude() {
     let project = test_typecheck("").unwrap();
     let prelude_module = &project.modules[0];
 
-    let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
     let expected = TypedModule {
         id: PRELUDE_MODULE_ID,
         name: "prelude".to_string(),
-        types: vec![
-            Type::Builtin(PRELUDE_UNIT_TYPE_ID.1),
-            Type::Builtin(PRELUDE_INT_TYPE_ID.1),
-            Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1),
-            Type::Builtin(PRELUDE_BOOL_TYPE_ID.1),
-            Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
-            Type::Generic("T".to_string()), // From `None` definition
-            Type::GenericInstance(
-                StructId(PRELUDE_MODULE_ID, 0),
-                vec![project.find_type_id(&PRELUDE_MODULE_ID, &Type::Generic("T".to_string())).unwrap()],
-            ),
+        type_ids: vec![
+            TypeId(PRELUDE_SCOPE_ID, PRELUDE_UNIT_TYPE_ID.1),
+            TypeId(PRELUDE_SCOPE_ID, PRELUDE_INT_TYPE_ID.1),
+            TypeId(PRELUDE_SCOPE_ID, PRELUDE_FLOAT_TYPE_ID.1),
+            TypeId(PRELUDE_SCOPE_ID, PRELUDE_BOOL_TYPE_ID.1),
+            TypeId(PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID.1),
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0), // `T` generic, from `None` definition
+            TypeId(PRELUDE_SCOPE_ID, 5), // `T?` type, for `None` builtin
         ],
         functions: vec![],
         structs: vec![
@@ -95,13 +91,25 @@ fn typecheck_prelude() {
         code: vec![],
         scopes: vec![
             Scope {
-                id: prelude_scope_id,
+                label: "prelude.root".to_string(),
+                id: PRELUDE_SCOPE_ID,
                 parent: None,
+                types: vec![
+                    Type::Builtin(PRELUDE_UNIT_TYPE_ID.1),
+                    Type::Builtin(PRELUDE_INT_TYPE_ID.1),
+                    Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1),
+                    Type::Builtin(PRELUDE_BOOL_TYPE_ID.1),
+                    Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 0),
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0)],
+                    ),
+                ],
                 vars: vec![
                     Variable {
-                        id: VarId(prelude_scope_id, 0),
+                        id: VarId(PRELUDE_SCOPE_ID, 0),
                         name: "None".to_string(),
-                        type_id: TypeId(PRELUDE_MODULE_ID, 6),
+                        type_id: TypeId(PRELUDE_SCOPE_ID, 5),
                         is_mutable: false,
                         is_initialized: true,
                         defined_span: None,
@@ -110,7 +118,17 @@ fn typecheck_prelude() {
                     }
                 ],
                 funcs: vec![],
-            }
+            },
+            Scope {
+                label: "prelude.Option".to_string(),
+                id: ScopeId(PRELUDE_MODULE_ID, 1),
+                parent: Some(PRELUDE_SCOPE_ID),
+                types: vec![
+                    Type::Generic("T".to_string()), // From `None` definition
+                ],
+                vars: vec![],
+                funcs: vec![],
+            },
         ],
     };
     assert_eq!(&expected, prelude_module);
@@ -122,7 +140,7 @@ fn typecheck_literal() {
     let module = &project.modules[1];
     assert_eq!(ModuleId(1), module.id);
     assert_eq!(format!("./{}", TEST_MODULE_NAME), module.name);
-    assert!(module.types.is_empty());
+    assert!(module.type_ids.is_empty());
 
     let expected: Vec<TypedNode> = vec![
         TypedNode::Literal { token: Token::Int(Position::new(1, 1), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID },

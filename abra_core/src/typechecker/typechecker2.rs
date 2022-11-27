@@ -86,9 +86,9 @@ impl Project {
     }
 
     pub fn get_type_by_id(&self, type_id: &TypeId) -> &Type {
-        let TypeId(ModuleId(module_idx), idx) = type_id;
-        let module = &self.modules[*module_idx];
-        &module.types[*idx]
+        let TypeId(ScopeId(ModuleId(module_idx), scope_idx), idx) = type_id;
+        let scope = &self.modules[*module_idx].scopes[*scope_idx];
+        &scope.types[*idx]
     }
 
     pub fn get_struct_by_id(&self, struct_id: &StructId) -> &Struct {
@@ -134,22 +134,29 @@ impl Project {
 
     pub fn find_type_id(&self, module_id: &ModuleId, ty: &Type) -> Option<TypeId> {
         let module = &self.modules[module_id.0];
-        for (idx, t) in module.types.iter().enumerate() {
-            if t == ty {
-                return Some(TypeId(module.id, idx));
+        for type_id in module.type_ids.iter() {
+            let type_by_id = self.get_type_by_id(type_id);
+            if type_by_id == ty {
+                return Some(*type_id);
             }
         }
 
         None
     }
 
-    pub fn add_or_find_type_id(&mut self, module_id: &ModuleId, ty: Type) -> TypeId {
+    pub fn add_or_find_type_id(&mut self, scope_id: &ScopeId, ty: Type) -> TypeId {
+        let ScopeId(module_id, scope_idx) = scope_id;
+
         if let Some(type_id) = self.find_type_id(&module_id, &ty) {
             type_id
         } else {
             let module = &mut self.modules[module_id.0];
-            let type_id = TypeId(module.id, module.types.len());
-            module.types.push(ty);
+            let scope = &mut module.scopes[*scope_idx];
+
+            let type_id = TypeId(*scope_id, scope.types.len());
+
+            scope.types.push(ty);
+            module.type_ids.push(type_id);
 
             type_id
         }
@@ -266,8 +273,7 @@ pub struct Struct {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-// TODO: Bind TypeId to ScopeId, rather than ModuleId
-pub struct TypeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
+pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Type {
@@ -282,8 +288,10 @@ pub struct ScopeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
+    pub label: String,
     pub id: ScopeId,
     pub parent: Option<ScopeId>,
+    pub types: Vec<Type>,
     pub vars: Vec<Variable>,
     pub funcs: Vec<Function>,
 }
@@ -332,7 +340,7 @@ pub struct FunctionParam {
 pub struct TypedModule {
     pub id: ModuleId,
     pub name: String,
-    pub types: Vec<Type>,
+    pub type_ids: Vec<TypeId>,
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
     pub structs: Vec<Struct>,
@@ -437,11 +445,12 @@ pub enum TypedLiteral {
 impl Eq for TypedLiteral {}
 
 pub const PRELUDE_MODULE_ID: ModuleId = ModuleId(0);
-pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 0);
-pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 1);
-pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 2);
-pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 3);
-pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_MODULE_ID, 4);
+pub const PRELUDE_SCOPE_ID: ScopeId = ScopeId(PRELUDE_MODULE_ID, 0);
+pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 0);
+pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 1);
+pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 2);
+pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 3);
+pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 4);
 
 pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 
@@ -702,7 +711,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn add_or_find_type_id(&mut self, ty: Type) -> TypeId {
         let current_module_id = self.current_module_mut().id;
-        self.project.add_or_find_type_id(&current_module_id, ty)
+        let current_scope_id = ScopeId(current_module_id, self.current_scope);
+        self.project.add_or_find_type_id(&current_scope_id, ty)
     }
 
     fn get_struct_by_name(&self, name: &String) -> Option<&Struct> {
@@ -895,15 +905,17 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_id)
     }
 
-    fn begin_child_scope(&mut self) -> ScopeId {
+    fn begin_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
         let current_scope_id = self.current_scope;
         let current_module = self.current_module_mut();
         let current_scope = &current_module.scopes[current_scope_id];
         let new_scope_id = ScopeId(current_module.id, current_module.scopes.len());
 
         let child_scope = Scope {
+            label: label.as_ref().to_string(),
             id: new_scope_id,
             parent: Some(current_scope.id),
+            types: vec![],
             vars: vec![],
             funcs: vec![],
         };
@@ -975,13 +987,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_prelude(&mut self) {
         debug_assert!(self.project.modules.is_empty());
 
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), types: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
 
-        prelude_module.types.push(Type::Builtin(PRELUDE_UNIT_TYPE_ID.1));
-        prelude_module.types.push(Type::Builtin(PRELUDE_INT_TYPE_ID.1));
-        prelude_module.types.push(Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1));
-        prelude_module.types.push(Type::Builtin(PRELUDE_BOOL_TYPE_ID.1));
-        prelude_module.types.push(Type::Builtin(PRELUDE_STRING_TYPE_ID.1));
+        // TODO: Add println, print, and range
+        prelude_module.scopes.push(Scope { label: "prelude.root".to_string(), id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] });
+        let prelude_scope = &mut prelude_module.scopes[PRELUDE_SCOPE_ID.1];
+
+        for type_id in [PRELUDE_UNIT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID] {
+            prelude_scope.types.push(Type::Builtin(type_id.1));
+            prelude_module.type_ids.push(type_id);
+        }
 
         let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
         prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string() });
@@ -1005,26 +1020,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.project.modules.push(prelude_module);
 
-        // TODO: Generics should be scoped, either to a function or a type. This scopes the generic `T` to the _module_ level, which is clumsy.
-        let generic_t_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, Type::Generic("T".to_string()));
-        let none_type_id = self.project.add_or_find_type_id(&PRELUDE_MODULE_ID, self.project.option_type(generic_t_type_id));
-        self.project.modules[0].scopes.push(Scope {
-            id: ScopeId(PRELUDE_MODULE_ID, 0),
-            parent: None,
-            vars: vec![
-                Variable {
-                    id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
-                    name: "None".to_string(),
-                    type_id: none_type_id,
-                    is_mutable: false,
-                    is_initialized: true,
-                    defined_span: None,
-                    is_captured: false,
-                    alias: None,
-                }
-            ],
-            funcs: vec![], // TODO: Add println, print, and range
-        });
+        // Define `None` builtin, which is of type `T?`, using a generic `T` type scoped to an imaginary scope within the prelude module
+        let none_definition_scope_id = ScopeId(PRELUDE_MODULE_ID, 1);
+        let none_definition_scope = Scope { label: "prelude.Option".to_string(), id: none_definition_scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+        self.project.modules[PRELUDE_MODULE_ID.0].scopes.push(none_definition_scope);
+        let generic_t_type_id = self.project.add_or_find_type_id(&none_definition_scope_id, Type::Generic("T".to_string()));
+        let none_type_id = self.project.add_or_find_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
+        let prelude_scope = &mut self.project.modules[PRELUDE_MODULE_ID.0].scopes[PRELUDE_SCOPE_ID.1];
+        prelude_scope.vars.push(
+            Variable {
+                id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
+                name: "None".to_string(),
+                type_id: none_type_id,
+                is_mutable: false,
+                is_initialized: true,
+                defined_span: None,
+                is_captured: false,
+                alias: None,
+            }
+        );
     }
 
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
@@ -1040,11 +1054,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let module_id = ModuleId(self.project.modules.len());
         let scope_id = ScopeId(module_id, 0);
-        let root_scope = Scope { id: scope_id, parent: Some(prelude_scope_id), vars: vec![], funcs: vec![] };
+        let label = format!("{:?}.root", &module_id);
+        let root_scope = Scope { label, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
-            types: vec![],
+            type_ids: vec![],
             functions: vec![],
             structs: vec![],
             code: vec![],
@@ -1171,7 +1186,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let orig_func_id = self.current_function;
         self.current_function = Some(func_id);
 
-        self.begin_child_scope();
+        self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
 
         let func = self.project.get_func_by_id(&func_id);
         let func_name = func.name.clone();
