@@ -62,7 +62,12 @@ fn typecheck_prelude() {
             TypeId(PRELUDE_SCOPE_ID, PRELUDE_FLOAT_TYPE_ID.1),
             TypeId(PRELUDE_SCOPE_ID, PRELUDE_BOOL_TYPE_ID.1),
             TypeId(PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID.1),
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0), // `T` generic, from `None` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0), // `T` generic, from `Option<T>` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0), // `T` generic, from `Array<T>` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0), // `T` generic, from `Set<T>` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0), // `K` generic, from `Map<K, V>` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1), // `V` generic, from `Map<K, V>` definition
+            TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0), // `T` generic, from `None` definition
             TypeId(PRELUDE_SCOPE_ID, 5), // `T?` type, for `None` builtin
         ],
         functions: vec![],
@@ -70,22 +75,36 @@ fn typecheck_prelude() {
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 0),
                 name: "Option".to_string(),
+                generics: Some(vec![
+                    TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0),
+                ]),
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 1),
                 name: "Array".to_string(),
+                generics: Some(vec![
+                    TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0),
+                ]),
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 2),
                 name: "Tuple".to_string(),
+                generics: None,
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 3),
                 name: "Set".to_string(),
+                generics: Some(vec![
+                    TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0),
+                ]),
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 4),
                 name: "Map".to_string(),
+                generics: Some(vec![
+                    TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0),
+                    TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1),
+                ]),
             },
         ],
         code: vec![],
@@ -102,7 +121,7 @@ fn typecheck_prelude() {
                     Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
                     Type::GenericInstance(
                         StructId(PRELUDE_MODULE_ID, 0),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0)],
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0)],
                     ),
                 ],
                 vars: vec![
@@ -123,9 +142,39 @@ fn typecheck_prelude() {
                 label: "prelude.Option".to_string(),
                 id: ScopeId(PRELUDE_MODULE_ID, 1),
                 parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![
-                    Type::Generic("T".to_string()), // From `None` definition
-                ],
+                types: vec![Type::Generic("T".to_string())],
+                vars: vec![],
+                funcs: vec![],
+            },
+            Scope {
+                label: "prelude.Array".to_string(),
+                id: ScopeId(PRELUDE_MODULE_ID, 2),
+                parent: Some(PRELUDE_SCOPE_ID),
+                types: vec![Type::Generic("T".to_string())],
+                vars: vec![],
+                funcs: vec![],
+            },
+            Scope {
+                label: "prelude.Set".to_string(),
+                id: ScopeId(PRELUDE_MODULE_ID, 3),
+                parent: Some(PRELUDE_SCOPE_ID),
+                types: vec![Type::Generic("T".to_string())],
+                vars: vec![],
+                funcs: vec![],
+            },
+            Scope {
+                label: "prelude.Map".to_string(),
+                id: ScopeId(PRELUDE_MODULE_ID, 4),
+                parent: Some(PRELUDE_SCOPE_ID),
+                types: vec![Type::Generic("K".to_string()), Type::Generic("V".to_string())],
+                vars: vec![],
+                funcs: vec![],
+            },
+            Scope {
+                label: "prelude.None".to_string(),
+                id: ScopeId(PRELUDE_MODULE_ID, 5),
+                parent: Some(PRELUDE_SCOPE_ID),
+                types: vec![Type::Generic("T".to_string())],
                 vars: vec![],
                 funcs: vec![],
             },
@@ -276,7 +325,10 @@ fn typecheck_failure_array() {
     let (project, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        type_id: project.find_type_id(&ModuleId(1), &project.array_type(project.find_type_id(&ModuleId(1), &Type::Generic("T_Array".to_string())).unwrap())).unwrap(),
+        type_id: {
+            let array_t_type_id = project.prelude_module().structs[project.prelude_array_struct_id.1].generics.as_ref().unwrap()[0];
+            project.find_type_id(&ModuleId(1), &project.array_type(array_t_type_id)).unwrap()
+        },
     };
     assert_eq!(expected, err);
 }
@@ -414,7 +466,10 @@ fn typecheck_failure_set() {
     let (project, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
-        type_id: project.find_type_id(&ModuleId(1), &project.set_type(project.find_type_id(&ModuleId(1), &Type::Generic("T_Set".to_string())).unwrap())).unwrap(),
+        type_id: {
+            let set_t_type_id = project.prelude_module().structs[project.prelude_set_struct_id.1].generics.as_ref().unwrap()[0];
+            project.find_type_id(&ModuleId(1), &project.set_type(set_t_type_id)).unwrap()
+        },
     };
     assert_eq!(expected, err);
 }
@@ -517,9 +572,10 @@ fn typecheck_failure_map() {
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
         type_id: {
-            let key_type_id = project.find_type_id(&ModuleId(1), &Type::Generic("K_Map".to_string())).unwrap();
-            let val_type_id = project.find_type_id(&ModuleId(1), &Type::Generic("V_Map".to_string())).unwrap();
-            project.find_type_id(&ModuleId(1), &project.map_type(key_type_id, val_type_id)).unwrap()
+            let map_generics = project.prelude_module().structs[project.prelude_map_struct_id.1].generics.as_ref().unwrap();
+            let map_k_type_id = map_generics[0];
+            let map_v_type_id = map_generics[1];
+            project.find_type_id(&ModuleId(1), &project.map_type(map_k_type_id, map_v_type_id)).unwrap()
         },
     };
     assert_eq!(expected, err);

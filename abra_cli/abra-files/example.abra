@@ -1,3 +1,5 @@
 // TODO: Make this work
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
+
+[None, 123]

@@ -144,21 +144,26 @@ impl Project {
         None
     }
 
+    fn add_type_id(&mut self, scope_id: &ScopeId, ty: Type) -> TypeId {
+        let ScopeId(ModuleId(module_id), scope_idx) = scope_id;
+        let module = &mut self.modules[*module_id];
+        let scope = &mut module.scopes[*scope_idx];
+
+        let type_id = TypeId(*scope_id, scope.types.len());
+
+        scope.types.push(ty);
+        module.type_ids.push(type_id);
+
+        type_id
+    }
+
     pub fn add_or_find_type_id(&mut self, scope_id: &ScopeId, ty: Type) -> TypeId {
-        let ScopeId(module_id, scope_idx) = scope_id;
+        let ScopeId(module_id, _) = scope_id;
 
         if let Some(type_id) = self.find_type_id(&module_id, &ty) {
             type_id
         } else {
-            let module = &mut self.modules[module_id.0];
-            let scope = &mut module.scopes[*scope_idx];
-
-            let type_id = TypeId(*scope_id, scope.types.len());
-
-            scope.types.push(ty);
-            module.type_ids.push(type_id);
-
-            type_id
+            self.add_type_id(scope_id, ty)
         }
     }
 
@@ -270,6 +275,7 @@ pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 pub struct Struct {
     pub id: StructId,
     pub name: String,
+    pub generics: Option<Vec<TypeId>>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -998,47 +1004,99 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.type_ids.push(type_id);
         }
 
-        let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-        prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string() });
-        self.project.prelude_option_struct_id = option_struct_id;
-
-        let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-        prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string() });
-        self.project.prelude_array_struct_id = array_struct_id;
-
-        let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-        prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string() });
-        self.project.prelude_tuple_struct_id = tuple_struct_id;
-
-        let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-        prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string() });
-        self.project.prelude_set_struct_id = set_struct_id;
-
-        let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-        prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string() });
-        self.project.prelude_map_struct_id = map_struct_id;
-
         self.project.modules.push(prelude_module);
 
-        // Define `None` builtin, which is of type `T?`, using a generic `T` type scoped to an imaginary scope within the prelude module
-        let none_definition_scope_id = ScopeId(PRELUDE_MODULE_ID, 1);
-        let none_definition_scope = Scope { label: "prelude.Option".to_string(), id: none_definition_scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
-        self.project.modules[PRELUDE_MODULE_ID.0].scopes.push(none_definition_scope);
-        let generic_t_type_id = self.project.add_or_find_type_id(&none_definition_scope_id, Type::Generic("T".to_string()));
-        let none_type_id = self.project.add_or_find_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
-        let prelude_scope = &mut self.project.modules[PRELUDE_MODULE_ID.0].scopes[PRELUDE_SCOPE_ID.1];
-        prelude_scope.vars.push(
-            Variable {
-                id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
-                name: "None".to_string(),
-                type_id: none_type_id,
-                is_mutable: false,
-                is_initialized: true,
-                defined_span: None,
-                is_captured: false,
-                alias: None,
-            }
-        );
+        let mut prelude_scope_idx = 1;
+
+        // TODO: Read this in from some prototype file (eg. `prelude.d.abra`), which contains stubs
+        // Define `Option<T>` struct
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_scope_idx);
+            prelude_scope_idx += 1;
+            let scope = Scope { label: "prelude.Option".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            prelude_module.scopes.push(scope);
+            let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic("T".to_string()));
+
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
+            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), generics: Some(vec![generic_t_type_id]) });
+            self.project.prelude_option_struct_id = option_struct_id;
+        }
+        // Define `Array<T>` struct
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_scope_idx);
+            prelude_scope_idx += 1;
+            let scope = Scope { label: "prelude.Array".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            prelude_module.scopes.push(scope);
+            let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic("T".to_string()));
+
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
+            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), generics: Some(vec![generic_t_type_id]) });
+            self.project.prelude_array_struct_id = array_struct_id;
+        }
+        // Define `Tuple<T...>` struct
+        // (There's no way of representing variadic generics like how tuple works, and it's not something that's necessary to add, so let's do a bit of hand-waving here)
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
+            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), generics: None });
+            self.project.prelude_tuple_struct_id = tuple_struct_id;
+        }
+        // Define `Set<T>` struct
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_scope_idx);
+            prelude_scope_idx += 1;
+            let scope = Scope { label: "prelude.Set".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            prelude_module.scopes.push(scope);
+            let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic("T".to_string()));
+
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
+            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), generics: Some(vec![generic_t_type_id]) });
+            self.project.prelude_set_struct_id = set_struct_id;
+        }
+        // Define `Map<K, V>` struct
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_scope_idx);
+            prelude_scope_idx += 1;
+            let scope = Scope { label: "prelude.Map".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            prelude_module.scopes.push(scope);
+            let generic_k_type_id = self.project.add_type_id(&scope_id, Type::Generic("K".to_string()));
+            let generic_v_type_id = self.project.add_type_id(&scope_id, Type::Generic("V".to_string()));
+
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
+            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), generics: Some(vec![generic_k_type_id, generic_v_type_id]) });
+            self.project.prelude_map_struct_id = map_struct_id;
+        }
+        // Define `None` builtin, which is of type `T?`
+        {
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_scope_idx);
+            let scope = Scope { label: "prelude.None".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            prelude_module.scopes.push(scope);
+            let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic("T".to_string()));
+
+            let none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.scopes[PRELUDE_SCOPE_ID.1].vars.push(
+                Variable {
+                    id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
+                    name: "None".to_string(),
+                    type_id: none_type_id,
+                    is_mutable: false,
+                    is_initialized: true,
+                    defined_span: None,
+                    is_captured: false,
+                    alias: None,
+                }
+            );
+        }
     }
 
     pub fn typecheck_module(&mut self, m_id: &parser::ast::ModuleId) -> Result<(), TypecheckError> {
@@ -1428,7 +1486,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let type_id = match inner_type_id {
                     None => {
-                        let inner_type_id = self.add_or_find_type_id(Type::Generic("T_Array".to_string()));
+                        let array_struct = &self.project.prelude_module().structs[self.project.prelude_array_struct_id.1];
+                        let inner_type_id = array_struct.generics.as_ref().expect("prelude.Array has exactly 1 generic")[0];
                         self.add_or_find_type_id(self.project.array_type(inner_type_id))
                     }
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.array_type(inner_type_id)),
@@ -1468,7 +1527,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let type_id = match inner_type_id {
                     None => {
-                        let inner_type_id = self.add_or_find_type_id(Type::Generic("T_Set".to_string()));
+                        let set_struct = &self.project.prelude_module().structs[self.project.prelude_set_struct_id.1];
+                        let inner_type_id = set_struct.generics.as_ref().expect("prelude.Set has exactly 1 generic")[0];
                         self.add_or_find_type_id(self.project.set_type(inner_type_id))
                     }
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.set_type(inner_type_id)),
@@ -1524,8 +1584,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let type_id = match (key_type_id, val_type_id) {
                     (Some(key_type_id), Some(val_type_id)) => self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id)),
                     _ => {
-                        let key_type_id = self.add_or_find_type_id(Type::Generic("K_Map".to_string()));
-                        let val_type_id = self.add_or_find_type_id(Type::Generic("V_Map".to_string()));
+                        let map_struct = &self.project.prelude_module().structs[self.project.prelude_map_struct_id.1];
+                        let map_generics = map_struct.generics.as_ref().expect("prelude.Map has exactly 2 generics");
+                        let key_type_id = map_generics[0];
+                        let val_type_id = map_generics[1];
                         self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id))
                     }
                 };
