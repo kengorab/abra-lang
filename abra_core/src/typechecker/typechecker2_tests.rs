@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID, StructField, VariableAlias};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -75,36 +75,46 @@ fn typecheck_prelude() {
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 0),
                 name: "Option".to_string(),
+                defined_span: None,
                 generics: Some(vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0),
                 ]),
+                fields: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 1),
                 name: "Array".to_string(),
+                defined_span: None,
                 generics: Some(vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0),
                 ]),
+                fields: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 2),
                 name: "Tuple".to_string(),
+                defined_span: None,
                 generics: None,
+                fields: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 3),
                 name: "Set".to_string(),
+                defined_span: None,
                 generics: Some(vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0),
                 ]),
+                fields: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 4),
                 name: "Map".to_string(),
+                defined_span: None,
                 generics: Some(vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0),
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1),
                 ]),
+                fields: vec![],
             },
         ],
         code: vec![],
@@ -133,7 +143,7 @@ fn typecheck_prelude() {
                         is_initialized: true,
                         defined_span: None,
                         is_captured: false,
-                        alias: None,
+                        alias: VariableAlias::None,
                     }
                 ],
                 funcs: vec![],
@@ -594,7 +604,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -610,7 +620,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -629,7 +639,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -653,7 +663,7 @@ fn typecheck_none() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -705,7 +715,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 11), end: Position::new(2, 11) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 1),
@@ -715,7 +725,7 @@ fn typecheck_binding_declaration() {
             is_initialized: false,
             defined_span: Some(Range { start: Position::new(3, 11), end: Position::new(3, 11) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 2),
@@ -725,7 +735,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(4, 11), end: Position::new(4, 11) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -743,7 +753,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 12), end: Position::new(2, 12) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 1),
@@ -753,7 +763,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 15), end: Position::new(2, 15) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 2),
@@ -763,7 +773,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 3),
@@ -773,7 +783,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 4),
@@ -783,7 +793,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 28), end: Position::new(2, 28) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 5),
@@ -793,7 +803,7 @@ fn typecheck_binding_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
             is_captured: false,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);
@@ -832,6 +842,55 @@ fn typecheck_failure_binding_declaration() {
     let expected = TypeError::MissingBindingInitializer {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
         is_mutable: true,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_type_declaration() {
+    let project = test_typecheck("\
+      type Foo {\n\
+        a: String\n\
+        b: Int\n\
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = vec![
+        Struct {
+            id: StructId(ModuleId(1), 0),
+            name: "Foo".to_string(),
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            generics: None,
+            fields: vec![
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID },
+                StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+            ],
+        }
+    ];
+    assert_eq!(expected, module.structs);
+}
+
+#[test]
+fn typecheck_failure_type_declaration() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {}\n\
+      type Foo {}\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateBinding {
+        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        name: "Foo".to_string(),
+        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        a: Bogus\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType{
+        span: Range { start: Position::new(2, 4), end: Position::new(2, 8) },
+        name: "Bogus".to_string(),
     };
     assert_eq!(expected, err);
 }
@@ -971,7 +1030,7 @@ fn typecheck_function_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
             is_captured: false,
-            alias: Some(FuncId(ScopeId(ModuleId(1), 0), 0)),
+            alias: VariableAlias::Function(FuncId(ScopeId(ModuleId(1), 0), 0)),
         },
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 1),
@@ -981,7 +1040,7 @@ fn typecheck_function_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
             is_captured: true,
-            alias: None,
+            alias: VariableAlias::None,
         },
     ];
     assert_eq!(expected, module.scopes[0].vars);

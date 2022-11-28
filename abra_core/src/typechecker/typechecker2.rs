@@ -5,7 +5,7 @@ use crate::parser;
 use crate::parser::parser::ParseResult;
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -95,6 +95,12 @@ impl Project {
         let StructId(ModuleId(module_idx), idx) = struct_id;
         let module = &self.modules[*module_idx];
         &module.structs[*idx]
+    }
+
+    pub fn get_struct_by_id_mut(&mut self, struct_id: &StructId) -> &mut Struct {
+        let StructId(ModuleId(module_idx), idx) = struct_id;
+        let module = &mut self.modules[*module_idx];
+        &mut module.structs[*idx]
     }
 
     pub fn get_func_by_id(&self, func_id: &FuncId) -> &Function {
@@ -219,6 +225,10 @@ impl Project {
         Type::Function(param_type_ids, return_type_id)
     }
 
+    pub fn struct_type(&self, struct_id: StructId) -> Type {
+        Type::Struct(struct_id)
+    }
+
     pub fn type_repr(&self, type_id: &TypeId) -> String {
         let ty = self.get_type_by_id(type_id);
         match ty {
@@ -261,6 +271,10 @@ impl Project {
                 let return_repr = self.type_repr(return_type_id);
                 format!("({}) => {}", param_reprs, return_repr)
             }
+            Type::Struct(struct_id) => {
+                let struct_ = self.get_struct_by_id(struct_id);
+                struct_.name.to_string()
+            }
         }
     }
 }
@@ -271,11 +285,20 @@ pub struct ModuleId(/* idx: */ pub usize);
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Struct {
     pub id: StructId,
     pub name: String,
+    // Structs with no defined_span are builtins
+    pub defined_span: Option<Range>,
     pub generics: Option<Vec<TypeId>>,
+    pub fields: Vec<StructField>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct StructField {
+    pub name: String,
+    pub type_id: TypeId,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -287,6 +310,7 @@ pub enum Type {
     Generic(String),
     GenericInstance(StructId, Vec<TypeId>),
     Function(Vec<TypeId>, TypeId),
+    Struct(StructId),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -306,6 +330,13 @@ pub struct Scope {
 pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
+pub enum VariableAlias {
+    None,
+    Function(FuncId),
+    Struct(StructId)
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Variable {
     pub id: VarId,
     pub name: String,
@@ -315,7 +346,7 @@ pub struct Variable {
     // Variables with no defined_span are builtins
     pub defined_span: Option<Range>,
     pub is_captured: bool,
-    pub alias: Option<FuncId>,
+    pub alias: VariableAlias,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -337,7 +368,7 @@ pub struct Function {
 pub struct FunctionParam {
     pub name: String,
     pub type_id: TypeId,
-    // Params with no defined_span are builtins
+    // Params with no defined_span are for builtin functions
     pub defined_span: Option<Range>,
     pub default_value: Option<TypedNode>,
 }
@@ -484,6 +515,7 @@ pub enum TypeError {
     MixedArgumentType { span: Range },
     DuplicateArgumentLabel { span: Range, name: String },
     InvalidArity { span: Range, num_required_args: usize, num_provided_args: usize },
+    DuplicateMember { span: Range, name: String, kind: &'static str },
 }
 
 impl TypeError {
@@ -523,7 +555,8 @@ impl TypeError {
             TypeError::UnexpectedArgumentName { span, .. } |
             TypeError::MixedArgumentType { span, .. } |
             TypeError::DuplicateArgumentLabel { span, .. } |
-            TypeError::InvalidArity { span, .. } => span,
+            TypeError::InvalidArity { span, .. } |
+            TypeError::DuplicateMember { span, .. } => span
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -686,6 +719,14 @@ impl TypeError {
                     num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
                 )
             }
+            TypeError::DuplicateMember { name, kind, .. } => {
+                format!(
+                    "Duplicate field '{}'\n{}\n\
+                    {} with that name is already declared in this type",
+                    name, cursor_line,
+                    kind
+                )
+            }
         };
 
         let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
@@ -815,6 +856,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 false
             }
+            Type::Struct(struct_id) => {
+                let struct_ = self.project.get_struct_by_id(struct_id);
+                struct_.generics.is_some()
+            }
         }
     }
 
@@ -879,7 +924,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let id = VarId(current_scope.id, current_scope.vars.len());
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: None };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -906,9 +951,38 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let fn_type_id = self.add_or_find_type_id(self.project.function_type(param_type_ids, return_type_id));
         let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
-        variable.alias = Some(func_id);
+        variable.alias = VariableAlias::Function(func_id);
 
         Ok(func_id)
+    }
+
+    fn add_struct_to_current_module(&mut self, name_token: &Token) -> Result<StructId, TypeError> {
+        let current_module = self.current_module_mut();
+
+        let name = Token::get_ident_name(name_token);
+        let span = name_token.get_range();
+        for struct_ in &current_module.structs {
+            if struct_.name == name {
+                return Err(TypeError::DuplicateBinding { span, name, original_span: struct_.defined_span.clone() });
+            }
+        }
+
+        let struct_id = StructId(current_module.id, current_module.structs.len());
+        let struct_ = Struct {
+            id: struct_id,
+            name: name.clone(),
+            defined_span: Some(name_token.get_range()),
+            generics: None,
+            fields: vec![],
+        };
+        current_module.structs.push(struct_);
+
+        let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
+        let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span)?;
+        let variable = self.project.get_var_by_id_mut(&struct_var_id);
+        variable.alias = VariableAlias::Struct(struct_id);
+
+        Ok(struct_id)
     }
 
     fn begin_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
@@ -1020,7 +1094,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), generics: Some(vec![generic_t_type_id]) });
+            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
             self.project.prelude_option_struct_id = option_struct_id;
         }
         // Define `Array<T>` struct
@@ -1034,7 +1108,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), generics: Some(vec![generic_t_type_id]) });
+            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
             self.project.prelude_array_struct_id = array_struct_id;
         }
         // Define `Tuple<T...>` struct
@@ -1042,7 +1116,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), generics: None });
+            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), defined_span: None, generics: None, fields: vec![] });
             self.project.prelude_tuple_struct_id = tuple_struct_id;
         }
         // Define `Set<T>` struct
@@ -1056,7 +1130,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), generics: Some(vec![generic_t_type_id]) });
+            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
             self.project.prelude_set_struct_id = set_struct_id;
         }
         // Define `Map<K, V>` struct
@@ -1071,7 +1145,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), generics: Some(vec![generic_k_type_id, generic_v_type_id]) });
+            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), defined_span: None, generics: Some(vec![generic_k_type_id, generic_v_type_id]), fields: vec![] });
             self.project.prelude_map_struct_id = map_struct_id;
         }
         // Define `None` builtin, which is of type `T?`
@@ -1093,7 +1167,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     is_initialized: true,
                     defined_span: None,
                     is_captured: false,
-                    alias: None,
+                    alias: VariableAlias::None,
                 }
             );
         }
@@ -1137,7 +1211,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         for node in &nodes {
             match node {
                 AstNode::FunctionDecl(_, node) => func_decls.push(node),
-                n @ AstNode::TypeDecl(_, _) => type_decls.push(n),
+                AstNode::TypeDecl(_, node) => type_decls.push(node),
                 n @ AstNode::EnumDecl(_, _) => enum_decls.push(n),
                 _ => {}
             }
@@ -1149,10 +1223,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             func_ids.push(func_id);
         }
 
-        debug_assert!(type_decls.is_empty());
+        let mut struct_ids = vec![];
+        for node in type_decls {
+            let struct_id = self.typecheck_struct_pass_1(node)?;
+            struct_ids.push(struct_id);
+        }
+
         debug_assert!(enum_decls.is_empty());
 
         let mut fn_idx = 0;
+        let mut struct_idx = 0;
         for node in nodes {
             match node {
                 AstNode::FunctionDecl(_, decl_node) => {
@@ -1162,6 +1242,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     fn_idx += 1;
 
                     self.typecheck_function_pass_2(func_id, decl_node)?;
+                }
+                AstNode::TypeDecl(_, decl_node) => {
+                    debug_assert!(struct_idx < struct_ids.len(), "There should be a FuncId for each declaration in this block");
+
+                    let struct_id = struct_ids[struct_idx];
+                    struct_idx += 1;
+
+                    self.typecheck_struct_pass_2(struct_id, decl_node)?;
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
@@ -1177,6 +1265,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
+
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
         if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
 
@@ -1280,6 +1369,50 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
         self.current_function = orig_func_id;
+
+        Ok(())
+    }
+
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
+        let TypeDeclNode { export_token, name, type_args, .. } = node;
+
+        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+        if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
+
+        let struct_id = self.add_struct_to_current_module(name)?;
+
+        Ok(struct_id)
+    }
+
+    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
+        let TypeDeclNode { name, fields, methods, .. } = node;
+
+        self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+
+        let mut seen_fields = HashSet::new();
+        let mut typed_fields = Vec::with_capacity(fields.len());
+        for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
+            if default_value.is_some() { unimplemented!("Internal error: field default values") }
+            if readonly.is_some() { unimplemented!("Internal error: readonly") }
+
+            let field_name = Token::get_ident_name(&ident);
+            if seen_fields.contains(&field_name) {
+                return Err(TypeError::DuplicateMember { span: ident.get_range(), name: field_name, kind: "Field" });
+            }
+            seen_fields.insert(field_name.clone());
+
+            let field_type_id = self.resolve_type_identifier(&type_ident)?;
+            let field = StructField {
+                name: field_name,
+                type_id: field_type_id,
+            };
+            typed_fields.push(field);
+        }
+
+        let struct_ = self.project.get_struct_by_id_mut(&struct_id);
+        struct_.fields = typed_fields;
+
+        self.end_child_scope();
 
         Ok(())
     }
@@ -1677,7 +1810,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let (params_data, return_type_id) = match &typed_target {
                     TypedNode::Identifier { var_id, type_id, .. } => {
                         let var = self.project.get_var_by_id(var_id);
-                        if let Some(alias_func_id) = var.alias {
+                        if let VariableAlias::Function(alias_func_id) = var.alias {
                             let function = self.project.get_func_by_id(&alias_func_id);
 
                             let params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();

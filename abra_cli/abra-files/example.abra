@@ -2,4 +2,8 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-[None, 123]
+type Foo {
+  a: String
+  b: Int
+  c: Foo
+}
