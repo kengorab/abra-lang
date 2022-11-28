@@ -3,7 +3,11 @@
 // func bar(): Int = 123
 
 type Foo {
-  a: String
-  b: Int
-  c: Foo
+  foo: String
+
+  func foo(self): String = "hello"
+}
+
+func foo() {
+
 }

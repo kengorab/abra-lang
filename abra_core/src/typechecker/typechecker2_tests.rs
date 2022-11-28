@@ -80,6 +80,8 @@ fn typecheck_prelude() {
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0),
                 ]),
                 fields: vec![],
+                methods: vec![],
+                static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 1),
@@ -89,6 +91,8 @@ fn typecheck_prelude() {
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0),
                 ]),
                 fields: vec![],
+                methods: vec![],
+                static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 2),
@@ -96,6 +100,8 @@ fn typecheck_prelude() {
                 defined_span: None,
                 generics: None,
                 fields: vec![],
+                methods: vec![],
+                static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 3),
@@ -105,6 +111,8 @@ fn typecheck_prelude() {
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0),
                 ]),
                 fields: vec![],
+                methods: vec![],
+                static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 4),
@@ -115,6 +123,8 @@ fn typecheck_prelude() {
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1),
                 ]),
                 fields: vec![],
+                methods: vec![],
+                static_methods: vec![],
             },
         ],
         code: vec![],
@@ -855,6 +865,7 @@ fn typecheck_type_declaration() {
       }\
     ").unwrap();
     let module = &project.modules[1];
+    let struct_id = StructId(ModuleId(1), 0);
     let expected = vec![
         Struct {
             id: StructId(ModuleId(1), 0),
@@ -865,9 +876,89 @@ fn typecheck_type_declaration() {
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID },
                 StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID },
             ],
+            methods: vec![],
+            static_methods: vec![],
         }
     ];
     assert_eq!(expected, module.structs);
+    // Verify that the alias variable is inserted for the new type
+    let expected = vec![
+        Variable {
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
+            name: "Foo".to_string(),
+            type_id: project.find_type_id(&ModuleId(1), &project.struct_type(struct_id)).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            is_captured: false,
+            alias: VariableAlias::Struct(struct_id),
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+
+    let project = test_typecheck("\
+      type Foo {\n\
+        a: String\n\
+        func foo(self): Int = 12\n\
+        func fooStatic(): Int = 24\n\
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_id = StructId(ModuleId(1), 0);
+    let expected = vec![
+        Struct {
+            id: struct_id,
+            name: "Foo".to_string(),
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            generics: None,
+            fields: vec![
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID },
+            ],
+            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
+            static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1)],
+        }
+    ];
+    assert_eq!(expected, module.structs);
+    let expected = vec![
+        Function {
+            id: FuncId(ScopeId(ModuleId(1), 1), 0),
+            name: "foo".to_string(),
+            params: vec![
+                FunctionParam {
+                    name: "self".to_string(),
+                    type_id: project.find_type_id(&ModuleId(1), &Type::GenericInstance(struct_id, vec![])).unwrap(),
+                    defined_span: Some(Range { start: Position::new(3, 10), end: Position::new(3, 13) }),
+                    default_value: None,
+                }
+            ],
+            return_type_id: PRELUDE_INT_TYPE_ID,
+            defined_span: Some(Range { start: Position::new(3, 6), end: Position::new(3, 8) }),
+            body: vec![
+                TypedNode::Literal {
+                    token: Token::Int(Position::new(3, 23), 12),
+                    value: TypedLiteral::Int(12),
+                    type_id: PRELUDE_INT_TYPE_ID,
+                }
+            ],
+            captured_vars: vec![],
+        },
+        Function {
+            id: FuncId(ScopeId(ModuleId(1), 1), 1),
+            name: "fooStatic".to_string(),
+            params: vec![ ],
+            return_type_id: PRELUDE_INT_TYPE_ID,
+            defined_span: Some(Range { start: Position::new(4, 6), end: Position::new(4, 14) }),
+            body: vec![
+                TypedNode::Literal {
+                    token: Token::Int(Position::new(4, 25), 24),
+                    value: TypedLiteral::Int(24),
+                    type_id: PRELUDE_INT_TYPE_ID,
+                }
+            ],
+            captured_vars: vec![],
+        }
+    ];
+    assert_eq!(expected, module.scopes[1].funcs);
 }
 
 #[test]
@@ -888,9 +979,55 @@ fn typecheck_failure_type_declaration() {
         a: Bogus\n\
       }\
     ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::UnknownType{
+    let expected = TypeError::UnknownType {
         span: Range { start: Position::new(2, 4), end: Position::new(2, 8) },
         name: "Bogus".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        func foo(self) = 12\n\
+        func foo(self) = 12\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateBinding {
+        span: Range { start: Position::new(3, 6), end: Position::new(3, 8) },
+        name: "foo".to_string(),
+        original_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+    };
+    assert_eq!(expected, err);
+
+    // Self-parameter position tests
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        func foo(self, self) {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidSelfParamPosition {
+        span: Range { start: Position::new(2, 16), end: Position::new(2, 19) },
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        func foo(a: Int, self) {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidSelfParamPosition {
+        span: Range { start: Position::new(2, 18), end: Position::new(2, 21) },
+    };
+    assert_eq!(expected, err);
+
+    // Errors in method body
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {\n\
+        func foo(self) = -true\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 18), end: Position::new(2, 22) },
+        expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
 }
@@ -1100,6 +1237,14 @@ fn typecheck_failure_function_declaration() {
         span: Range { start: Position::new(1, 20), end: Position::new(1, 24) },
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: project.find_type_id(&ModuleId(1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    // Self-parameter tests
+
+    let (_, Either::Right(err)) = test_typecheck("func foo(self) {}").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidSelfParam {
+        span: Range { start: Position::new(1, 10), end: Position::new(1, 13) },
     };
     assert_eq!(expected, err);
 }

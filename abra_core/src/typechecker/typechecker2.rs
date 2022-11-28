@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use itertools::{Either, Itertools};
 use crate::parser;
@@ -293,6 +293,8 @@ pub struct Struct {
     pub defined_span: Option<Range>,
     pub generics: Option<Vec<TypeId>>,
     pub fields: Vec<StructField>,
+    pub methods: Vec<FuncId>,
+    pub static_methods: Vec<FuncId>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -333,7 +335,7 @@ pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 pub enum VariableAlias {
     None,
     Function(FuncId),
-    Struct(StructId)
+    Struct(StructId),
 }
 
 #[derive(Debug, PartialEq)]
@@ -516,6 +518,8 @@ pub enum TypeError {
     DuplicateArgumentLabel { span: Range, name: String },
     InvalidArity { span: Range, num_required_args: usize, num_provided_args: usize },
     DuplicateMember { span: Range, name: String, kind: &'static str },
+    InvalidSelfParam { span: Range },
+    InvalidSelfParamPosition { span: Range },
 }
 
 impl TypeError {
@@ -556,7 +560,9 @@ impl TypeError {
             TypeError::MixedArgumentType { span, .. } |
             TypeError::DuplicateArgumentLabel { span, .. } |
             TypeError::InvalidArity { span, .. } |
-            TypeError::DuplicateMember { span, .. } => span
+            TypeError::DuplicateMember { span, .. } |
+            TypeError::InvalidSelfParam { span } |
+            TypeError::InvalidSelfParamPosition { span } => span,
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -727,6 +733,20 @@ impl TypeError {
                     kind
                 )
             }
+            TypeError::InvalidSelfParam { .. } => {
+                format!(
+                    "Invalid usage of `self` parameter\n{}\n\
+                    `self` can only appear within methods on types",
+                    cursor_line
+                )
+            }
+            TypeError::InvalidSelfParamPosition { .. } => {
+                format!(
+                    "Invalid position for `self`\n{}\n\
+                    `self` must appear as the first parameter",
+                    cursor_line
+                )
+            }
         };
 
         let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
@@ -738,12 +758,13 @@ pub struct Typechecker2<'a, L: LoadModule> {
     module_loader: &'a L,
     project: &'a mut Project,
     current_scope: usize,
+    current_type_decl: Option<TypeId>,
     current_function: Option<FuncId>,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope: 0, current_function: None }
+        Typechecker2 { module_loader, project, current_scope: 0, current_type_decl: None, current_function: None }
     }
 
     /* UTILITIES */
@@ -930,6 +951,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(id)
     }
 
+    fn add_function_variable_alias_to_current_scope(&mut self, ident: &Token, func_id: &FuncId) -> Result<(), TypeError> {
+        let func = self.project.get_func_by_id(func_id);
+        let name = Token::get_ident_name(ident);
+        let span = ident.get_range();
+
+        let param_type_ids = func.params.iter().map(|p| p.type_id).collect();
+
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type(param_type_ids, func.return_type_id));
+        let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
+        let variable = self.project.get_var_by_id_mut(&fn_var_id);
+        variable.alias = VariableAlias::Function(*func_id);
+
+        Ok(())
+    }
+
     fn add_function_to_current_scope(&mut self, name_token: &Token, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
         let current_scope_idx = self.current_scope;
         let current_scope = &mut self.current_module_mut().scopes[current_scope_idx];
@@ -942,16 +978,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let param_type_ids = params.iter().map(|p| p.type_id).collect();
-
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
         let func = Function { id: func_id, name: name.clone(), params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
-
-        let fn_type_id = self.add_or_find_type_id(self.project.function_type(param_type_ids, return_type_id));
-        let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
-        let variable = self.project.get_var_by_id_mut(&fn_var_id);
-        variable.alias = VariableAlias::Function(func_id);
 
         Ok(func_id)
     }
@@ -974,6 +1003,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             defined_span: Some(name_token.get_range()),
             generics: None,
             fields: vec![],
+            methods: vec![],
+            static_methods: vec![],
         };
         current_module.structs.push(struct_);
 
@@ -1094,7 +1125,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
+            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_option_struct_id = option_struct_id;
         }
         // Define `Array<T>` struct
@@ -1108,7 +1139,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
+            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_array_struct_id = array_struct_id;
         }
         // Define `Tuple<T...>` struct
@@ -1116,7 +1147,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), defined_span: None, generics: None, fields: vec![] });
+            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), defined_span: None, generics: None, fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_tuple_struct_id = tuple_struct_id;
         }
         // Define `Set<T>` struct
@@ -1130,7 +1161,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![] });
+            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_set_struct_id = set_struct_id;
         }
         // Define `Map<K, V>` struct
@@ -1145,7 +1176,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), defined_span: None, generics: Some(vec![generic_k_type_id, generic_v_type_id]), fields: vec![] });
+            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), defined_span: None, generics: Some(vec![generic_k_type_id, generic_v_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_map_struct_id = map_struct_id;
         }
         // Define `None` builtin, which is of type `T?`
@@ -1217,39 +1248,32 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut func_ids = vec![];
+        let mut func_ids = VecDeque::with_capacity(func_decls.len());
         for node in func_decls {
-            let func_id = self.typecheck_function_pass_1(node)?;
-            func_ids.push(func_id);
+            let func_id = self.typecheck_function_pass_1(node, false)?;
+            self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
+            func_ids.push_back(func_id);
         }
 
-        let mut struct_ids = vec![];
+        let mut structs = VecDeque::with_capacity(type_decls.len());
         for node in type_decls {
-            let struct_id = self.typecheck_struct_pass_1(node)?;
-            struct_ids.push(struct_id);
+            let struct_data = self.typecheck_struct_pass_1(node)?;
+            structs.push_back(struct_data);
         }
 
         debug_assert!(enum_decls.is_empty());
 
-        let mut fn_idx = 0;
-        let mut struct_idx = 0;
         for node in nodes {
             match node {
                 AstNode::FunctionDecl(_, decl_node) => {
-                    debug_assert!(fn_idx < func_ids.len(), "There should be a FuncId for each declaration in this block");
-
-                    let func_id = func_ids[fn_idx];
-                    fn_idx += 1;
-
+                    let func_id = func_ids.pop_front()
+                        .expect("There should be a FuncId for each function declaration");
                     self.typecheck_function_pass_2(func_id, decl_node)?;
                 }
                 AstNode::TypeDecl(_, decl_node) => {
-                    debug_assert!(struct_idx < struct_ids.len(), "There should be a FuncId for each declaration in this block");
-
-                    let struct_id = struct_ids[struct_idx];
-                    struct_idx += 1;
-
-                    self.typecheck_struct_pass_2(struct_id, decl_node)?;
+                    let (struct_id, method_func_ids) = structs.pop_front()
+                        .expect("There should be Struct metadata for each declaration in this block");
+                    self.typecheck_struct_pass_2(struct_id, method_func_ids, decl_node)?;
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
@@ -1263,18 +1287,41 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
+    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
         if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
 
+        let mut seen_self = false;
         let mut seen_arg_names = HashSet::new();
         let mut params = vec![];
-        for (ident, type_ident, is_vararg, default_value) in args {
+        for (idx, (ident, type_ident, is_vararg, default_value)) in args.iter().enumerate() {
             if *is_vararg { unimplemented!("Internal error: variadic parameters") }
 
             let arg_name = Token::get_ident_name(ident);
+
+            if let Token::Self_(_) = &ident {
+                let self_type_id = match &self.current_type_decl {
+                    Some(type_id) if allow_self => type_id,
+                    _ => return Err(TypeError::InvalidSelfParam { span: ident.get_range() }),
+                };
+
+                if seen_self || idx != 0 {
+                    return Err(TypeError::InvalidSelfParamPosition { span: ident.get_range() });
+                }
+                seen_self = true;
+
+                params.push(FunctionParam {
+                    name: arg_name,
+                    type_id: *self_type_id,
+                    defined_span: Some(ident.get_range()),
+                    default_value: None,
+                });
+
+                continue;
+            }
+
             if seen_arg_names.contains(&arg_name) {
                 return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: arg_name });
             }
@@ -1354,6 +1401,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             } else {
                 None
             };
+
+            // TODO: Handle nested function declaration (and raise error on nested Type declaration)
             let typed_node = self.typecheck_statement(node, type_hint)?;
             let type_id = typed_node.type_id();
 
@@ -1373,21 +1422,36 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
-        let TypeDeclNode { export_token, name, type_args, .. } = node;
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode) -> Result<(StructId, Vec<FuncId>), TypeError> {
+        let TypeDeclNode { export_token, name, type_args, methods, .. } = node;
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
         if !type_args.is_empty() { unimplemented!("Internal error: function type arguments") }
 
         let struct_id = self.add_struct_to_current_module(name)?;
+        debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
 
-        Ok(struct_id)
-    }
-
-    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
-        let TypeDeclNode { name, fields, methods, .. } = node;
+        let type_id = self.add_or_find_type_id(Type::GenericInstance(struct_id, vec![])); // TODO: Fix when generics are implemented
+        self.current_type_decl = Some(type_id);
 
         self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+
+        let mut method_func_ids = vec![];
+        for method in methods {
+            let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
+            let func_id = self.typecheck_function_pass_1(decl_node, true)?;
+            method_func_ids.push(func_id);
+        }
+
+        self.current_type_decl = None;
+
+        self.end_child_scope();
+
+        Ok((struct_id, method_func_ids))
+    }
+
+    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, method_func_ids: Vec<FuncId>, node: TypeDeclNode) -> Result<(), TypeError> {
+        let TypeDeclNode { fields, methods, .. } = node;
 
         let mut seen_fields = HashSet::new();
         let mut typed_fields = Vec::with_capacity(fields.len());
@@ -1409,10 +1473,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             typed_fields.push(field);
         }
 
+        let mut instance_method_func_ids = vec![];
+        let mut static_method_func_ids = vec![];
+        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (by pass 1)");
+        for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
+            let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
+            let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
+
+            self.typecheck_function_pass_2(*func_id, decl_node)?;
+
+            if is_method {
+                instance_method_func_ids.push(*func_id);
+            } else {
+                static_method_func_ids.push(*func_id);
+            }
+        }
+
         let struct_ = self.project.get_struct_by_id_mut(&struct_id);
         struct_.fields = typed_fields;
-
-        self.end_child_scope();
+        struct_.methods = instance_method_func_ids;
+        struct_.static_methods = static_method_func_ids;
 
         Ok(())
     }
