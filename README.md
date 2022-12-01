@@ -29,4 +29,4 @@ func fib(n: Int): Int {
 println(fib(10))
 ```
 
-You can also see and play with more examples on the [Try It Out](https://abra.kenrg.co/try) page of the language documentation site.
+You can also see and play with more examples on the [Try It Out](https://abra.kengorab.dev/try) page of the language documentation site.
