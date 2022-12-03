@@ -2,12 +2,14 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-type Foo {
-  foo: String
+//func foo<T>(a: T, b: T): T[] = [a, b]
+//val i: Int?[] = foo(1, None) // This is correctly failing. Return type should not influence the resolved `T`. To directly control `T`, use `foo<Int?>(1, None)` (not implemented yet).
+//val a: Int[] = i
 
-  func foo(self): String = "hello"
-}
+func foo2<T>(a: T[]): T[] = a
+val x = foo2(foo2([1]))
 
-func foo() {
-
-}
+//func foo3<T, U>(a: T, b: U): (T, U) = (b, a) // Should fail
+//func foo3<T, U>(a: T, b: U): (T, U) = (a, b)
+//val x = foo3("a", true)
+//val y: (Bool, String) = x
