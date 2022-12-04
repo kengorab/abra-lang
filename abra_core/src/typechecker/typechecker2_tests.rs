@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID, StructField, VariableAlias, DuplicateNameKind};
+use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID, StructField, VariableAlias, DuplicateNameKind, AccessorKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -90,7 +90,9 @@ fn typecheck_prelude() {
                 generics: Some(vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0),
                 ]),
-                fields: vec![],
+                fields: vec![
+                    StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+                ],
                 methods: vec![],
                 static_methods: vec![],
             },
@@ -1557,6 +1559,37 @@ fn typecheck_failure_invocation() {
         span: Range { start: Position::new(2, 22), end: Position::new(2, 22) },
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_accessor() {
+    // Test simple case
+    let project = test_typecheck("val a = [1, 2, 3]\na.length").unwrap();
+    let module = &project.modules[1];
+    let expected = TypedNode::Accessor {
+        target: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(2, 1), "a".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        }),
+        kind: AccessorKind::Field,
+        member_idx: 0,
+        member_span: Range { start: Position::new(2, 3), end: Position::new(2, 8) },
+        type_id: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, module.code[1]);
+}
+
+#[test]
+fn typecheck_failure_accessor() {
+    let (project, Either::Right(err)) = test_typecheck("[1].size").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownMember {
+        span: Range { start: Position::new(1, 5), end: Position::new(1, 8) },
+        field_name: "size".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }

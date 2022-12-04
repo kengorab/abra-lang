@@ -412,6 +412,13 @@ pub struct TypedModule {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum AccessorKind {
+    Field,
+    Method,
+    StaticMethod,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
@@ -423,6 +430,7 @@ pub enum TypedNode {
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -441,6 +449,7 @@ impl TypedNode {
             TypedNode::Map { type_id, .. } => type_id,
             TypedNode::Identifier { type_id, .. } => type_id,
             TypedNode::Invocation { type_id, .. } => type_id,
+            TypedNode::Accessor { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -479,6 +488,7 @@ impl TypedNode {
                     start
                 }
             }
+            TypedNode::Accessor { target, member_span, .. } => target.span().expand(member_span),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -554,6 +564,7 @@ pub enum TypeError {
     InvalidSelfParam { span: Range },
     InvalidSelfParamPosition { span: Range },
     InvalidTypeArgumentArity { span: Range, num_required_args: usize, num_provided_args: usize },
+    UnknownMember { span: Range, field_name: String, type_id: TypeId },
 }
 
 impl TypeError {
@@ -596,7 +607,8 @@ impl TypeError {
             TypeError::InvalidArity { span, .. } |
             TypeError::InvalidSelfParam { span } |
             TypeError::InvalidSelfParamPosition { span } |
-            TypeError::InvalidTypeArgumentArity { span, .. } => span,
+            TypeError::InvalidTypeArgumentArity { span, .. } |
+            TypeError::UnknownMember { span, .. } => span
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -789,6 +801,14 @@ impl TypeError {
                     cursor_line,
                     num_required_args,
                     num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
+                )
+            }
+            TypeError::UnknownMember { field_name, type_id, .. } => {
+                format!(
+                    "Unknown member '{}'\n{}\n\
+                    Type {} does not have a member with name '{}'",
+                    field_name, cursor_line,
+                    project.type_repr(type_id), field_name
                 )
             }
         };
@@ -1245,7 +1265,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
+            let field_length = StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID };
+            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![field_length], methods: vec![], static_methods: vec![] });
             self.project.prelude_array_struct_id = array_struct_id;
         }
         // Define `Tuple<T...>` struct
@@ -2021,8 +2042,38 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id })
             }
             AstNode::Assignment(_, _) |
-            AstNode::Indexing(_, _) |
-            AstNode::Accessor(_, _) => todo!(),
+            AstNode::Indexing(_, _) => todo!(),
+            AstNode::Accessor(_, n) => {
+                if n.is_opt_safe { unimplemented!("Internal error: option-safe accessor") }
+
+                let AstNode::Identifier(field_ident, _) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
+                let field_name = Token::get_ident_name(&field_ident);
+
+                let typed_target = self.typecheck_expression(*n.target, None)?;
+                let target_type_id = typed_target.type_id();
+                let target_ty = self.project.get_type_by_id(target_type_id);
+                let field = match target_ty {
+                    Type::GenericInstance(struct_id, _) => {
+                        let struct_ = self.project.get_struct_by_id(struct_id);
+                        struct_.fields.iter().enumerate().find(|(_, f)| *f.name == field_name)
+                    }
+                    Type::Builtin(_) |
+                    Type::Struct(_) |
+                    Type::Generic(_, _) |
+                    Type::Function(_, _) => todo!()
+                };
+                let Some((field_idx, field)) = field else {
+                    return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                };
+
+                Ok(TypedNode::Accessor {
+                    target: Box::new(typed_target),
+                    kind: AccessorKind::Field,
+                    member_idx: field_idx,
+                    member_span: field_ident.get_range(),
+                    type_id: field.type_id,
+                })
+            }
             AstNode::Invocation(token, n) => {
                 let InvocationNode { target, args } = n;
 

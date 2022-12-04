@@ -2,9 +2,5 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-//func foo2<T>(a: T, b: T): T[] = [a, b]
-//val a = foo2<Int?>(1, None)
-//val a_: Int[] = a
-
-func foo2<T>(a: T, b: T): T[] = [a, b]
-val a = foo2<String>(1, 2)
+val a = [1]
+val x: Bool = a.length
