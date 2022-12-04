@@ -1102,6 +1102,7 @@ fn typecheck_function_declaration() {
                         expr: Box::new(TypedNode::Identifier {
                             token: Token::Ident(Position::new(3, 10), "x".to_string()),
                             var_id: VarId(ScopeId(ModuleId(1), 1), 0),
+                            type_arg_ids: vec![],
                             type_id: PRELUDE_BOOL_TYPE_ID,
                         }),
                     })),
@@ -1164,6 +1165,7 @@ fn typecheck_function_declaration() {
                 TypedNode::Identifier {
                     token: Token::Ident(Position::new(2, 19), "x".to_string()),
                     var_id: VarId(ScopeId(ModuleId(1), 0), 1),
+                    type_arg_ids: vec![],
                     type_id: PRELUDE_INT_TYPE_ID,
                 }
             ],
@@ -1225,6 +1227,7 @@ fn typecheck_function_declaration() {
                         TypedNode::Identifier {
                             token: Token::Ident(Position::new(1, 27), "a".to_string()),
                             var_id: VarId(fn_scope_id, 0),
+                            type_arg_ids: vec![],
                             type_id: t_type_id,
                         }
                     ],
@@ -1347,6 +1350,7 @@ fn typecheck_invocation() {
             target: Box::new(TypedNode::Identifier {
                 token: Token::Ident(Position::new(2, 1), "foo".to_string()),
                 var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
                 type_id: project.find_type_id(
                     &ScopeId(ModuleId(1), 1),
                     &project.function_type(
@@ -1389,6 +1393,23 @@ fn typecheck_invocation() {
     let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     assert_eq!("x", var.name);
     assert_eq!(expected, var.type_id);
+
+    let project = test_typecheck("\
+      func foo<T>(a: T, b: T): T[] = [a, b]\n\
+      foo<Int?>(1, None)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let type_id = module.code.last().unwrap().type_id();
+    let expected = project.find_type_id(
+        &ScopeId(ModuleId(1), 0),
+        &project.array_type(
+            project.find_type_id(
+                &ScopeId(ModuleId(1), 0),
+                &project.option_type(PRELUDE_INT_TYPE_ID),
+            ).unwrap()
+        ),
+    ).unwrap();
+    assert_eq!(expected, *type_id);
 }
 
 #[test]
@@ -1490,13 +1511,52 @@ fn typecheck_failure_invocation() {
       func foo<T>(a: T, b: T): T[] = [a, b]\n\
       foo(1, None)\
     ").unwrap_err() else { unreachable!() };
-    dbg!(project.type_repr(&TypeId(ScopeId(ModuleId(0), 0), 5)));
-    let none_var = &project.prelude_module().scopes[0].vars[0];
-    assert_eq!("None", none_var.name);
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(2, 8), end: Position::new(2, 11) },
         expected: vec![PRELUDE_INT_TYPE_ID],
-        received: none_var.type_id,
+        received: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    // Test passing type arguments explicitly
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo<T>(a: T, b: T): T[] = [a, b]\n\
+      foo<Bogus>(1, None)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownType {
+        span: Range { start: Position::new(2, 5), end: Position::new(2, 9) },
+        name: "Bogus".to_string(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo<T, U>(a: T): T[] = [a]\n\
+      foo<Int>(1)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 3) },
+        num_required_args: 2,
+        num_provided_args: 1,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo<T, U>(a: T): T[] = [a]\n\
+      foo<Int, String, Bool>(1)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTypeArgumentArity {
+        span: Range { start: Position::new(2, 18), end: Position::new(2, 21) },
+        num_required_args: 2,
+        num_provided_args: 3,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo2<T>(a: T, b: T): T[] = [a, b]\n\
+      val a = foo2<String>(1, 2)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 22), end: Position::new(2, 22) },
+        expected: vec![PRELUDE_STRING_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

@@ -380,7 +380,8 @@ pub struct Function {
     pub id: FuncId,
     pub fn_scope_id: ScopeId,
     pub name: String,
-    pub generic_ids: Vec<TypeId>, // TODO: Could be a slice? we won't expand once they're known
+    pub generic_ids: Vec<TypeId>,
+    // TODO: Could be a slice? we won't expand once they're known
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
     // Functions with no defined_span are builtins
@@ -420,7 +421,7 @@ pub enum TypedNode {
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
-    Identifier { token: Token, var_id: VarId, type_id: TypeId },
+    Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
 
     // Statements
@@ -907,13 +908,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match (ty_with_generics, hint_ty) {
             (Type::Generic(_, _), _) => {
-                if let Some(sub_type_id) = substitutions.get(type_id_containing_generics) {
-                    // If the hint type for this generic placeholder doesn't satisfy the already-known substitution, return. Subsequent
-                    // typechecking will compare this hint's type against the known substitution and raise an error, but we do _not_
-                    // want to clobber the known substitution with this hint's type.
-                    if !self.type_satisfies_other(hint_type_id, sub_type_id) {
-                        return;
-                    }
+                if let Some(_) = substitutions.get(type_id_containing_generics) {
+                    // If we already have a substitution for this generic, don't overwrite. If the known value does not align with the hint
+                    // type, it should be reported by this function's caller.
+                    return;
                 }
                 substitutions.insert(*type_id_containing_generics, *hint_type_id);
             }
@@ -938,7 +936,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     .unwrap_or(*type_id)
             }
             Type::GenericInstance(struct_id, generic_ids) => {
-                let substituted_generic_ids= generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
+                let substituted_generic_ids = generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
                 self.add_or_find_type_id(Type::GenericInstance(struct_id, substituted_generic_ids))
             }
             Type::Function(arg_type_ids, ret_type_id) => {
@@ -1985,9 +1983,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Tuple { token, items: typed_items, type_id })
             }
-            AstNode::Identifier(token, n) => {
-                debug_assert!(n.is_none(), "Not implemented yet");
-
+            AstNode::Identifier(token, type_args) => {
                 let name = Token::get_ident_name(&token);
                 let variable = self.project.find_variable_by_name(&self.current_scope_id, &name);
                 let Some(Variable { id, type_id, .. }) = variable else {
@@ -2000,6 +1996,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     var_type_id = self.substitute_generics(&type_hint, &var_type_id);
                 }
 
+                let mut type_arg_ids = Vec::with_capacity(type_args.as_ref().map(|args| args.len()).unwrap_or(0));
+                if let Some(type_args) = type_args {
+                    for type_arg in type_args {
+                        let type_id = self.resolve_type_identifier(&type_arg)?;
+                        type_arg_ids.push((type_id, type_arg.get_ident().get_range()));
+                    }
+                }
+
+                // Track closed-over variables for current function
                 if let Some(func_id) = self.current_function {
                     let VarId(var_scope_id, _) = var_id;
                     let FuncId(func_scope_id, _) = func_id;
@@ -2013,7 +2018,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                Ok(TypedNode::Identifier { token, var_id, type_id: var_type_id })
+                Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id })
             }
             AstNode::Assignment(_, _) |
             AstNode::Indexing(_, _) |
@@ -2022,22 +2027,37 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let InvocationNode { target, args } = n;
 
                 let typed_target = self.typecheck_expression(*target, None)?;
-                let (_generic_ids, params_data, mut return_type_id) = match &typed_target {
-                    TypedNode::Identifier { var_id, type_id, .. } => {
+
+                let mut filled_in_generic_types = HashMap::new();
+
+                let (params_data, mut return_type_id) = match &typed_target {
+                    TypedNode::Identifier { var_id, type_id, type_arg_ids: type_args, .. } => {
                         let var = self.project.get_var_by_id(var_id);
                         if let VariableAlias::Function(alias_func_id) = var.alias {
                             let function = self.project.get_func_by_id(&alias_func_id);
 
+                            if !type_args.is_empty() && type_args.len() != function.generic_ids.len() {
+                                let span = if type_args.len() > function.generic_ids.len() {
+                                    let (_, span) = &type_args[function.generic_ids.len()];
+                                    span.clone()
+                                } else {
+                                    typed_target.span()
+                                };
+                                return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: function.generic_ids.len(), num_provided_args: type_args.len() });
+                            }
+
+                            for ((type_arg_id, _), generic_id) in type_args.iter().zip(function.generic_ids.iter()) {
+                                filled_in_generic_types.insert(*generic_id, *type_arg_id);
+                            }
+
                             let params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
-                            (function.generic_ids.clone(), params_data, function.return_type_id)
+                            (params_data, function.return_type_id)
                         } else {
                             return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *type_id });
                         }
                     }
                     _ => unimplemented!("Internal error: invocation of target expression not implemented")
                 };
-
-                let mut filled_in_generic_types = HashMap::new();
 
                 let num_required_args = params_data.len();
                 let num_provided_args = args.len();
@@ -2077,15 +2097,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
 
                     let typed_arg_value = self.typecheck_expression(arg_node, Some(param_type_id))?;
-                    let arg_type_id = typed_arg_value.type_id();
+                    let mut arg_type_id = *typed_arg_value.type_id();
 
                     if self.type_contains_generics(&param_type_id) {
                         self.extract_values_for_generics(&arg_type_id, &param_type_id, &mut filled_in_generic_types);
                         param_type_id = self.substitute_generics_with_known(&param_type_id, &filled_in_generic_types);
                     }
 
-                    if !self.type_satisfies_other(arg_type_id, &param_type_id) {
-                        return Err(TypeError::TypeMismatch { span: typed_arg_value.span(), expected: vec![param_type_id], received: *arg_type_id });
+                    let Some(unified_type) = self.unify_types(&arg_type_id, &param_type_id) else {
+                        let span = typed_arg_value.span();
+                        return Err(TypeError::TypeMismatch { span, expected: vec![param_type_id], received: arg_type_id });
+                    };
+                    arg_type_id = unified_type;
+                    if !self.type_satisfies_other(&arg_type_id, &param_type_id) {
+                        return Err(TypeError::TypeMismatch { span: typed_arg_value.span(), expected: vec![param_type_id], received: arg_type_id });
                     }
 
                     typed_arguments[*param_idx] = Some(typed_arg_value);
