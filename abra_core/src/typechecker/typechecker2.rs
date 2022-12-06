@@ -266,8 +266,12 @@ impl Project {
                     format!("({})", inner_type_reprs)
                 } else {
                     let struct_ = self.get_struct_by_id(struct_id);
-                    let inner_type_reprs = generic_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
-                    format!("{}<{}>", struct_.name, inner_type_reprs)
+                    if !generic_ids.is_empty() {
+                        let inner_type_reprs = generic_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+                        format!("{}<{}>", struct_.name, inner_type_reprs)
+                    } else {
+                        format!("{}", struct_.name)
+                    }
                 }
             }
             Type::Function(param_type_ids, return_type_id) => {
@@ -309,10 +313,12 @@ pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 #[derive(Debug, PartialEq)]
 pub struct Struct {
     pub id: StructId,
+    pub struct_scope_id: ScopeId,
     pub name: String,
     // Structs with no defined_span are builtins
     pub defined_span: Option<Range>,
-    pub generics: Option<Vec<TypeId>>,
+    pub generic_ids: Vec<TypeId>,
+    pub self_type_id: TypeId,
     pub fields: Vec<StructField>,
     pub methods: Vec<FuncId>,
     pub static_methods: Vec<FuncId>,
@@ -551,13 +557,13 @@ pub enum TypeError {
     UnknownIdentifier { span: Range, token: Token },
     MissingBindingInitializer { span: Range, is_mutable: bool },
     DuplicateName { span: Range, name: String, original_span: Option<Range>, kind: DuplicateNameKind },
-    ForbiddenAssignment { span: Range, type_id: TypeId },
+    ForbiddenAssignment { span: Range, is_unit: bool },
     DestructuringMismatch { span: Range, kind: DestructuringMismatchKind, type_id: TypeId },
     DuplicateSplat { span: Range },
     DuplicateParameter { span: Range, name: String },
     ReturnTypeMismatch { span: Range, func_name: String, expected: TypeId, received: TypeId },
     IllegalInvocation { span: Range, type_id: TypeId },
-    UnexpectedArgumentName { span: Range, arg_name: String },
+    UnexpectedArgumentName { span: Range, arg_name: String, is_instantiation: bool },
     MixedArgumentType { span: Range },
     DuplicateArgumentLabel { span: Range, name: String },
     InvalidArity { span: Range, num_required_args: usize, num_provided_args: usize },
@@ -565,6 +571,7 @@ pub enum TypeError {
     InvalidSelfParamPosition { span: Range },
     InvalidTypeArgumentArity { span: Range, num_required_args: usize, num_provided_args: usize },
     UnknownMember { span: Range, field_name: String, type_id: TypeId },
+    MissingRequiredArgumentLabels { span: Range },
 }
 
 impl TypeError {
@@ -579,7 +586,7 @@ impl TypeError {
     }
 
     fn get_underlined_line(lines: &Vec<&str>, span: &Range) -> String {
-        // debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
+        debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
 
         let line = lines.get(span.start.line - 1).expect("There should be a line");
         let length = span.end.col - span.start.col + 1;
@@ -608,7 +615,8 @@ impl TypeError {
             TypeError::InvalidSelfParam { span } |
             TypeError::InvalidSelfParamPosition { span } |
             TypeError::InvalidTypeArgumentArity { span, .. } |
-            TypeError::UnknownMember { span, .. } => span
+            TypeError::UnknownMember { span, .. } |
+            TypeError::MissingRequiredArgumentLabels { span } => span
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -686,8 +694,8 @@ impl TypeError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypeError::ForbiddenAssignment { type_id, .. } => {
-                if *type_id == PRELUDE_UNIT_TYPE_ID {
+            TypeError::ForbiddenAssignment { is_unit, .. } => {
+                if *is_unit {
                     format!(
                         "Forbidden type for variable\n{}\n\
                         Variables cannot be of type {}",
@@ -749,13 +757,13 @@ impl TypeError {
                     cursor_line, project.type_repr(type_id)
                 )
             }
-
-            TypeError::UnexpectedArgumentName { arg_name, .. } => {
-                format!(
-                    "Unexpected argument label '{}'\n{}\n\
-                    This function doesn't have a parameter called '{}'",
-                    arg_name, cursor_line, arg_name,
-                )
+            TypeError::UnexpectedArgumentName { arg_name, is_instantiation, .. } => {
+                let second_line = if *is_instantiation {
+                    format!("This constructor doesn't have a field called '{}'", arg_name)
+                } else {
+                    format!("This function doesn't have a parameter called '{}'", arg_name)
+                };
+                format!("Unexpected argument label '{}'\n{}\n{}", arg_name, cursor_line, second_line)
             }
             TypeError::MixedArgumentType { .. } => {
                 format!(
@@ -809,6 +817,13 @@ impl TypeError {
                     Type {} does not have a member with name '{}'",
                     field_name, cursor_line,
                     project.type_repr(type_id), field_name
+                )
+            }
+            TypeError::MissingRequiredArgumentLabels { .. } => {
+                format!(
+                    "Invalid instantiation call\n{}\n\
+                    Constructor functions must be called with argument labels",
+                    cursor_line
                 )
             }
         };
@@ -998,7 +1013,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             Type::Struct(struct_id) => {
                 let struct_ = self.project.get_struct_by_id(struct_id);
-                struct_.generics.is_some()
+                struct_.generic_ids.is_empty()
             }
         }
     }
@@ -1115,8 +1130,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_id)
     }
 
-    fn add_struct_to_current_module(&mut self, name_token: &Token) -> Result<StructId, TypeError> {
-        let current_module = self.current_module_mut();
+    fn add_struct_to_current_module(&mut self, struct_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>) -> Result<(StructId, TypeId), TypeError> {
+        let current_module = self.current_module();
 
         let name = Token::get_ident_name(name_token);
         let span = name_token.get_range();
@@ -1127,23 +1142,27 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let struct_id = StructId(current_module.id, current_module.structs.len());
+        let self_type_id = self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids.clone()));
+
         let struct_ = Struct {
             id: struct_id,
+            struct_scope_id,
             name: name.clone(),
             defined_span: Some(name_token.get_range()),
-            generics: None,
+            generic_ids,
+            self_type_id,
             fields: vec![],
             methods: vec![],
             static_methods: vec![],
         };
-        current_module.structs.push(struct_);
+        self.current_module_mut().structs.push(struct_);
 
         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
         let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span)?;
         let variable = self.project.get_var_by_id_mut(&struct_var_id);
         variable.alias = VariableAlias::Struct(struct_id);
 
-        Ok(struct_id)
+        Ok((struct_id, self_type_id))
     }
 
     fn create_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
@@ -1249,9 +1268,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
             let option_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: option_struct_id, name: "Option".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
+            let self_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, Type::GenericInstance(option_struct_id, vec![generic_t_type_id]));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.structs.push(Struct { id: option_struct_id, self_type_id, struct_scope_id: scope_id, name: "Option".to_string(), defined_span: None, generic_ids: vec![generic_t_type_id], fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_option_struct_id = option_struct_id;
         }
         // Define `Array<T>` struct
@@ -1263,18 +1284,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
             let array_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
             let field_length = StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID };
-            prelude_module.structs.push(Struct { id: array_struct_id, name: "Array".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![field_length], methods: vec![], static_methods: vec![] });
+            let self_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, Type::GenericInstance(array_struct_id, vec![generic_t_type_id]));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.structs.push(Struct { id: array_struct_id, self_type_id, struct_scope_id: scope_id, name: "Array".to_string(), defined_span: None, generic_ids: vec![generic_t_type_id], fields: vec![field_length], methods: vec![], static_methods: vec![] });
             self.project.prelude_array_struct_id = array_struct_id;
         }
         // Define `Tuple<T...>` struct
         // (There's no way of representing variadic generics like how tuple works, and it's not something that's necessary to add, so let's do a bit of hand-waving here)
         {
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
             let tuple_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: tuple_struct_id, name: "Tuple".to_string(), defined_span: None, generics: None, fields: vec![], methods: vec![], static_methods: vec![] });
+            let self_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, Type::GenericInstance(tuple_struct_id, vec![]));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.structs.push(Struct { id: tuple_struct_id, self_type_id, struct_scope_id: PRELUDE_SCOPE_ID, name: "Tuple".to_string(), defined_span: None, generic_ids: vec![], fields: vec![], methods: vec![], static_methods: vec![] });
             self.project.prelude_tuple_struct_id = tuple_struct_id;
         }
         // Define `Set<T>` struct
@@ -1286,9 +1311,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
             let set_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: set_struct_id, name: "Set".to_string(), defined_span: None, generics: Some(vec![generic_t_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
+            let field_size = StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID };
+            let self_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, Type::GenericInstance(set_struct_id, vec![generic_t_type_id]));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.structs.push(Struct { id: set_struct_id, self_type_id, struct_scope_id: scope_id, name: "Set".to_string(), defined_span: None, generic_ids: vec![generic_t_type_id], fields: vec![field_size], methods: vec![], static_methods: vec![] });
             self.project.prelude_set_struct_id = set_struct_id;
         }
         // Define `Map<K, V>` struct
@@ -1301,9 +1329,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let generic_k_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "K".to_string()));
             let generic_v_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "V".to_string()));
 
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
             let map_struct_id = StructId(PRELUDE_MODULE_ID, prelude_module.structs.len());
-            prelude_module.structs.push(Struct { id: map_struct_id, name: "Map".to_string(), defined_span: None, generics: Some(vec![generic_k_type_id, generic_v_type_id]), fields: vec![], methods: vec![], static_methods: vec![] });
+            let field_size = StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID };
+            let self_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, Type::GenericInstance(map_struct_id, vec![generic_k_type_id, generic_v_type_id]));
+            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
+            prelude_module.structs.push(Struct { id: map_struct_id, self_type_id, struct_scope_id: scope_id, name: "Map".to_string(), defined_span: None, generic_ids: vec![generic_k_type_id, generic_v_type_id], fields: vec![field_size], methods: vec![], static_methods: vec![] });
             self.project.prelude_map_struct_id = map_struct_id;
         }
         // Define `None` builtin, which is of type `T?`
@@ -1416,23 +1447,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
-        let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
-
-        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
-
-        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
-
+    fn add_generics_to_scope(&mut self, scope_id: &ScopeId, type_args: &Vec<Token>) -> Result<Vec<TypeId>, TypeError> {
         let mut generic_ids = Vec::with_capacity(type_args.len());
         for generic_ident in type_args {
             let generic_name = Token::get_ident_name(generic_ident);
             let possible_match = self.project
-                .find_type_id_by(&fn_scope_id, |ty| {
-                    match ty {
-                        Type::Generic(_, name) if *name == generic_name => true,
-                        _ => false
-                    }
-                })
+                .find_type_id_for_generic(&scope_id, &generic_name)
                 .map(|type_id| self.project.get_type_by_id(&type_id));
             if let Some(ty) = possible_match {
                 let span = generic_ident.get_range();
@@ -1440,9 +1460,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 return Err(TypeError::DuplicateName { span, name: name.clone(), original_span, kind: DuplicateNameKind::TypeArgument });
             }
 
-            let generic_id = self.project.add_or_find_type_id(&fn_scope_id, Type::Generic(Some(generic_ident.get_range()), generic_name));
+            let generic_id = self.project.add_or_find_type_id(&scope_id, Type::Generic(Some(generic_ident.get_range()), generic_name));
             generic_ids.push(generic_id);
         }
+
+        Ok(generic_ids)
+    }
+
+    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
+        let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
+
+        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+
+        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
+
+        let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
 
         let mut seen_self = false;
         let mut seen_arg_names = HashSet::new();
@@ -1581,15 +1613,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let TypeDeclNode { export_token, name, type_args, methods, .. } = node;
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
-        if !type_args.is_empty() { unimplemented!("Internal error: struct type arguments") }
 
-        let struct_id = self.add_struct_to_current_module(name)?;
+        let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+
+        // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
+        let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
+        let (struct_id, self_type_id) = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
-
-        let type_id = self.add_or_find_type_id(Type::GenericInstance(struct_id, vec![])); // TODO: Fix when generics are implemented
-        self.current_type_decl = Some(type_id);
-
-        self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+        self.current_scope_id = struct_scope_id;
+        self.current_type_decl = Some(self_type_id);
 
         let mut method_func_ids = vec![];
         for method in methods {
@@ -1608,8 +1640,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_struct_pass_2(&mut self, struct_id: StructId, method_func_ids: Vec<FuncId>, node: TypeDeclNode) -> Result<(), TypeError> {
         let TypeDeclNode { fields, methods, .. } = node;
 
+        let struct_ = self.project.get_struct_by_id(&struct_id);
+
+        let prev_scope_id = self.current_scope_id;
+        self.current_scope_id = struct_.struct_scope_id;
+
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
-        let mut typed_fields = Vec::with_capacity(fields.len());
+        // let mut typed_fields = Vec::with_capacity(fields.len());
         for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
             if default_value.is_some() { unimplemented!("Internal error: field default values") }
             if readonly.is_some() { unimplemented!("Internal error: readonly") }
@@ -1625,11 +1662,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 name: field_name,
                 type_id: field_type_id,
             };
-            typed_fields.push(field);
+            // typed_fields.push(field);
+            self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
         }
+        // let struct_ = self.project.get_struct_by_id_mut(&struct_id);
+        // struct_.fields = typed_fields;
 
-        let mut instance_method_func_ids = vec![];
-        let mut static_method_func_ids = vec![];
+        // let mut instance_method_func_ids = vec![];
+        // let mut static_method_func_ids = vec![];
         debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (by pass 1)");
         for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -1638,16 +1678,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.typecheck_function_pass_2(*func_id, decl_node)?;
 
             if is_method {
-                instance_method_func_ids.push(*func_id);
+                self.project.get_struct_by_id_mut(&struct_id).methods.push(*func_id);
+                // instance_method_func_ids.push(*func_id);
             } else {
-                static_method_func_ids.push(*func_id);
+                // static_method_func_ids.push(*func_id);
+                self.project.get_struct_by_id_mut(&struct_id).static_methods.push(*func_id);
             }
         }
 
-        let struct_ = self.project.get_struct_by_id_mut(&struct_id);
-        struct_.fields = typed_fields;
-        struct_.methods = instance_method_func_ids;
-        struct_.static_methods = static_method_func_ids;
+        // let struct_ = self.project.get_struct_by_id_mut(&struct_id);
+        // struct_.methods = instance_method_func_ids;
+        // struct_.static_methods = static_method_func_ids;
+
+        self.current_scope_id = prev_scope_id;
 
         Ok(())
     }
@@ -1677,7 +1720,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
                         if self.type_contains_generics(type_id) {
-                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id });
+                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), is_unit: *type_id == PRELUDE_UNIT_TYPE_ID });
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
 
@@ -1853,7 +1896,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let type_id = match inner_type_id {
                     None => {
                         let array_struct = &self.project.prelude_module().structs[self.project.prelude_array_struct_id.1];
-                        let inner_type_id = array_struct.generics.as_ref().expect("prelude.Array has exactly 1 generic")[0];
+                        let inner_type_id = array_struct.generic_ids[0];
                         self.add_or_find_type_id(self.project.array_type(inner_type_id))
                     }
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.array_type(inner_type_id)),
@@ -1894,7 +1937,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let type_id = match inner_type_id {
                     None => {
                         let set_struct = &self.project.prelude_module().structs[self.project.prelude_set_struct_id.1];
-                        let inner_type_id = set_struct.generics.as_ref().expect("prelude.Set has exactly 1 generic")[0];
+                        let inner_type_id = set_struct.generic_ids[0];
                         self.add_or_find_type_id(self.project.set_type(inner_type_id))
                     }
                     Some(inner_type_id) => self.add_or_find_type_id(self.project.set_type(inner_type_id)),
@@ -1951,7 +1994,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (Some(key_type_id), Some(val_type_id)) => self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id)),
                     _ => {
                         let map_struct = &self.project.prelude_module().structs[self.project.prelude_map_struct_id.1];
-                        let map_generics = map_struct.generics.as_ref().expect("prelude.Map has exactly 2 generics");
+                        let map_generics = &map_struct.generic_ids;
                         let key_type_id = map_generics[0];
                         let val_type_id = map_generics[1];
                         self.add_or_find_type_id(self.project.map_type(key_type_id, val_type_id))
@@ -2081,34 +2124,46 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let mut filled_in_generic_types = HashMap::new();
 
-                let (params_data, mut return_type_id) = match &typed_target {
+                let generic_ids;
+                let params_data;
+                let mut return_type_id;
+                let mut is_instantiation = false;
+                match &typed_target {
                     TypedNode::Identifier { var_id, type_id, type_arg_ids: type_args, .. } => {
                         let var = self.project.get_var_by_id(var_id);
-                        if let VariableAlias::Function(alias_func_id) = var.alias {
-                            let function = self.project.get_func_by_id(&alias_func_id);
 
-                            if !type_args.is_empty() && type_args.len() != function.generic_ids.len() {
-                                let span = if type_args.len() > function.generic_ids.len() {
-                                    let (_, span) = &type_args[function.generic_ids.len()];
-                                    span.clone()
-                                } else {
-                                    typed_target.span()
-                                };
-                                return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: function.generic_ids.len(), num_provided_args: type_args.len() });
+                        match var.alias {
+                            VariableAlias::Function(alias_func_id) => {
+                                let function = self.project.get_func_by_id(&alias_func_id);
+                                generic_ids = &function.generic_ids;
+                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
+                                return_type_id = function.return_type_id;
                             }
-
-                            for ((type_arg_id, _), generic_id) in type_args.iter().zip(function.generic_ids.iter()) {
-                                filled_in_generic_types.insert(*generic_id, *type_arg_id);
+                            VariableAlias::Struct(alias_struct_id) => {
+                                let struct_ = self.project.get_struct_by_id(&alias_struct_id);
+                                // TODO: Struct fields default values
+                                generic_ids = &struct_.generic_ids;
+                                params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, false)).collect_vec();
+                                return_type_id = struct_.self_type_id;
+                                is_instantiation = true;
                             }
-
-                            let params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
-                            (params_data, function.return_type_id)
-                        } else {
-                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *type_id });
+                            VariableAlias::None => return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *type_id }),
+                        }
+                        if !type_args.is_empty() && type_args.len() != generic_ids.len() {
+                            let span = if type_args.len() > generic_ids.len() {
+                                let (_, span) = &type_args[generic_ids.len()];
+                                span.clone()
+                            } else {
+                                typed_target.span()
+                            };
+                            return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: generic_ids.len(), num_provided_args: type_args.len() });
+                        }
+                        for ((type_arg_id, _), generic_id) in type_args.iter().zip(generic_ids.iter()) {
+                            filled_in_generic_types.insert(*generic_id, *type_arg_id);
                         }
                     }
                     _ => unimplemented!("Internal error: invocation of target expression not implemented")
-                };
+                }
 
                 let num_required_args = params_data.len();
                 let num_provided_args = args.len();
@@ -2116,6 +2171,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut seen_labels = HashSet::new();
                 let mut typed_arguments = (0..params_data.len()).map(|_| None).collect_vec();
                 for (idx, (label, arg_node)) in args.into_iter().enumerate() {
+                    if is_instantiation && label.is_none() {
+                        return Err(TypeError::MissingRequiredArgumentLabels { span: arg_node.get_token().get_range() });
+                    }
+
                     let (param_idx, _, mut param_type_id, _) = if let Some(label) = label {
                         if idx > 0 && seen_labels.is_empty() {
                             return Err(TypeError::MixedArgumentType { span: label.get_range() });
@@ -2126,7 +2185,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::DuplicateArgumentLabel { span: label.get_range(), name: label_name });
                         }
                         let Some(param_data) = params_data.iter().find(|(_, param_name, _, _)| *param_name == label_name) else {
-                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name });
+                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name, is_instantiation });
                         };
                         if idx >= params_data.len() {
                             // This _should_ be unreachable given the two cases above, but just in case let's return an error here as well

@@ -63,33 +63,42 @@ fn typecheck_prelude() {
             TypeId(PRELUDE_SCOPE_ID, PRELUDE_BOOL_TYPE_ID.1),
             TypeId(PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID.1),
             TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0), // `T` generic, from `Option<T>` definition
+            TypeId(PRELUDE_SCOPE_ID, 5), // self_type for `Option<T>`
             TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0), // `T` generic, from `Array<T>` definition
+            TypeId(PRELUDE_SCOPE_ID, 6), // self_type for `Array<T>`
+            TypeId(PRELUDE_SCOPE_ID, 7), // self_type for `Tuple<T...>`
             TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0), // `T` generic, from `Set<T>` definition
+            TypeId(PRELUDE_SCOPE_ID, 8), // self_type for `Set<T>`
             TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0), // `K` generic, from `Map<K, V>` definition
             TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1), // `V` generic, from `Map<K, V>` definition
+            TypeId(PRELUDE_SCOPE_ID, 9), // self_type for `Map<K, V>`
             TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0), // `T` generic, from `None` definition
-            TypeId(PRELUDE_SCOPE_ID, 5), // `T?` type, for `None` builtin
+            TypeId(PRELUDE_SCOPE_ID, 10), // `T?` type, for `None` builtin
         ],
         functions: vec![],
         structs: vec![
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 0),
+                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 1),
                 name: "Option".to_string(),
                 defined_span: None,
-                generics: Some(vec![
+                generic_ids: vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0),
-                ]),
+                ],
+                self_type_id: TypeId(PRELUDE_SCOPE_ID, 5),
                 fields: vec![],
                 methods: vec![],
                 static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 1),
+                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 2),
                 name: "Array".to_string(),
                 defined_span: None,
-                generics: Some(vec![
+                generic_ids: vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0),
-                ]),
+                ],
+                self_type_id: TypeId(PRELUDE_SCOPE_ID, 6),
                 fields: vec![
                     StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID },
                 ],
@@ -98,33 +107,43 @@ fn typecheck_prelude() {
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 2),
+                struct_scope_id: PRELUDE_SCOPE_ID,
                 name: "Tuple".to_string(),
                 defined_span: None,
-                generics: None,
+                generic_ids: vec![],
+                self_type_id: TypeId(PRELUDE_SCOPE_ID, 7),
                 fields: vec![],
                 methods: vec![],
                 static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 3),
+                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 3),
                 name: "Set".to_string(),
                 defined_span: None,
-                generics: Some(vec![
+                generic_ids: vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0),
-                ]),
-                fields: vec![],
+                ],
+                self_type_id: TypeId(PRELUDE_SCOPE_ID, 8),
+                fields: vec![
+                    StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+                ],
                 methods: vec![],
                 static_methods: vec![],
             },
             Struct {
                 id: StructId(PRELUDE_MODULE_ID, 4),
+                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 4),
                 name: "Map".to_string(),
                 defined_span: None,
-                generics: Some(vec![
+                generic_ids: vec![
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0),
                     TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1),
-                ]),
-                fields: vec![],
+                ],
+                self_type_id: TypeId(PRELUDE_SCOPE_ID, 9),
+                fields: vec![
+                    StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+                ],
                 methods: vec![],
                 static_methods: vec![],
             },
@@ -141,6 +160,32 @@ fn typecheck_prelude() {
                     Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1),
                     Type::Builtin(PRELUDE_BOOL_TYPE_ID.1),
                     Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
+                    // self_type for `Option<T>`
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 0),
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0)],
+                    ),
+                    // self_type for `Array<T>`
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 1),
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0)],
+                    ),
+                    // self_type for `Tuple<T...>`
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 2),
+                        vec![],
+                    ),
+                    // self_type for `Set<T>`
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 3),
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0)],
+                    ),
+                    // self_type for `Map<T>`
+                    Type::GenericInstance(
+                        StructId(PRELUDE_MODULE_ID, 4),
+                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0), TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 1)],
+                    ),
+                    // type for `None`
                     Type::GenericInstance(
                         StructId(PRELUDE_MODULE_ID, 0),
                         vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0)],
@@ -150,7 +195,7 @@ fn typecheck_prelude() {
                     Variable {
                         id: VarId(PRELUDE_SCOPE_ID, 0),
                         name: "None".to_string(),
-                        type_id: TypeId(PRELUDE_SCOPE_ID, 5),
+                        type_id: TypeId(PRELUDE_SCOPE_ID, 10),
                         is_mutable: false,
                         is_initialized: true,
                         defined_span: None,
@@ -344,13 +389,10 @@ fn typecheck_failure_array() {
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        type_id: {
-            let array_t_type_id = project.prelude_module().structs[project.prelude_array_struct_id.1].generics.as_ref().unwrap()[0];
-            project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(array_t_type_id)).unwrap()
-        },
+        is_unit: false,
     };
     assert_eq!(expected, err);
 }
@@ -485,13 +527,10 @@ fn typecheck_failure_set() {
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
-        type_id: {
-            let set_t_type_id = project.prelude_module().structs[project.prelude_set_struct_id.1].generics.as_ref().unwrap()[0];
-            project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(set_t_type_id)).unwrap()
-        },
+        is_unit: false,
     };
     assert_eq!(expected, err);
 }
@@ -590,15 +629,10 @@ fn typecheck_failure_map() {
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("val m = {}").unwrap_err() else { unreachable!() };
+    let (_, Either::Right(err)) = test_typecheck("val m = {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        type_id: {
-            let map_generics = project.prelude_module().structs[project.prelude_map_struct_id.1].generics.as_ref().unwrap();
-            let map_k_type_id = map_generics[0];
-            let map_v_type_id = map_generics[1];
-            project.find_type_id(&ScopeId(ModuleId(1), 0), &project.map_type(map_k_type_id, map_v_type_id)).unwrap()
-        },
+        is_unit: false,
     };
     assert_eq!(expected, err);
 }
@@ -688,7 +722,7 @@ fn typecheck_failure_none() {
     assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 12) },
-        type_id: none_var.type_id,
+        is_unit: false,
     };
     assert_eq!(expected, err);
 
@@ -697,7 +731,7 @@ fn typecheck_failure_none() {
     assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
-        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(none_var.type_id)).unwrap(),
+        is_unit: false,
     };
     assert_eq!(expected, err);
 
@@ -872,9 +906,11 @@ fn typecheck_type_declaration() {
     let expected = vec![
         Struct {
             id: StructId(ModuleId(1), 0),
+            struct_scope_id: ScopeId(ModuleId(1), 1),
             name: "Foo".to_string(),
             defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
-            generics: None,
+            generic_ids: vec![],
+            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID },
                 StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID },
@@ -911,9 +947,11 @@ fn typecheck_type_declaration() {
     let expected = vec![
         Struct {
             id: struct_id,
+            struct_scope_id: ScopeId(ModuleId(1), 1),
             name: "Foo".to_string(),
             defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
-            generics: None,
+            generic_ids: vec![],
+            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
                 StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID },
             ],
@@ -966,6 +1004,33 @@ fn typecheck_type_declaration() {
         },
     ];
     assert_eq!(expected, module.scopes[1].funcs);
+
+    // Test type with generics
+    let project = test_typecheck("\
+      type Node<T> {\n\
+        value: T\n\
+        func tuple<U>(self, u: U): (T, U) = (self.value, u)\n\
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_id = StructId(ModuleId(1), 0);
+    let struct_scope_id = ScopeId(ModuleId(1), 1);
+    let expected = vec![
+        Struct {
+            id: struct_id,
+            struct_scope_id,
+            name: "Node".to_string(),
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 9) }),
+            generic_ids: vec![TypeId(struct_scope_id, 0)],
+            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+            fields: vec![
+                StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0) },
+            ],
+            methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
+            static_methods: vec![],
+        }
+    ];
+    assert_eq!(expected, module.structs);
 }
 
 #[test]
@@ -1037,6 +1102,20 @@ fn typecheck_failure_type_declaration() {
         span: Range { start: Position::new(2, 18), end: Position::new(2, 22) },
         expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Duplicate generic
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Node<T> {\n\
+        func foo<T>(self, t: T) {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Range { start: Position::new(2, 10), end: Position::new(2, 10) },
+        name: "T".to_string(),
+        original_span: Some(Range { start: Position::new(1, 11), end: Position::new(1, 11) }),
+        kind: DuplicateNameKind::TypeArgument,
     };
     assert_eq!(expected, err);
 }
@@ -1343,8 +1422,8 @@ fn typecheck_invocation() {
 
     // Test invocation with optional argument
     let project = test_typecheck("\
-      func foo(a: Int[], b = true): Int = 24\n\
-      foo([])\
+      func foo(a: Int[], b = true, c = 5): Int = 24\n\
+      foo(a: [], c: 6)\
     ").unwrap();
     let module = &project.modules[1];
     let expected = vec![
@@ -1359,6 +1438,7 @@ fn typecheck_invocation() {
                         vec![
                             project.find_type_id(&ScopeId(ModuleId(1), 1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
                             PRELUDE_BOOL_TYPE_ID,
+                            PRELUDE_INT_TYPE_ID,
                         ],
                         PRELUDE_INT_TYPE_ID,
                     ),
@@ -1366,11 +1446,16 @@ fn typecheck_invocation() {
             }),
             arguments: vec![
                 Some(TypedNode::Array {
-                    token: Token::LBrack(Position::new(2, 5), false),
+                    token: Token::LBrack(Position::new(2, 8), false),
                     items: vec![],
                     type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
                 }),
                 None,
+                Some(TypedNode::Literal {
+                    token: Token::Int(Position::new(2, 15), 6),
+                    value: TypedLiteral::Int(6),
+                    type_id: PRELUDE_INT_TYPE_ID,
+                }),
             ],
             type_id: PRELUDE_INT_TYPE_ID,
         }
@@ -1461,6 +1546,7 @@ fn typecheck_failure_invocation() {
     let expected = TypeError::UnexpectedArgumentName {
         span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
         arg_name: "d".to_string(),
+        is_instantiation: false,
     };
     assert_eq!(expected, err);
 
@@ -1496,16 +1582,13 @@ fn typecheck_failure_invocation() {
     };
     assert_eq!(expected, err);
 
-    let (project, Either::Right(err)) = test_typecheck("\
+    let (_, Either::Right(err)) = test_typecheck("\
       func foo<T>(a: T[]): T[] = a\n\
       val x = foo(foo([]))\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
-        type_id: project.find_type_id(
-            &ScopeId(ModuleId(1), 0),
-            &project.array_type(project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), &"T".to_string()).unwrap()),
-        ).unwrap(),
+        is_unit: false,
     };
     assert_eq!(expected, err);
 
@@ -1564,6 +1647,123 @@ fn typecheck_failure_invocation() {
 }
 
 #[test]
+fn typecheck_invocation_instantiation() {
+    // Test simple case
+    let project = test_typecheck("\
+      type Foo { a: Int, b: Bool }\n\
+      Foo(a: 12, b: true)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let expected = TypedNode::Invocation {
+        target: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Struct(s_id) = ty { *s_id == struct_.id } else { false }).unwrap(),
+        }),
+        arguments: vec![
+            Some(TypedNode::Literal {
+                token: Token::Int(Position::new(2, 8), 12),
+                value: TypedLiteral::Int(12),
+                type_id: PRELUDE_INT_TYPE_ID,
+            }),
+            Some(TypedNode::Literal {
+                token: Token::Bool(Position::new(2, 15), true),
+                value: TypedLiteral::Bool(true),
+                type_id: PRELUDE_BOOL_TYPE_ID,
+            })
+        ],
+        type_id: struct_.self_type_id,
+    };
+    assert_eq!(expected, module.code[0]);
+
+    // Test generics
+    let project = test_typecheck("\
+      type Node<T> { v: T }\n\
+      val n = Node(v: 12)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let var_n = &module.scopes[0].vars[1];
+    assert_eq!("n", var_n.name);
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![PRELUDE_INT_TYPE_ID])).unwrap();
+    assert_eq!(expected, var_n.type_id);
+
+    // Test with ambiguous generics, using type annotation
+    let project = test_typecheck("\
+      type Node<T> { v: T }\n\
+      val n: Node<Int[]> = Node(v: [])\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let var_n = &module.scopes[0].vars[1];
+    assert_eq!("n", var_n.name);
+    let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![int_array_type_id])).unwrap();
+    assert_eq!(expected, var_n.type_id);
+
+    // Test with ambiguous generics, using type argument
+    let project = test_typecheck("\
+      type Node<T> { v: T }\n\
+      val n = Node<Int[]>(v: [])\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let var_n = &module.scopes[0].vars[1];
+    assert_eq!("n", var_n.name);
+    let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![int_array_type_id])).unwrap();
+    assert_eq!(expected, var_n.type_id);
+}
+
+#[test]
+fn typecheck_failure_invocation_instantiation() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo { a: String }\n\
+      val f = Foo(\"asdf\")\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::MissingRequiredArgumentLabels {
+        span: Range { start: Position::new(2, 13), end: Position::new(2, 18) },
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo { a: String }\n\
+      Foo(b: 12)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnexpectedArgumentName {
+        span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
+        arg_name: "b".to_string(),
+        is_instantiation: true,
+    };
+    assert_eq!(expected, err);
+
+    // Test with ambiguous generics
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Node<T> { v: T }\n\
+      val n = Node(v: [])\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
+        is_unit: false,
+    };
+    assert_eq!(expected, err);
+
+    // Test with mismatched type arguments
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Node<T> { v: T }\n\
+      val n = Node<Int>(v: true)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 22), end: Position::new(2, 25) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
 fn typecheck_accessor() {
     // Test simple case
     let project = test_typecheck("val a = [1, 2, 3]\na.length").unwrap();
@@ -1581,6 +1781,28 @@ fn typecheck_accessor() {
         type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, module.code[1]);
+
+    // Defined type
+    let project = test_typecheck("\
+      type Foo { a: Int }\n\
+      val f = Foo(a: 12)\n\
+      f.a\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let expected = TypedNode::Accessor {
+        target: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(3, 1), "f".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 1),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
+        }),
+        kind: AccessorKind::Field,
+        member_idx: 0,
+        member_span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
+        type_id: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, module.code[1]);
 }
 
 #[test]
@@ -1590,6 +1812,19 @@ fn typecheck_failure_accessor() {
         span: Range { start: Position::new(1, 5), end: Position::new(1, 8) },
         field_name: "size".to_string(),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("\
+      type Foo { a: Int }\n\
+      val f = Foo(a: 12)\n\
+      f.b\
+    ").unwrap_err() else { unreachable!() };
+    let struct_ = &project.modules[1].structs[0];
+    let expected = TypeError::UnknownMember {
+        span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
+        field_name: "b".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
     };
     assert_eq!(expected, err);
 }
