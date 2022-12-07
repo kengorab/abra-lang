@@ -1,0 +1,15 @@
+// primitives are pre-defined: Int, Float, Bool, String, Tuple<T...>, Option<T>, None
+
+// TODO: Add println, print, and range functions
+
+type Array<T> {
+  length: Int
+}
+
+type Set<T> {
+  size: Int
+}
+
+type Map<K, V> {
+  size: Int
+}

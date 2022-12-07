@@ -2,16 +2,19 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
+val a = [1, 2, 3]
+a.length
+
 //type Foo { a: String }
 //Foo(b: 12)
 
-type Node<T> {
-  value: T
+//type Node<T> {
+//  value: T
+//
+//  func tuple<U>(self, u: U): (T, U) = (self.value, u)
+//}
 
-  func tuple<U>(self, u: U): (T, U) = (self.value, u)
-}
-
-val n = Node<Int[]>(value: [])
+//val n = Node<Int[]>(value: [])
 
 //val a = n.arr
 //a(1)
