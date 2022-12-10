@@ -2,11 +2,51 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-val a = [1, 2, 3]
-a.length
+//func f<T>(a: T): T[] = [a]
+//val x: (Int) => Int[] = f
 
-//type Foo { a: String }
-//Foo(b: 12)
+type List<T> {
+  items: T[]
+  func map<U>(self, fn: (T) => U): U[] = []
+}
+val l = List(items: [1, 2, 3])
+val map = l.map
+
+//func foo() {}
+//val f = foo()
+
+//func mapper(v: Int): (Int, Int) = (v, v)
+
+//val items = l.items
+//val items_: Int = items
+
+//val map = l.map
+
+//val reduce = l.reduce
+//val l_ = map(mapper)
+//val x: Int = l_
+
+//func f<T>(a: T): T = a
+//val arr = [f, f, f]
+
+//func f<T>(): T[] = []
+//val arr: Int = [f, f, f]
+
+//type Foo {
+//  a: Int
+//
+//  func b(self): Int = self.a
+//}
+//
+//val foo = Foo(a: 12)
+//val b: (Int) => Int = foo.b
+
+// val b: (Int) => Int       =    (a) => a + 1                    [PASS]
+// val b: (Int) => Int       =    (a, b = 3) => a + b             [PASS]
+// val b: (Int, Int) => Int  =    (a, b = 3) => a + b             [PASS]
+
+// val b: (Int) => Int       =    (a, b) => a + b                 [FAIL]
+// val b: (Int, Int) => Int  =    (a) => a + 1                    [PASS]
 
 //type Node<T> {
 //  value: T

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter::FromIterator;
 use std::path::PathBuf;
-use itertools::{Either, Itertools};
+use itertools::{Either, EitherOrBoth, Itertools};
 use crate::{parser, tokenize_and_parse};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
@@ -225,8 +226,26 @@ impl Project {
         Type::GenericInstance(self.prelude_map_struct_id, vec![key_type_id, val_type_id])
     }
 
-    pub fn function_type(&self, param_type_ids: Vec<TypeId>, return_type_id: TypeId) -> Type {
-        Type::Function(param_type_ids, return_type_id)
+    pub fn function_type(&self, param_type_ids: Vec<TypeId>, num_required: usize, return_type_id: TypeId) -> Type {
+        Type::Function(param_type_ids, num_required, return_type_id)
+    }
+
+    pub fn function_type_for_function(&self, func: &Function, trim_self: bool) -> Type {
+        let mut num_required = 0;
+
+        let iter = if func.has_self && trim_self {
+            func.params.iter().skip(1)
+        } else {
+            func.params.iter().skip(0)
+        };
+
+        let param_type_ids = iter
+            .map(|param| {
+                if param.default_value.is_none() { num_required += 1; }
+                param.type_id
+            })
+            .collect();
+        self.function_type(param_type_ids, num_required, func.return_type_id)
     }
 
     pub fn struct_type(&self, struct_id: StructId) -> Type {
@@ -274,8 +293,11 @@ impl Project {
                     }
                 }
             }
-            Type::Function(param_type_ids, return_type_id) => {
-                let param_reprs = param_type_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+            Type::Function(param_type_ids, num_required_params, return_type_id) => {
+                let param_reprs = param_type_ids.iter()
+                    .take(*num_required_params)
+                    .map(|type_id| self.type_repr(type_id))
+                    .join(", ");
                 let return_repr = self.type_repr(return_type_id);
                 format!("({}) => {}", param_reprs, return_repr)
             }
@@ -324,7 +346,7 @@ pub struct Struct {
     pub static_methods: Vec<FuncId>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StructField {
     pub name: String,
     pub type_id: TypeId,
@@ -338,7 +360,7 @@ pub enum Type {
     Builtin(/* prelude_type_idx: */ usize),
     Generic(/*span: */ Option<Range>, /* name: */ String),
     GenericInstance(StructId, Vec<TypeId>),
-    Function(Vec<TypeId>, TypeId),
+    Function(/* parameter_type_ids: */ Vec<TypeId>, /* num_required_params: */ usize, /* return_type_id: */ TypeId),
     Struct(StructId),
 }
 
@@ -387,6 +409,7 @@ pub struct Function {
     pub fn_scope_id: ScopeId,
     pub name: String,
     pub generic_ids: Vec<TypeId>,
+    pub has_self: bool,
     // TODO: Could be a slice? we won't expand once they're known
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
@@ -557,7 +580,7 @@ pub enum TypeError {
     UnknownIdentifier { span: Range, token: Token },
     MissingBindingInitializer { span: Range, is_mutable: bool },
     DuplicateName { span: Range, name: String, original_span: Option<Range>, kind: DuplicateNameKind },
-    ForbiddenAssignment { span: Range, is_unit: bool },
+    ForbiddenAssignment { span: Range, type_id: TypeId },
     DestructuringMismatch { span: Range, kind: DestructuringMismatchKind, type_id: TypeId },
     DuplicateSplat { span: Range },
     DuplicateParameter { span: Range, name: String },
@@ -694,18 +717,20 @@ impl TypeError {
 
                 format!("{}\n{}", first_msg, second_msg)
             }
-            TypeError::ForbiddenAssignment { is_unit, .. } => {
-                if *is_unit {
+            TypeError::ForbiddenAssignment { type_id, .. } => {
+                let type_repr = project.type_repr(type_id);
+
+                if *type_id == PRELUDE_UNIT_TYPE_ID {
                     format!(
                         "Forbidden type for variable\n{}\n\
                         Variables cannot be of type {}",
-                        cursor_line, project.type_repr(&PRELUDE_UNIT_TYPE_ID)
+                        cursor_line, type_repr
                     )
                 } else {
                     format!(
                         "Could not determine type\n{}\n\
-                        Please use an explicit type annotation to denote the type",
-                        cursor_line
+                        Type {} has unbound generics. Please use an explicit type annotation to denote the type",
+                        cursor_line, type_repr
                     )
                 }
             }
@@ -901,6 +926,35 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == self.project.prelude_option_struct_id => {
                 self.type_satisfies_other(base_type, &generic_ids[0])
             }
+            (Type::Function(base_param_type_ids, base_num_req, base_return_type_id), Type::Function(target_param_type_ids, _, target_return_type_id)) => {
+                if !self.type_satisfies_other(base_return_type_id, target_return_type_id) {
+                    return false;
+                }
+
+                // Cannot assign a function to a type with fewer parameters, eg:
+                //   val f: (Int) => Int = (a, b) => a + b
+                // When calling `f` (eg. `f(12)`) the parameter `b` will not receive a value. And since it has no default value, this would be undefined behavior
+                if *base_num_req > target_param_type_ids.len() { return false; }
+
+                // 1. If the number of parameters is the same in both, that's ok as long as their types match, eg:
+                //      val f: (Int, Int) => Int = (a: Int, b: Int) => a + b
+                //      val f: (Int, Int) => Int = (a: Int, b = 12) => a + b // Even though the second parameter here is optional, its type still has to match
+                // 2. If there are more parameters in the type being assigned to than in the provided type, that's ok, as long as their types match, eg:
+                //      val f: (Int, Int) => Int = (a: Int) => a
+                //    Values passed into `f` when calling will just be ignored since the assigned function only cares about the first argument.
+                // 3. If there are fewer parameters in the type being assigned to than in the provided type, that's ok as long as the overlapping types
+                //    match AND the remainder of the parameters in the provided type have default values, eg:
+                //      val f: (Int) => Int = (a: Int, b = 4) => a + b
+                //    The value of the `b` parameter will be its default value when the function executes.
+                debug_assert!(*base_num_req <= target_param_type_ids.len());
+                for (base_param_type_id, target_param_type_id) in base_param_type_ids.iter().zip(target_param_type_ids) {
+                    if !self.type_satisfies_other(base_param_type_id, target_param_type_id) {
+                        return false;
+                    }
+                }
+
+                true
+            }
             _ => false
         }
     }
@@ -920,9 +974,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             (Type::GenericInstance(hint_struct_id, hint_generic_ids), Type::GenericInstance(var_struct_id, var_generic_ids)) => {
                 if var_struct_id == hint_struct_id && hint_generic_ids.len() == var_generic_ids.len() {
+                    // Why: Rust can't know that I'm not mutating these refs in the substitute_generics call below :/
                     let hint_generic_ids = hint_generic_ids.clone();
-                    let var_generic_ids = var_generic_ids.clone();
                     let var_struct_id = *var_struct_id;
+                    let var_generic_ids = var_generic_ids.clone();
 
                     let mut new_var_generic_ids = vec![];
                     for (hint_generic_type_id, var_generic_type_id) in hint_generic_ids.iter().zip(var_generic_ids.iter()) {
@@ -932,6 +987,32 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 } else {
                     *var_type_id
                 }
+            }
+            (Type::Function(hint_param_type_ids, _, hint_return_type_id), Type::Function(var_param_type_ids, var_num_req, var_return_type_id)) => {
+                // Why: Rust can't know that I'm not mutating these refs in the substitute_generics call below :/
+                let hint_param_type_ids = hint_param_type_ids.clone();
+                let hint_return_type_id = *hint_return_type_id;
+                let var_num_req = *var_num_req;
+                let var_param_type_ids = var_param_type_ids.clone();
+                let var_return_type_id = *var_return_type_id;
+
+                // Try to substitute as much as we can.
+                // If we have the same number of types in the working type and in the hint, substitute all hint params into the working type.
+                // If we have more params in the working type than in the hint, we can't substitute any values from the hint so we use the remaining working type's params.
+                // If we have more params in the hint type than in the working, break; we can't substitute them anywhere so we don't care about them.
+                let mut param_type_ids = Vec::with_capacity(var_param_type_ids.len());
+                for pair in hint_param_type_ids.iter().zip_longest(var_param_type_ids.iter()) {
+                    let substituted_type_id = match pair {
+                        EitherOrBoth::Both(hint_param_type_id, var_param_type_id) => self.substitute_generics(hint_param_type_id, var_param_type_id),
+                        EitherOrBoth::Left(_) => break,
+                        EitherOrBoth::Right(var_param_type_id) => *var_param_type_id,
+                    };
+                    param_type_ids.push(substituted_type_id);
+                }
+
+                let return_type_id = self.substitute_generics(&hint_return_type_id, &var_return_type_id);
+
+                self.add_or_find_type_id(self.project.function_type(param_type_ids, var_num_req, return_type_id))
             }
             _ => *var_type_id
         }
@@ -974,10 +1055,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let substituted_generic_ids = generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
                 self.add_or_find_type_id(Type::GenericInstance(struct_id, substituted_generic_ids))
             }
-            Type::Function(arg_type_ids, ret_type_id) => {
+            Type::Function(arg_type_ids, num_required_params, ret_type_id) => {
                 let substituted_arg_type_ids = arg_type_ids.iter().map(|arg_type_id| self.substitute_generics_with_known(arg_type_id, substitutions)).collect();
                 let substituted_ret_type_id = self.substitute_generics_with_known(&ret_type_id, substitutions);
-                self.add_or_find_type_id(Type::Function(substituted_arg_type_ids, substituted_ret_type_id))
+                self.add_or_find_type_id(Type::Function(substituted_arg_type_ids, num_required_params, substituted_ret_type_id))
             }
             Type::Builtin(_) |
             Type::Struct(_) => *type_id,
@@ -998,22 +1079,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 false
             }
-            Type::Function(param_type_ids, return_type_id) => {
-                if self.type_contains_generics(return_type_id) {
-                    return true;
-                }
-
+            Type::Function(param_type_ids, _, return_type_id) => {
                 for type_id in param_type_ids {
                     if self.type_contains_generics(type_id) {
                         return true;
                     }
                 }
 
-                false
+                self.type_contains_generics(return_type_id)
             }
             Type::Struct(struct_id) => {
                 let struct_ = self.project.get_struct_by_id(struct_id);
-                struct_.generic_ids.is_empty()
+                !struct_.generic_ids.is_empty()
             }
         }
     }
@@ -1074,8 +1151,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let ty = self.project.option_type(inner);
                 Ok(self.add_or_find_type_id(ty))
             }
-            TypeIdentifier::Union { .. } |
-            TypeIdentifier::Func { .. } => todo!()
+            TypeIdentifier::Union { .. } => todo!(),
+            TypeIdentifier::Func { args, ret } => {
+                let num_params = args.len();
+                let param_type_ids = args.iter().map(|arg| self.resolve_type_identifier(arg)).collect::<Result<Vec<_>, _>>()?;
+                let ret_type_id = self.resolve_type_identifier(&*ret)?;
+                let ty = self.project.function_type(param_type_ids, num_params, ret_type_id);
+                Ok(self.add_or_find_type_id(ty))
+            }
         }
     }
 
@@ -1100,9 +1183,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let name = Token::get_ident_name(ident);
         let span = ident.get_range();
 
-        let param_type_ids = func.params.iter().map(|p| p.type_id).collect();
-
-        let fn_type_id = self.add_or_find_type_id(self.project.function_type(param_type_ids, func.return_type_id));
+        let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
         let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
         variable.alias = VariableAlias::Function(*func_id);
@@ -1110,7 +1191,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn add_function_to_current_scope(&mut self, fn_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
+    fn add_function_to_current_scope(&mut self, fn_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>, has_self: bool, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
         let is_method = self.current_type_decl.is_some();
         let current_scope = self.current_scope_mut();
 
@@ -1124,7 +1205,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
-        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
         current_scope.funcs.push(func);
 
         Ok(func_id)
@@ -1520,7 +1601,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
 
-        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, params, return_type_id)?;
+        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, seen_self, params, return_type_id)?;
         self.current_module_mut().functions.push(func_id);
 
         Ok(func_id)
@@ -1685,8 +1766,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (None, Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
-                        if self.type_contains_generics(type_id) {
-                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), is_unit: *type_id == PRELUDE_UNIT_TYPE_ID });
+                        if *type_id == PRELUDE_UNIT_TYPE_ID || self.type_contains_generics(type_id) {
+                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id });
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
 
@@ -1694,12 +1775,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     (Some(type_hint_id), Some(expr)) => {
                         let typed_expr = self.typecheck_expression(*expr, Some(type_hint_id))?;
-                        let type_id = typed_expr.type_id();
+                        let mut type_id = *typed_expr.type_id();
 
-                        if !self.type_satisfies_other(type_id, &type_hint_id) {
-                            let span = typed_expr.span();
-                            return Err(TypeError::TypeMismatch { span, expected: vec![type_hint_id], received: *type_id });
+                        if self.type_contains_generics(&type_id) {
+                            type_id = self.substitute_generics(&type_hint_id, &type_id);
                         }
+                        if !self.type_satisfies_other(&type_id, &type_hint_id) {
+                            let span = typed_expr.span();
+                            return Err(TypeError::TypeMismatch { span, expected: vec![type_hint_id], received: type_id });
+                        };
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_hint_id, &mut var_ids)?;
 
                         Some(Box::new(typed_expr))
@@ -2061,26 +2145,48 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let typed_target = self.typecheck_expression(*n.target, None)?;
                 let target_type_id = typed_target.type_id();
                 let target_ty = self.project.get_type_by_id(target_type_id);
-                let field = match target_ty {
-                    Type::GenericInstance(struct_id, _) => {
+
+                let mut field_data = None;
+                match target_ty {
+                    Type::GenericInstance(struct_id, generic_type_ids) => {
                         let struct_ = self.project.get_struct_by_id(struct_id);
-                        struct_.fields.iter().enumerate().find(|(_, f)| *f.name == field_name)
+                        let fields = struct_.fields.clone();
+                        let methods = struct_.methods.clone();
+                        let generic_substitutions = HashMap::from_iter(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
+                        for (idx, field) in fields.iter().enumerate() {
+                            if *field.name == field_name {
+                                let type_id = self.substitute_generics_with_known(&field.type_id, &generic_substitutions);
+                                field_data = Some((idx, type_id, AccessorKind::Field));
+                                break;
+                            }
+                        }
+                        if field_data.is_none() {
+                            for (idx, func_id) in methods.iter().enumerate() {
+                                let func = self.project.get_func_by_id(func_id);
+                                if func.name == field_name {
+                                    let mut func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                    func_type_id = self.substitute_generics_with_known(&func_type_id, &generic_substitutions);
+                                    field_data = Some((idx, func_type_id, AccessorKind::Method));
+                                    break;
+                                }
+                            }
+                        }
                     }
                     Type::Builtin(_) |
                     Type::Struct(_) |
                     Type::Generic(_, _) |
-                    Type::Function(_, _) => todo!()
+                    Type::Function(_, _, _) => todo!()
                 };
-                let Some((field_idx, field)) = field else {
+                let Some((field_idx, type_id, kind)) = field_data else {
                     return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
                 };
 
                 Ok(TypedNode::Accessor {
                     target: Box::new(typed_target),
-                    kind: AccessorKind::Field,
+                    kind,
                     member_idx: field_idx,
                     member_span: field_ident.get_range(),
-                    type_id: field.type_id,
+                    type_id,
                 })
             }
             AstNode::Invocation(token, n) => {

@@ -49,6 +49,85 @@ fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
 }
 
 #[test]
+fn test_type_assignability() {
+    let cases = [
+        ("val x: Int? = 1", true),
+        ("val x: Int = None", false),
+        ("val x: Bool[] = []", true),
+        ("val x: Bool[] = [true]", true),
+        ("val x: Bool[] = [None]", false),
+        ("val x: Bool?[] = [None]", true),
+        ("val x: Map<Int, String> = { 1: \"asdf\" }", true),
+        ("val x: Map<Int, String> = { 1: None }", false),
+        (
+            "func f(): Int = 1\n\
+             val x: () => Int = f",
+            true
+        ),
+        (
+            "func f(): Float = 1.0\n\
+             val x: () => Int = f",
+            false
+        ),
+        (
+            "func f(a: Int): Int = a\n\
+             val x: (Int) => Int = f",
+            true
+        ),
+        (
+            "func f(a: Int, b = 3): Int = a\n\
+             val x: (Int) => Int = f",
+            true
+        ),
+        (
+            "func f(a: Int, b = 3): Int = a\n\
+             val x: (Int, Int) => Int = f",
+            true
+        ),
+        (
+            "func f(a: Int, b = 3): Int = a\n\
+             val x: (Int, Float) => Int = f",
+            false
+        ),
+        (
+            "func f(a: Int, b: Int): Int = a\n\
+             val x: (Int) => Int = f",
+            false
+        ),
+        (
+            "func f<T>(a: T): T[] = [a]\n\
+             val x: (Int) => Int[] = f",
+            true
+        ),
+        (
+            "type Foo<T> {\n\
+               t: T\n\
+               func foo<U>(self, u: U): (T, U) = (self.t, u)\n\
+             }\n\
+             val f = Foo(t: 12.34)\n\
+             val x: (Int) => (Float, Int) = f.foo",
+            true
+        ),
+        (
+            "type List<T> {\n\
+               items: T[]\n\
+               func map<U>(self, fn: (T) => U): U[] = []\n\
+             }\n\
+             val l = List(items: [1, 2])\n\
+             val map: ((Int) => Float) => Float[] = l.map",
+            true
+        )
+    ];
+    for (code, should_be_assignable) in cases {
+        if should_be_assignable {
+            assert!(test_typecheck(code).is_ok(), "Expected code to typecheck successfully:\n{}", code);
+        } else {
+            assert!(!test_typecheck(code).is_ok(), "Expected code to fail to typecheck:\n{}", code);
+        }
+    }
+}
+
+#[test]
 fn typecheck_prelude() {
     let project = test_typecheck("").unwrap();
     let prelude_module = &project.modules[0];
@@ -438,10 +517,11 @@ fn typecheck_failure_array() {
     };
     assert_eq!(expected, err);
 
-    let (_, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
+    let array_struct = &project.prelude_module().structs[project.prelude_array_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        is_unit: false,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(array_struct.generic_ids[0])).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -576,10 +656,11 @@ fn typecheck_failure_set() {
     };
     assert_eq!(expected, err);
 
-    let (_, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
+    let set_struct_ = &project.prelude_module().structs[project.prelude_set_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
-        is_unit: false,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(set_struct_.generic_ids[0])).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -678,10 +759,11 @@ fn typecheck_failure_map() {
     };
     assert_eq!(expected, err);
 
-    let (_, Either::Right(err)) = test_typecheck("val m = {}").unwrap_err() else { unreachable!() };
+    let (project, Either::Right(err)) = test_typecheck("val m = {}").unwrap_err() else { unreachable!() };
+    let map_struct = &project.prelude_module().structs[project.prelude_map_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
-        is_unit: false,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.map_type(map_struct.generic_ids[0], map_struct.generic_ids[1])).unwrap(),
     };
     assert_eq!(expected, err);
 }
@@ -771,7 +853,7 @@ fn typecheck_failure_none() {
     assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 12) },
-        is_unit: false,
+        type_id: none_var.type_id,
     };
     assert_eq!(expected, err);
 
@@ -780,7 +862,7 @@ fn typecheck_failure_none() {
     assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
-        is_unit: false,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(none_var.type_id)).unwrap(),
     };
     assert_eq!(expected, err);
 
@@ -1015,6 +1097,7 @@ fn typecheck_type_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 2),
             name: "foo".to_string(),
             generic_ids: vec![],
+            has_self: true,
             params: vec![
                 FunctionParam {
                     name: "self".to_string(),
@@ -1039,6 +1122,7 @@ fn typecheck_type_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 3),
             name: "fooStatic".to_string(),
             generic_ids: vec![],
+            has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Range { start: Position::new(4, 6), end: Position::new(4, 14) }),
@@ -1180,6 +1264,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
+            has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
@@ -1209,6 +1294,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
+            has_self: false,
             params: vec![
                 FunctionParam {
                     name: "x".to_string(),
@@ -1261,6 +1347,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
+            has_self: false,
             params: vec![],
             return_type_id: bool_bool_tuple_array_type_id,
             defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
@@ -1288,6 +1375,7 @@ fn typecheck_function_declaration() {
             fn_scope_id: ScopeId(ModuleId(1), 1),
             name: "foo".to_string(),
             generic_ids: vec![],
+            has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
             defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
@@ -1309,7 +1397,7 @@ fn typecheck_function_declaration() {
         Variable {
             id: VarId(ScopeId(ModuleId(1), 0), 0),
             name: "foo".to_string(),
-            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![], PRELUDE_INT_TYPE_ID)).unwrap(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![], 0, PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
@@ -1340,6 +1428,7 @@ fn typecheck_function_declaration() {
             fn_scope_id,
             name: "foo".to_string(),
             generic_ids: vec![t_type_id],
+            has_self: false,
             params: vec![
                 FunctionParam {
                     name: "a".to_string(),
@@ -1489,6 +1578,7 @@ fn typecheck_invocation() {
                             PRELUDE_BOOL_TYPE_ID,
                             PRELUDE_INT_TYPE_ID,
                         ],
+                        1,
                         PRELUDE_INT_TYPE_ID,
                     ),
                 ).unwrap(),
@@ -1631,13 +1721,16 @@ fn typecheck_failure_invocation() {
     };
     assert_eq!(expected, err);
 
-    let (_, Either::Right(err)) = test_typecheck("\
+    let (project, Either::Right(err)) = test_typecheck("\
       func foo<T>(a: T[]): T[] = a\n\
       val x = foo(foo([]))\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
-        is_unit: false,
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.array_type(project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), &"T".to_string()).unwrap()),
+        ).unwrap(),
     };
     assert_eq!(expected, err);
 
@@ -1789,13 +1882,21 @@ fn typecheck_failure_invocation_instantiation() {
     assert_eq!(expected, err);
 
     // Test with ambiguous generics
-    let (_, Either::Right(err)) = test_typecheck("\
+    let (project, Either::Right(err)) = test_typecheck("\
       type Node<T> { v: T }\n\
       val n = Node(v: [])\
     ").unwrap_err() else { unreachable!() };
+    let node_struct = project.find_struct_by_name(&ModuleId(1), &"Node".to_string()).unwrap();
+    let array_struct = &project.prelude_module().structs[project.prelude_array_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
-        is_unit: false,
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &Type::GenericInstance(
+                node_struct.id,
+                vec![project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(array_struct.generic_ids[0])).unwrap()],
+            ),
+        ).unwrap(),
     };
     assert_eq!(expected, err);
 
@@ -1852,6 +1953,34 @@ fn typecheck_accessor() {
         type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, module.code[1]);
+
+    // Accessing method
+    let project = test_typecheck("\
+      type Foo {\n\
+        a: Int\n\
+        func b(self, c: Int): Int[] = [self.a, c]\n\
+      }\n\
+      val f = Foo(a: 12)\n\
+      f.b\
+    ").unwrap();
+    let module = &project.modules[1];
+    let struct_ = &module.structs[0];
+    let expected = TypedNode::Accessor {
+        target: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(6, 1), "f".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 1),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
+        }),
+        kind: AccessorKind::Method,
+        member_idx: 0,
+        member_span: Range { start: Position::new(6, 3), end: Position::new(6, 3) },
+        type_id: {
+            let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+            project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, int_array_type_id)).unwrap()
+        },
+    };
+    assert_eq!(expected, module.code[1]);
 }
 
 #[test]
@@ -1874,6 +2003,34 @@ fn typecheck_failure_accessor() {
         span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
         field_name: "b".to_string(),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("\
+      type List<T> {\n\
+        items: T[]\n\
+        func map<U>(self, fn: (T) => U): U[] = []\n\
+      }\n\
+      val l = List(items: [1, 2, 3])\n\
+      val map = l.map\
+    ").unwrap_err() else { unreachable!() };
+
+    let u_type_id = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 2), &"U".to_string()).unwrap();
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(6, 11), end: Position::new(6, 15) },
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(
+                vec![
+                    project.find_type_id(
+                        &ScopeId(ModuleId(1), 0),
+                        &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, u_type_id),
+                    ).unwrap()
+                ],
+                1,
+                project.find_type_id(&ScopeId(ModuleId(1), 1), &project.array_type(u_type_id)).unwrap(),
+            ),
+        ).unwrap(),
     };
     assert_eq!(expected, err);
 }
