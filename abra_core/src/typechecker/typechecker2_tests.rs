@@ -1636,6 +1636,67 @@ fn typecheck_invocation() {
         ),
     ).unwrap();
     assert_eq!(expected, *type_id);
+
+    // Invoking method of type
+    let project = test_typecheck("\
+      type Foo { func foo(self, a: Int, b = 4): Int = a }\n\
+      val f = Foo()\n\
+      val foo = f.foo\n\
+      foo(1)\n\
+      f.foo(2)\n\
+      f.foo(a: 2)\n\
+      f.foo(b: 2, a: 6)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+    };
+    assert_eq!(&expected, foo_var);
+    let var_invocation = &module.code[2];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
+    let accessor_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
+    let accessor_invocation_arg_label = &module.code[4];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
+    let accessor_invocation_arg_labels = &module.code[5];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
+
+    // Invoking field of type
+    let project = test_typecheck("\
+      type Foo { foo: (Int) => Int }\n\
+      var f: Foo // This shortcut may fail in the future, using an uninitialized `var`\n\
+      val foo = f.foo\n\
+      foo(1)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+    };
+    assert_eq!(&expected, foo_var);
+    let accessor_invocation = &module.code[2];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
 }
 
 #[test]
@@ -1695,7 +1756,8 @@ fn typecheck_failure_invocation() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
-        num_required_args: 3,
+        num_possible_args: 3,
+        num_required_args: 2,
         num_provided_args: 4,
     };
     assert_eq!(expected, err);
@@ -1705,7 +1767,8 @@ fn typecheck_failure_invocation() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
-        num_required_args: 3,
+        num_possible_args: 3,
+        num_required_args: 2,
         num_provided_args: 1,
     };
     assert_eq!(expected, err);
@@ -1716,7 +1779,8 @@ fn typecheck_failure_invocation() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
-        num_required_args: 3,
+        num_possible_args: 3,
+        num_required_args: 2,
         num_provided_args: 1,
     };
     assert_eq!(expected, err);
@@ -1784,6 +1848,31 @@ fn typecheck_failure_invocation() {
         span: Range { start: Position::new(2, 22), end: Position::new(2, 22) },
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Test invocation of fields
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo { foo: (Int) => Int }\n\
+      var f: Foo\n\
+      f.foo(a: 1)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnexpectedArgumentName {
+        span: Range { start: Position::new(3, 7), end: Position::new(3, 7) },
+        arg_name: "a".to_string(),
+        is_instantiation: false,
+    };
+    assert_eq!(expected, err);
+
+    // Test invocation of identifier
+    let (_, Either::Right(err)) = test_typecheck("\
+      var fn: (Int) => Int\n\
+      fn(a: 4)\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnexpectedArgumentName {
+        span: Range { start: Position::new(2, 4), end: Position::new(2, 4) },
+        arg_name: "a".to_string(),
+        is_instantiation: false,
     };
     assert_eq!(expected, err);
 }

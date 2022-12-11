@@ -504,7 +504,7 @@ impl TypedNode {
                         let arg_span = arg.span();
                         match &max {
                             None => max = Some(arg_span),
-                            Some(max_span) => if arg_span.end.line > max_span.end.line && arg_span.end.col > max_span.end.col {
+                            Some(max_span) => if arg_span.end.line > max_span.end.line || arg_span.end.col > max_span.end.col {
                                 max = Some(arg_span)
                             }
                         }
@@ -589,7 +589,7 @@ pub enum TypeError {
     UnexpectedArgumentName { span: Range, arg_name: String, is_instantiation: bool },
     MixedArgumentType { span: Range },
     DuplicateArgumentLabel { span: Range, name: String },
-    InvalidArity { span: Range, num_required_args: usize, num_provided_args: usize },
+    InvalidArity { span: Range, num_possible_args: usize, num_required_args: usize, num_provided_args: usize },
     InvalidSelfParam { span: Range },
     InvalidSelfParamPosition { span: Range },
     InvalidTypeArgumentArity { span: Range, num_required_args: usize, num_provided_args: usize },
@@ -804,14 +804,26 @@ impl TypeError {
                     name, cursor_line,
                 )
             }
-            TypeError::InvalidArity { num_required_args, num_provided_args, .. } => {
-                format!(
-                    "Incorrect arity for invocation\n{}\n\
-                    Expected {} required argument{}, but {} {} passed",
-                    cursor_line,
-                    num_required_args, if *num_required_args == 1 { "" } else { "s" },
-                    num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
-                )
+            TypeError::InvalidArity { num_possible_args, num_required_args, num_provided_args, .. } => {
+                if num_provided_args < num_required_args {
+                    format!(
+                        "Not enough arguments for invocation\n{}\n\
+                         {} argument{} required, but {} {} provided",
+                        cursor_line,
+                        num_required_args, if *num_required_args == 1 { "" } else { "s" },
+                        num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
+                    )
+                } else if num_provided_args > num_possible_args {
+                    format!(
+                        "Too many arguments for invocation\n{}\n\
+                         Expected no more than {} argument{}, but {} {} passed",
+                        cursor_line,
+                        num_possible_args, if *num_possible_args == 1 { "" } else { "s" },
+                        num_provided_args, if *num_provided_args == 1 { "was" } else { "were" },
+                    )
+                } else {
+                    unreachable!()
+                }
             }
             TypeError::InvalidSelfParam { .. } => {
                 format!(
@@ -1037,6 +1049,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 for (g_id1, g_id2) in g_ids1.iter().zip(g_ids2) {
                     self.extract_values_for_generics(g_id2, g_id1, substitutions);
                 }
+            }
+            (Type::Function(ty_param_type_ids, _, ty_return_type_id), Type::Function(hint_param_type_ids, _, hint_return_type_id)) => {
+                for (ty_param_type_id, hint_param_type_id) in ty_param_type_ids.iter().zip(hint_param_type_ids.iter()) {
+                    self.extract_values_for_generics(hint_param_type_id, ty_param_type_id, substitutions);
+                }
+
+                self.extract_values_for_generics(hint_return_type_id, ty_return_type_id, substitutions);
             }
             _ => {}
         }
@@ -2196,14 +2215,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let mut filled_in_generic_types = HashMap::new();
 
-                let generic_ids;
                 let params_data;
                 let mut return_type_id;
                 let mut is_instantiation = false;
+                let mut forbid_labels = false;
                 match &typed_target {
-                    TypedNode::Identifier { var_id, type_id, type_arg_ids: type_args, .. } => {
+                    TypedNode::Identifier { var_id, type_arg_ids: type_args, .. } if self.project.get_var_by_id(var_id).alias != VariableAlias::None => {
                         let var = self.project.get_var_by_id(var_id);
 
+                        let generic_ids;
                         match var.alias {
                             VariableAlias::Function(alias_func_id) => {
                                 let function = self.project.get_func_by_id(&alias_func_id);
@@ -2219,7 +2239,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 return_type_id = struct_.self_type_id;
                                 is_instantiation = true;
                             }
-                            VariableAlias::None => return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *type_id }),
+                            VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),
                         }
                         if !type_args.is_empty() && type_args.len() != generic_ids.len() {
                             let span = if type_args.len() > generic_ids.len() {
@@ -2234,25 +2254,71 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             filled_in_generic_types.insert(*generic_id, *type_arg_id);
                         }
                     }
-                    _ => unimplemented!("Internal error: invocation of target expression not implemented")
+                    TypedNode::Accessor { target, kind, member_idx, .. } => {
+                        let target_type_id = target.type_id();
+                        let target_ty = self.project.get_type_by_id(target_type_id);
+                        match target_ty {
+                            Type::GenericInstance(struct_id, _) => {
+                                let struct_ = self.project.get_struct_by_id(struct_id);
+                                match kind {
+                                    AccessorKind::Field => {
+                                        let field_ty = self.project.get_type_by_id(&struct_.fields[*member_idx].type_id);
+                                        let Type::Function(param_type_ids, num_required_args, ret_type_id) = field_ty else {
+                                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *target_type_id });
+                                        };
+                                        params_data = param_type_ids.iter().enumerate().map(|(idx, param_type_id)| (idx, format!("_{}", idx), *param_type_id, idx >= *num_required_args)).collect_vec();
+                                        return_type_id = *ret_type_id;
+                                        forbid_labels = true;
+                                    }
+                                    AccessorKind::Method => {
+                                        let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
+                                        return_type_id = function.return_type_id;
+                                    }
+                                    AccessorKind::StaticMethod => todo!()
+                                }
+                            }
+                            Type::Builtin(_) |
+                            Type::Generic(_, _) |
+                            Type::Function(_, _, _) |
+                            Type::Struct(_) => todo!()
+                        }
+                    }
+                    _ => {
+                        let target_type_id = typed_target.type_id();
+                        let target_ty = self.project.get_type_by_id(target_type_id);
+                        let Type::Function(param_type_ids, num_required_args, ret_type_id) = target_ty else {
+                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *target_type_id });
+                        };
+                        params_data = param_type_ids.iter().enumerate().map(|(idx, param_type_id)| (idx, format!("_{}", idx), *param_type_id, idx >= *num_required_args)).collect_vec();
+                        return_type_id = *ret_type_id;
+                        forbid_labels = true;
+                    }
                 }
 
-                let num_required_args = params_data.len();
+                let num_possible_args = params_data.len();
+                let num_required_args = params_data.iter().filter(|(_, _, _, is_optional)| !*is_optional).count();
                 let num_provided_args = args.len();
 
                 let mut seen_labels = HashSet::new();
                 let mut typed_arguments = (0..params_data.len()).map(|_| None).collect_vec();
                 for (idx, (label, arg_node)) in args.into_iter().enumerate() {
-                    if is_instantiation && label.is_none() {
+                    if is_instantiation && label.is_none() && !forbid_labels {
                         return Err(TypeError::MissingRequiredArgumentLabels { span: arg_node.get_token().get_range() });
                     }
 
                     let (param_idx, _, mut param_type_id, _) = if let Some(label) = label {
+                        let label_name = Token::get_ident_name(&label);
+
+                        if forbid_labels {
+                            debug_assert!(!is_instantiation, "We should always require labels if we're instantiating");
+                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name, is_instantiation });
+                        }
+
                         if idx > 0 && seen_labels.is_empty() {
                             return Err(TypeError::MixedArgumentType { span: label.get_range() });
                         }
 
-                        let label_name = Token::get_ident_name(&label);
                         if seen_labels.contains(&label_name) {
                             return Err(TypeError::DuplicateArgumentLabel { span: label.get_range(), name: label_name });
                         }
@@ -2261,7 +2327,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         };
                         if idx >= params_data.len() {
                             // This _should_ be unreachable given the two cases above, but just in case let's return an error here as well
-                            return Err(TypeError::InvalidArity { span: label.get_range(), num_required_args, num_provided_args });
+                            return Err(TypeError::InvalidArity { span: label.get_range(), num_possible_args, num_required_args, num_provided_args });
                         }
 
                         seen_labels.insert(label_name);
@@ -2272,7 +2338,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     } else {
                         if idx >= params_data.len() {
                             let span = typed_target.span().expand(&token.get_range());
-                            return Err(TypeError::InvalidArity { span, num_required_args, num_provided_args });
+                            return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                         }
 
                         &params_data[idx]
@@ -2301,7 +2367,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 for (param_idx, _, _, param_is_optional) in params_data {
                     if typed_arguments[param_idx] == None && !param_is_optional {
                         let span = typed_target.span().expand(&token.get_range());
-                        return Err(TypeError::InvalidArity { span, num_required_args, num_provided_args });
+                        return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                     }
                 }
 
