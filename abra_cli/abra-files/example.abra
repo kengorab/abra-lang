@@ -1,3 +1,44 @@
 // TODO: Make this work
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
+
+var x = 1
+x += 1.2
+
+//type Array<T> {
+//  items: private T[]
+//  length: Int
+//
+//  ...
+//
+//  func default<T>(defaultValue: T): DefaultArray<T> = DefaultArray(items: [], default: defaultValue)
+//
+//  ...
+//
+//  func default(defaultValue: T): DefaultArray<T> = DefaultArray(items: self.items, default: defaultValue)
+//
+//  @operator("[]")
+//  func get(index: Int): T? = ...
+//
+//  @operator("[:]")
+//  func getRange(start: Int?, end: Int?): T[] = ...
+//}
+//
+//type DefaultArray<T> extends Array<T> {
+//  default: private T
+//
+//  @operator("[]")
+//  func get(self, idx: Int): T = self.items[idx] ?: self.default
+//}
+//
+//val defaultValue = 5
+//val arr = [1, 2, 3] // arr is of type Array<T, false>
+//val item = arr[0]   // => item is of type Int?, requiring arr[0] ?: defaultValue to obtain an Int
+//
+//val arr = Array.default(defaultValue) // arr is of type Array<T, true>
+//val item = arr[0]                         // => item is of type Int, and will be defaultValue if index not present in Array
+//
+//val a = if true [1, 2, 3] else Array.default(0)
+//
+//a[0] // => _has_ to be Int?; since we can only narrow this down to `Array<T, ?>`, we have to use the default value of `DefaultValues` (false)
+//

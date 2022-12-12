@@ -445,6 +445,97 @@ fn typecheck_failure_unary() {
 }
 
 #[test]
+fn typecheck_binary() {
+    let cases = [
+        // +
+        ("1 + 2", PRELUDE_INT_TYPE_ID),
+        ("1.1 + 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1 + 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 + 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1 + \"abc\"", PRELUDE_STRING_TYPE_ID),
+        ("1.1 + \"abc\"", PRELUDE_STRING_TYPE_ID),
+        ("true + \"abc\"", PRELUDE_STRING_TYPE_ID),
+        ("\"abc\" + ([1, 2], [3, 4])", PRELUDE_STRING_TYPE_ID),
+        ("\"abc\" + \"def\"", PRELUDE_STRING_TYPE_ID),
+        ("\"abc\" + 1", PRELUDE_STRING_TYPE_ID),
+        ("\"abc\" + 1.1", PRELUDE_STRING_TYPE_ID),
+        ("\"abc\" + false", PRELUDE_STRING_TYPE_ID),
+        ("([1, 2], [3, 4]) + \"abc\"", PRELUDE_STRING_TYPE_ID),
+        // -
+        ("1 - 2", PRELUDE_INT_TYPE_ID),
+        ("1.1 - 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1 - 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 - 2.1", PRELUDE_FLOAT_TYPE_ID),
+        // *
+        ("1 * 2", PRELUDE_INT_TYPE_ID),
+        ("1.1 * 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1 * 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 * 2.1", PRELUDE_FLOAT_TYPE_ID),
+        // %
+        ("1 % 2", PRELUDE_INT_TYPE_ID),
+        ("1.1 % 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1 % 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 % 2.1", PRELUDE_FLOAT_TYPE_ID),
+        // /
+        ("1 / 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 / 2", PRELUDE_FLOAT_TYPE_ID),
+        ("1 / 2.1", PRELUDE_FLOAT_TYPE_ID),
+        ("1.1 / 2.1", PRELUDE_FLOAT_TYPE_ID),
+        // <
+        ("1 < 2", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 < 2", PRELUDE_BOOL_TYPE_ID),
+        ("1 < 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 < 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("\"abc\" < \"def\"", PRELUDE_BOOL_TYPE_ID),
+        // <=
+        ("1 <= 2", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 <= 2", PRELUDE_BOOL_TYPE_ID),
+        ("1 <= 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 <= 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("\"abc\" <= \"def\"", PRELUDE_BOOL_TYPE_ID),
+        // >
+        ("1 > 2", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 > 2", PRELUDE_BOOL_TYPE_ID),
+        ("1 > 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 > 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("\"abc\" > \"def\"", PRELUDE_BOOL_TYPE_ID),
+        // >=
+        ("1 >= 2", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 >= 2", PRELUDE_BOOL_TYPE_ID),
+        ("1 >= 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("1.1 >= 2.1", PRELUDE_BOOL_TYPE_ID),
+        ("\"abc\" >= \"def\"", PRELUDE_BOOL_TYPE_ID),
+        // ==
+        ("1 == \"2\"", PRELUDE_BOOL_TYPE_ID),
+        ("[1, 2] == (2, 3)", PRELUDE_BOOL_TYPE_ID),
+        // !=
+        ("1 != \"2\"", PRELUDE_BOOL_TYPE_ID),
+        ("[1, 2] != (2, 3)", PRELUDE_BOOL_TYPE_ID),
+        // ?:
+        ("None ?: 123", PRELUDE_INT_TYPE_ID),
+        ("1.23 ?: 0.0", PRELUDE_FLOAT_TYPE_ID),
+        // &&
+        ("true && false", PRELUDE_BOOL_TYPE_ID),
+        ("(1 < 3) && false", PRELUDE_BOOL_TYPE_ID),
+        // ||
+        ("true || false", PRELUDE_BOOL_TYPE_ID),
+        ("(1 < 3) || false", PRELUDE_BOOL_TYPE_ID),
+        // ^
+        ("true ^ false", PRELUDE_BOOL_TYPE_ID),
+        ("(1 < 3) ^ false", PRELUDE_BOOL_TYPE_ID),
+    ];
+
+    for (input, expected) in cases {
+        let project = test_typecheck(input).unwrap();
+        assert_eq!(
+            expected,
+            *project.modules[1].code.last().unwrap().type_id(),
+            "Expected `{}` to be of type {}", input, project.type_repr(&expected),
+        );
+    }
+}
+
+#[test]
 fn typecheck_array() {
     let project = test_typecheck("[1, 2, 3]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();

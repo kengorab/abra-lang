@@ -132,6 +132,37 @@ pub enum BinaryOp {
     Pow,
 }
 
+impl BinaryOp {
+    pub(crate) fn repr(&self) -> &str {
+        match self {
+            BinaryOp::Add => "+",
+            BinaryOp::AddEq => "+=",
+            BinaryOp::Sub => "-",
+            BinaryOp::SubEq => "-=",
+            BinaryOp::Mul => "*",
+            BinaryOp::MulEq => "*=",
+            BinaryOp::Div => "/",
+            BinaryOp::DivEq => "/=",
+            BinaryOp::Mod => "%",
+            BinaryOp::ModEq => "%=",
+            BinaryOp::And => "&&",
+            BinaryOp::AndEq => "&&=",
+            BinaryOp::Or => "||",
+            BinaryOp::OrEq => "||=",
+            BinaryOp::Xor => "^",
+            BinaryOp::Coalesce => "?:",
+            BinaryOp::CoalesceEq => "?:=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Lte => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Gte => ">=",
+            BinaryOp::Neq => "!=",
+            BinaryOp::Eq => "==",
+            BinaryOp::Pow => "**",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     pub right: Box<AstNode>,

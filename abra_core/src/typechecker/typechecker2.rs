@@ -6,7 +6,7 @@ use crate::{parser, tokenize_and_parse};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -452,6 +452,7 @@ pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
     Unary { token: Token, op: UnaryOp, expr: Box<TypedNode> },
+    Binary { op: BinaryOp, left: Box<TypedNode>, right: Box<TypedNode>, type_id: TypeId },
     Grouped { token: Token, expr: Box<TypedNode> },
     Array { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Tuple { token: Token, items: Vec<TypedNode>, type_id: TypeId },
@@ -471,6 +472,7 @@ impl TypedNode {
             // Expressions
             TypedNode::Literal { type_id, .. } => type_id,
             TypedNode::Unary { expr, .. } => expr.type_id(),
+            TypedNode::Binary { type_id, .. } => type_id,
             TypedNode::Grouped { expr, .. } => expr.type_id(),
             TypedNode::Array { type_id, .. } => type_id,
             TypedNode::Tuple { type_id, .. } => type_id,
@@ -490,6 +492,7 @@ impl TypedNode {
             // Expressions
             TypedNode::Literal { token, .. } => token.get_range(),
             TypedNode::Unary { token, expr, .. } => token.get_range().expand(&expr.span()),
+            TypedNode::Binary { left, right, .. } => left.span().expand(&right.span()),
             TypedNode::Grouped { token, expr } => token.get_range().expand(&expr.span()),
             TypedNode::Array { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Tuple { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
@@ -576,6 +579,7 @@ pub enum DuplicateNameKind {
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
+    IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
     UnknownType { span: Range, name: String },
     UnknownIdentifier { span: Range, token: Token },
     MissingBindingInitializer { span: Range, is_mutable: bool },
@@ -621,6 +625,7 @@ impl TypeError {
     pub fn message(&self, project: &Project, file_name: &String, source: &String) -> String {
         let span = match self {
             TypeError::TypeMismatch { span, .. } |
+            TypeError::IllegalOperator { span, .. } => span,
             TypeError::UnknownType { span, .. } |
             TypeError::UnknownIdentifier { span, .. } |
             TypeError::MissingBindingInitializer { span, .. } |
@@ -657,6 +662,14 @@ impl TypeError {
                     cursor_line,
                     if multiple_expected { " one of: " } else { ": " }, expected,
                     received
+                )
+            }
+            TypeError::IllegalOperator { op, left, right, .. } => {
+                format!(
+                    "Illegal operator\n{}\n\
+                    No operator '{}' exists between types {} and {}",
+                    cursor_line,
+                    op.repr(), project.type_repr(left), project.type_repr(right),
                 )
             }
             TypeError::UnknownType { name, .. } => {
@@ -910,6 +923,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn get_struct_by_name(&self, name: &String) -> Option<&Struct> {
         let current_module_id = self.current_module().id;
         self.project.find_struct_by_name(&current_module_id, name)
+    }
+
+    fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
+        match self.project.get_type_by_id(&type_id) {
+            Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_option_struct_id => Some(generic_ids[0]),
+            _ => None
+        }
     }
 
     fn type_satisfies_other(&self, base_type: &TypeId, target_type: &TypeId) -> bool {
@@ -1925,7 +1945,86 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     _ => Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr) })
                 }
             }
-            AstNode::Binary(_, _) => todo!(),
+            AstNode::Binary(_, n) => {
+                let BinaryNode { op, left, right } = n;
+                let typed_left = self.typecheck_expression(*left, None)?;
+                let typed_right = self.typecheck_expression(*right, None)?;
+                let l_type_id = typed_left.type_id();
+                let r_type_id = typed_right.type_id();
+
+                let type_id = match &op {
+                    BinaryOp::Add => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
+                        (_, PRELUDE_STRING_TYPE_ID) | (PRELUDE_STRING_TYPE_ID, _) => PRELUDE_STRING_TYPE_ID,
+                        (left, right) => {
+                            let span = typed_left.span().expand(&typed_right.span());
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
+                    BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Mod => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
+                        (left, right) => {
+                            let span = typed_left.span().expand(&typed_right.span());
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
+                    BinaryOp::Div | BinaryOp::Pow => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) |
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
+                        (left, right) => {
+                            let span = typed_left.span().expand(&typed_right.span());
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
+                    BinaryOp::Coalesce => {
+                        let Some(mut inner) = self.type_is_option(&l_type_id) else {
+                            // SHORT-CIRCUIT: If the LHS is not an Option, we can just return the LHS here.
+                            return Ok(typed_left);
+                        };
+
+                        if self.type_contains_generics(&inner) {
+                            inner = self.substitute_generics(r_type_id, &inner);
+                        }
+                        if !self.type_satisfies_other(r_type_id, &inner) {
+                            return Err(TypeError::TypeMismatch { span: typed_right.span(), expected: vec![inner], received: *r_type_id });
+                        }
+                        *r_type_id
+                    }
+                    BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) |
+                        (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) |
+                        (PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
+                        (left, right) => {
+                            let span = typed_left.span().expand(&typed_right.span());
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
+                    BinaryOp::Eq | BinaryOp::Neq => PRELUDE_BOOL_TYPE_ID,
+
+                    // Boolean operators
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => match (*l_type_id, *r_type_id) {
+                        (PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
+                        (left, right) => {
+                            let span = typed_left.span().expand(&typed_right.span());
+                            return Err(TypeError::IllegalOperator { span, op, left, right });
+                        }
+                    }
+
+                    // Assignment operators
+                    BinaryOp::AddEq |
+                    BinaryOp::SubEq |
+                    BinaryOp::MulEq |
+                    BinaryOp::DivEq |
+                    BinaryOp::ModEq |
+                    BinaryOp::AndEq |
+                    BinaryOp::OrEq |
+                    BinaryOp::CoalesceEq => todo!()
+                };
+
+                Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id })
+            }
             AstNode::Grouped(token, n) => {
                 let typed_expr = self.typecheck_expression(*n.expr, type_hint)?;
                 Ok(TypedNode::Grouped { token, expr: Box::new(typed_expr) })

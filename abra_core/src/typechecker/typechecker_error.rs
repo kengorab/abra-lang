@@ -159,35 +159,6 @@ impl TypecheckerError {
     }
 }
 
-fn op_repr(op: &BinaryOp) -> String {
-    match op {
-        BinaryOp::Add => "+",
-        BinaryOp::AddEq => "+=",
-        BinaryOp::Sub => "-",
-        BinaryOp::SubEq => "-=",
-        BinaryOp::Mul => "*",
-        BinaryOp::MulEq => "*=",
-        BinaryOp::Div => "/",
-        BinaryOp::DivEq => "/=",
-        BinaryOp::Mod => "%",
-        BinaryOp::ModEq => "%=",
-        BinaryOp::And => "&&",
-        BinaryOp::AndEq => "&&=",
-        BinaryOp::Or => "||",
-        BinaryOp::OrEq => "||=",
-        BinaryOp::Xor => "^",
-        BinaryOp::Coalesce => "?:",
-        BinaryOp::CoalesceEq => "?:=",
-        BinaryOp::Lt => "<",
-        BinaryOp::Lte => "<=",
-        BinaryOp::Gt => ">",
-        BinaryOp::Gte => ">=",
-        BinaryOp::Neq => "!=",
-        BinaryOp::Eq => "==",
-        BinaryOp::Pow => "**",
-    }.to_string()
-}
-
 impl DisplayError for TypecheckerError {
     fn message_for_error(&self, file_name: &String, lines: &Vec<&str>) -> String {
         let pos = self.get_token().get_position();
@@ -227,7 +198,7 @@ impl DisplayError for TypecheckerError {
                     "Invalid operator\n{}\n\
                     No operator exists to satisfy {} {} {}",
                     cursor_line,
-                    ltype.repr(), op_repr(op), rtype.repr()
+                    ltype.repr(), op.repr(), rtype.repr()
                 )
             }
             TypecheckerErrorKind::MissingRequiredAssignment { ident } => {
