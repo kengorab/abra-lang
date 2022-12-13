@@ -74,6 +74,16 @@ fn tokenize_and_parse(module_id: &ModuleId, input: &String) -> Result<ParseResul
     }
 }
 
+fn tokenize_and_parse_stub(module_id: &ModuleId, input: &String) -> Result<ParseResult, Error> {
+    match lexer::lexer::tokenize(module_id, input) {
+        Err(e) => Err(Error::LexerError(e)),
+        Ok(tokens) => match parser::parser::parse_stub(module_id.clone(), tokens) {
+            Err(e) => Err(Error::ParseError(e)),
+            Ok(nodes) => Ok(nodes)
+        }
+    }
+}
+
 pub fn typecheck<R>(module_id: ModuleId, input: &String, loader: &mut ModuleLoader<R>) -> Result<TypedModule, Error>
     where R: ModuleReader
 {

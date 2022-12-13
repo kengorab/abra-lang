@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{TypedModule, LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, Scope, TypeId, Function, FuncId, FunctionParam, PRELUDE_SCOPE_ID, StructField, VariableAlias, DuplicateNameKind, AccessorKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -127,245 +127,198 @@ fn test_type_assignability() {
     }
 }
 
+// This is some helpers used to assert equality among functions in the prelude module. We don't want to have to fiddle
+// with asserting spans values, FuncIds, and ScopeIds, since those are subject to change as the prelude gets built out
+// and shuffled around. These helpers ensure that we're making assertions on things that we care about.
+mod helpers {
+    use crate::lexer::tokens::Range;
+    use crate::typechecker::typechecker2::{FuncId, Function, FunctionParam, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, ScopeId};
+
+    pub(crate) const PLACEHOLDER_FUNC_ID: FuncId = FuncId(PRELUDE_SCOPE_ID, usize::MAX);
+    pub(crate) const PLACEHOLDER_FUNC_SCOPE_ID: ScopeId = ScopeId(PRELUDE_MODULE_ID, usize::MAX);
+    pub(crate) const PLACEHOLDER_SPAN: Option<Range> = None;
+
+    fn clone_function_param(param: &FunctionParam) -> FunctionParam {
+        FunctionParam {
+            name: param.name.clone(),
+            type_id: param.type_id,
+            defined_span: PLACEHOLDER_SPAN,
+            default_value: param.default_value.clone(),
+        }
+    }
+
+    pub(crate) fn clone_function(function: &Function) -> Function {
+        Function {
+            id: PLACEHOLDER_FUNC_ID,
+            fn_scope_id: PLACEHOLDER_FUNC_SCOPE_ID,
+            name: function.name.clone(),
+            generic_ids: function.generic_ids.clone(),
+            has_self: function.has_self,
+            params: function.params.iter().map(clone_function_param).collect(),
+            return_type_id: function.return_type_id,
+            defined_span: PLACEHOLDER_SPAN,
+            body: vec![],
+            captured_vars: function.captured_vars.clone(),
+        }
+    }
+}
+
+#[test]
+fn typecheck_prelude_array() {
+    let project = test_typecheck("").unwrap();
+    let prelude_module = &project.modules[0];
+    assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
+
+    let array_struct = &prelude_module.structs[project.prelude_array_struct_id.1];
+    let array_struct_scope_id = array_struct.struct_scope_id;
+
+    assert_eq!("Array", &array_struct.name);
+
+    let generic_ids = vec![project.find_type_id_for_generic(&array_struct_scope_id, "T").unwrap()];
+    assert_eq!(generic_ids, array_struct.generic_ids);
+
+    let fields = vec![
+        StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+    ];
+    assert_eq!(fields, array_struct.fields);
+
+    let static_methods: Vec<FuncId> = vec![];
+    assert_eq!(static_methods, array_struct.static_methods);
+
+    let methods = vec![
+        Function {
+            id: helpers::PLACEHOLDER_FUNC_ID,
+            fn_scope_id: helpers::PLACEHOLDER_FUNC_SCOPE_ID,
+            name: "isEmpty".to_string(),
+            generic_ids: vec![],
+            has_self: true,
+            params: vec![FunctionParam { name: "self".to_string(), type_id: array_struct.self_type_id, defined_span: helpers::PLACEHOLDER_SPAN, default_value: None }],
+            return_type_id: PRELUDE_BOOL_TYPE_ID,
+            defined_span: helpers::PLACEHOLDER_SPAN,
+            body: vec![],
+            captured_vars: vec![],
+        }
+    ];
+    let method_map = methods.into_iter().map(|m| (m.name.clone(), m)).collect::<HashMap<String, Function>>();
+    assert_eq!(method_map.len(), array_struct.methods.len());
+    for method_func_id in &array_struct.methods {
+        let function = project.get_func_by_id(&method_func_id);
+        let function = helpers::clone_function(function);
+
+        let method = method_map.get(&function.name).expect(&format!("Expected type Array to have a method named {}", function.name));
+        assert_eq!(method, &function, "Expected method '{}' to match", function.name);
+    }
+}
+
+#[test]
+fn typecheck_prelude_set() {
+    let project = test_typecheck("").unwrap();
+    let prelude_module = &project.modules[0];
+    assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
+
+    let set_struct = &prelude_module.structs[project.prelude_set_struct_id.1];
+    let set_struct_scope_id = set_struct.struct_scope_id;
+
+    assert_eq!("Set", &set_struct.name);
+
+    let generic_ids = vec![project.find_type_id_for_generic(&set_struct_scope_id, "T").unwrap()];
+    assert_eq!(generic_ids, set_struct.generic_ids);
+
+    let fields = vec![
+        StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+    ];
+    assert_eq!(fields, set_struct.fields);
+
+    let static_methods: Vec<FuncId> = vec![];
+    assert_eq!(static_methods, set_struct.static_methods);
+
+    let methods = vec![
+        Function {
+            id: helpers::PLACEHOLDER_FUNC_ID,
+            fn_scope_id: helpers::PLACEHOLDER_FUNC_SCOPE_ID,
+            name: "isEmpty".to_string(),
+            generic_ids: vec![],
+            has_self: true,
+            params: vec![FunctionParam { name: "self".to_string(), type_id: set_struct.self_type_id, defined_span: helpers::PLACEHOLDER_SPAN, default_value: None }],
+            return_type_id: PRELUDE_BOOL_TYPE_ID,
+            defined_span: helpers::PLACEHOLDER_SPAN,
+            body: vec![],
+            captured_vars: vec![],
+        }
+    ];
+    let method_map = methods.into_iter().map(|m| (m.name.clone(), m)).collect::<HashMap<String, Function>>();
+    assert_eq!(method_map.len(), set_struct.methods.len());
+    for method_func_id in &set_struct.methods {
+        let function = project.get_func_by_id(&method_func_id);
+        let function = helpers::clone_function(function);
+
+        let method = method_map.get(&function.name).expect(&format!("Expected type Set to have a method named {}", function.name));
+        assert_eq!(method, &function, "Expected method '{}' to match", function.name);
+    }
+}
+
+#[test]
+fn typecheck_prelude_map() {
+    let project = test_typecheck("").unwrap();
+    let prelude_module = &project.modules[0];
+    assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
+
+    let map_struct = &prelude_module.structs[project.prelude_map_struct_id.1];
+    let map_struct_scope_id = map_struct.struct_scope_id;
+
+    assert_eq!("Map", &map_struct.name);
+
+    let generic_ids = vec![
+        project.find_type_id_for_generic(&map_struct_scope_id, "K").unwrap(),
+        project.find_type_id_for_generic(&map_struct_scope_id, "V").unwrap(),
+    ];
+    assert_eq!(generic_ids, map_struct.generic_ids);
+
+    let fields = vec![
+        StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
+    ];
+    assert_eq!(fields, map_struct.fields);
+
+    let static_methods: Vec<FuncId> = vec![];
+    assert_eq!(static_methods, map_struct.static_methods);
+
+    let methods = vec![
+        Function {
+            id: helpers::PLACEHOLDER_FUNC_ID,
+            fn_scope_id: helpers::PLACEHOLDER_FUNC_SCOPE_ID,
+            name: "isEmpty".to_string(),
+            generic_ids: vec![],
+            has_self: true,
+            params: vec![FunctionParam { name: "self".to_string(), type_id: map_struct.self_type_id, defined_span: helpers::PLACEHOLDER_SPAN, default_value: None }],
+            return_type_id: PRELUDE_BOOL_TYPE_ID,
+            defined_span: helpers::PLACEHOLDER_SPAN,
+            body: vec![],
+            captured_vars: vec![],
+        }
+    ];
+    let method_map = methods.into_iter().map(|m| (m.name.clone(), m)).collect::<HashMap<String, Function>>();
+    assert_eq!(method_map.len(), map_struct.methods.len());
+    for method_func_id in &map_struct.methods {
+        let function = project.get_func_by_id(&method_func_id);
+        let function = helpers::clone_function(function);
+
+        let method = method_map.get(&function.name).expect(&format!("Expected type Map to have a method named {}", function.name));
+        assert_eq!(method, &function, "Expected method '{}' to match", function.name);
+    }
+}
+
 #[test]
 fn typecheck_prelude() {
     let project = test_typecheck("").unwrap();
     let prelude_module = &project.modules[0];
+    assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
+    assert_eq!("prelude", prelude_module.name);
 
-    let expected = TypedModule {
-        id: PRELUDE_MODULE_ID,
-        name: "prelude".to_string(),
-        type_ids: vec![
-            // Primitives
-            TypeId(PRELUDE_SCOPE_ID, PRELUDE_UNIT_TYPE_ID.1),
-            TypeId(PRELUDE_SCOPE_ID, PRELUDE_INT_TYPE_ID.1),
-            TypeId(PRELUDE_SCOPE_ID, PRELUDE_FLOAT_TYPE_ID.1),
-            TypeId(PRELUDE_SCOPE_ID, PRELUDE_BOOL_TYPE_ID.1),
-            TypeId(PRELUDE_SCOPE_ID, PRELUDE_STRING_TYPE_ID.1),
-
-            // Tuple<T...>
-            TypeId(PRELUDE_SCOPE_ID, 5), // self_type for `Tuple<T...>`
-
-            // Option<T>
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0), // `T` generic, from `Option<T>` definition
-            TypeId(PRELUDE_SCOPE_ID, 6), // self_type for `Option<T>`
-
-            // None
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0), // `T` generic, from `None` definition
-            TypeId(PRELUDE_SCOPE_ID, 7), // `T?` type, for `None` builtin
-
-            // Array<T>
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0), // `T` generic, from `Array<T>` definition
-            TypeId(PRELUDE_SCOPE_ID, 8), // self_type for `Array<T>`
-            TypeId(PRELUDE_SCOPE_ID, 9), // struct type for `Array<T>`
-
-            // Set<T>
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0), // `T` generic, from `Set<T>` definition
-            TypeId(PRELUDE_SCOPE_ID, 10), // self_type for `Set<T>`
-            TypeId(PRELUDE_SCOPE_ID, 11), // struct type for `Set<T>`
-
-            // Map<K, V>
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0), // `K` generic, from `Map<K, V>` definition
-            TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 1), // `V` generic, from `Map<K, V>` definition
-            TypeId(PRELUDE_SCOPE_ID, 12), // self_type for `Map<K, V>`
-            TypeId(PRELUDE_SCOPE_ID, 13), // struct type for `Map<K, V>`
-        ],
-        functions: vec![],
-        structs: vec![
-            Struct {
-                id: StructId(PRELUDE_MODULE_ID, 0),
-                struct_scope_id: PRELUDE_SCOPE_ID,
-                name: "Tuple".to_string(),
-                defined_span: None,
-                generic_ids: vec![],
-                self_type_id: TypeId(PRELUDE_SCOPE_ID, 5),
-                fields: vec![],
-                methods: vec![],
-                static_methods: vec![],
-            },
-            Struct {
-                id: StructId(PRELUDE_MODULE_ID, 1),
-                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 1),
-                name: "Option".to_string(),
-                defined_span: None,
-                generic_ids: vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0)],
-                self_type_id: TypeId(PRELUDE_SCOPE_ID, 6),
-                fields: vec![],
-                methods: vec![],
-                static_methods: vec![],
-            },
-            Struct {
-                id: StructId(PRELUDE_MODULE_ID, 2),
-                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 3),
-                name: "Array".to_string(),
-                defined_span: Some(Range { start: Position::new(5, 6), end: Position::new(5, 10) }),
-                generic_ids: vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0)],
-                self_type_id: TypeId(PRELUDE_SCOPE_ID, 8),
-                fields: vec![
-                    StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID },
-                ],
-                methods: vec![],
-                static_methods: vec![],
-            },
-            Struct {
-                id: StructId(PRELUDE_MODULE_ID, 3),
-                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 4),
-                name: "Set".to_string(),
-                defined_span: Some(Range { start: Position::new(9, 6), end: Position::new(9, 8) }),
-                generic_ids: vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0)],
-                self_type_id: TypeId(PRELUDE_SCOPE_ID, 10),
-                fields: vec![
-                    StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
-                ],
-                methods: vec![],
-                static_methods: vec![],
-            },
-            Struct {
-                id: StructId(PRELUDE_MODULE_ID, 4),
-                struct_scope_id: ScopeId(PRELUDE_MODULE_ID, 5),
-                name: "Map".to_string(),
-                defined_span: Some(Range { start: Position::new(13, 6), end: Position::new(13, 8) }),
-                generic_ids: vec![
-                    TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0),
-                    TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 1),
-                ],
-                self_type_id: TypeId(PRELUDE_SCOPE_ID, 12),
-                fields: vec![
-                    StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID },
-                ],
-                methods: vec![],
-                static_methods: vec![],
-            },
-        ],
-        code: vec![],
-        scopes: vec![
-            Scope {
-                label: "prelude.root".to_string(),
-                id: PRELUDE_SCOPE_ID,
-                parent: None,
-                types: vec![
-                    Type::Builtin(PRELUDE_UNIT_TYPE_ID.1),
-                    Type::Builtin(PRELUDE_INT_TYPE_ID.1),
-                    Type::Builtin(PRELUDE_FLOAT_TYPE_ID.1),
-                    Type::Builtin(PRELUDE_BOOL_TYPE_ID.1),
-                    Type::Builtin(PRELUDE_STRING_TYPE_ID.1),
-                    // self_type for `Tuple<T...>`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 0),
-                        vec![],
-                    ),
-                    // self_type for `Option<T>`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 1),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 1), 0)],
-                    ),
-                    // type for `None`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 1),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 2), 0)],
-                    ),
-                    // self_type for `Array<T>`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 2),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 3), 0)],
-                    ),
-                    // struct type for `Array<T>`
-                    Type::Struct(StructId(PRELUDE_MODULE_ID, 2)),
-                    // self_type for `Set<T>`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 3),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 4), 0)],
-                    ),
-                    // struct type for `Set<T>`
-                    Type::Struct(StructId(PRELUDE_MODULE_ID, 3)),
-                    // self_type for `Map<T>`
-                    Type::GenericInstance(
-                        StructId(PRELUDE_MODULE_ID, 4),
-                        vec![TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 0), TypeId(ScopeId(PRELUDE_MODULE_ID, 5), 1)],
-                    ),
-                    // struct type for `Map<T>`
-                    Type::Struct(StructId(PRELUDE_MODULE_ID, 4)),
-                ],
-                vars: vec![
-                    Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 0),
-                        name: "Array".to_string(),
-                        type_id: TypeId(PRELUDE_SCOPE_ID, 9),
-                        is_mutable: false,
-                        is_initialized: true,
-                        defined_span: Some(Range { start: Position::new(5, 6), end: Position::new(5, 10) }),
-                        is_captured: false,
-                        alias: VariableAlias::Struct(StructId(PRELUDE_MODULE_ID, 2)),
-                    },
-                    Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 1),
-                        name: "Set".to_string(),
-                        type_id: TypeId(PRELUDE_SCOPE_ID, 11),
-                        is_mutable: false,
-                        is_initialized: true,
-                        defined_span: Some(Range { start: Position::new(9, 6), end: Position::new(9, 8) }),
-                        is_captured: false,
-                        alias: VariableAlias::Struct(StructId(PRELUDE_MODULE_ID, 3)),
-                    },
-                    Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 2),
-                        name: "Map".to_string(),
-                        type_id: TypeId(PRELUDE_SCOPE_ID, 13),
-                        is_mutable: false,
-                        is_initialized: true,
-                        defined_span: Some(Range { start: Position::new(13, 6), end: Position::new(13, 8) }),
-                        is_captured: false,
-                        alias: VariableAlias::Struct(StructId(PRELUDE_MODULE_ID, 4)),
-                    },
-                ],
-                funcs: vec![],
-            },
-            Scope {
-                label: "prelude.Option".to_string(),
-                id: ScopeId(PRELUDE_MODULE_ID, 1),
-                parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![Type::Generic(None, "T".to_string())],
-                vars: vec![],
-                funcs: vec![],
-            },
-            Scope {
-                label: "prelude.None".to_string(),
-                id: ScopeId(PRELUDE_MODULE_ID, 2),
-                parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![Type::Generic(None, "T".to_string())],
-                vars: vec![],
-                funcs: vec![],
-            },
-            Scope {
-                label: "ModuleId(0).Array".to_string(),
-                id: ScopeId(PRELUDE_MODULE_ID, 3),
-                parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![Type::Generic(Some(Range { start: Position::new(5, 12), end: Position::new(5, 12) }), "T".to_string())],
-                vars: vec![],
-                funcs: vec![],
-            },
-            Scope {
-                label: "ModuleId(0).Set".to_string(),
-                id: ScopeId(PRELUDE_MODULE_ID, 4),
-                parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![Type::Generic(Some(Range { start: Position::new(9, 10), end: Position::new(9, 10) }), "T".to_string())],
-                vars: vec![],
-                funcs: vec![],
-            },
-            Scope {
-                label: "ModuleId(0).Map".to_string(),
-                id: ScopeId(PRELUDE_MODULE_ID, 5),
-                parent: Some(PRELUDE_SCOPE_ID),
-                types: vec![
-                    Type::Generic(Some(Range { start: Position::new(13, 10), end: Position::new(13, 10) }), "K".to_string()),
-                    Type::Generic(Some(Range { start: Position::new(13, 13), end: Position::new(13, 13) }), "V".to_string()),
-                ],
-                vars: vec![],
-                funcs: vec![],
-            },
-        ],
-    };
-    assert_eq!(&expected, prelude_module);
+    let struct_cases = ["Tuple", "Option", "Array", "Set", "Map"];
+    for (idx, name) in struct_cases.iter().enumerate() {
+        let struct_ = &prelude_module.structs[idx];
+        assert_eq!(name, &struct_.name);
+    }
 }
 
 #[test]
@@ -1498,7 +1451,7 @@ fn typecheck_function_declaration() {
     let project = test_typecheck("func foo<T>(a: T): T[] = [a]").unwrap();
     let module = &project.modules[1];
     let fn_scope_id = ScopeId(ModuleId(1), 1);
-    let t_type_id = project.find_type_id_for_generic(&fn_scope_id, &"T".to_string()).unwrap();
+    let t_type_id = project.find_type_id_for_generic(&fn_scope_id, "T").unwrap();
     let expected = vec![
         Function {
             id: FuncId(ScopeId(ModuleId(1), 0), 0),
@@ -1870,7 +1823,7 @@ fn typecheck_failure_invocation() {
         span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
         type_id: project.find_type_id(
             &ScopeId(ModuleId(1), 0),
-            &project.array_type(project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), &"T".to_string()).unwrap()),
+            &project.array_type(project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), "T").unwrap()),
         ).unwrap(),
     };
     assert_eq!(expected, err);
@@ -2181,7 +2134,7 @@ fn typecheck_failure_accessor() {
       val map = l.map\
     ").unwrap_err() else { unreachable!() };
 
-    let u_type_id = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 2), &"U".to_string()).unwrap();
+    let u_type_id = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 2), "U").unwrap();
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(6, 11), end: Position::new(6, 15) },
         type_id: project.find_type_id(

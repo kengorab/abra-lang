@@ -2,8 +2,7 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-var x = 1
-x += 1.2
+val x: Int = [].isEmpty()
 
 //type Array<T> {
 //  items: private T[]

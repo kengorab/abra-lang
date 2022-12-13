@@ -11,7 +11,15 @@ pub struct ParseResult {
 }
 
 pub fn parse(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
-    let mut parser = Parser::new(tokens);
+    parse_impl(module_id, tokens, false)
+}
+
+pub fn parse_stub(module_id: ModuleId, tokens: Vec<Token>) -> Result<ParseResult, ParseError> {
+    parse_impl(module_id, tokens, true)
+}
+
+fn parse_impl(module_id: ModuleId, tokens: Vec<Token>, stub_mode: bool) -> Result<ParseResult, ParseError> {
+    let mut parser = Parser::new(tokens, stub_mode);
 
     let mut nodes = Vec::new();
     let mut imports = Vec::new();
@@ -54,15 +62,16 @@ pub struct Parser {
     tokens: PeekMoreIterator<IntoIter<Token>>,
     last_token: Token,
     context: Vec<Context>,
+    stub_mode: bool,
 }
 
 type PrefixFn = dyn Fn(&mut Parser, Token) -> Result<AstNode, ParseErrorKind>;
 type InfixFn = dyn Fn(&mut Parser, Token, AstNode) -> Result<AstNode, ParseErrorKind>;
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
+    fn new(tokens: Vec<Token>, stub_mode: bool) -> Self {
         let tokens = tokens.into_iter().peekmore();
-        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![] }
+        Parser { tokens, last_token: Token::None(Position::new(0, 0)), context: vec![], stub_mode }
     }
 
     fn is_context(&self, ctx: Context) -> bool {
@@ -539,13 +548,20 @@ impl Parser {
             _ => None
         };
 
+        let stub_mode = self.stub_mode;
         let body = match self.expect_peek()? {
             Token::Assign(_) => {
                 self.expect_next()?;
                 Ok(vec![self.parse_expr()?])
             }
             Token::LBrace(_) => self.parse_expr_or_block(),
-            t => Err(ParseErrorKind::UnexpectedToken(t.clone()))
+            t => {
+                if stub_mode {
+                    Ok(vec![])
+                } else {
+                    Err(ParseErrorKind::UnexpectedToken(t.clone()))
+                }
+            }
         }?;
 
         Ok(AstNode::FunctionDecl(token, FunctionDeclNode { export_token, name, type_args, args, ret_type, body }))
@@ -2542,7 +2558,7 @@ mod tests {
         fn parse_type_identifier(input: &str) -> TypeIdentifier {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens);
+            let mut parser = Parser::new(tokens, false);
             parser.parse_type_identifier(true).unwrap()
         }
 
@@ -4904,7 +4920,7 @@ mod tests {
         fn parse_import_path(input: &str) -> Result<ModuleId, ParseErrorKind> {
             let module_id = ModuleId::parse_module_path("./test").unwrap();
             let tokens = tokenize(&module_id, &input.to_string()).unwrap();
-            let mut parser = Parser::new(tokens);
+            let mut parser = Parser::new(tokens, false);
             parser.parse_import_module()
         }
 

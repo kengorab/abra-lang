@@ -4,12 +4,18 @@
 
 type Array<T> {
   length: Int
+
+  func isEmpty(self): Bool
 }
 
 type Set<T> {
   size: Int
+
+  func isEmpty(self): Bool
 }
 
 type Map<K, V> {
   size: Int
+
+  func isEmpty(self): Bool
 }

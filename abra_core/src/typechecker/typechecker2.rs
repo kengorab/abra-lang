@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::iter::FromIterator;
 use std::path::PathBuf;
 use itertools::{Either, EitherOrBoth, Itertools};
-use crate::{parser, tokenize_and_parse};
+use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{Range, Token};
@@ -159,9 +159,9 @@ impl Project {
         self.find_type_id_by(scope_id, |typ| typ == ty)
     }
 
-    pub fn find_type_id_for_generic(&self, scope_id: &ScopeId, name: &String) -> Option<TypeId> {
+    pub fn find_type_id_for_generic<S: AsRef<str>>(&self, scope_id: &ScopeId, name: S) -> Option<TypeId> {
         self.find_type_id_by(scope_id, |typ| match typ {
-            Type::Generic(_, generic_name) if generic_name == name => true,
+            Type::Generic(_, generic_name) if generic_name == name.as_ref() => true,
             _ => false,
         })
     }
@@ -444,6 +444,7 @@ pub struct TypedModule {
 }
 
 #[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub enum AccessorKind {
     Field,
     Method,
@@ -451,6 +452,7 @@ pub enum AccessorKind {
 }
 
 #[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
@@ -546,6 +548,7 @@ impl TypedNode {
 }
 
 #[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub enum TypedLiteral {
     Int(i64),
     Float(f64),
@@ -1419,7 +1422,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
         let prelude_stub_file = include_str!("prelude.stub.abra");
-        let parse_result = tokenize_and_parse(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file.to_string())
+        let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file.to_string())
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
             .expect("There should not be a problem typechecking the prelude file");
