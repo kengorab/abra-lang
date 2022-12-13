@@ -289,16 +289,6 @@ fn typecheck_prelude() {
                 vars: vec![
                     Variable {
                         id: VarId(PRELUDE_SCOPE_ID, 0),
-                        name: "None".to_string(),
-                        type_id: TypeId(PRELUDE_SCOPE_ID, 7),
-                        is_mutable: false,
-                        is_initialized: true,
-                        defined_span: None,
-                        is_captured: false,
-                        alias: VariableAlias::None,
-                    },
-                    Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 1),
                         name: "Array".to_string(),
                         type_id: TypeId(PRELUDE_SCOPE_ID, 9),
                         is_mutable: false,
@@ -308,7 +298,7 @@ fn typecheck_prelude() {
                         alias: VariableAlias::Struct(StructId(PRELUDE_MODULE_ID, 2)),
                     },
                     Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 2),
+                        id: VarId(PRELUDE_SCOPE_ID, 1),
                         name: "Set".to_string(),
                         type_id: TypeId(PRELUDE_SCOPE_ID, 11),
                         is_mutable: false,
@@ -318,7 +308,7 @@ fn typecheck_prelude() {
                         alias: VariableAlias::Struct(StructId(PRELUDE_MODULE_ID, 3)),
                     },
                     Variable {
-                        id: VarId(PRELUDE_SCOPE_ID, 3),
+                        id: VarId(PRELUDE_SCOPE_ID, 2),
                         name: "Map".to_string(),
                         type_id: TypeId(PRELUDE_SCOPE_ID, 13),
                         is_mutable: false,
@@ -940,20 +930,16 @@ fn typecheck_none() {
 #[test]
 fn typecheck_failure_none() {
     let (project, Either::Right(err)) = test_typecheck("val x = None").unwrap_err() else { unreachable!() };
-    let none_var = &project.prelude_module().scopes[0].vars[0];
-    assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 12) },
-        type_id: none_var.type_id,
+        type_id: project.prelude_none_type_id,
     };
     assert_eq!(expected, err);
 
     let (project, Either::Right(err)) = test_typecheck("val x = [None]").unwrap_err() else { unreachable!() };
-    let none_var = &project.prelude_module().scopes[0].vars[0];
-    assert_eq!("None", none_var.name);
     let expected = TypeError::ForbiddenAssignment {
         span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
-        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(none_var.type_id)).unwrap(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(project.prelude_none_type_id)).unwrap(),
     };
     assert_eq!(expected, err);
 

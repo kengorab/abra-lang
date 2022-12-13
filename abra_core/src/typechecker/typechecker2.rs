@@ -59,6 +59,7 @@ pub struct Project {
     pub modules: Vec<TypedModule>,
 
     // cached values
+    pub prelude_none_type_id: TypeId,
     pub prelude_option_struct_id: StructId,
     pub prelude_array_struct_id: StructId,
     pub prelude_tuple_struct_id: StructId,
@@ -66,12 +67,14 @@ pub struct Project {
     pub prelude_map_struct_id: StructId,
 }
 
-const PLACEHOLDER_STRUCT_ID: StructId = StructId(PRELUDE_MODULE_ID, 0);
+const PLACEHOLDER_STRUCT_ID: StructId = StructId(PRELUDE_MODULE_ID, usize::MAX);
+const PLACEHOLDER_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, usize::MAX);
 
 impl Default for Project {
     fn default() -> Self {
         Self {
             modules: vec![],
+            prelude_none_type_id: PLACEHOLDER_TYPE_ID,
             prelude_option_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_array_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_tuple_struct_id: PLACEHOLDER_STRUCT_ID,
@@ -459,6 +462,7 @@ pub enum TypedNode {
     Set { token: Token, items: Vec<TypedNode>, type_id: TypeId },
     Map { token: Token, items: Vec<(TypedNode, TypedNode)>, type_id: TypeId },
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
+    NoneValue { token: Token, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
 
@@ -479,6 +483,7 @@ impl TypedNode {
             TypedNode::Set { type_id, .. } => type_id,
             TypedNode::Map { type_id, .. } => type_id,
             TypedNode::Identifier { type_id, .. } => type_id,
+            TypedNode::NoneValue { type_id, .. } => type_id,
             TypedNode::Invocation { type_id, .. } => type_id,
             TypedNode::Accessor { type_id, .. } => type_id,
 
@@ -499,6 +504,7 @@ impl TypedNode {
             TypedNode::Set { token, items, .. } => token.get_range().expand(&items.last().map(|i| i.span()).unwrap_or(token.get_range())),
             TypedNode::Map { token, items, .. } => token.get_range().expand(&items.last().map(|(_, v)| v.span()).unwrap_or(token.get_range())),
             TypedNode::Identifier { token, .. } => token.get_range(),
+            TypedNode::NoneValue { token, .. } => token.get_range(),
             TypedNode::Invocation { target, arguments, .. } => {
                 let start = target.span();
                 let mut max = None;
@@ -1407,20 +1413,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
-            let none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
-            let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
-            prelude_module.scopes[PRELUDE_SCOPE_ID.1].vars.push(
-                Variable {
-                    id: VarId(ScopeId(PRELUDE_MODULE_ID, 0), 0),
-                    name: "None".to_string(),
-                    type_id: none_type_id,
-                    is_mutable: false,
-                    is_initialized: true,
-                    defined_span: None,
-                    is_captured: false,
-                    alias: VariableAlias::None,
-                }
-            );
+            self.project.prelude_none_type_id = self.project.add_type_id(&PRELUDE_SCOPE_ID, self.project.option_type(generic_t_type_id));
         }
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
@@ -1433,16 +1426,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
         for struct_ in &prelude_module.structs {
-            if struct_.name == "Array" {
-                self.project.prelude_array_struct_id = struct_.id;
-            }
-            if struct_.name == "Set" {
-                self.project.prelude_set_struct_id = struct_.id;
-            }
-            if struct_.name == "Map" {
-                self.project.prelude_map_struct_id = struct_.id;
-            }
+            if struct_.name == "Array" { self.project.prelude_array_struct_id = struct_.id; }
+            if struct_.name == "Set" { self.project.prelude_set_struct_id = struct_.id; }
+            if struct_.name == "Map" { self.project.prelude_map_struct_id = struct_.id; }
         }
+        debug_assert_ne!(self.project.prelude_none_type_id, PLACEHOLDER_TYPE_ID);
         debug_assert_ne!(self.project.prelude_array_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_set_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_map_struct_id, PLACEHOLDER_STRUCT_ID);
@@ -2216,6 +2204,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Tuple { token, items: typed_items, type_id })
             }
             AstNode::Identifier(token, type_args) => {
+                if let Token::None(_) = &token {
+                    let mut type_id = self.project.prelude_none_type_id;
+                    if let Some(type_hint) = type_hint {
+                        type_id = self.substitute_generics(&type_hint, &type_id);
+                    }
+
+                    return Ok(TypedNode::NoneValue { token, type_id });
+                }
+
                 let name = Token::get_ident_name(&token);
                 let variable = self.project.find_variable_by_name(&self.current_scope_id, &name);
                 let Some(Variable { id, type_id, .. }) = variable else {
