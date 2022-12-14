@@ -61,6 +61,10 @@ pub struct Project {
     // cached values
     pub prelude_none_type_id: TypeId,
     pub prelude_option_struct_id: StructId,
+    pub prelude_int_struct_id: StructId,
+    pub prelude_float_struct_id: StructId,
+    pub prelude_bool_struct_id: StructId,
+    pub prelude_string_struct_id: StructId,
     pub prelude_array_struct_id: StructId,
     pub prelude_tuple_struct_id: StructId,
     pub prelude_set_struct_id: StructId,
@@ -76,6 +80,10 @@ impl Default for Project {
             modules: vec![],
             prelude_none_type_id: PLACEHOLDER_TYPE_ID,
             prelude_option_struct_id: PLACEHOLDER_STRUCT_ID,
+            prelude_int_struct_id: PLACEHOLDER_STRUCT_ID,
+            prelude_float_struct_id: PLACEHOLDER_STRUCT_ID,
+            prelude_bool_struct_id: PLACEHOLDER_STRUCT_ID,
+            prelude_string_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_array_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_tuple_struct_id: PLACEHOLDER_STRUCT_ID,
             prelude_set_struct_id: PLACEHOLDER_STRUCT_ID,
@@ -258,20 +266,12 @@ impl Project {
     pub fn type_repr(&self, type_id: &TypeId) -> String {
         let ty = self.get_type_by_id(type_id);
         match ty {
-            Type::Builtin(builtin_id) => {
-                if *builtin_id == PRELUDE_UNIT_TYPE_ID.1 {
-                    "Unit".to_string()
-                } else if *builtin_id == PRELUDE_INT_TYPE_ID.1 {
-                    "Int".to_string()
-                } else if *builtin_id == PRELUDE_FLOAT_TYPE_ID.1 {
-                    "Float".to_string()
-                } else if *builtin_id == PRELUDE_BOOL_TYPE_ID.1 {
-                    "Bool".to_string()
-                } else if *builtin_id == PRELUDE_STRING_TYPE_ID.1 {
-                    "String".to_string()
-                } else {
-                    unreachable!("Unknown builtin type: {}", builtin_id)
-                }
+            Type::Primitive(primitive_type) => match primitive_type {
+                PrimitiveType::Unit => "Unit".to_string(),
+                PrimitiveType::Int => "Int".to_string(),
+                PrimitiveType::Float => "Float".to_string(),
+                PrimitiveType::Bool => "Bool".to_string(),
+                PrimitiveType::String => "String".to_string(),
             }
             Type::Generic(_, name) => name.to_string(),
             Type::GenericInstance(struct_id, generic_ids) => {
@@ -359,8 +359,17 @@ pub struct StructField {
 pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum PrimitiveType {
+    Unit,
+    Int,
+    Float,
+    Bool,
+    String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    Builtin(/* prelude_type_idx: */ usize),
+    Primitive(PrimitiveType),
     Generic(/*span: */ Option<Range>, /* name: */ String),
     GenericInstance(StructId, Vec<TypeId>),
     Function(/* parameter_type_ids: */ Vec<TypeId>, /* num_required_params: */ usize, /* return_type_id: */ TypeId),
@@ -948,7 +957,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         match (base_ty, target_ty) {
             (Type::Generic(_, _), Type::Generic(_, _)) => base_type == target_type,
             (_, Type::Generic(_, _)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
-            (Type::Builtin(idx1), Type::Builtin(idx2)) => idx1 == idx2,
+            (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
             (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
                 if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
                     return false;
@@ -1006,7 +1015,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         match (hint_ty, var_ty) {
             (Type::Generic(_, _), _) => *var_type_id,
-            (_, Type::Builtin(_)) => *var_type_id,
+            (_, Type::Primitive(_)) => *var_type_id,
             (_, Type::Generic(_, _)) => *hint_type_id,
             (_, Type::GenericInstance(var_struct_id, var_generic_ids)) if *var_struct_id == self.project.prelude_option_struct_id => {
                 let generic_id = var_generic_ids[0];
@@ -1108,15 +1117,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let substituted_ret_type_id = self.substitute_generics_with_known(&ret_type_id, substitutions);
                 self.add_or_find_type_id(Type::Function(substituted_arg_type_ids, num_required_params, substituted_ret_type_id))
             }
-            Type::Builtin(_) |
-            Type::Struct(_) => *type_id,
+            Type::Primitive(_) | Type::Struct(_) => *type_id,
         }
     }
 
     fn type_contains_generics(&self, type_id: &TypeId) -> bool {
         let ty = self.project.get_type_by_id(type_id);
         match ty {
-            Type::Builtin(_) => false,
+            Type::Primitive(_) => false,
             Type::Generic(_, _) => true,
             Type::GenericInstance(_, generic_ids) => {
                 for type_id in generic_ids {
@@ -1375,8 +1383,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
-        for type_id in [PRELUDE_UNIT_TYPE_ID, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID] {
-            prelude_scope.types.push(Type::Builtin(type_id.1));
+        let primitives = [
+            (PRELUDE_UNIT_TYPE_ID, PrimitiveType::Unit),
+            (PRELUDE_INT_TYPE_ID, PrimitiveType::Int),
+            (PRELUDE_FLOAT_TYPE_ID, PrimitiveType::Float),
+            (PRELUDE_BOOL_TYPE_ID, PrimitiveType::Bool),
+            (PRELUDE_STRING_TYPE_ID, PrimitiveType::String)
+        ];
+        for (type_id, primitive_type) in primitives {
+            prelude_scope.types.push(Type::Primitive(primitive_type));
             prelude_module.type_ids.push(type_id);
         }
 
@@ -1426,14 +1441,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
             .expect("There should not be a problem typechecking the prelude file");
-
-        let prelude_module = &self.project.modules[PRELUDE_MODULE_ID.0];
-        for struct_ in &prelude_module.structs {
-            if struct_.name == "Array" { self.project.prelude_array_struct_id = struct_.id; }
-            if struct_.name == "Set" { self.project.prelude_set_struct_id = struct_.id; }
-            if struct_.name == "Map" { self.project.prelude_map_struct_id = struct_.id; }
-        }
         debug_assert_ne!(self.project.prelude_none_type_id, PLACEHOLDER_TYPE_ID);
+        debug_assert_ne!(self.project.prelude_int_struct_id, PLACEHOLDER_STRUCT_ID);
+        debug_assert_ne!(self.project.prelude_float_struct_id, PLACEHOLDER_STRUCT_ID);
+        debug_assert_ne!(self.project.prelude_bool_struct_id, PLACEHOLDER_STRUCT_ID);
+        debug_assert_ne!(self.project.prelude_string_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_array_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_set_struct_id, PLACEHOLDER_STRUCT_ID);
         debug_assert_ne!(self.project.prelude_map_struct_id, PLACEHOLDER_STRUCT_ID);
@@ -1485,17 +1497,35 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
+        let mut structs = VecDeque::with_capacity(type_decls.len());
+        for node in type_decls {
+            let struct_data = self.typecheck_struct_pass_1(node)?;
+            if self.current_scope_id == PRELUDE_SCOPE_ID {
+                let struct_ = self.project.get_struct_by_id(&struct_data.0);
+                if struct_.name == "Int" {
+                    self.project.prelude_int_struct_id = struct_.id;
+                } else if struct_.name == "Float" {
+                    self.project.prelude_float_struct_id = struct_.id;
+                } else if struct_.name == "Bool" {
+                    self.project.prelude_bool_struct_id = struct_.id;
+                } else if struct_.name == "String" {
+                    self.project.prelude_string_struct_id = struct_.id;
+                } else if struct_.name == "Array" {
+                    self.project.prelude_array_struct_id = struct_.id;
+                } else if struct_.name == "Set" {
+                    self.project.prelude_set_struct_id = struct_.id;
+                } else if struct_.name == "Map" {
+                    self.project.prelude_map_struct_id = struct_.id;
+                }
+            }
+            structs.push_back(struct_data);
+        }
+
         let mut func_ids = VecDeque::with_capacity(func_decls.len());
         for node in func_decls {
             let func_id = self.typecheck_function_pass_1(node, false)?;
             self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
             func_ids.push_back(func_id);
-        }
-
-        let mut structs = VecDeque::with_capacity(type_decls.len());
-        for node in type_decls {
-            let struct_data = self.typecheck_struct_pass_1(node)?;
-            structs.push_back(struct_data);
         }
 
         debug_assert!(enum_decls.is_empty());
@@ -2290,7 +2320,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                         }
                     }
-                    Type::Builtin(_) |
+                    Type::Primitive(primitive_type) => {
+                        let struct_id = match primitive_type {
+                            PrimitiveType::Unit => unreachable!("Internal error: Unit has no backing struct definition"),
+                            PrimitiveType::Int => &self.project.prelude_int_struct_id,
+                            PrimitiveType::Float => &self.project.prelude_float_struct_id,
+                            PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
+                            PrimitiveType::String => &self.project.prelude_string_struct_id,
+                        };
+                        let struct_ = self.project.get_struct_by_id(struct_id);
+                        let methods = struct_.methods.clone();
+                        for (idx, func_id) in methods.iter().enumerate() {
+                            let func = self.project.get_func_by_id(func_id);
+                            if func.name == field_name {
+                                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                field_data = Some((idx, func_type_id, AccessorKind::Method));
+                                break;
+                            }
+                        }
+                    }
                     Type::Struct(_) |
                     Type::Generic(_, _) |
                     Type::Function(_, _, _) => todo!()
@@ -2377,7 +2425,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::StaticMethod => todo!()
                                 }
                             }
-                            Type::Builtin(_) |
+                            Type::Primitive(primitive_type) => {
+                                let struct_id = match primitive_type {
+                                    PrimitiveType::Unit => unreachable!("Internal error: Unit has no backing struct definition"),
+                                    PrimitiveType::Int => &self.project.prelude_int_struct_id,
+                                    PrimitiveType::Float => &self.project.prelude_float_struct_id,
+                                    PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
+                                    PrimitiveType::String => &self.project.prelude_string_struct_id,
+                                };
+                                let struct_ = self.project.get_struct_by_id(&struct_id);
+                                let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
+                                params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some())).collect_vec();
+                                return_type_id = function.return_type_id;
+                            }
                             Type::Generic(_, _) |
                             Type::Function(_, _, _) |
                             Type::Struct(_) => todo!()
