@@ -268,6 +268,7 @@ impl Project {
         match ty {
             Type::Primitive(primitive_type) => match primitive_type {
                 PrimitiveType::Unit => "Unit".to_string(),
+                PrimitiveType::Any => "Any".to_string(),
                 PrimitiveType::Int => "Int".to_string(),
                 PrimitiveType::Float => "Float".to_string(),
                 PrimitiveType::Bool => "Bool".to_string(),
@@ -361,6 +362,7 @@ pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 #[derive(Clone, Debug, PartialEq)]
 pub enum PrimitiveType {
     Unit,
+    Any,
     Int,
     Float,
     Bool,
@@ -570,10 +572,11 @@ impl Eq for TypedLiteral {}
 pub const PRELUDE_MODULE_ID: ModuleId = ModuleId(0);
 pub const PRELUDE_SCOPE_ID: ScopeId = ScopeId(PRELUDE_MODULE_ID, 0);
 pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 0);
-pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 1);
-pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 2);
-pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 3);
-pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 4);
+pub const PRELUDE_ANY_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 1);
+pub const PRELUDE_INT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 2);
+pub const PRELUDE_FLOAT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 3);
+pub const PRELUDE_BOOL_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 4);
+pub const PRELUDE_STRING_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 5);
 
 pub type TypecheckError = Either<Either<LexerError, ParseError>, TypeError>;
 
@@ -955,6 +958,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let target_ty = self.project.get_type_by_id(target_type);
 
         match (base_ty, target_ty) {
+            (_, Type::Primitive(PrimitiveType::Any)) => true,
             (Type::Generic(_, _), Type::Generic(_, _)) => base_type == target_type,
             (_, Type::Generic(_, _)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
             (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
@@ -1157,6 +1161,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let ident_name = Token::get_ident_name(ident);
                 match ident_name.as_str() {
                     "Unit" => Ok(PRELUDE_UNIT_TYPE_ID),
+                    "Any" => Ok(PRELUDE_ANY_TYPE_ID),
                     "Int" => Ok(PRELUDE_INT_TYPE_ID),
                     "Float" => Ok(PRELUDE_FLOAT_TYPE_ID),
                     "Bool" => Ok(PRELUDE_BOOL_TYPE_ID),
@@ -1385,6 +1390,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let primitives = [
             (PRELUDE_UNIT_TYPE_ID, PrimitiveType::Unit),
+            (PRELUDE_ANY_TYPE_ID, PrimitiveType::Any),
             (PRELUDE_INT_TYPE_ID, PrimitiveType::Int),
             (PRELUDE_FLOAT_TYPE_ID, PrimitiveType::Float),
             (PRELUDE_BOOL_TYPE_ID, PrimitiveType::Bool),
@@ -2322,7 +2328,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                     Type::Primitive(primitive_type) => {
                         let struct_id = match primitive_type {
-                            PrimitiveType::Unit => unreachable!("Internal error: Unit has no backing struct definition"),
+                            PrimitiveType::Any | PrimitiveType::Unit => {
+                                return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                            }
                             PrimitiveType::Int => &self.project.prelude_int_struct_id,
                             PrimitiveType::Float => &self.project.prelude_float_struct_id,
                             PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
@@ -2427,7 +2435,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Primitive(primitive_type) => {
                                 let struct_id = match primitive_type {
-                                    PrimitiveType::Unit => unreachable!("Internal error: Unit has no backing struct definition"),
+                                    PrimitiveType::Unit | PrimitiveType::Any => unreachable!("Internal error: accessor of these primitives should have been caught already"),
                                     PrimitiveType::Int => &self.project.prelude_int_struct_id,
                                     PrimitiveType::Float => &self.project.prelude_float_struct_id,
                                     PrimitiveType::Bool => &self.project.prelude_bool_struct_id,

@@ -52,6 +52,10 @@ fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
 #[test]
 fn test_type_assignability() {
     let cases = [
+        ("val x: Any = 1", true),
+        ("val x: Any = \"a\"", true),
+        ("val x: Any = []", true),
+        ("val x: Any = None", true),
         ("val x: Int? = 1", true),
         ("val x: Int = None", false),
         ("val x: Bool[] = []", true),

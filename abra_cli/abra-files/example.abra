@@ -2,7 +2,15 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-val a: Int = range(1, 2)
+val a: Any = range(1, 2)
+
+func pr(item: Any) {
+
+}
+pr(1)
+pr("1")
+pr([1, 2])
+pr(None)
 
 //val x: Int = [].isEmpty()
 
@@ -11,12 +19,12 @@ val a: Int = range(1, 2)
 
 //val abs = (1).abs
 //val y: Int = abs
-val x = (1).asBase(base: 10)
+//val x = (1).asBase(base: 10)
 //val y: Float = x
 
 //val s: Float = "".padLeft(totalSize: 10, padding: "   ")
 
-val q: Int = (1.23).withPrecision(4)
+//val q: Int = (1.23).withPrecision(4)
 
 //type Array<T> {
 //  items: private T[]
