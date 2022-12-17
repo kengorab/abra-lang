@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter::FromIterator;
 use std::path::PathBuf;
 use itertools::{Either, EitherOrBoth, Itertools};
 use crate::{parser, tokenize_and_parse_stub};
@@ -468,7 +467,6 @@ pub struct TypedModule {
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg_attr(test, derive(Clone))]
 pub enum AccessorKind {
     Field,
     Method,
@@ -476,7 +474,6 @@ pub enum AccessorKind {
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg_attr(test, derive(Clone))]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
@@ -572,7 +569,6 @@ impl TypedNode {
 }
 
 #[derive(Debug, PartialEq)]
-#[cfg_attr(test, derive(Clone))]
 pub enum TypedLiteral {
     Int(i64),
     Float(f64),
@@ -1336,7 +1332,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_id)
     }
 
-    fn add_struct_to_current_module(&mut self, struct_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>) -> Result<(StructId, TypeId), TypeError> {
+    fn add_struct_to_current_module(&mut self, struct_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>) -> Result<StructId, TypeError> {
         let current_module = self.current_module();
 
         let name = Token::get_ident_name(name_token);
@@ -1368,7 +1364,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let variable = self.project.get_var_by_id_mut(&struct_var_id);
         variable.alias = VariableAlias::Struct(struct_id);
 
-        Ok((struct_id, self_type_id))
+        Ok(struct_id)
     }
 
     fn create_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
@@ -1567,11 +1563,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut structs = VecDeque::with_capacity(type_decls.len());
-        for node in type_decls {
-            let struct_data = self.typecheck_struct_pass_1(node)?;
+        let num_type_decls = type_decls.len();
+        let mut struct_ids = Vec::with_capacity(num_type_decls);
+        for node in &type_decls {
+            let struct_id = self.typecheck_struct_pass_0(node)?;
             if self.current_scope_id == PRELUDE_SCOPE_ID {
-                let struct_ = self.project.get_struct_by_id(&struct_data.0);
+                let struct_ = self.project.get_struct_by_id(&struct_id);
                 if struct_.name == "Int" {
                     self.project.prelude_int_struct_id = struct_.id;
                 } else if struct_.name == "Float" {
@@ -1588,10 +1585,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.project.prelude_map_struct_id = struct_.id;
                 }
             }
-            structs.push_back(struct_data);
+            struct_ids.push(struct_id);
         }
 
-        let mut func_ids = VecDeque::with_capacity(func_decls.len());
+        let mut structs = VecDeque::with_capacity(num_type_decls);
+        for (node, struct_id) in type_decls.iter().zip(struct_ids) {
+            let method_func_ids = self.typecheck_struct_pass_1(node, &struct_id)?;
+            structs.push_back((struct_id, method_func_ids));
+        }
+
+        let mut func_ids = VecDeque::with_capacity(num_type_decls);
         for node in func_decls {
             let func_id = self.typecheck_function_pass_1(node, false)?;
             self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
@@ -1806,8 +1809,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(())
     }
 
-    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode) -> Result<(StructId, Vec<FuncId>), TypeError> {
-        let TypeDeclNode { export_token, name, type_args, methods, .. } = node;
+    fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
+        let TypeDeclNode { export_token, name, type_args, .. } = node;
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
@@ -1815,10 +1818,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
-        let (struct_id, self_type_id) = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
+        let struct_id = self.add_struct_to_current_module(struct_scope_id, name, generic_ids)?;
         debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
-        self.current_scope_id = struct_scope_id;
-        self.current_type_decl = Some(self_type_id);
+
+        Ok(struct_id)
+    }
+
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<Vec<FuncId>, TypeError> {
+        let TypeDeclNode { methods, .. } = node;
+
+        let struct_ = self.project.get_struct_by_id(struct_id);
+
+        self.current_scope_id = struct_.struct_scope_id;
+        self.current_type_decl = Some(struct_.self_type_id);
 
         let mut method_func_ids = vec![];
         for method in methods {
@@ -1831,7 +1843,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
 
-        Ok((struct_id, method_func_ids))
+        Ok(method_func_ids)
     }
 
     fn typecheck_struct_pass_2(&mut self, struct_id: StructId, method_func_ids: Vec<FuncId>, node: TypeDeclNode) -> Result<(), TypeError> {
@@ -1843,7 +1855,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = struct_.struct_scope_id;
 
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
-        // let mut typed_fields = Vec::with_capacity(fields.len());
         for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
             if default_value.is_some() { unimplemented!("Internal error: field default values") }
             if readonly.is_some() { unimplemented!("Internal error: readonly") }
@@ -1859,14 +1870,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 name: field_name,
                 type_id: field_type_id,
             };
-            // typed_fields.push(field);
             self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
         }
-        // let struct_ = self.project.get_struct_by_id_mut(&struct_id);
-        // struct_.fields = typed_fields;
 
-        // let mut instance_method_func_ids = vec![];
-        // let mut static_method_func_ids = vec![];
         debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (by pass 1)");
         for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
@@ -1876,16 +1882,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             if is_method {
                 self.project.get_struct_by_id_mut(&struct_id).methods.push(*func_id);
-                // instance_method_func_ids.push(*func_id);
             } else {
-                // static_method_func_ids.push(*func_id);
                 self.project.get_struct_by_id_mut(&struct_id).static_methods.push(*func_id);
             }
         }
-
-        // let struct_ = self.project.get_struct_by_id_mut(&struct_id);
-        // struct_.methods = instance_method_func_ids;
-        // struct_.static_methods = static_method_func_ids;
 
         self.current_scope_id = prev_scope_id;
 
@@ -2385,30 +2385,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let target_ty = self.project.get_type_by_id(target_type_id);
 
                 let mut field_data = None;
-                match target_ty {
+                let mut generic_substitutions = HashMap::<TypeId, TypeId>::new();
+                let struct_ = match target_ty {
                     Type::GenericInstance(struct_id, generic_type_ids) => {
                         let struct_ = self.project.get_struct_by_id(struct_id);
-                        let fields = struct_.fields.clone();
-                        let methods = struct_.methods.clone();
-                        let generic_substitutions = HashMap::from_iter(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
-                        for (idx, field) in fields.iter().enumerate() {
-                            if *field.name == field_name {
-                                let type_id = self.substitute_generics_with_known(&field.type_id, &generic_substitutions);
-                                field_data = Some((idx, type_id, AccessorKind::Field));
-                                break;
-                            }
-                        }
-                        if field_data.is_none() {
-                            for (idx, func_id) in methods.iter().enumerate() {
-                                let func = self.project.get_func_by_id(func_id);
-                                if func.name == field_name {
-                                    let mut func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
-                                    func_type_id = self.substitute_generics_with_known(&func_type_id, &generic_substitutions);
-                                    field_data = Some((idx, func_type_id, AccessorKind::Method));
-                                    break;
-                                }
-                            }
-                        }
+                        generic_substitutions.extend(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
+                        struct_
                     }
                     Type::Primitive(primitive_type) => {
                         let struct_id = match primitive_type {
@@ -2420,21 +2402,33 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
                             PrimitiveType::String => &self.project.prelude_string_struct_id,
                         };
-                        let struct_ = self.project.get_struct_by_id(struct_id);
-                        let methods = struct_.methods.clone();
-                        for (idx, func_id) in methods.iter().enumerate() {
-                            let func = self.project.get_func_by_id(func_id);
-                            if func.name == field_name {
-                                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
-                                field_data = Some((idx, func_type_id, AccessorKind::Method));
-                                break;
-                            }
-                        }
+                        self.project.get_struct_by_id(struct_id)
                     }
                     Type::Struct(_) |
                     Type::Generic(_, _) |
                     Type::Function(_, _, _, _) => todo!()
                 };
+                let fields = struct_.fields.clone();
+                let methods = struct_.methods.clone();
+                for (idx, field) in fields.iter().enumerate() {
+                    if *field.name == field_name {
+                        let type_id = self.substitute_generics_with_known(&field.type_id, &generic_substitutions);
+                        field_data = Some((idx, type_id, AccessorKind::Field));
+                        break;
+                    }
+                }
+                if field_data.is_none() {
+                    for (idx, func_id) in methods.iter().enumerate() {
+                        let func = self.project.get_func_by_id(func_id);
+                        if func.name == field_name {
+                            let mut func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                            func_type_id = self.substitute_generics_with_known(&func_type_id, &generic_substitutions);
+                            field_data = Some((idx, func_type_id, AccessorKind::Method));
+                            break;
+                        }
+                    }
+                }
+
                 let Some((field_idx, type_id, kind)) = field_data else {
                     return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
                 };
@@ -2614,7 +2608,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     } else if idx > 0 && !seen_labels.is_empty() {
                         return Err(TypeError::MixedArgumentType { span: arg_node.get_token().get_range() });
                     } else {
-                        gather_variadic_arguments = idx >= params_data.len() - 1 && fn_is_variadic;
+                        gather_variadic_arguments = idx >= params_data.len().saturating_sub(1) && fn_is_variadic;
 
                         if idx >= params_data.len() {
                             if !fn_is_variadic {

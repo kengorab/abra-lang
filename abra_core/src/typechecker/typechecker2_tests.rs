@@ -4,7 +4,6 @@ use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
 use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind};
-use crate::typechecker::typechecker2_tests::helpers::{FnSpec, ParamSpec};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -132,328 +131,187 @@ fn test_type_assignability() {
     }
 }
 
-// This is some helpers used to assert equality among functions in the prelude module. We don't want to have to fiddle
-// with asserting spans values, FuncIds, and ScopeIds, since those are subject to change as the prelude gets built out
-// and shuffled around. These helpers ensure that we're making assertions on things that we care about.
-mod helpers {
-    use std::collections::HashMap;
-    use crate::lexer::tokens::Range;
-    use crate::typechecker::typechecker2::{FuncId, Function, FunctionParam, PRELUDE_MODULE_ID, PRELUDE_SCOPE_ID, Project, ScopeId, Struct, StructField, StructId, TypedNode, TypeId, VarId};
-
-    const PLACEHOLDER_FUNC_ID: FuncId = FuncId(PRELUDE_SCOPE_ID, usize::MAX);
-    const PLACEHOLDER_FUNC_SCOPE_ID: ScopeId = ScopeId(PRELUDE_MODULE_ID, usize::MAX);
-    const PLACEHOLDER_SPAN: Option<Range> = None;
-
-    fn clone_function_param(param: &FunctionParam) -> FunctionParam {
-        FunctionParam {
-            name: param.name.clone(),
-            type_id: param.type_id,
-            defined_span: PLACEHOLDER_SPAN,
-            default_value: param.default_value.clone(),
-            is_variadic: param.is_variadic,
-        }
-    }
-
-    fn clone_function(function: &Function) -> Function {
-        Function {
-            id: PLACEHOLDER_FUNC_ID,
-            fn_scope_id: PLACEHOLDER_FUNC_SCOPE_ID,
-            name: function.name.clone(),
-            generic_ids: function.generic_ids.clone(),
-            has_self: function.has_self,
-            params: function.params.iter().map(clone_function_param).collect(),
-            return_type_id: function.return_type_id,
-            defined_span: PLACEHOLDER_SPAN,
-            body: vec![],
-            captured_vars: function.captured_vars.clone(),
-        }
-    }
-
-    #[derive(Clone)]
-    pub(crate) struct ParamSpec {
-        pub(crate) name: &'static str,
-        pub(crate) type_id: TypeId,
-        pub(crate) default_value: Option<TypedNode>,
-        pub(crate) is_variadic: bool,
-    }
-
-    pub(crate) struct FnSpec {
-        pub(crate) name: &'static str,
-        pub(crate) generic_ids: Vec<TypeId>,
-        pub(crate) has_self: bool,
-        pub(crate) params: Vec<ParamSpec>,
-        pub(crate) return_type_id: TypeId,
-        pub(crate) captured_vars: Vec<VarId>,
-    }
-
-    pub(crate) fn assert_struct_type_eq<'a, F1, F2>(project: &'a Project, struct_id: StructId, struct_name: &str, generic_ids: F1, fields: Vec<StructField>, methods: F2)
-        where F1: Fn(ScopeId) -> Vec<TypeId>,
-              F2: Fn(ParamSpec, &'a Struct) -> Vec<FnSpec>,
-    {
-        let prelude_module = &project.modules[0];
-        assert_eq!(PRELUDE_MODULE_ID, prelude_module.id);
-
-        let struct_ = &prelude_module.structs[struct_id.1];
-        let struct_scope_id = struct_.struct_scope_id;
-
-        assert_eq!(struct_name, &struct_.name);
-        assert_eq!(generic_ids(struct_scope_id), struct_.generic_ids);
-        assert_eq!(fields, struct_.fields);
-        assert!(struct_.static_methods.is_empty());
-
-        let self_param = ParamSpec { name: "self", type_id: struct_.self_type_id, default_value: None, is_variadic: false };
-        let method_map = methods(self_param, struct_).into_iter()
-            .map(|m| Function {
-                id: PLACEHOLDER_FUNC_ID,
-                fn_scope_id: PLACEHOLDER_FUNC_SCOPE_ID,
-                name: m.name.to_string(),
-                generic_ids: m.generic_ids,
-                has_self: m.has_self,
-                params: m.params.into_iter()
-                    .map(|p| FunctionParam {
-                        name: p.name.to_string(),
-                        type_id: p.type_id,
-                        defined_span: PLACEHOLDER_SPAN,
-                        default_value: p.default_value,
-                        is_variadic: p.is_variadic,
-                    })
-                    .collect(),
-                return_type_id: m.return_type_id,
-                defined_span: PLACEHOLDER_SPAN,
-                body: vec![],
-                captured_vars: m.captured_vars,
-            })
-            .map(|m| (m.name.clone(), m))
-            .collect::<HashMap<String, Function>>();
-        assert_eq!(method_map.len(), struct_.methods.len());
-        for method_func_id in &struct_.methods {
-            let function = project.get_func_by_id(&method_func_id);
-            let function = clone_function(function);
-
-            let method = method_map.get(&function.name).expect(&format!("Expected type {} to have a method named {}", struct_name, function.name));
-            assert_eq!(method, &function, "Expected method '{}' to match", function.name);
-        }
-    }
-}
-
 #[test]
 fn typecheck_prelude_int() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_int_struct_id,
-        "Int",
-        |_| vec![],
-        vec![],
-        |self_param, _| vec![
-            FnSpec {
-                name: "abs",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_INT_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "asBase",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone(), ParamSpec { name: "base", type_id: PRELUDE_INT_TYPE_ID, default_value: None, is_variadic: false }],
-                return_type_id: PRELUDE_STRING_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "isEven",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "isOdd",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "isBetween",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![
-                    self_param.clone(),
-                    ParamSpec { name: "lower", type_id: PRELUDE_INT_TYPE_ID, default_value: None, is_variadic: false },
-                    ParamSpec { name: "upper", type_id: PRELUDE_INT_TYPE_ID, default_value: None, is_variadic: false },
-                    ParamSpec { name: "inclusive", type_id: PRELUDE_BOOL_TYPE_ID, default_value: Some(TypedNode::Literal { value: TypedLiteral::Bool(false), token: Token::Bool(Position::new(10, 60), false), type_id: PRELUDE_BOOL_TYPE_ID }), is_variadic: false },
-                ],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            },
-        ],
-    );
+    let result = test_typecheck(r#"
+      val i = 24
+
+      // Methods
+      val abs: Int = i.abs()
+      val asBase: String = i.asBase(base: 16)
+      val isEven: Bool = i.isEven()
+      val isOdd: Bool = i.isOdd()
+      val isBetween1: Bool = i.isBetween(lower: 1, upper: 36)
+      val isBetween2: Bool = i.isBetween(lower: 1, upper: 36, inclusive: true)
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_prelude_float() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_float_struct_id,
-        "Float",
-        |_| vec![],
-        vec![],
-        |self_param, _| vec![
-            FnSpec {
-                name: "abs",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_FLOAT_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "floor",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_INT_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "ceil",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_INT_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "round",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param.clone()],
-                return_type_id: PRELUDE_INT_TYPE_ID,
-                captured_vars: vec![],
-            },
-            FnSpec {
-                name: "withPrecision",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![
-                    self_param,
-                    ParamSpec { name: "precision", type_id: PRELUDE_INT_TYPE_ID, default_value: None, is_variadic: false },
-                ],
-                return_type_id: PRELUDE_FLOAT_TYPE_ID,
-                captured_vars: vec![],
-            },
-        ],
-    );
-}
+    let result = test_typecheck(r#"
+      val f = 1.23
 
-#[test]
-fn typecheck_prelude_bool() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_bool_struct_id,
-        "Bool",
-        |_| vec![],
-        vec![],
-        |_, _| vec![],
-    );
+      // Methods
+      val abs: Float = f.abs()
+      val floor: Int = f.floor()
+      val ceil: Int = f.ceil()
+      val round: Int = f.round()
+      val withPrecision: Float = f.withPrecision(precision: 3)
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_prelude_string() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_string_struct_id,
-        "String",
-        |_| vec![],
-        vec![StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID }],
-        |self_param, _| vec![
-            FnSpec {
-                name: "toLower",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param],
-                return_type_id: PRELUDE_STRING_TYPE_ID,
-                captured_vars: vec![],
-            }
-        ],
-    );
+    let result = test_typecheck(r#"
+      val str = "foo"
+
+      // Fields
+      val length: Int = str.length
+
+      // Methods
+      val isEmpty: Bool = str.isEmpty()
+      val toLower: String = str.toLower()
+      val toUpper: String = str.toUpper()
+      val padLeft1: String = str.padLeft(totalSize: 10)
+      val padLeft2: String = str.padLeft(totalSize: 10, padding: ".")
+      val trim: String = str.trim()
+      val trimStart1: String = str.trimStart()
+      val trimStart2: String = str.trimStart(pattern: " ")
+      val trimEnd1: String = str.trimEnd()
+      val trimEnd2: String = str.trimEnd(pattern: " ")
+      val split1: String[] = str.split()
+      val split2: String[] = str.split(by: ",")
+      val splitAt: (String, String) = str.splitAt(index: 4)
+      val lines: String[] = str.lines()
+      val parseInt1: Int? = str.parseInt()
+      val parseInt2: Int? = str.parseInt(radix: 16)
+      val parseFloat: Float? = str.parseFloat()
+      val concat1: String = str.concat("other")
+      val concat2: String = str.concat([1, 2])
+      val concat3: String = str.concat(1, 2.3, true, [1, 2, 3], ({ a: 1 }, false))
+      val concat4: String = str.concat(suffix: 1, others: [2.3, true, [1, 2, 3], ({ a: 1 }, false)])
+      val replaceAll: String = str.replaceAll("_", "-")
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_prelude_array() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_array_struct_id,
-        "Array",
-        |struct_scope_id| vec![project.find_type_id_for_generic(&struct_scope_id, "T").unwrap()],
-        vec![StructField { name: "length".to_string(), type_id: PRELUDE_INT_TYPE_ID }],
-        |self_param, _| vec![
-            FnSpec {
-                name: "isEmpty",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            }
-        ],
-    );
+    let result = test_typecheck(r#"
+      val arr = ["a", "b", "c", "d"]
+
+      // Fields
+      val length: Int = arr.length
+
+      // Methods
+      val isEmpty: Bool = arr.isEmpty()
+      val enumerate: (String, Int)[] = arr.enumerate()
+      arr.push("e")
+      arr.push("e", "f", "g")
+      arr.push(item: "e", others: ["f", "g"])
+      val pop: String? = arr.pop()
+      val popFront: String? = arr.popFront()
+      val splitAt: (String[], String[]) = arr.splitAt(4)
+      val concat: String[] = arr.concat(["e", "f", "g"])
+      func mapFn(s: String): Int = s.length
+      val map: Int[] = arr.map(mapFn)
+      func filterFn(s: String): Bool = s.length > 3
+      val filter: String[] = arr.filter(filterFn)
+      func reducer(acc: Int, s: String): Int = acc + s.length
+      val reduce: Int = arr.reduce(initialValue: 0, fn: reducer)
+      func forEachFn(s: String) {}
+      arr.forEach(forEachFn)
+      val join1: String = arr.join()
+      val join2: String = arr.join(joiner: ", ")
+      val contains: Bool = arr.contains("f")
+      func findFn(s: String): Bool = s == "a"
+      val find: String? = arr.find(findFn)
+      val findIndex: (String, Int)? = arr.findIndex(findFn)
+      val any: Bool = arr.any(findFn)
+      val all: Bool = arr.all(findFn)
+      val none: Bool = arr.none(findFn)
+      func getLength(s: String): Int = s.length
+      val sortBy1: String[] = arr.sortBy(getLength)
+      val sortBy2: String[] = arr.sortBy(fn: getLength, reverse: true)
+      val dedupe: String[] = arr.dedupe()
+      val dedupeBy: String[] = arr.dedupeBy(getLength)
+      val partition: Map<Int, String[]> = arr.partition(getLength)
+      val tally: Map<String, Int> = arr.tally()
+      val tallyBy: Map<Int, Int> = arr.tallyBy(getLength)
+      val asSet: Set<String> = arr.asSet()
+      val getOr: String = arr.getOr(index: 0, default: "foo")
+      func getDefault(): String = "foo"
+      val getOrElse: String = arr.getOrElse(index: 0, getDefault: getDefault)
+      func update(s: String): String = s.toUpper()
+      arr.update(index: 4, updater: update)
+      val reverse: String[] = arr.reverse()
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_prelude_set() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_set_struct_id,
-        "Set",
-        |struct_scope_id| vec![project.find_type_id_for_generic(&struct_scope_id, "T").unwrap()],
-        vec![StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID }],
-        |self_param, _| vec![
-            FnSpec {
-                name: "isEmpty",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            }
-        ],
-    );
+    let result = test_typecheck(r#"
+      val set = #{"a", "b", "c"}
+
+      // Fields
+      val size: Int = set.size
+
+      // Methods
+      val isEmpty: Bool = set.isEmpty()
+      val enumerate: (String, Int)[] = set.enumerate()
+      val contains: Bool = set.contains(item: "b")
+      set.insert(item: "d")
+      val remove: String? = set.remove(item: "d")
+      func mapFn(s: String): Int = s.length
+      val map: Int[] = set.map(mapFn)
+      func filterFn(s: String): Bool = s.length > 3
+      val filter: Set<String> = set.filter(filterFn)
+      func reducer(acc: Int, s: String): Int = acc + s.length
+      val reduce: Int = set.reduce(initialValue: 0, fn: reducer)
+      val asArray: String[] = set.asArray()
+      val union: Set<String> = set.union(#{"c", "d", "e"})
+      val difference: Set<String> = set.difference(#{"c", "d", "e"})
+      val intersection: Set<String> = set.intersection(#{"c", "d", "e"})
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_prelude_map() {
-    let project = test_typecheck("").unwrap();
-    helpers::assert_struct_type_eq(
-        &project,
-        project.prelude_map_struct_id,
-        "Map",
-        |struct_scope_id| vec![
-            project.find_type_id_for_generic(&struct_scope_id, "K").unwrap(),
-            project.find_type_id_for_generic(&struct_scope_id, "V").unwrap(),
-        ],
-        vec![StructField { name: "size".to_string(), type_id: PRELUDE_INT_TYPE_ID }],
-        |self_param, _| vec![
-            FnSpec {
-                name: "isEmpty",
-                generic_ids: vec![],
-                has_self: true,
-                params: vec![self_param],
-                return_type_id: PRELUDE_BOOL_TYPE_ID,
-                captured_vars: vec![],
-            }
-        ],
-    );
+    let result = test_typecheck(r#"
+      val map = { a: 12, b: 24, c: 48, d: 96 }
+
+      // Fields
+      val size: Int = map.size
+
+      // Methods
+      val isEmpty: Bool = map.isEmpty()
+      val enumerate: (String, Int)[] = map.enumerate()
+      val keys: Set<String> = map.keys()
+      val values: Int[] = map.values()
+      val entries: Set<(String, Int)> = map.entries()
+      val containsKey: Bool = map.containsKey(key: "e")
+      func mapFn1(key: String, value: Int): Bool = value > 4
+      val mapValues1: Map<String, Bool> = map.mapValues(mapFn1)
+      func mapFn2(key: String): Bool = key.length > 4
+      val mapValues2: Map<String, Bool> = map.mapValues(mapFn2)
+      val getOr: Int = map.getOr(key: "e", default: 192)
+      func return4(): Int = 4
+      val getOrElse: Int = map.getOrElse(key: "e", getDefault: return4)
+      func double(value: Int): Int = value * 2
+      map.update(key: "a", updater: double)
+      val remove: Int? = map.remove(key: "a")
+    "#);
+    if let Err((_, e)) = &result { dbg!(e); }
+    assert!(result.is_ok());
 }
 
 #[test]
