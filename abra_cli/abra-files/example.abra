@@ -2,64 +2,14 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-val a: Any = range(1, 2)
+//func foo(a: Int, *args: Int[],f="4") {}
+//func foo(a: Int, f="4",*args: Int[]) {}
+func foo(a: Int, *args: Int[]) {}
 
-func pr(item: Any) {
+//foo(1, [2, 3, 4, 5])
+//foo(1)
+//foo(1, 2, 3)
+//foo(args: [2, 3, 4, 5], a: 4)
+val x = println("def")
 
-}
-pr(1)
-pr("1")
-pr([1, 2])
-pr(None)
-
-//val x: Int = [].isEmpty()
-
-//val x = 3
-//val y: Int = x + 1
-
-//val abs = (1).abs
-//val y: Int = abs
-//val x = (1).asBase(base: 10)
-//val y: Float = x
-
-//val s: Float = "".padLeft(totalSize: 10, padding: "   ")
-
-//val q: Int = (1.23).withPrecision(4)
-
-//type Array<T> {
-//  items: private T[]
-//  length: Int
-//
-//  ...
-//
-//  func default<T>(defaultValue: T): DefaultArray<T> = DefaultArray(items: [], default: defaultValue)
-//
-//  ...
-//
-//  func default(defaultValue: T): DefaultArray<T> = DefaultArray(items: self.items, default: defaultValue)
-//
-//  @operator("[]")
-//  func get(index: Int): T? = ...
-//
-//  @operator("[:]")
-//  func getRange(start: Int?, end: Int?): T[] = ...
-//}
-//
-//type DefaultArray<T> extends Array<T> {
-//  default: private T
-//
-//  @operator("[]")
-//  func get(self, idx: Int): T = self.items[idx] ?: self.default
-//}
-//
-//val defaultValue = 5
-//val arr = [1, 2, 3] // arr is of type Array<T, false>
-//val item = arr[0]   // => item is of type Int?, requiring arr[0] ?: defaultValue to obtain an Int
-//
-//val arr = Array.default(defaultValue) // arr is of type Array<T, true>
-//val item = arr[0]                         // => item is of type Int, and will be defaultValue if index not present in Array
-//
-//val a = if true [1, 2, 3] else Array.default(0)
-//
-//a[0] // => _has_ to be Int?; since we can only narrow this down to `Array<T, ?>`, we have to use the default value of `DefaultValues` (false)
-//
+println(println("def"))

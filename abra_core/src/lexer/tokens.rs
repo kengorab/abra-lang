@@ -3,6 +3,8 @@ use std::cmp::{max, min};
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Position { pub line: usize, pub col: usize }
 
+pub const POSITION_BOGUS: Position = Position { line: 0, col: 0 };
+
 impl Position {
     pub fn new(line: usize, col: usize) -> Self { Position { line, col } }
 }
