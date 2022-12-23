@@ -218,37 +218,29 @@ fn typecheck_prelude_array() {
       val popFront: String? = arr.popFront()
       val splitAt: (String[], String[]) = arr.splitAt(4)
       val concat: String[] = arr.concat(["e", "f", "g"])
-      func mapFn(s: String): Int = s.length
-      val map: Int[] = arr.map(mapFn)
-      func filterFn(s: String): Bool = s.length > 3
-      val filter: String[] = arr.filter(filterFn)
-      func reducer(acc: Int, s: String): Int = acc + s.length
-      val reduce: Int = arr.reduce(initialValue: 0, fn: reducer)
-      func forEachFn(s: String) {}
-      arr.forEach(forEachFn)
+      val map: Int[] = arr.map(s => s.length)
+      val filter: String[] = arr.filter(s => s.length > 3)
+      val reduce: Int = arr.reduce(initialValue: 0, fn: (acc, s) => acc + s.length)
+      arr.forEach(s => {})
       val join1: String = arr.join()
       val join2: String = arr.join(joiner: ", ")
       val contains: Bool = arr.contains("f")
-      func findFn(s: String): Bool = s == "a"
-      val find: String? = arr.find(findFn)
-      val findIndex: (String, Int)? = arr.findIndex(findFn)
-      val any: Bool = arr.any(findFn)
-      val all: Bool = arr.all(findFn)
-      val none: Bool = arr.none(findFn)
-      func getLength(s: String): Int = s.length
-      val sortBy1: String[] = arr.sortBy(getLength)
-      val sortBy2: String[] = arr.sortBy(fn: getLength, reverse: true)
+      val find: String? = arr.find(s => s == "a")
+      val findIndex: (String, Int)? = arr.findIndex(s => s == "a")
+      val any: Bool = arr.any(s => s == "a")
+      val all: Bool = arr.all(s => s == "a")
+      val none: Bool = arr.none(s => s == "a")
+      val sortBy1: String[] = arr.sortBy(s => s.length)
+      val sortBy2: String[] = arr.sortBy(fn: s => s.length, reverse: true)
       val dedupe: String[] = arr.dedupe()
-      val dedupeBy: String[] = arr.dedupeBy(getLength)
-      val partition: Map<Int, String[]> = arr.partition(getLength)
+      val dedupeBy: String[] = arr.dedupeBy(s => s.length)
+      val partition: Map<Int, String[]> = arr.partition(s => s.length)
       val tally: Map<String, Int> = arr.tally()
-      val tallyBy: Map<Int, Int> = arr.tallyBy(getLength)
+      val tallyBy: Map<Int, Int> = arr.tallyBy(s => s.length)
       val asSet: Set<String> = arr.asSet()
       val getOr: String = arr.getOr(index: 0, default: "foo")
-      func getDefault(): String = "foo"
-      val getOrElse: String = arr.getOrElse(index: 0, getDefault: getDefault)
-      func update(s: String): String = s.toUpper()
-      arr.update(index: 4, updater: update)
+      val getOrElse: String = arr.getOrElse(index: 0, getDefault: () => "foo")
+      arr.update(index: 4, updater: s => s.toUpper())
       val reverse: String[] = arr.reverse()
     "#);
     if let Err((_, e)) = &result { dbg!(e); }
@@ -269,12 +261,9 @@ fn typecheck_prelude_set() {
       val contains: Bool = set.contains(item: "b")
       set.insert(item: "d")
       val remove: String? = set.remove(item: "d")
-      func mapFn(s: String): Int = s.length
-      val map: Int[] = set.map(mapFn)
-      func filterFn(s: String): Bool = s.length > 3
-      val filter: Set<String> = set.filter(filterFn)
-      func reducer(acc: Int, s: String): Int = acc + s.length
-      val reduce: Int = set.reduce(initialValue: 0, fn: reducer)
+      val map: Int[] = set.map(s => s.length)
+      val filter: Set<String> = set.filter(s => s.length > 3)
+      val reduce: Int = set.reduce(initialValue: 0, fn: (acc, s) => acc + s.length)
       val asArray: String[] = set.asArray()
       val union: Set<String> = set.union(#{"c", "d", "e"})
       val difference: Set<String> = set.difference(#{"c", "d", "e"})
@@ -299,15 +288,11 @@ fn typecheck_prelude_map() {
       val values: Int[] = map.values()
       val entries: Set<(String, Int)> = map.entries()
       val containsKey: Bool = map.containsKey(key: "e")
-      func mapFn1(key: String, value: Int): Bool = value > 4
-      val mapValues1: Map<String, Bool> = map.mapValues(mapFn1)
-      func mapFn2(key: String): Bool = key.length > 4
-      val mapValues2: Map<String, Bool> = map.mapValues(mapFn2)
+      val mapValues1: Map<String, Bool> = map.mapValues((_, value) => value > 4)
+      val mapValues2: Map<String, Bool> = map.mapValues(key => key.length > 4)
       val getOr: Int = map.getOr(key: "e", default: 192)
-      func return4(): Int = 4
-      val getOrElse: Int = map.getOrElse(key: "e", getDefault: return4)
-      func double(value: Int): Int = value * 2
-      map.update(key: "a", updater: double)
+      val getOrElse: Int = map.getOrElse(key: "e", getDefault: () => 4)
+      map.update(key: "a", updater: value => value * 2)
       val remove: Int? = map.remove(key: "a")
     "#);
     if let Err((_, e)) = &result { dbg!(e); }
@@ -2308,6 +2293,104 @@ fn typecheck_failure_accessor() {
             ),
         ).unwrap(),
         purpose: "assignment",
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_lambda() {
+    // Test simple case
+    let project = test_typecheck("val f = (a: Int, b: Float) => a + b").unwrap();
+    let f_var = &project.modules[1].scopes[0].vars[0];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 0),
+        name: "f".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], 2, false, PRELUDE_FLOAT_TYPE_ID)).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+    };
+    assert_eq!(&expected, f_var);
+
+    // Test inferred from type hints
+    let project = test_typecheck("val f: (Int) => Float = (a) => a + 0.1").unwrap();
+    let f_var = &project.modules[1].scopes[0].vars[0];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 0),
+        name: "f".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_FLOAT_TYPE_ID)).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+    };
+    assert_eq!(&expected, f_var);
+
+    // Misc others
+    assert!(test_typecheck("val f: (Int) => Int = (a = 4) => a + 1").is_ok());
+    assert!(test_typecheck("val f: (Int) => Int = (a, b = 4) => a + b").is_ok());
+}
+
+#[test]
+fn typecheck_failure_lambda() {
+    let (_, Either::Right(err)) = test_typecheck("a => 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownTypeForParameter {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 1) },
+        param_name: "a".to_string(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("(a: Int, b) => 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownTypeForParameter {
+        span: Range { start: Position::new(1, 10), end: Position::new(1, 10) },
+        param_name: "b".to_string(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a, b) => 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownTypeForParameter {
+        span: Range { start: Position::new(1, 27), end: Position::new(1, 27) },
+        param_name: "b".to_string(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a: Float) => 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 24), end: Position::new(1, 24) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_FLOAT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a) => a + 0.1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 30), end: Position::new(1, 36) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_FLOAT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val _: String[] = [1, 2, 3].map(x => x + 1)").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 38), end: Position::new(1, 42) },
+        expected: vec![PRELUDE_STRING_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("[1, 2, 3].map((x: String) => x)").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 16), end: Position::new(1, 16) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("[1, 2, 3].map((x: Int, y: Int) => x)").unwrap_err() else { unreachable!() };
+    let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID)).unwrap();
+    let received_type_id = project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 2, false, PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 16), end: Position::new(1, 35) },
+        expected: vec![expected_type_id],
+        received: received_type_id,
     };
     assert_eq!(expected, err);
 }

@@ -2,14 +2,20 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-//func foo(a: Int, *args: Int[],f="4") {}
-//func foo(a: Int, f="4",*args: Int[]) {}
-func foo(a: Int, *args: Int[]) {}
+//func foo<T>(a: T[]): T[] = a
+//val x = foo(foo([1]))
 
-//foo(1, [2, 3, 4, 5])
-//foo(1)
-//foo(1, 2, 3)
-//foo(args: [2, 3, 4, 5], a: 4)
-val x = println("def")
+//val x = a => "asdf"
 
-println(println("def"))
+[1, 2, 3].map((x, y = 12) => x)
+
+val arr = ["a", "bc", "def"]
+arr.forEach(s => {
+
+})
+
+//val sizes: Int[] = arr.map((s: Int) => println(s))
+//val sizes: Int[] = arr.map(s => println(s))
+
+//val sizes: Int[] = arr.map((s: Int) => 1.23)
+//val _: Int = sizes

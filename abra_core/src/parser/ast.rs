@@ -238,6 +238,14 @@ pub struct BindingDeclNode {
     pub is_mutable: bool,
 }
 
+#[derive(Debug)]
+pub struct Parameter<'a> {
+    pub ident: &'a Token,
+    pub type_ident: &'a Option<TypeIdentifier>,
+    pub is_vararg: bool,
+    pub default_value: &'a Option<AstNode>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
     pub export_token: Option<Token>,
@@ -251,10 +259,26 @@ pub struct FunctionDeclNode {
     pub body: Vec<AstNode>,
 }
 
+impl FunctionDeclNode {
+    pub fn parameters(&self) -> Vec<Parameter> {
+        self.args.iter()
+            .map(|(arg_ident, type_ident, is_vararg, default_value)| Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value })
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LambdaNode {
-    pub args: Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>,
+    pub args: Vec<(/* arg_ident: */ Token, /* type_ident: */ Option<TypeIdentifier>, /* is_vararg: */ bool, /* default_value: */ Option<AstNode>)>,
     pub body: Vec<AstNode>,
+}
+
+impl LambdaNode {
+    pub fn parameters(&self) -> Vec<Parameter> {
+        self.args.iter()
+            .map(|(arg_ident, type_ident, is_vararg, default_value)| Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value })
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

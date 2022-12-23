@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -432,7 +432,7 @@ pub struct Function {
     // TODO: Could be a slice? we won't expand once they're known
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
-    // Functions with no defined_span are builtins
+    // Functions with no defined_span are builtins or lambdas (since they can't have name collisions anyway)
     pub defined_span: Option<Range>,
     pub body: Vec<TypedNode>,
     pub captured_vars: Vec<VarId>,
@@ -488,6 +488,7 @@ pub enum TypedNode {
     NoneValue { token: Token, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
+    Lambda { span: Range, func_id: FuncId, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -509,6 +510,7 @@ impl TypedNode {
             TypedNode::NoneValue { type_id, .. } => type_id,
             TypedNode::Invocation { type_id, .. } => type_id,
             TypedNode::Accessor { type_id, .. } => type_id,
+            TypedNode::Lambda { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -550,6 +552,7 @@ impl TypedNode {
                 }
             }
             TypedNode::Accessor { target, member_span, .. } => target.span().expand(member_span),
+            TypedNode::Lambda { span, .. } => span.clone(),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -632,6 +635,7 @@ pub enum TypeError {
     InvalidTypeArgumentArity { span: Range, num_required_args: usize, num_provided_args: usize },
     UnknownMember { span: Range, field_name: String, type_id: TypeId },
     MissingRequiredArgumentLabels { span: Range },
+    UnknownTypeForParameter { span: Range, param_name: String },
 }
 
 impl TypeError {
@@ -680,7 +684,8 @@ impl TypeError {
             TypeError::InvalidVarargType { span, .. } |
             TypeError::InvalidTypeArgumentArity { span, .. } |
             TypeError::UnknownMember { span, .. } |
-            TypeError::MissingRequiredArgumentLabels { span } => span
+            TypeError::MissingRequiredArgumentLabels { span } |
+            TypeError::UnknownTypeForParameter { span, .. } => span
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -949,6 +954,13 @@ impl TypeError {
                     cursor_line
                 )
             }
+            TypeError::UnknownTypeForParameter { param_name, .. } => {
+                format!(
+                    "Could not determine type for parameter '{}'\n{}\n\
+                    Consider adding a type annotation",
+                    param_name, cursor_line
+                )
+            }
         };
 
         let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
@@ -1137,6 +1149,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let ty_with_generics = self.project.get_type_by_id(type_id_containing_generics);
 
         match (ty_with_generics, hint_ty) {
+            (Type::Generic(_, _), Type::Generic(_, _)) => {}
             (Type::Generic(_, _), _) => {
                 if let Some(_) = substitutions.get(type_id_containing_generics) {
                     // If we already have a substitution for this generic, don't overwrite. If the known value does not align with the hint
@@ -1327,6 +1340,35 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let func_id = FuncId(current_scope.id, current_scope.funcs.len());
         let func = Function { id: func_id, fn_scope_id, name: name.clone(), generic_ids, has_self, params, return_type_id, defined_span: Some(span.clone()), body: vec![], captured_vars: vec![] };
+        current_scope.funcs.push(func);
+
+        Ok(func_id)
+    }
+
+    fn new_lambda_fn_name(&self) -> String {
+        let mut name = VecDeque::new();
+        let mut cur_scope_id = &Some(self.current_scope_id);
+        while let Some(scope_id) = cur_scope_id {
+            let ScopeId(ModuleId(module_idx), scope_idx) = scope_id;
+            let scope = &self.project.modules[*module_idx].scopes[*scope_idx];
+
+            name.push_front(scope.id.1);
+
+            cur_scope_id = &scope.parent;
+        }
+
+        let current_scope = self.current_scope();
+        format!("lambda_{}_{}_{}", self.current_module().id.0, name.into_iter().join("_"), current_scope.funcs.len())
+    }
+
+    fn add_lambda_function_to_current_scope(&mut self, fn_scope_id: ScopeId, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
+        let current_scope = self.current_scope();
+
+        let name = self.new_lambda_fn_name();
+        let func_id = FuncId(current_scope.id, current_scope.funcs.len());
+        let func = Function { id: func_id, fn_scope_id, name, generic_ids: vec![], has_self: false, params, return_type_id: PRELUDE_ANY_TYPE_ID, defined_span: None, body: vec![], captured_vars: vec![] };
+
+        let current_scope = self.current_scope_mut();
         current_scope.funcs.push(func);
 
         Ok(func_id)
@@ -1647,28 +1689,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(generic_ids)
     }
 
-    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
-        let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
-
-        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
-
-        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
-
-        let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
-
+    fn typecheck_function_parameters(&mut self, allow_self: bool, parameters: &Vec<(Parameter, Option<TypeId>)>) -> Result<Vec<FunctionParam>, TypeError> {
         let mut seen_self = false;
-        let mut seen_arg_names = HashSet::new();
+        let mut seen_param_names = HashSet::new();
         let mut seen_default_valued_params = false;
         let mut params = vec![];
-        let num_args = args.len();
-        for (idx, (ident, type_ident, is_vararg, default_value)) in args.iter().enumerate() {
-            if *is_vararg {
-                if idx != num_args - 1 {
-                    return Err(TypeError::InvalidVarargPosition { span: ident.get_range() });
-                }
+        let num_params = parameters.len();
+        for (idx, (Parameter { ident, type_ident, is_vararg, default_value }, type_hint)) in parameters.iter().enumerate() {
+            if *is_vararg && idx != num_params - 1 {
+                return Err(TypeError::InvalidVarargPosition { span: ident.get_range() });
             }
 
-            let arg_name = Token::get_ident_name(ident);
+            let param_name = Token::get_ident_name(ident);
 
             if let Token::Self_(_) = &ident {
                 let self_type_id = match &self.current_type_decl {
@@ -1682,7 +1714,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 seen_self = true;
 
                 params.push(FunctionParam {
-                    name: arg_name,
+                    name: param_name,
                     type_id: *self_type_id,
                     defined_span: Some(ident.get_range()),
                     default_value: None,
@@ -1692,18 +1724,27 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 continue;
             }
 
-            if seen_arg_names.contains(&arg_name) {
-                return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: arg_name });
+            if seen_param_names.contains(&param_name) {
+                return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: param_name });
             }
-            seen_arg_names.insert(arg_name.clone());
+            seen_param_names.insert(param_name.clone());
 
             let mut param_type_id = None;
             if let Some(type_ident) = type_ident {
                 param_type_id = Some(self.resolve_type_identifier(type_ident)?);
             }
+            if let Some(type_hint) = type_hint {
+                if let Some(param_type_id) = param_type_id {
+                    if !self.type_satisfies_other(&param_type_id, type_hint) {
+                        return Err(TypeError::TypeMismatch { span: ident.get_range(), expected: vec![*type_hint], received: param_type_id });
+                    }
+                } else {
+                    param_type_id = Some(*type_hint);
+                }
+            }
             let typed_default_value_expr = if let Some(default_value) = default_value {
                 seen_default_valued_params = true;
-                // TODO: Handling retries for first-pass function typechecking with default-value expressions which reference code that hasn't been visited yet
+                // TODO: Handling retries for first-pass function declaration typechecking with default-value expressions which reference code that hasn't been visited yet
                 // For example:
                 //   func foo(bar = baz()) = ...
                 //   func baz() = ...
@@ -1716,7 +1757,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 None
             };
             let mut type_id = match (param_type_id, &typed_default_value_expr) {
-                (None, None) => unreachable!("Internal error: should have failed to parse"),
+                (None, None) => return Err(TypeError::UnknownTypeForParameter { span: ident.get_range(), param_name }),
                 (Some(param_type_id), None) => param_type_id,
                 (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
                 (Some(param_type_id), Some(typed_default_value_expr)) => {
@@ -1739,13 +1780,27 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
 
             params.push(FunctionParam {
-                name: arg_name,
+                name: param_name,
                 type_id,
                 defined_span: Some(ident.get_range()),
                 default_value: typed_default_value_expr,
                 is_variadic: *is_vararg,
             });
         }
+
+        Ok(params)
+    }
+
+    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
+        let FunctionDeclNode { export_token, name, type_args, ret_type, .. } = node;
+
+        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+
+        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
+
+        let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
+        let node_parameters = node.parameters().into_iter().map(|p| (p, None)).collect();
+        let params = self.typecheck_function_parameters(allow_self, &node_parameters)?;
 
         let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
         if let Some(ret_type) = ret_type {
@@ -1754,7 +1809,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
 
-        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, seen_self, params, return_type_id)?;
+        let has_self = params.first().map(|p| p.name == "self").unwrap_or(false);
+        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, has_self, params, return_type_id)?;
         self.current_module_mut().functions.push(func_id);
 
         Ok(func_id)
@@ -2485,7 +2541,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             };
                             return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: generic_ids.len(), num_provided_args: type_args.len() });
                         }
-                        for ((type_arg_id, _), generic_id) in type_args.iter().zip(generic_ids.iter()) {
+                        for (generic_id, (type_arg_id, _)) in generic_ids.iter().zip(type_args.iter()) {
                             filled_in_generic_types.insert(*generic_id, *type_arg_id);
                         }
                     }
@@ -2493,7 +2549,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_type_id = target.type_id();
                         let target_ty = self.project.get_type_by_id(target_type_id);
                         match target_ty {
-                            Type::GenericInstance(struct_id, _) => {
+                            Type::GenericInstance(struct_id, generic_ids) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
                                 match kind {
                                     AccessorKind::Field => {
@@ -2519,6 +2575,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         return_type_id = function.return_type_id;
                                     }
                                     AccessorKind::StaticMethod => todo!()
+                                }
+
+                                for (generic_id, type_arg_id) in struct_.generic_ids.iter().zip(generic_ids.iter()) {
+                                    filled_in_generic_types.insert(*generic_id, *type_arg_id);
                                 }
                             }
                             Type::Primitive(primitive_type) => {
@@ -2625,22 +2685,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     };
 
+                    if let Some(type_hint) = type_hint {
+                        if self.type_contains_generics(&return_type_id) {
+                            self.extract_values_for_generics(&type_hint, &return_type_id, &mut filled_in_generic_types);
+                        }
+                    }
+
+                    // Fill in any known generics (ie. from the instance, for a method) before typechecking arg expression
+                    if self.type_contains_generics(&param_type_id) {
+                        param_type_id = self.substitute_generics_with_known(&param_type_id, &filled_in_generic_types);
+                    }
+
                     let typed_arg_value = self.typecheck_expression(arg_node, Some(param_type_id))?;
-                    let mut arg_type_id = *typed_arg_value.type_id();
+                    let arg_type_id = *typed_arg_value.type_id();
 
                     if arg_type_id == PRELUDE_UNIT_TYPE_ID {
                         return Err(TypeError::ForbiddenAssignment { span: typed_arg_value.span(), type_id: arg_type_id, purpose: "parameter" });
                     }
+
+                    // Fill in any resolved generics that are only determined after typechecking arg expression (ie. function return types)
                     if self.type_contains_generics(&param_type_id) {
                         self.extract_values_for_generics(&arg_type_id, &param_type_id, &mut filled_in_generic_types);
+
                         param_type_id = self.substitute_generics_with_known(&param_type_id, &filled_in_generic_types);
                     }
 
-                    let Some(unified_type) = self.unify_types(&arg_type_id, &param_type_id) else {
-                        let span = typed_arg_value.span();
-                        return Err(TypeError::TypeMismatch { span, expected: vec![param_type_id], received: arg_type_id });
-                    };
-                    arg_type_id = unified_type;
                     if !self.type_satisfies_other(&arg_type_id, &param_type_id) {
                         return Err(TypeError::TypeMismatch { span: typed_arg_value.span(), expected: vec![param_type_id], received: arg_type_id });
                     }
@@ -2682,8 +2751,80 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
             }
             AstNode::IfExpression(_, _) |
-            AstNode::MatchExpression(_, _) |
-            AstNode::Lambda(_, _) |
+            AstNode::MatchExpression(_, _) => todo!(),
+            AstNode::Lambda(token, n) => {
+                let mut arg_hints = None;
+                let mut ret_hint = None;
+                if let Some(type_hint_id) = &type_hint {
+                    let ty = self.project.get_type_by_id(type_hint_id);
+                    if let Type::Function(param_type_ids, _, _, return_type_id) = ty {
+                        arg_hints = Some(param_type_ids.clone());
+                        ret_hint = Some(*return_type_id);
+                    }
+                }
+
+                let parameters = n.parameters().into_iter().enumerate()
+                    .map(|(idx, p)| {
+                        let param_hint = arg_hints.as_ref().and_then(|hints| hints.get(idx).map(|t| *t));
+                        (p, param_hint)
+                    })
+                    .collect();
+
+                let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()));
+                let parameters = self.typecheck_function_parameters(false, &parameters)?;
+
+                let lambda_func_id = self.add_lambda_function_to_current_scope(fn_scope_id, parameters)?;
+                let prev_func_id = self.current_function;
+                self.current_function = Some(lambda_func_id);
+
+                let func = self.project.get_func_by_id(&lambda_func_id);
+                let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
+                for (name, type_id, defined_span, ..) in params {
+                    let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
+                    let defined_span = defined_span.clone();
+
+                    self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
+                }
+
+                let mut body = vec![];
+                let mut last_type_id = PRELUDE_UNIT_TYPE_ID;
+                let num_nodes = n.body.len();
+                for (idx, node) in n.body.into_iter().enumerate() {
+                    let is_last = idx == num_nodes - 1;
+                    let type_hint = if is_last { ret_hint } else { None };
+
+                    // TODO: Handle nested function declaration (and raise error on nested Type declaration)
+                    let typed_node = self.typecheck_statement(node, type_hint)?;
+                    let type_id = typed_node.type_id();
+                    last_type_id = *type_id;
+
+                    if is_last {
+                        if let Some(type_hint) = type_hint {
+                            if !self.type_contains_generics(&type_hint) && !self.type_satisfies_other(&last_type_id, &type_hint) {
+                                return Err(TypeError::TypeMismatch { span: typed_node.span(), expected: vec![type_hint], received: last_type_id });
+                            }
+                        }
+                    }
+
+                    body.push(typed_node);
+                }
+
+                let func = self.project.get_func_by_id_mut(&lambda_func_id);
+                func.body = body;
+                func.return_type_id = last_type_id;
+
+                let func = self.project.get_func_by_id(&lambda_func_id);
+                let span = func.params.first()
+                    .and_then(|p| p.defined_span.as_ref()).unwrap_or(&token.get_range())
+                    .expand(&func.body.last().map(|n| n.span()).unwrap_or(token.get_range()));
+                let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+
+                self.end_child_scope();
+                self.current_function = prev_func_id;
+
+
+                Ok(TypedNode::Lambda { span, func_id: lambda_func_id, type_id: func_type_id })
+            }
             AstNode::Try(_, _) => todo!(),
             n => unreachable!("Internal error: node is not an expression: {:?}", n),
         }
