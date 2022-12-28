@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -474,6 +474,11 @@ pub enum AccessorKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum AssignmentKind {
+    Identifier(/* var_id: */ VarId),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
@@ -489,6 +494,7 @@ pub enum TypedNode {
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
+    Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -511,6 +517,7 @@ impl TypedNode {
             TypedNode::Invocation { type_id, .. } => type_id,
             TypedNode::Accessor { type_id, .. } => type_id,
             TypedNode::Lambda { type_id, .. } => type_id,
+            TypedNode::Assignment { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -553,6 +560,7 @@ impl TypedNode {
             }
             TypedNode::Accessor { target, member_span, .. } => target.span().expand(member_span),
             TypedNode::Lambda { span, .. } => span.clone(),
+            TypedNode::Assignment { span, .. } => span.clone(),
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -636,6 +644,7 @@ pub enum TypeError {
     UnknownMember { span: Range, field_name: String, type_id: TypeId },
     MissingRequiredArgumentLabels { span: Range },
     UnknownTypeForParameter { span: Range, param_name: String },
+    AssignmentToImmutable { span: Range, var_name: String, defined_span: Option<Range> },
 }
 
 impl TypeError {
@@ -685,7 +694,8 @@ impl TypeError {
             TypeError::InvalidTypeArgumentArity { span, .. } |
             TypeError::UnknownMember { span, .. } |
             TypeError::MissingRequiredArgumentLabels { span } |
-            TypeError::UnknownTypeForParameter { span, .. } => span
+            TypeError::UnknownTypeForParameter { span, .. } |
+            TypeError::AssignmentToImmutable { span, .. } => span,
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -959,6 +969,20 @@ impl TypeError {
                     "Could not determine type for parameter '{}'\n{}\n\
                     Consider adding a type annotation",
                     param_name, cursor_line
+                )
+            }
+            TypeError::AssignmentToImmutable { var_name, defined_span, .. } => {
+                let second_line = if let Some(span) = defined_span {
+                    let cursor_line = Self::get_underlined_line(&lines, span);
+                    format!("Variable is declared as immutable here:\n{}", cursor_line)
+                } else {
+                    format!("Variable is declared as immutable")
+                };
+
+                format!(
+                    "Cannot assign to variable '{}'\n{}\n{}",
+                    var_name, cursor_line,
+                    second_line
                 )
             }
         };
@@ -2428,7 +2452,36 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Identifier { token, var_id, type_arg_ids, type_id: var_type_id })
             }
-            AstNode::Assignment(_, _) |
+            AstNode::Assignment(_, n) => {
+                let AssignmentNode { target, expr } = n;
+
+                let typed_target = self.typecheck_expression(*target, type_hint)?;
+                let target_type_id = *typed_target.type_id();
+                let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
+
+                let kind = match typed_target {
+                    TypedNode::Identifier { var_id, .. } => {
+                        let variable = self.project.get_var_by_id(&var_id);
+                        if !variable.is_mutable {
+                            return Err(TypeError::AssignmentToImmutable { span: typed_target.span(), var_name: variable.name.clone(), defined_span: variable.defined_span.clone() });
+                        }
+
+                        let mut type_id = *typed_expr.type_id();
+                        if self.type_contains_generics(&type_id) {
+                            type_id = self.substitute_generics(&target_type_id, &type_id);
+                        }
+                        if !self.type_satisfies_other(&type_id, &target_type_id) {
+                            return Err(TypeError::TypeMismatch { span: typed_expr.span(), expected: vec![target_type_id], received: type_id });
+                        }
+
+                        AssignmentKind::Identifier(var_id)
+                    }
+                    _ => todo!()
+                };
+
+                let span = typed_target.span().expand(&typed_expr.span());
+                Ok(TypedNode::Assignment { span, kind, type_id: target_type_id })
+            }
             AstNode::Indexing(_, _) => todo!(),
             AstNode::Accessor(_, n) => {
                 if n.is_opt_safe { unimplemented!("Internal error: option-safe accessor") }

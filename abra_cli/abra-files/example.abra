@@ -2,20 +2,13 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-//func foo<T>(a: T[]): T[] = a
-//val x = foo(foo([1]))
+var a = [1, 2, 3]
+val x = a = []
+val _: Int = x
 
-//val x = a => "asdf"
+//val a = 123
+//a = 456
 
-[1, 2, 3].map((x, y = 12) => x)
-
-val arr = ["a", "bc", "def"]
-arr.forEach(s => {
-
-})
-
-//val sizes: Int[] = arr.map((s: Int) => println(s))
-//val sizes: Int[] = arr.map(s => println(s))
-
-//val sizes: Int[] = arr.map((s: Int) => 1.23)
-//val _: Int = sizes
+//func foo(bar: Int) {
+//  bar = 5
+//}

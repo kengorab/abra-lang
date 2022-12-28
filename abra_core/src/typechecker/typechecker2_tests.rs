@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -2391,6 +2391,38 @@ fn typecheck_failure_lambda() {
         span: Range { start: Position::new(1, 16), end: Position::new(1, 35) },
         expected: vec![expected_type_id],
         received: received_type_id,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_assignment() {
+    // Test assign to variable
+    let project = test_typecheck("var a = 12\na = 34").unwrap();
+    let node = &project.modules[1].code[1];
+    let expected = TypedNode::Assignment {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 6) },
+        kind: AssignmentKind::Identifier(VarId(ScopeId(ModuleId(1), 0), 0)),
+        type_id: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(&expected, node);
+}
+
+#[test]
+fn typecheck_failure_assignment() {
+    let (_, Either::Right(err)) = test_typecheck("val a = 12\na = 34").unwrap_err() else { unreachable!() };
+    let expected = TypeError::AssignmentToImmutable {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        var_name: "a".to_string(),
+        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("var a = 12\na = false").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 5), end: Position::new(2, 9) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
 }
