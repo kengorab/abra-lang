@@ -23,7 +23,7 @@ type Bool {
 }
 
 type String {
-  length: Int
+  length: Int readonly
 
   func isEmpty(self): Bool
   func toLower(self): String
@@ -42,7 +42,7 @@ type String {
 }
 
 type Array<T> {
-  length: Int
+  length: Int readonly
 
   func isEmpty(self): Bool
   func enumerate(self): (T, Int)[]
@@ -76,7 +76,7 @@ type Array<T> {
 }
 
 type Set<T> {
-  size: Int
+  size: Int readonly
 
   func isEmpty(self): Bool
   func enumerate(self): (T, Int)[]
@@ -93,7 +93,7 @@ type Set<T> {
 }
 
 type Map<K, V> {
-  size: Int
+  size: Int readonly
 
   func isEmpty(self): Bool
   func enumerate(self): (K, V)[]

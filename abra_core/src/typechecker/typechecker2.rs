@@ -138,6 +138,33 @@ impl Project {
         &mut scope.vars[*idx]
     }
 
+    pub fn get_struct_by_type_id(&self, type_id: &TypeId) -> Option<(&Struct, HashMap<TypeId, TypeId>)> {
+        let mut generic_substitutions = HashMap::new();
+        let ty = self.get_type_by_id(type_id);
+        let struct_ = match ty {
+            Type::GenericInstance(struct_id, generic_type_ids) => {
+                let struct_ = self.get_struct_by_id(struct_id);
+                generic_substitutions.extend(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
+                struct_
+            }
+            Type::Primitive(primitive_type) => {
+                let struct_id = match primitive_type {
+                    PrimitiveType::Any | PrimitiveType::Unit => return None,
+                    PrimitiveType::Int => &self.prelude_int_struct_id,
+                    PrimitiveType::Float => &self.prelude_float_struct_id,
+                    PrimitiveType::Bool => &self.prelude_bool_struct_id,
+                    PrimitiveType::String => &self.prelude_string_struct_id,
+                };
+                self.get_struct_by_id(struct_id)
+            }
+            Type::Struct(_) |
+            Type::Generic(_, _) |
+            Type::Function(_, _, _, _) => todo!()
+        };
+
+        Some((struct_, generic_substitutions))
+    }
+
     pub fn find_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
         let module = &self.modules[module_id.0];
         module.structs.iter()
@@ -359,6 +386,8 @@ pub struct Struct {
 pub struct StructField {
     pub name: String,
     pub type_id: TypeId,
+    pub defined_span: Range,
+    pub is_readonly: bool,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -417,6 +446,7 @@ pub struct Variable {
     pub defined_span: Option<Range>,
     pub is_captured: bool,
     pub alias: VariableAlias,
+    pub is_parameter: bool,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -475,7 +505,8 @@ pub enum AccessorKind {
 
 #[derive(Debug, PartialEq)]
 pub enum AssignmentKind {
-    Identifier(/* var_id: */ VarId),
+    Identifier { var_id: VarId },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize },
 }
 
 #[derive(Debug, PartialEq)]
@@ -618,6 +649,14 @@ pub enum DuplicateNameKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ImmutableAssignmentKind {
+    Parameter,
+    Variable,
+    Field(/* type_name: */ String),
+    Method(/* type_name: */ String),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
     IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
@@ -644,7 +683,7 @@ pub enum TypeError {
     UnknownMember { span: Range, field_name: String, type_id: TypeId },
     MissingRequiredArgumentLabels { span: Range },
     UnknownTypeForParameter { span: Range, param_name: String },
-    AssignmentToImmutable { span: Range, var_name: String, defined_span: Option<Range> },
+    AssignmentToImmutable { span: Range, var_name: String, defined_span: Option<Range>, kind: ImmutableAssignmentKind },
 }
 
 impl TypeError {
@@ -971,17 +1010,29 @@ impl TypeError {
                     param_name, cursor_line
                 )
             }
-            TypeError::AssignmentToImmutable { var_name, defined_span, .. } => {
-                let second_line = if let Some(span) = defined_span {
-                    let cursor_line = Self::get_underlined_line(&lines, span);
-                    format!("Variable is declared as immutable here:\n{}", cursor_line)
-                } else {
-                    format!("Variable is declared as immutable")
+            TypeError::AssignmentToImmutable { var_name, defined_span, kind, .. } => {
+                let kind_name = match kind {
+                    ImmutableAssignmentKind::Parameter => "parameter",
+                    ImmutableAssignmentKind::Variable => "variable",
+                    ImmutableAssignmentKind::Field(_) |
+                    ImmutableAssignmentKind::Method(_) => "field",
                 };
 
+                let second_line = match kind {
+                    ImmutableAssignmentKind::Parameter => "Function parameters are automatically declared as immutable".to_string(),
+                    ImmutableAssignmentKind::Variable => "Variable is declared as immutable. Use 'var' when declaring variable to allow it to be reassigned".to_string(),
+                    ImmutableAssignmentKind::Field(type_name) => format!("Field '{}' is marked readonly in type '{}'", var_name, type_name),
+                    ImmutableAssignmentKind::Method(type_name) => format!("Function '{}' is a method of type '{}'", var_name, type_name),
+                };
+                let second_line = format!(
+                    "{}{}",
+                    second_line,
+                    defined_span.as_ref().map(|span| format!("\n{}", Self::get_underlined_line(&lines, span))).unwrap_or("".to_string())
+                );
+
                 format!(
-                    "Cannot assign to variable '{}'\n{}\n{}",
-                    var_name, cursor_line,
+                    "Cannot assign to {} '{}'\n{}\n{}",
+                    kind_name, var_name, cursor_line,
                     second_line
                 )
             }
@@ -1320,7 +1371,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Range) -> Result<VarId, TypeError> {
+    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Range, is_parameter: bool) -> Result<VarId, TypeError> {
         let current_scope = self.current_scope_mut();
 
         for var in &current_scope.vars {
@@ -1330,7 +1381,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let id = VarId(current_scope.id, current_scope.vars.len());
-        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None };
+        let var = Variable { id, name, type_id, is_mutable, is_initialized, defined_span: Some(span.clone()), is_captured: false, alias: VariableAlias::None, is_parameter };
         current_scope.vars.push(var);
 
         Ok(id)
@@ -1342,7 +1393,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let span = ident.get_range();
 
         let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
-        let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span)?;
+        let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
         variable.alias = VariableAlias::Function(*func_id);
 
@@ -1426,7 +1477,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_module_mut().structs.push(struct_);
 
         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
-        let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span)?;
+        let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&struct_var_id);
         variable.alias = VariableAlias::Struct(struct_id);
 
@@ -1856,7 +1907,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
             let defined_span = defined_span.clone();
 
-            self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
+            self.add_variable_to_current_scope(name, type_id, false, true, &defined_span, true)?;
         }
 
         let mut body = vec![];
@@ -1937,7 +1988,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
         for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
             if default_value.is_some() { unimplemented!("Internal error: field default values") }
-            if readonly.is_some() { unimplemented!("Internal error: readonly") }
+            let is_readonly = readonly.is_some();
 
             let field_name = Token::get_ident_name(&ident);
             if let Some(orig_field) = seen_fields.get(&field_name) {
@@ -1949,6 +2000,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let field = StructField {
                 name: field_name,
                 type_id: field_type_id,
+                defined_span: ident.get_range(),
+                is_readonly,
             };
             self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
         }
@@ -2042,7 +2095,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Variable(var_token) => {
                 let var_name = Token::get_ident_name(&var_token);
 
-                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, &var_token.get_range())?;
+                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, &var_token.get_range(), false)?;
                 var_ids.push(var_id);
             }
             BindingPattern::Tuple(_, patterns) => {
@@ -2456,6 +2509,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let AssignmentNode { target, expr } = n;
 
                 let typed_target = self.typecheck_expression(*target, type_hint)?;
+                let target_span = typed_target.span();
                 let target_type_id = *typed_target.type_id();
                 let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
 
@@ -2463,23 +2517,46 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     TypedNode::Identifier { var_id, .. } => {
                         let variable = self.project.get_var_by_id(&var_id);
                         if !variable.is_mutable {
-                            return Err(TypeError::AssignmentToImmutable { span: typed_target.span(), var_name: variable.name.clone(), defined_span: variable.defined_span.clone() });
+                            let kind = if variable.is_parameter { ImmutableAssignmentKind::Parameter } else { ImmutableAssignmentKind::Variable };
+                            return Err(TypeError::AssignmentToImmutable { span: typed_target.span(), var_name: variable.name.clone(), defined_span: variable.defined_span.clone(), kind });
                         }
 
-                        let mut type_id = *typed_expr.type_id();
-                        if self.type_contains_generics(&type_id) {
-                            type_id = self.substitute_generics(&target_type_id, &type_id);
-                        }
-                        if !self.type_satisfies_other(&type_id, &target_type_id) {
-                            return Err(TypeError::TypeMismatch { span: typed_expr.span(), expected: vec![target_type_id], received: type_id });
-                        }
+                        AssignmentKind::Identifier { var_id }
+                    }
+                    TypedNode::Accessor { target, kind, member_idx, .. } => {
+                        let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
 
-                        AssignmentKind::Identifier(var_id)
+                        match kind {
+                            AccessorKind::Field => {
+                                let field = &struct_.fields[member_idx];
+                                if field.is_readonly {
+                                    let type_name = struct_.name.clone();
+                                    return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: field.name.clone(), defined_span: Some(field.defined_span.clone()), kind: ImmutableAssignmentKind::Field(type_name) });
+                                }
+                            }
+                            AccessorKind::Method => {
+                                let type_name = struct_.name.clone();
+                                let func_id = &struct_.methods[member_idx];
+                                let function = self.project.get_func_by_id(func_id);
+                                return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::Method(type_name) });
+                            }
+                            AccessorKind::StaticMethod => todo!()
+                        };
+
+                        AssignmentKind::Accessor { target, kind, member_idx }
                     }
                     _ => todo!()
                 };
 
-                let span = typed_target.span().expand(&typed_expr.span());
+                let mut type_id = *typed_expr.type_id();
+                if self.type_contains_generics(&type_id) {
+                    type_id = self.substitute_generics(&target_type_id, &type_id);
+                }
+                if !self.type_satisfies_other(&type_id, &target_type_id) {
+                    return Err(TypeError::TypeMismatch { span: typed_expr.span(), expected: vec![target_type_id], received: type_id });
+                }
+
+                let span = target_span.expand(&typed_expr.span());
                 Ok(TypedNode::Assignment { span, kind, type_id: target_type_id })
             }
             AstNode::Indexing(_, _) => todo!(),
@@ -2491,31 +2568,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_target = self.typecheck_expression(*n.target, None)?;
                 let target_type_id = typed_target.type_id();
-                let target_ty = self.project.get_type_by_id(target_type_id);
 
                 let mut field_data = None;
-                let mut generic_substitutions = HashMap::<TypeId, TypeId>::new();
-                let struct_ = match target_ty {
-                    Type::GenericInstance(struct_id, generic_type_ids) => {
-                        let struct_ = self.project.get_struct_by_id(struct_id);
-                        generic_substitutions.extend(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
-                        struct_
-                    }
-                    Type::Primitive(primitive_type) => {
-                        let struct_id = match primitive_type {
-                            PrimitiveType::Any | PrimitiveType::Unit => {
-                                return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
-                            }
-                            PrimitiveType::Int => &self.project.prelude_int_struct_id,
-                            PrimitiveType::Float => &self.project.prelude_float_struct_id,
-                            PrimitiveType::Bool => &self.project.prelude_bool_struct_id,
-                            PrimitiveType::String => &self.project.prelude_string_struct_id,
-                        };
-                        self.project.get_struct_by_id(struct_id)
-                    }
-                    Type::Struct(_) |
-                    Type::Generic(_, _) |
-                    Type::Function(_, _, _, _) => todo!()
+                let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
+                    return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
                 };
                 let fields = struct_.fields.clone();
                 let methods = struct_.methods.clone();
@@ -2836,7 +2892,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
                     let defined_span = defined_span.clone();
 
-                    self.add_variable_to_current_scope(name, type_id, false, true, &defined_span)?;
+                    self.add_variable_to_current_scope(name, type_id, false, true, &defined_span, true)?;
                 }
 
                 let mut body = vec![];

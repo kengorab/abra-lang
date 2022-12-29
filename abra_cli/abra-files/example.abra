@@ -2,13 +2,10 @@
 // func foo(a: Int, b: Bool, c = bar()): Int = -1
 // func bar(): Int = 123
 
-var a = [1, 2, 3]
-val x = a = []
-val _: Int = x
+//val p = Person(age: 30, name: "Ken")
+//p.name = "Not Ken"
+//p.foo = 12
+//val _: Int = p.age = 31
 
-//val a = 123
-//a = 456
-
-//func foo(bar: Int) {
-//  bar = 5
-//}
+// TODO: This should successfully output an error message (currently it panics)
+//[].length = 3
