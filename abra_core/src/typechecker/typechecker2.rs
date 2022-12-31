@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -524,6 +524,7 @@ pub enum TypedNode {
     NoneValue { token: Token, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
+    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
 
@@ -549,6 +550,7 @@ impl TypedNode {
             TypedNode::Accessor { type_id, .. } => type_id,
             TypedNode::Lambda { type_id, .. } => type_id,
             TypedNode::Assignment { type_id, .. } => type_id,
+            TypedNode::Indexing { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -592,6 +594,20 @@ impl TypedNode {
             TypedNode::Accessor { target, member_span, .. } => target.span().expand(member_span),
             TypedNode::Lambda { span, .. } => span.clone(),
             TypedNode::Assignment { span, .. } => span.clone(),
+            TypedNode::Indexing { target, index, .. } => {
+                let start = target.span();
+                match index {
+                    IndexingMode::Index(idx_node) => start.expand(&idx_node.span()),
+                    IndexingMode::Range(start_node, end_node) => {
+                        let end = end_node.as_ref().map(|n| n.span()).or_else(|| start_node.as_ref().map(|n| n.span()));
+                        if let Some(end) = end {
+                            start.expand(&end)
+                        } else {
+                            start
+                        }
+                    }
+                }
+            }
 
             // Statements
             TypedNode::BindingDeclaration { token, pattern, expr, .. } => {
@@ -657,6 +673,12 @@ pub enum ImmutableAssignmentKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum InvalidTupleIndexKind {
+    OutOfBounds(i64),
+    NonConstant,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
     IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
@@ -684,6 +706,9 @@ pub enum TypeError {
     MissingRequiredArgumentLabels { span: Range },
     UnknownTypeForParameter { span: Range, param_name: String },
     AssignmentToImmutable { span: Range, var_name: String, defined_span: Option<Range>, kind: ImmutableAssignmentKind },
+    InvalidIndexableType { span: Range, is_range: bool, type_id: TypeId },
+    InvalidIndexType { span: Range, required_type_id: TypeId, provided_type_id: TypeId },
+    InvalidTupleIndex { span: Range, kind: InvalidTupleIndexKind, type_id: TypeId },
 }
 
 impl TypeError {
@@ -734,7 +759,10 @@ impl TypeError {
             TypeError::UnknownMember { span, .. } |
             TypeError::MissingRequiredArgumentLabels { span } |
             TypeError::UnknownTypeForParameter { span, .. } |
-            TypeError::AssignmentToImmutable { span, .. } => span,
+            TypeError::AssignmentToImmutable { span, .. } |
+            TypeError::InvalidIndexableType { span, .. } |
+            TypeError::InvalidIndexType { span, .. } |
+            TypeError::InvalidTupleIndex { span, .. } => span,
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -1034,6 +1062,33 @@ impl TypeError {
                     "Cannot assign to {} '{}'\n{}\n{}",
                     kind_name, var_name, cursor_line,
                     second_line
+                )
+            }
+            TypeError::InvalidIndexableType { type_id, is_range, .. } => {
+                format!(
+                    "Unsupported indexing operation\n{}\n\
+                    Type '{}' is not indexable{}",
+                    cursor_line, project.type_repr(type_id),
+                    if *is_range { " as a range" } else { "" }
+                )
+            }
+            TypeError::InvalidIndexType { required_type_id, provided_type_id, .. } => {
+                format!(
+                    "Invalid type for index argument\n{}\n\
+                    Expected: {}\n\
+                    but instead saw: {}",
+                    cursor_line, project.type_repr(required_type_id), project.type_repr(provided_type_id),
+                )
+            }
+            TypeError::InvalidTupleIndex { kind, type_id, .. } => {
+                let message = match kind {
+                    InvalidTupleIndexKind::OutOfBounds(idx) => format!("No value at index {} for tuple of type '{}'", idx, project.type_repr(type_id)),
+                    InvalidTupleIndexKind::NonConstant => "Index values for tuples must be constant non-negative integers".to_string(),
+                };
+
+                format!(
+                    "Unsupported indexing into tuple\n{}\n{}",
+                    cursor_line, message
                 )
             }
         };
@@ -2559,7 +2614,89 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let span = target_span.expand(&typed_expr.span());
                 Ok(TypedNode::Assignment { span, kind, type_id: target_type_id })
             }
-            AstNode::Indexing(_, _) => todo!(),
+            AstNode::Indexing(_, n) => {
+                let IndexingNode { target, index } = n;
+
+                let typed_target = self.typecheck_expression(*target, None)?;
+                let target_type_id = *typed_target.type_id();
+                let target_span = typed_target.span();
+                let target_ty = self.project.get_type_by_id(&target_type_id);
+
+                // Handle tuples separately, since they have a special Literal requirement
+                if let Type::GenericInstance(struct_id, generic_ids) = &target_ty {
+                    if struct_id == &self.project.prelude_tuple_struct_id {
+                        let tuple_items = generic_ids.clone();
+
+                        let IndexingMode::Index(idx_node) = index else {
+                            return Err(TypeError::InvalidIndexableType { span: target_span, is_range: true, type_id: target_type_id });
+                        };
+                        let typed_idx_node = self.typecheck_expression(*idx_node, Some(PRELUDE_INT_TYPE_ID))?;
+                        let TypedNode::Literal { value: TypedLiteral::Int(idx), .. } = typed_idx_node else {
+                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node.span(), kind: InvalidTupleIndexKind::NonConstant, type_id: target_type_id });
+                        };
+                        let Some(type_id) = tuple_items.get(idx as usize) else {
+                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node.span(), kind: InvalidTupleIndexKind::OutOfBounds(idx), type_id: target_type_id });
+                        };
+
+                        return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id });
+                    }
+                }
+
+                let (required_index_type_id, result_type_id) = match (&index, target_ty) {
+                    (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_array_struct_id => {
+                        let opt = self.add_or_find_type_id(self.project.option_type(generic_ids[0]));
+                        (PRELUDE_INT_TYPE_ID, opt)
+                    }
+                    (IndexingMode::Range(_, _), Type::GenericInstance(struct_id, _)) if struct_id == &self.project.prelude_array_struct_id => (PRELUDE_INT_TYPE_ID, target_type_id),
+                    (IndexingMode::Index(_), Type::Primitive(PrimitiveType::String)) |
+                    (IndexingMode::Range(_, _), Type::Primitive(PrimitiveType::String)) => (PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID),
+                    (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
+                    (index, _) => {
+                        let is_range = matches!(&index, IndexingMode::Range(_, _));
+                        return Err(TypeError::InvalidIndexableType { span: target_span, is_range, type_id: target_type_id });
+                    }
+                };
+
+                let typed_index = match index {
+                    IndexingMode::Index(idx_node) => {
+                        let typed_idx_node = self.typecheck_expression(*idx_node, Some(required_index_type_id))?;
+                        let mut type_id = *typed_idx_node.type_id();
+
+                        if self.type_contains_generics(&type_id) {
+                            type_id = self.substitute_generics(&required_index_type_id, &type_id);
+                        }
+                        if !self.type_satisfies_other(&type_id, &required_index_type_id) {
+                            return Err(TypeError::TypeMismatch { span: typed_idx_node.span(), expected: vec![required_index_type_id], received: type_id });
+                        };
+
+                        IndexingMode::Index(Box::new(typed_idx_node))
+                    }
+                    IndexingMode::Range(range_start_node, range_end_node) => {
+                        let mut typed_nodes = Vec::with_capacity(2);
+                        for node in [range_start_node, range_end_node] {
+                            if let Some(node) = node {
+                                let typed_node = self.typecheck_expression(*node, Some(PRELUDE_INT_TYPE_ID))?;
+                                let mut type_id = *typed_node.type_id();
+                                if self.type_contains_generics(&type_id) {
+                                    type_id = self.substitute_generics(&required_index_type_id, &type_id);
+                                }
+                                if !self.type_satisfies_other(&type_id, &required_index_type_id) {
+                                    return Err(TypeError::TypeMismatch { span: typed_node.span(), expected: vec![required_index_type_id], received: type_id });
+                                };
+                                typed_nodes.push(Some(Box::new(typed_node)));
+                            } else {
+                                typed_nodes.push(None);
+                            }
+                        }
+                        let typed_end_node = typed_nodes.pop().unwrap();
+                        let typed_start_node = typed_nodes.pop().unwrap();
+
+                        IndexingMode::Range(typed_start_node, typed_end_node)
+                    }
+                };
+
+                Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id })
+            }
             AstNode::Accessor(_, n) => {
                 if n.is_opt_safe { unimplemented!("Internal error: option-safe accessor") }
 

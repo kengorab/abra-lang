@@ -9,3 +9,9 @@
 
 // TODO: This should successfully output an error message (currently it panics)
 //[].length = 3
+
+//val _: Float = (0, "1", true)[3]
+
+val a = 4
+
+"1, 2, 3"[a:3]

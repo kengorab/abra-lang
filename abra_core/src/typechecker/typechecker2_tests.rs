@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -2411,6 +2411,140 @@ fn typecheck_failure_lambda() {
         span: Range { start: Position::new(1, 16), end: Position::new(1, 35) },
         expected: vec![expected_type_id],
         received: received_type_id,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_indexing() {
+    // Arrays
+    let project = test_typecheck("[1, 2, 3][0]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("[1, 2, 3][0:1]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
+
+    let project = test_typecheck("val a = 2\n[1, 2, 3, 4][a:]").unwrap();
+    let type_id = *project.modules[1].code[1].type_id();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
+    let project = test_typecheck("val a = 2\n[1, 2, 3, 4][:a]").unwrap();
+    let type_id = *project.modules[1].code[1].type_id();
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
+
+    // Strings
+    let project = test_typecheck("\"asdf\"[0]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_STRING_TYPE_ID, type_id);
+    let project = test_typecheck("\"asdf\"[1:2]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_STRING_TYPE_ID, type_id);
+    let project = test_typecheck("\"asdf\"[:2]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_STRING_TYPE_ID, type_id);
+    let project = test_typecheck("\"asdf\"[1:]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_STRING_TYPE_ID, type_id);
+
+    // Tuples
+    let project = test_typecheck("(0, \"a\", true)[0]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_INT_TYPE_ID, type_id);
+    let project = test_typecheck("(0, \"a\", true)[1]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_STRING_TYPE_ID, type_id);
+    let project = test_typecheck("(0, \"a\", true)[2]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_BOOL_TYPE_ID, type_id);
+
+    // Maps
+    let project = test_typecheck("{ a: 1, b: 2 }[\"a\"]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_INT_TYPE_ID, type_id);
+    let project = test_typecheck("{ ((1, 2)): true, ((2, 3)): false }[(1, 2)]").unwrap();
+    let type_id = *project.modules[1].code[0].type_id();
+    assert_eq!(PRELUDE_BOOL_TYPE_ID, type_id);
+}
+
+#[test]
+fn typechecking_failure_indexing() {
+    let (project, Either::Right(err)) = test_typecheck("#{1, 2}[4]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidIndexableType {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        is_range: false,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("#{1, 2}[1:4]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidIndexableType {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        is_range: true,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("[1, 2][\"a\"]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 8), end: Position::new(1, 10) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("[1, 2][1:\"a\"]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 10), end: Position::new(1, 12) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\"asdf\"[\"a\"]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 8), end: Position::new(1, 10) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("(1, 2)[-1]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTupleIndex {
+        span: Range { start: Position::new(1, 8), end: Position::new(1, 9) },
+        kind: InvalidTupleIndexKind::NonConstant,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("(1, 2)[3]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidTupleIndex {
+        span: Range { start: Position::new(1, 8), end: Position::new(1, 8) },
+        kind: InvalidTupleIndexKind::OutOfBounds(3),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("(1, 2)[1:3]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidIndexableType {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
+        is_range: true,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("{ a: 1 }[1]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 10), end: Position::new(1, 10) },
+        expected: vec![PRELUDE_STRING_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("{ a: 1 }[1:2]").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidIndexableType {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        is_range: true,
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.map_type(PRELUDE_STRING_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }
