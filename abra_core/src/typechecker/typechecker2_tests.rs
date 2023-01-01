@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -2465,10 +2465,12 @@ fn typecheck_indexing() {
     // Maps
     let project = test_typecheck("{ a: 1, b: 2 }[\"a\"]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    assert_eq!(PRELUDE_INT_TYPE_ID, type_id);
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
     let project = test_typecheck("{ ((1, 2)): true, ((2, 3)): false }[(1, 2)]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();
-    assert_eq!(PRELUDE_BOOL_TYPE_ID, type_id);
+    let expected = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap();
+    assert_eq!(expected, type_id);
 }
 
 #[test]
@@ -2591,14 +2593,35 @@ fn typecheck_assignment() {
       type A<T> { x: T }\n\
       type B<T> { a: A<T> }\n\
       val b = B(a: A(x: 12))\n\
-      b.a.x = 16\
+      val _: Int = b.a.x = 16\
     ");
+    if result.is_err() { dbg!(&result.as_ref().unwrap_err().1); }
+    assert!(result.is_ok());
+
+    // Test indexing assignment
+    let result = test_typecheck("\
+      val arr = [1, 2, 3]\n\
+      val _: Int = arr[3] = 5\
+    ");
+    if result.is_err() { dbg!(&result.as_ref().unwrap_err().1); }
+    assert!(result.is_ok());
+    let result = test_typecheck("\
+      val map = { a: 1, b: 2 }\n\
+      val _: Int = map[\"a\"] = 5\
+    ");
+    if result.is_err() { dbg!(&result.as_ref().unwrap_err().1); }
+    assert!(result.is_ok());
+    let result = test_typecheck("[1, 2, 3][0] = None");
+    if result.is_err() { dbg!(&result.as_ref().unwrap_err().1); }
+    assert!(result.is_ok());
+    let result = test_typecheck("{ a: 1, b: 2 }[\"a\"] = None");
     if result.is_err() { dbg!(&result.as_ref().unwrap_err().1); }
     assert!(result.is_ok());
 }
 
 #[test]
 fn typecheck_failure_assignment() {
+    // Mutability
     let (_, Either::Right(err)) = test_typecheck("val a = 12\na = 34").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
@@ -2653,6 +2676,7 @@ fn typecheck_failure_assignment() {
     };
     assert_eq!(expected, err);
 
+    // Mismatches in assignment type
     let (_, Either::Right(err)) = test_typecheck("var a = 12\na = false").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
         span: Range { start: Position::new(2, 5), end: Position::new(2, 9) },
@@ -2669,6 +2693,60 @@ fn typecheck_failure_assignment() {
         span: Range { start: Position::new(3, 9), end: Position::new(3, 12) },
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("\
+      val arr = [1, 2, 3]\n\
+      arr[4] = true\
+    ").unwrap_err() else { unreachable!() };
+    let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 10), end: Position::new(2, 13) },
+        expected: vec![expected_type_id],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("\
+      val map = { a: 1, b: 2 }\n\
+      map[\"a\"] = true\
+    ").unwrap_err() else { unreachable!() };
+    let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(2, 12), end: Position::new(2, 15) },
+        expected: vec![expected_type_id],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Invalid assignment targets
+    let (_, Either::Right(err)) = test_typecheck("(0, 1)[0] = 1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidAssignmentTarget {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 8) },
+        kind: InvalidAssignmentTargetKind::IndexingTuple,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\"asdf\"[0] = \"A\"").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidAssignmentTarget {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 8) },
+        kind: InvalidAssignmentTargetKind::IndexingString,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\"asdf\"[0:3] = \"A\"").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidAssignmentTarget {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 10) },
+        kind: InvalidAssignmentTargetKind::IndexingRange,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("[1, 2, 3][0:3] = 1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidAssignmentTarget {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 13) },
+        kind: InvalidAssignmentTargetKind::IndexingRange,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("1 + 2 = 3").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidAssignmentTarget {
+        span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
+        kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget,
     };
     assert_eq!(expected, err);
 }

@@ -507,6 +507,7 @@ pub enum AccessorKind {
 pub enum AssignmentKind {
     Identifier { var_id: VarId },
     Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize },
+    Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode> },
 }
 
 #[derive(Debug, PartialEq)]
@@ -679,6 +680,14 @@ pub enum InvalidTupleIndexKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum InvalidAssignmentTargetKind {
+    IndexingRange,
+    IndexingString,
+    IndexingTuple,
+    UnsupportedAssignmentTarget,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
     IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
@@ -709,6 +718,7 @@ pub enum TypeError {
     InvalidIndexableType { span: Range, is_range: bool, type_id: TypeId },
     InvalidIndexType { span: Range, required_type_id: TypeId, provided_type_id: TypeId },
     InvalidTupleIndex { span: Range, kind: InvalidTupleIndexKind, type_id: TypeId },
+    InvalidAssignmentTarget { span: Range, kind: InvalidAssignmentTargetKind },
 }
 
 impl TypeError {
@@ -762,7 +772,8 @@ impl TypeError {
             TypeError::AssignmentToImmutable { span, .. } |
             TypeError::InvalidIndexableType { span, .. } |
             TypeError::InvalidIndexType { span, .. } |
-            TypeError::InvalidTupleIndex { span, .. } => span,
+            TypeError::InvalidTupleIndex { span, .. } |
+            TypeError::InvalidAssignmentTarget { span, .. } => span,
         };
         let lines: Vec<&str> = source.split("\n").collect();
         let cursor_line = Self::get_underlined_line(&lines, span);
@@ -1088,6 +1099,19 @@ impl TypeError {
 
                 format!(
                     "Unsupported indexing into tuple\n{}\n{}",
+                    cursor_line, message
+                )
+            }
+            TypeError::InvalidAssignmentTarget { kind, .. } => {
+                let message = match kind {
+                    InvalidAssignmentTargetKind::IndexingRange => "Left-hand side of assignment cannot be a range",
+                    InvalidAssignmentTargetKind::IndexingString => "Strings are immutable and cannot be updated with index operations",
+                    InvalidAssignmentTargetKind::IndexingTuple => "Tuples are immutable and their values cannot be reassigned",
+                    InvalidAssignmentTargetKind::UnsupportedAssignmentTarget => "Unsupported expression for left-hand side of assignment",
+                };
+
+                format!(
+                    "Cannot perform assignment\n{}\n{}",
                     cursor_line, message
                 )
             }
@@ -2600,7 +2624,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                         AssignmentKind::Accessor { target, kind, member_idx }
                     }
-                    _ => todo!()
+                    TypedNode::Indexing { target, index: IndexingMode::Index(index), .. } => {
+                        let index_target_type_id = target.type_id();
+                        if let Type::GenericInstance(struct_id, _) = self.project.get_type_by_id(index_target_type_id) {
+                            if struct_id == &self.project.prelude_tuple_struct_id {
+                                return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingTuple });
+                            }
+                        }
+                        if index_target_type_id == &PRELUDE_STRING_TYPE_ID {
+                            return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingString });
+                        }
+
+                        AssignmentKind::Indexing { target, index: IndexingMode::Index(index) }
+                    }
+                    TypedNode::Indexing { index: IndexingMode::Range(_, _), .. } => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::IndexingRange }),
+                    _ => return Err(TypeError::InvalidAssignmentTarget { span: target_span, kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget })
                 };
 
                 let mut type_id = *typed_expr.type_id();
@@ -2612,7 +2650,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 let span = target_span.expand(&typed_expr.span());
-                Ok(TypedNode::Assignment { span, kind, type_id: target_type_id })
+                Ok(TypedNode::Assignment { span, kind, type_id })
             }
             AstNode::Indexing(_, n) => {
                 let IndexingNode { target, index } = n;
@@ -2650,7 +2688,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     (IndexingMode::Range(_, _), Type::GenericInstance(struct_id, _)) if struct_id == &self.project.prelude_array_struct_id => (PRELUDE_INT_TYPE_ID, target_type_id),
                     (IndexingMode::Index(_), Type::Primitive(PrimitiveType::String)) |
                     (IndexingMode::Range(_, _), Type::Primitive(PrimitiveType::String)) => (PRELUDE_INT_TYPE_ID, PRELUDE_STRING_TYPE_ID),
-                    (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
+                    (IndexingMode::Index(_), Type::GenericInstance(struct_id, generic_ids)) if struct_id == &self.project.prelude_map_struct_id => {
+                        let key_type_id = generic_ids[0];
+                        let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1]));
+                        (key_type_id, val_type_id)
+                    },
                     (index, _) => {
                         let is_range = matches!(&index, IndexingMode::Range(_, _));
                         return Err(TypeError::InvalidIndexableType { span: target_span, is_range, type_id: target_type_id });
