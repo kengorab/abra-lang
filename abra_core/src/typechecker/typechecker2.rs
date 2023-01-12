@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -528,6 +528,7 @@ pub enum TypedNode {
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
+    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Option<Vec<TypedNode>>, is_statement: bool, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -552,6 +553,7 @@ impl TypedNode {
             TypedNode::Lambda { type_id, .. } => type_id,
             TypedNode::Assignment { type_id, .. } => type_id,
             TypedNode::Indexing { type_id, .. } => type_id,
+            TypedNode::If { type_id, ..}=>type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -607,6 +609,18 @@ impl TypedNode {
                             start
                         }
                     }
+                }
+            }
+            TypedNode::If { if_token, condition, condition_binding, if_block, else_block, ..}=> {
+                let start = if_token.get_range();
+                if let Some(end) = else_block.as_ref().and_then(|nodes| nodes.last()).map(|n| n.span()) {
+                    start.expand(&end)
+                } else if let Some(end) = if_block.last().map(|n| n.span()) {
+                    start.expand(&end)
+                } else if let Some(binding) = condition_binding {
+                    start.expand(&binding.get_span())
+                } else {
+                    start.expand(&condition.span())
                 }
             }
 
@@ -2154,7 +2168,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
             }
-            AstNode::IfStatement(_, _) |
+            AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, type_hint),
             AstNode::ForLoop(_, _) |
             AstNode::WhileLoop(_, _) |
             AstNode::Break(_) |
@@ -2167,6 +2181,51 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             AstNode::ImportStatement(_, _) => unreachable!("Internal error: imports should have been handled before typechecking the body"),
             n => self.typecheck_expression(n, type_hint)
         }
+    }
+
+    fn typecheck_if_node(&mut self, token: Token, if_node: IfNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
+        let is_statement = if let Some(type_hint) = &type_hint { *type_hint == PRELUDE_UNIT_TYPE_ID } else { true };
+
+        let IfNode { condition, condition_binding, if_block, else_block } = if_node;
+
+        let typed_condition = self.typecheck_expression(*condition, None)?;
+        let condition_type_id = typed_condition.type_id();
+        if !self.type_satisfies_other(condition_type_id, &PRELUDE_BOOL_TYPE_ID) {
+            return Err(TypeError::TypeMismatch { span: typed_condition.span(), expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
+        }
+
+        self.begin_child_scope("if_block");
+        if let Some(condition_binding) = &condition_binding {
+            self.typecheck_binding_pattern(false, true, condition_binding, condition_type_id, &mut vec![])?;
+        }
+        let mut typed_if_block = Vec::with_capacity(if_block.len());
+        for node in if_block {
+            let typed_node = self.typecheck_statement(node, type_hint)?;
+            typed_if_block.push(typed_node);
+        }
+        self.end_child_scope();
+
+        let mut typed_else_block = None;
+        if let Some(else_block) = else_block {
+            self.begin_child_scope("else_block");
+            let mut nodes = Vec::with_capacity(else_block.len());
+            for node in else_block {
+                let typed_node = self.typecheck_statement(node, type_hint)?;
+                nodes.push(typed_node);
+            }
+            typed_else_block = Some(nodes);
+            self.end_child_scope();
+        }
+
+        Ok(TypedNode::If{
+            if_token: token,
+            condition: Box::new(typed_condition),
+            condition_binding,
+            if_block: typed_if_block,
+            else_block: typed_else_block,
+            is_statement,
+            type_id: PRELUDE_UNIT_TYPE_ID,
+        })
     }
 
     fn typecheck_binding_pattern(&mut self, is_mutable: bool, is_initialized: bool, pattern: &BindingPattern, type_id: &TypeId, var_ids: &mut Vec<VarId>) -> Result<(), TypeError> {
@@ -2692,7 +2751,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let key_type_id = generic_ids[0];
                         let val_type_id = self.add_or_find_type_id(self.project.option_type(generic_ids[1]));
                         (key_type_id, val_type_id)
-                    },
+                    }
                     (index, _) => {
                         let is_range = matches!(&index, IndexingMode::Range(_, _));
                         return Err(TypeError::InvalidIndexableType { span: target_span, is_range, type_id: target_type_id });
@@ -3038,7 +3097,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
             }
-            AstNode::IfExpression(_, _) |
+            AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, type_hint),
             AstNode::MatchExpression(_, _) => todo!(),
             AstNode::Lambda(token, n) => {
                 let mut arg_hints = None;

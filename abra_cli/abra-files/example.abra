@@ -4,3 +4,10 @@
 
 // TODO: This should successfully output an error message (currently it panics)
 //[].length = 3
+
+val y = 1
+
+if true {
+  var y = 3
+  y = y + 4
+}

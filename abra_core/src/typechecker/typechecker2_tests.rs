@@ -2750,3 +2750,105 @@ fn typecheck_failure_assignment() {
     };
     assert_eq!(expected, err);
 }
+
+#[test]
+fn typecheck_if_statement() {
+    let project = test_typecheck("if true { 1 }").unwrap();
+    let node = &project.modules[1].code[0];
+    let expected = TypedNode::If {
+        if_token: Token::If(Position::new(1, 1)),
+        condition: Box::new(TypedNode::Literal {
+            token: Token::Bool(Position::new(1, 4), true),
+            value: TypedLiteral::Bool(true),
+            type_id: PRELUDE_BOOL_TYPE_ID,
+        }),
+        condition_binding: None,
+        if_block: vec![
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
+        ],
+        else_block: None,
+        is_statement: true,
+        type_id: PRELUDE_UNIT_TYPE_ID,
+    };
+    assert_eq!(&expected, node);
+
+    let project = test_typecheck("if true |v| { v }").unwrap();
+    let node = &project.modules[1].code[0];
+    let expected = TypedNode::If {
+        if_token: Token::If(Position::new(1, 1)),
+        condition: Box::new(TypedNode::Literal {
+            token: Token::Bool(Position::new(1, 4), true),
+            value: TypedLiteral::Bool(true),
+            type_id: PRELUDE_BOOL_TYPE_ID,
+        }),
+        condition_binding: Some(BindingPattern::Variable(Token::Ident(Position::new(1, 10), "v".to_string()))),
+        if_block: vec![
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(1, 15), "v".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 1), 0),
+                type_arg_ids: vec![],
+                type_id: PRELUDE_BOOL_TYPE_ID,
+            }
+        ],
+        else_block: None,
+        is_statement: true,
+        type_id: PRELUDE_UNIT_TYPE_ID,
+    };
+    assert_eq!(&expected, node);
+
+    let project = test_typecheck("if true { 1 } else { 2 }").unwrap();
+    let node = &project.modules[1].code[0];
+    let expected = TypedNode::If {
+        if_token: Token::If(Position::new(1, 1)),
+        condition: Box::new(TypedNode::Literal {
+            token: Token::Bool(Position::new(1, 4), true),
+            value: TypedLiteral::Bool(true),
+            type_id: PRELUDE_BOOL_TYPE_ID,
+        }),
+        condition_binding: None,
+        if_block: vec![
+            TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
+        ],
+        else_block: Some(vec![
+            TypedNode::Literal { token: Token::Int(Position::new(1, 22), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID }
+        ]),
+        is_statement: true,
+        type_id: PRELUDE_UNIT_TYPE_ID,
+    };
+    assert_eq!(&expected, node);
+
+    let project = test_typecheck("func f() = if true 1 else 2").unwrap();
+    let node = &project.modules[1].scopes[0].funcs[0].body[0];
+    assert!(matches!(node, TypedNode::If { is_statement: true, .. }));
+
+    let project = test_typecheck("if true { if true { 1 } else { 2 } }").unwrap();
+    let node = &project.modules[1].code[0];
+    assert!(matches!(node, TypedNode::If { is_statement: true, .. }));
+    let TypedNode::If { if_block, .. } = node else { unreachable!() };
+    assert!(matches!(if_block[0], TypedNode::If { is_statement: true, .. }));
+}
+
+#[test]
+fn typecheck_failure_if_statement() {
+    let (_, Either::Right(err)) = test_typecheck("if 123 { }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 4), end: Position::new(1, 6) },
+        expected: vec![PRELUDE_BOOL_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Verify variables in block scopes don't leak to outside
+    let (_, Either::Right(err)) = test_typecheck("if true { val a = 1 }\na + 1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownIdentifier {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        token: Token::Ident(Position::new(2, 1), "a".to_string()),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("if true { } else { val a = 1 }\na + 1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownIdentifier {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        token: Token::Ident(Position::new(2, 1), "a".to_string()),
+    };
+    assert_eq!(expected, err);
+}
