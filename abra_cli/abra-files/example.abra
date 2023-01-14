@@ -5,23 +5,5 @@
 // TODO: This should successfully output an error message (currently it panics)
 //[].length = 3
 
-//val _: Int? = if true { [][0] }
-//val _ = if true {  }
-
-//val x = if true { 123 } else [1, 2][0]
-//val y = if true { [1, 2][0] } else 123
-
-//val x: Bool = if true { 1 } else { }
-//val x: Int = if true { } else { 1 }
-
-val x = if true {
-  12
-} else {
-  None
-}
-//else {
-//  12
-//}
-val _: Int? = x
-
-//if true 1 else 2
+var a = "1"
+a += 2

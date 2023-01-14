@@ -471,6 +471,47 @@ fn typecheck_binary() {
 }
 
 #[test]
+fn typecheck_binary_assignment() {
+    let cases = [
+        // +=
+        ("var a = 1\na += 2", PRELUDE_INT_TYPE_ID),
+        ("var a = 1.0\na += 2", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = 1.0\na += 2.0", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = \"abc\"\na += 2", PRELUDE_STRING_TYPE_ID),
+        // -=
+        ("var a = 1\na -= 2", PRELUDE_INT_TYPE_ID),
+        ("var a = 1.0\na -= 2", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = 1.0\na -= 2.0", PRELUDE_FLOAT_TYPE_ID),
+        // *=
+        ("var a = 1\na *= 2", PRELUDE_INT_TYPE_ID),
+        ("var a = 1.0\na *= 2", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = 1.0\na *= 2.0", PRELUDE_FLOAT_TYPE_ID),
+        // %=
+        ("var a = 1\na %= 2", PRELUDE_INT_TYPE_ID),
+        ("var a = 1.0\na %= 2", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = 1.0\na %= 2.0", PRELUDE_FLOAT_TYPE_ID),
+        // /=
+        ("var a = 1.0\na /= 2", PRELUDE_FLOAT_TYPE_ID),
+        ("var a = 1.0\na /= 2.0", PRELUDE_FLOAT_TYPE_ID),
+        // ?:=
+        ("var a: Int? = None\na ?:= 123", PRELUDE_INT_TYPE_ID),
+        // &&=
+        ("var a = true\na &&= false", PRELUDE_BOOL_TYPE_ID),
+        // ||=
+        ("var a = true\na ||= false", PRELUDE_BOOL_TYPE_ID),
+    ];
+
+    for (input, expected) in cases {
+        let project = test_typecheck(input).unwrap();
+        assert_eq!(
+            expected,
+            *project.modules[1].code.last().unwrap().type_id(),
+            "Expected `{}` to be of type {}", input, project.type_repr(&expected),
+        );
+    }
+}
+
+#[test]
 fn typecheck_array() {
     let project = test_typecheck("[1, 2, 3]").unwrap();
     let type_id = *project.modules[1].code[0].type_id();

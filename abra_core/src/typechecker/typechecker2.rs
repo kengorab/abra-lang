@@ -2276,7 +2276,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             } else {
                                 let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                 Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
-                            }
+                            };
                         };
                         Some(unified_type_id)
                     } else {
@@ -2411,8 +2411,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     _ => Ok(TypedNode::Unary { token, op, expr: Box::new(typed_expr) })
                 }
             }
-            AstNode::Binary(_, n) => {
+            AstNode::Binary(token, n) => {
                 let BinaryNode { op, left, right } = n;
+
+                let typecheck_transformed_expr = |left: Box<AstNode>, op: BinaryOp, right: Box<AstNode>| {
+                    let transformed_node = AstNode::Assignment(
+                        Token::Assign(token.get_position()),
+                        AssignmentNode { target: left.clone(), expr: Box::new(AstNode::Binary(token, BinaryNode { right, op, left })) },
+                    );
+                    self.typecheck_expression(transformed_node, type_hint)
+                };
+                match &op {
+                    BinaryOp::AddEq => return typecheck_transformed_expr(left, BinaryOp::Add, right),
+                    BinaryOp::SubEq => return typecheck_transformed_expr(left, BinaryOp::Sub, right),
+                    BinaryOp::MulEq => return typecheck_transformed_expr(left, BinaryOp::Mul, right),
+                    BinaryOp::DivEq => return typecheck_transformed_expr(left, BinaryOp::Div, right),
+                    BinaryOp::ModEq => return typecheck_transformed_expr(left, BinaryOp::Mod, right),
+                    BinaryOp::AndEq => return typecheck_transformed_expr(left, BinaryOp::And, right),
+                    BinaryOp::OrEq => return typecheck_transformed_expr(left, BinaryOp::Or, right),
+                    BinaryOp::CoalesceEq => return typecheck_transformed_expr(left, BinaryOp::Coalesce, right),
+                    _ => { /* other non-assignment cases handled down below */ }
+                };
+
                 let typed_left = self.typecheck_expression(*left, None)?;
                 let typed_right = self.typecheck_expression(*right, None)?;
                 let l_type_id = typed_left.type_id();
@@ -2478,15 +2498,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
 
-                    // Assignment operators
-                    BinaryOp::AddEq |
-                    BinaryOp::SubEq |
-                    BinaryOp::MulEq |
-                    BinaryOp::DivEq |
-                    BinaryOp::ModEq |
-                    BinaryOp::AndEq |
-                    BinaryOp::OrEq |
-                    BinaryOp::CoalesceEq => todo!()
+                    // Assignment operators handled above
+                    BinaryOp::AddEq | BinaryOp::SubEq | BinaryOp::MulEq | BinaryOp::DivEq | BinaryOp::ModEq | BinaryOp::AndEq | BinaryOp::OrEq | BinaryOp::CoalesceEq => unreachable!()
                 };
 
                 Ok(TypedNode::Binary { op, left: Box::new(typed_left), right: Box::new(typed_right), type_id })
