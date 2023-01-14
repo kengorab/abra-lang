@@ -2766,7 +2766,7 @@ fn typecheck_if_statement() {
         if_block: vec![
             TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
         ],
-        else_block: None,
+        else_block: vec![],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
@@ -2790,7 +2790,7 @@ fn typecheck_if_statement() {
                 type_id: PRELUDE_BOOL_TYPE_ID,
             }
         ],
-        else_block: None,
+        else_block: vec![],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
@@ -2809,9 +2809,9 @@ fn typecheck_if_statement() {
         if_block: vec![
             TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
         ],
-        else_block: Some(vec![
+        else_block: vec![
             TypedNode::Literal { token: Token::Int(Position::new(1, 22), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID }
-        ]),
+        ],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
     };
@@ -2849,6 +2849,77 @@ fn typecheck_failure_if_statement() {
     let expected = TypeError::UnknownIdentifier {
         span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
         token: Token::Ident(Position::new(2, 1), "a".to_string()),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_if_expression() {
+    let project = test_typecheck("val x = if true { 1 }").unwrap();
+    let node = &project.modules[1].code[0];
+    let TypedNode::BindingDeclaration { expr, .. } = node.clone() else { panic!() };
+    assert!(matches!(**expr.as_ref().unwrap(), TypedNode::If { is_statement: false, .. }));
+    let var_x = &project.modules[1].scopes[0].vars[0];
+    assert_eq!("x", var_x.name);
+    let option_int_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
+    assert_eq!(option_int_type_id, var_x.type_id);
+
+    assert!(test_typecheck("val x = if true { } else { 1 }\nval _: Int? = x").is_ok());
+    assert!(test_typecheck("val x = if true { 1 } else { }\nval _: Int? = x").is_ok());
+
+    assert!(test_typecheck("val x = if true { [1, 2][0] } else { 1 }\nval _: Int? = x").is_ok());
+    assert!(test_typecheck("val x = if true { 1 } else { [1, 2][0] }\nval _: Int? = x").is_ok());
+}
+
+#[test]
+fn typecheck_failure_if_expression() {
+    let (project, Either::Right(err)) = test_typecheck("val _ = if true { }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 15) },
+        type_id: project.prelude_none_type_id,
+        purpose: "assignment",
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("val _ = if true { [][0] }").unwrap_err() else { unreachable!() };
+    let array_t_type_id = project.get_struct_by_id(&project.prelude_array_struct_id).generic_ids[0];
+    let option_t_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(array_t_type_id)).unwrap();
+    let expected = TypeError::ForbiddenAssignment {
+        span: Range { start: Position::new(1, 9), end: Position::new(1, 22) },
+        type_id: option_t_type_id,
+        purpose: "assignment",
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val _: Bool = if true { 1 }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 25), end: Position::new(1, 25) },
+        expected: vec![PRELUDE_BOOL_TYPE_ID],
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("val _: Int = if true { 1 }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 14), end: Position::new(1, 24) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("val _ = if true { 1 } else { true }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::BranchTypeMismatch {
+        span: Range { start: Position::new(1, 30), end: Position::new(1, 33) },
+        orig_span: Range { start: Position::new(1, 19), end: Position::new(1, 19) },
+        expected: PRELUDE_INT_TYPE_ID,
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("val _: Int? = if true { } else { true }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Range { start: Position::new(1, 34), end: Position::new(1, 37) },
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

@@ -528,7 +528,7 @@ pub enum TypedNode {
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
-    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Option<Vec<TypedNode>>, is_statement: bool, type_id: TypeId },
+    If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -553,7 +553,7 @@ impl TypedNode {
             TypedNode::Lambda { type_id, .. } => type_id,
             TypedNode::Assignment { type_id, .. } => type_id,
             TypedNode::Indexing { type_id, .. } => type_id,
-            TypedNode::If { type_id, ..}=>type_id,
+            TypedNode::If { type_id, .. } => type_id,
 
             // Statements
             TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
@@ -611,9 +611,9 @@ impl TypedNode {
                     }
                 }
             }
-            TypedNode::If { if_token, condition, condition_binding, if_block, else_block, ..}=> {
+            TypedNode::If { if_token, condition, condition_binding, if_block, else_block, .. } => {
                 let start = if_token.get_range();
-                if let Some(end) = else_block.as_ref().and_then(|nodes| nodes.last()).map(|n| n.span()) {
+                if let Some(end) = else_block.last().map(|n| n.span()) {
                     start.expand(&end)
                 } else if let Some(end) = if_block.last().map(|n| n.span()) {
                     start.expand(&end)
@@ -704,6 +704,7 @@ pub enum InvalidAssignmentTargetKind {
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
+    BranchTypeMismatch { span: Range, orig_span: Range, expected: TypeId, received: TypeId },
     IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
     UnknownType { span: Range, name: String },
     UnknownIdentifier { span: Range, token: Token },
@@ -759,6 +760,7 @@ impl TypeError {
     pub fn message(&self, project: &Project, file_name: &String, source: &String) -> String {
         let span = match self {
             TypeError::TypeMismatch { span, .. } |
+            TypeError::BranchTypeMismatch { span, .. } |
             TypeError::IllegalOperator { span, .. } => span,
             TypeError::UnknownType { span, .. } |
             TypeError::UnknownIdentifier { span, .. } |
@@ -808,12 +810,21 @@ impl TypeError {
                     format!(
                         "Type mismatch\n{}\n\
                         Expected{}{}\n\
-                        but instead saw: {}",
+                        but instead found: {}",
                         cursor_line,
                         if multiple_expected { " one of: " } else { ": " }, expected,
                         received
                     )
                 }
+            }
+            TypeError::BranchTypeMismatch { orig_span, expected, received, .. } => {
+                format!(
+                    "Type mismatch between branches\n{}\n\
+                    Found type {}, but expected type {} because of prior branch\n{}",
+                    cursor_line,
+                    project.type_repr(received), project.type_repr(expected),
+                    Self::get_underlined_line(&lines, orig_span)
+                )
             }
             TypeError::IllegalOperator { op, left, right, .. } => {
                 format!(
@@ -2168,7 +2179,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
             }
-            AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, type_hint),
+            AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, false, type_hint),
             AstNode::ForLoop(_, _) |
             AstNode::WhileLoop(_, _) |
             AstNode::Break(_) |
@@ -2183,8 +2194,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn typecheck_if_node(&mut self, token: Token, if_node: IfNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
-        let is_statement = if let Some(type_hint) = &type_hint { *type_hint == PRELUDE_UNIT_TYPE_ID } else { true };
+    fn typecheck_if_node(&mut self, token: Token, if_node: IfNode, is_expr: bool, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
+        let is_statement = if let Some(type_hint) = &type_hint { *type_hint == PRELUDE_UNIT_TYPE_ID } else { !is_expr };
 
         let IfNode { condition, condition_binding, if_block, else_block } = if_node;
 
@@ -2194,37 +2205,110 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             return Err(TypeError::TypeMismatch { span: typed_condition.span(), expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
         }
 
+        let mut type_id = None;
+        if !is_statement {
+            if let Some(type_hint) = &type_hint {
+                type_id = Some(*type_hint);
+            }
+        }
+
         self.begin_child_scope("if_block");
         if let Some(condition_binding) = &condition_binding {
             self.typecheck_binding_pattern(false, true, condition_binding, condition_type_id, &mut vec![])?;
         }
-        let mut typed_if_block = Vec::with_capacity(if_block.len());
-        for node in if_block {
-            let typed_node = self.typecheck_statement(node, type_hint)?;
-            typed_if_block.push(typed_node);
+        let if_block_len = if_block.len();
+        let mut typed_if_block = Vec::with_capacity(if_block_len);
+        if if_block_len != 0 {
+            // If the if-block has a body, typecheck it. The type of the last node should become the working type
+            // for the overarching expression, and is compared against the provided type_hint, if one exists.
+            for (idx, node) in if_block.into_iter().enumerate() {
+                let typed_node = if idx == if_block_len - 1 {
+                    let typed_node = self.typecheck_statement(node, type_id)?;
+                    let mut node_type_id = *typed_node.type_id();
+
+                    if let Some(hint_type_id) = &type_id {
+                        if self.type_contains_generics(&node_type_id) {
+                            node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
+                        }
+                        if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
+                            let span = typed_node.span();
+                            return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
+                        };
+                    }
+
+                    type_id = Some(node_type_id);
+
+                    typed_node
+                } else {
+                    self.typecheck_statement(node, None)?
+                };
+                typed_if_block.push(typed_node);
+            }
+        } else if let Some(hint_type_id) = &type_id {
+            // If there is no if-block body and there is a provided type_hint, then the working type for
+            // the expression becomes the hint type wrapped in an option.
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
+        } else {
+            // If there is no if-block body and there is also no provided type_hint, we can't make any
+            // assumptions about what the type should be, so we default to the type of the `None` builtin.
+            type_id = Some(self.project.prelude_none_type_id);
         }
         self.end_child_scope();
 
-        let mut typed_else_block = None;
-        if let Some(else_block) = else_block {
+        let else_block = else_block.unwrap_or(vec![]);
+        let else_block_len = else_block.len();
+        let mut typed_else_block = Vec::with_capacity(else_block_len);
+        if else_block_len != 0 {
+            // If the else-block has a body, typecheck it. The type of the last node should be compared
+            // against the working type to determine a match.
             self.begin_child_scope("else_block");
-            let mut nodes = Vec::with_capacity(else_block.len());
-            for node in else_block {
-                let typed_node = self.typecheck_statement(node, type_hint)?;
-                nodes.push(typed_node);
+            for (idx, node) in else_block.into_iter().enumerate() {
+                let typed_node = if idx == else_block_len - 1 {
+                    let typed_node = self.typecheck_statement(node, type_id)?;
+                    let node_type_id = *typed_node.type_id();
+
+                    type_id = if let Some(hint_type_id) = &type_id {
+                        let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
+                            let span = typed_node.span();
+                            return if let Some(last_if_block_expr) = typed_if_block.last() {
+                                let orig_span = last_if_block_expr.span();
+                                Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
+                            } else {
+                                let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
+                            }
+                        };
+                        Some(unified_type_id)
+                    } else {
+                        Some(node_type_id)
+                    };
+
+                    typed_node
+                } else {
+                    self.typecheck_statement(node, None)?
+                };
+
+                typed_else_block.push(typed_node);
             }
-            typed_else_block = Some(nodes);
             self.end_child_scope();
+        } else if let Some(hint_type_id) = &type_id {
+            type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
         }
 
-        Ok(TypedNode::If{
+        let type_id = if is_statement {
+            PRELUDE_UNIT_TYPE_ID
+        } else {
+            type_id.unwrap_or(PRELUDE_UNIT_TYPE_ID)
+        };
+
+        Ok(TypedNode::If {
             if_token: token,
             condition: Box::new(typed_condition),
             condition_binding,
             if_block: typed_if_block,
             else_block: typed_else_block,
             is_statement,
-            type_id: PRELUDE_UNIT_TYPE_ID,
+            type_id,
         })
     }
 
@@ -3097,7 +3181,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: typed_arguments, type_id })
             }
-            AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, type_hint),
+            AstNode::IfExpression(token, if_node) => self.typecheck_if_node(token, if_node, true, type_hint),
             AstNode::MatchExpression(_, _) => todo!(),
             AstNode::Lambda(token, n) => {
                 let mut arg_hints = None;
