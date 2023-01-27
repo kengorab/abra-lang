@@ -5,5 +5,27 @@
 // TODO: This should successfully output an error message (currently it panics)
 //[].length = 3
 
-var a = "1"
-a += 2
+enum Foo<T> { Bar }
+Foo.Bar = 123
+//val f: Foo<Int> = Foo.Bar
+//func fn<T>(foo: Foo<T>) {}
+//fn(f)
+
+//enum Color {
+//  Red
+//  Blue
+//  Green
+//  //Hex(hex: String)
+//
+//  func hex(self) {
+//    //if self == Color.Red {
+//    //  "0xFF0000"
+//    //} else {
+//    //  "0x0000FF"
+//    //}
+//  }
+//}
+//
+////func testRed(color: Color): Bool = color == Color.Red
+////println(testRed(Color.Red), testRed(Color.Blue))
+//Color.Red.hex()

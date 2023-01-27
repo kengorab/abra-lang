@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -114,6 +114,18 @@ impl Project {
         &mut module.structs[*idx]
     }
 
+    pub fn get_enum_by_id(&self, enum_id: &EnumId) -> &Enum {
+        let EnumId(ModuleId(module_idx), idx) = enum_id;
+        let module = &self.modules[*module_idx];
+        &module.enums[*idx]
+    }
+
+    pub fn get_enum_by_id_mut(&mut self, enum_id: &EnumId) -> &mut Enum {
+        let EnumId(ModuleId(module_idx), idx) = enum_id;
+        let module = &mut self.modules[*module_idx];
+        &mut module.enums[*idx]
+    }
+
     pub fn get_func_by_id(&self, func_id: &FuncId) -> &Function {
         let FuncId(ScopeId(ModuleId(module_idx), scope_idx), idx) = func_id;
         let scope = &self.modules[*module_idx].scopes[*scope_idx];
@@ -147,6 +159,7 @@ impl Project {
                 generic_substitutions.extend(struct_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
                 struct_
             }
+            Type::GenericEnumInstance(_, _, _) => return None,
             Type::Primitive(primitive_type) => {
                 let struct_id = match primitive_type {
                     PrimitiveType::Any | PrimitiveType::Unit => return None,
@@ -157,12 +170,23 @@ impl Project {
                 };
                 self.get_struct_by_id(struct_id)
             }
-            Type::Struct(_) |
+            Type::Type(_) => return None,
             Type::Generic(_, _) |
             Type::Function(_, _, _, _) => todo!()
         };
 
         Some((struct_, generic_substitutions))
+    }
+
+    pub fn get_enum_by_type_id(&self, type_id: &TypeId) -> Option<(&Enum, HashMap<TypeId, TypeId>, Option<usize>)> {
+        let mut generic_substitutions = HashMap::new();
+        if let Type::GenericEnumInstance(enum_id, generic_type_ids, variant_idx) = self.get_type_by_id(type_id) {
+            let enum_ = self.get_enum_by_id(enum_id);
+            generic_substitutions.extend(enum_.generic_ids.iter().zip(generic_type_ids).map(|(g_id, t_id)| (*g_id, *t_id)));
+            Some((enum_, generic_substitutions, variant_idx.clone()))
+        } else {
+            None
+        }
     }
 
     pub fn find_struct_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Struct> {
@@ -172,6 +196,17 @@ impl Project {
             .or_else(|| {
                 // If struct cannot be found in current module, look in the prelude module
                 self.prelude_module().structs.iter()
+                    .find(|s| s.name == *name)
+            })
+    }
+
+    pub fn find_enum_by_name(&self, module_id: &ModuleId, name: &String) -> Option<&Enum> {
+        let module = &self.modules[module_id.0];
+        module.enums.iter()
+            .find(|s| s.name == *name)
+            .or_else(|| {
+                // If enum cannot be found in current module, look in the prelude module
+                self.prelude_module().enums.iter()
                     .find(|s| s.name == *name)
             })
     }
@@ -287,7 +322,11 @@ impl Project {
     }
 
     pub fn struct_type(&self, struct_id: StructId) -> Type {
-        Type::Struct(struct_id)
+        Type::Type(Either::Left(struct_id))
+    }
+
+    pub fn enum_type(&self, enum_id: EnumId) -> Type {
+        Type::Type(Either::Right(enum_id))
     }
 
     pub fn type_repr(&self, type_id: &TypeId) -> String {
@@ -324,6 +363,15 @@ impl Project {
                     }
                 }
             }
+            Type::GenericEnumInstance(enum_id, generic_ids, _) => {
+                let enum_ = self.get_enum_by_id(enum_id);
+                if !generic_ids.is_empty() {
+                    let inner_type_reprs = generic_ids.iter().map(|type_id| self.type_repr(type_id)).join(", ");
+                    format!("{}<{}>", enum_.name, inner_type_reprs)
+                } else {
+                    format!("{}", enum_.name)
+                }
+            }
             Type::Function(param_type_ids, num_required_params, is_variadic, return_type_id) => {
                 let num_params = *num_required_params + if *is_variadic { 1 } else { 0 };
                 let param_reprs = param_type_ids.iter()
@@ -337,9 +385,12 @@ impl Project {
                 let return_repr = self.type_repr(return_type_id);
                 format!("({}) => {}", param_reprs, return_repr)
             }
-            Type::Struct(struct_id) => {
-                let struct_ = self.get_struct_by_id(struct_id);
-                struct_.name.to_string()
+            Type::Type(id) => {
+                let name = match id {
+                    Either::Left(struct_id) => &self.get_struct_by_id(struct_id).name,
+                    Either::Right(enum_id) => &self.get_enum_by_id(enum_id).name,
+                };
+                name.to_string()
             }
         }
     }
@@ -368,6 +419,9 @@ pub struct ModuleId(/* idx: */ pub usize);
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct EnumId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
+
 #[derive(Debug, PartialEq)]
 pub struct Struct {
     pub id: StructId,
@@ -390,6 +444,32 @@ pub struct StructField {
     pub is_readonly: bool,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Enum {
+    pub id: EnumId,
+    pub enum_scope_id: ScopeId,
+    pub name: String,
+    pub defined_span: Range,
+    pub generic_ids: Vec<TypeId>,
+    pub self_type_id: TypeId,
+    pub variants: Vec<EnumVariant>,
+    pub methods: Vec<FuncId>,
+    pub static_methods: Vec<FuncId>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub defined_span: Range,
+    pub kind: EnumVariantKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum EnumVariantKind {
+    Constant,
+    Function(FuncId),
+}
+
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 
@@ -408,8 +488,9 @@ pub enum Type {
     Primitive(PrimitiveType),
     Generic(/*span: */ Option<Range>, /* name: */ String),
     GenericInstance(StructId, Vec<TypeId>),
+    GenericEnumInstance(EnumId, Vec<TypeId>, /* variant_idx: */ Option<usize>),
     Function(/* parameter_type_ids: */ Vec<TypeId>, /* num_required_params: */ usize, /* is_variadic: */ bool, /* return_type_id: */ TypeId),
-    Struct(StructId),
+    Type(Either<StructId, EnumId>),
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -432,7 +513,7 @@ pub struct VarId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
 pub enum VariableAlias {
     None,
     Function(FuncId),
-    Struct(StructId),
+    Type(Either<StructId, EnumId>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -492,6 +573,7 @@ pub struct TypedModule {
     // TODO: is this necessary?
     pub functions: Vec<FuncId>,
     pub structs: Vec<Struct>,
+    pub enums: Vec<Enum>,
     pub code: Vec<TypedNode>,
     pub scopes: Vec<Scope>,
 }
@@ -501,6 +583,7 @@ pub enum AccessorKind {
     Field,
     Method,
     StaticMethod,
+    EnumVariant,
 }
 
 #[derive(Debug, PartialEq)]
@@ -675,8 +758,11 @@ pub enum DuplicateNameKind {
     Function,
     TypeArgument,
     Type,
+    Enum,
     Field,
     Method,
+    EnumVariant,
+    StaticMethodOrVariant,
 }
 
 #[derive(Debug, PartialEq)]
@@ -684,7 +770,9 @@ pub enum ImmutableAssignmentKind {
     Parameter,
     Variable,
     Field(/* type_name: */ String),
-    Method(/* type_name: */ String),
+    Method(/* method_name: */ String),
+    StaticMethod(/* type_name: */ String),
+    EnumVariant(/* variant_name: */ String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -871,26 +959,43 @@ impl TypeError {
                 )
             }
             TypeError::DuplicateName { name, original_span, kind, .. } => {
-                let kind = match kind {
-                    DuplicateNameKind::Variable => "name",
-                    DuplicateNameKind::Function => "function",
-                    DuplicateNameKind::TypeArgument => "type argument",
-                    DuplicateNameKind::Type => "type",
-                    DuplicateNameKind::Field => "field",
-                    DuplicateNameKind::Method => "method",
-                };
+                if *kind == DuplicateNameKind::StaticMethodOrVariant {
+                    let first_msg = format!("Duplicate member '{}'\n{}", &name, cursor_line);
 
-                let first_msg = format!("Duplicate {} '{}'\n{}", &kind, &name, cursor_line);
-
-                let second_msg = if let Some(original_span) = original_span {
+                    let Some(original_span) = original_span else { unreachable!() };
                     let pos = &original_span.start;
                     let cursor_line = Self::get_underlined_line(&lines, original_span);
-                    format!("This {} is already declared at ({}:{})\n{}", kind, pos.line, pos.col, cursor_line)
+                    format!(
+                        "{}\n\
+                        There is already a variant declared in this enum with that name at ({}:{})\n{}",
+                        first_msg,
+                        pos.line, pos.col, cursor_line
+                    )
                 } else {
-                    format!("This {} is already declared as built-in value", kind)
-                };
+                    let kind = match kind {
+                        DuplicateNameKind::Variable => "name",
+                        DuplicateNameKind::Function => "function",
+                        DuplicateNameKind::TypeArgument => "type argument",
+                        DuplicateNameKind::Type => "type",
+                        DuplicateNameKind::Enum => "enum",
+                        DuplicateNameKind::Field => "field",
+                        DuplicateNameKind::Method => "method",
+                        DuplicateNameKind::EnumVariant => "enum variant",
+                        DuplicateNameKind::StaticMethodOrVariant => unreachable!("Handled as a special case above"),
+                    };
 
-                format!("{}\n{}", first_msg, second_msg)
+                    let first_msg = format!("Duplicate {} '{}'\n{}", &kind, &name, cursor_line);
+
+                    let second_msg = if let Some(original_span) = original_span {
+                        let pos = &original_span.start;
+                        let cursor_line = Self::get_underlined_line(&lines, original_span);
+                        format!("This {} is already declared at ({}:{})\n{}", kind, pos.line, pos.col, cursor_line)
+                    } else {
+                        format!("This {} is already declared as built-in value", kind)
+                    };
+
+                    format!("{}\n{}", first_msg, second_msg)
+                }
             }
             TypeError::ForbiddenAssignment { type_id, purpose, .. } => {
                 let type_repr = project.type_repr(type_id);
@@ -1079,14 +1184,18 @@ impl TypeError {
                     ImmutableAssignmentKind::Parameter => "parameter",
                     ImmutableAssignmentKind::Variable => "variable",
                     ImmutableAssignmentKind::Field(_) |
-                    ImmutableAssignmentKind::Method(_) => "field",
+                    ImmutableAssignmentKind::Method(_) |
+                    ImmutableAssignmentKind::StaticMethod(_) => "field",
+                    ImmutableAssignmentKind::EnumVariant(_) => "enum variant",
                 };
 
                 let second_line = match kind {
                     ImmutableAssignmentKind::Parameter => "Function parameters are automatically declared as immutable".to_string(),
                     ImmutableAssignmentKind::Variable => "Variable is declared as immutable. Use 'var' when declaring variable to allow it to be reassigned".to_string(),
                     ImmutableAssignmentKind::Field(type_name) => format!("Field '{}' is marked readonly in type '{}'", var_name, type_name),
-                    ImmutableAssignmentKind::Method(type_name) => format!("Function '{}' is a method of type '{}'", var_name, type_name),
+                    ImmutableAssignmentKind::Method(type_name) => format!("Function '{}' is a method on type '{}'", var_name, type_name),
+                    ImmutableAssignmentKind::StaticMethod(type_name) => format!("Function '{}' is a static method on type '{}'", var_name, type_name),
+                    ImmutableAssignmentKind::EnumVariant(enum_name) => format!("'{}' is a variant of enum '{}'", var_name, enum_name),
                 };
                 let second_line = format!(
                     "{}{}",
@@ -1189,6 +1298,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.project.find_struct_by_name(&current_module_id, name)
     }
 
+    fn get_enum_by_name(&self, name: &String) -> Option<&Enum> {
+        let current_module_id = self.current_module().id;
+        self.project.find_enum_by_name(&current_module_id, name)
+    }
+
     fn type_is_option(&self, type_id: &TypeId) -> Option<TypeId> {
         match self.project.get_type_by_id(&type_id) {
             Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_option_struct_id => Some(generic_ids[0]),
@@ -1229,6 +1343,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == self.project.prelude_option_struct_id => {
                 self.type_satisfies_other(base_type, &generic_ids[0])
+            }
+            (Type::GenericEnumInstance(enum_id, generic_ids, _), Type::GenericEnumInstance(target_enum_id, target_generic_ids, _)) => {
+                if enum_id != target_enum_id || generic_ids.len() != target_generic_ids.len() { return false; }
+
+                for (generic_type_id_1, generic_type_id_2) in generic_ids.iter().zip(target_generic_ids.iter()) {
+                    if !self.type_satisfies_other(generic_type_id_1, generic_type_id_2) { return false; }
+                }
+
+                true
             }
             (Type::Function(base_param_type_ids, base_num_req, _is_variadic, base_return_type_id), Type::Function(target_param_type_ids, _, __is_variadic, target_return_type_id)) => {
                 if !self.type_satisfies_other(base_return_type_id, target_return_type_id) {
@@ -1292,6 +1415,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     *var_type_id
                 }
             }
+            (Type::GenericEnumInstance(hint_enum_id, hint_generic_ids, _), Type::GenericEnumInstance(var_enum_id, var_generic_ids, var_variant_idx)) => {
+                if var_enum_id == hint_enum_id && hint_generic_ids.len() == var_generic_ids.len() {
+                    let hint_generic_ids = hint_generic_ids.clone();
+                    let var_enum_id = *var_enum_id;
+                    let var_generic_ids = var_generic_ids.clone();
+                    let var_variant_idx = *var_variant_idx;
+
+                    let mut new_var_generic_ids = vec![];
+                    for (hint_generic_type_id, var_generic_type_id) in hint_generic_ids.iter().zip(var_generic_ids.iter()) {
+                        new_var_generic_ids.push(self.substitute_generics(hint_generic_type_id, var_generic_type_id));
+                    }
+                    self.add_or_find_type_id(Type::GenericEnumInstance(var_enum_id, new_var_generic_ids, var_variant_idx))
+                } else {
+                    *var_type_id
+                }
+            }
             (Type::Function(hint_param_type_ids, _, _, hint_return_type_id), Type::Function(var_param_type_ids, var_num_req, var_is_variadic, var_return_type_id)) => {
                 // Why: Rust can't know that I'm not mutating these refs in the substitute_generics call below :/
                 let hint_param_type_ids = hint_param_type_ids.clone();
@@ -1344,6 +1483,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     self.extract_values_for_generics(g_id2, g_id1, substitutions);
                 }
             }
+            (Type::GenericEnumInstance(e_id1, g_ids1, _), Type::GenericEnumInstance(e_id2, g_ids2, _)) if e_id1 == e_id2 => {
+                debug_assert!(g_ids1.len() == g_ids2.len());
+
+                for (g_id1, g_id2) in g_ids1.iter().zip(g_ids2) {
+                    self.extract_values_for_generics(g_id2, g_id1, substitutions);
+                }
+            }
             (Type::Function(ty_param_type_ids, _, _, ty_return_type_id), Type::Function(hint_param_type_ids, _, _, hint_return_type_id)) => {
                 for (ty_param_type_id, hint_param_type_id) in ty_param_type_ids.iter().zip(hint_param_type_ids.iter()) {
                     self.extract_values_for_generics(hint_param_type_id, ty_param_type_id, substitutions);
@@ -1368,12 +1514,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let substituted_generic_ids = generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
                 self.add_or_find_type_id(Type::GenericInstance(struct_id, substituted_generic_ids))
             }
+            Type::GenericEnumInstance(enum_id, generic_ids, variant_idx) => {
+                let substituted_generic_ids = generic_ids.iter().map(|generic_type_id| self.substitute_generics_with_known(generic_type_id, substitutions)).collect();
+                self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, substituted_generic_ids, variant_idx))
+            }
             Type::Function(arg_type_ids, num_required_params, is_variadic, ret_type_id) => {
                 let substituted_arg_type_ids = arg_type_ids.iter().map(|arg_type_id| self.substitute_generics_with_known(arg_type_id, substitutions)).collect();
                 let substituted_ret_type_id = self.substitute_generics_with_known(&ret_type_id, substitutions);
                 self.add_or_find_type_id(self.project.function_type(substituted_arg_type_ids, num_required_params, is_variadic, substituted_ret_type_id))
             }
-            Type::Primitive(_) | Type::Struct(_) => *type_id,
+            Type::Primitive(_) | Type::Type(_) => *type_id,
         }
     }
 
@@ -1391,6 +1541,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 false
             }
+            Type::GenericEnumInstance(_, generic_ids, _) => {
+                for type_id in generic_ids {
+                    if self.type_contains_generics(type_id) {
+                        return true;
+                    }
+                }
+
+                false
+            }
             Type::Function(param_type_ids, _, _, return_type_id) => {
                 for type_id in param_type_ids {
                     if self.type_contains_generics(type_id) {
@@ -1400,9 +1559,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 self.type_contains_generics(return_type_id)
             }
-            Type::Struct(struct_id) => {
-                let struct_ = self.project.get_struct_by_id(struct_id);
-                !struct_.generic_ids.is_empty()
+            Type::Type(id) => {
+                let generic_ids = match id {
+                    Either::Left(struct_id) => &self.project.get_struct_by_id(struct_id).generic_ids,
+                    Either::Right(enum_id) => &self.project.get_enum_by_id(enum_id).generic_ids,
+                };
+                !generic_ids.is_empty()
             }
         }
     }
@@ -1430,10 +1592,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Ok(generic_type_id);
                         }
 
-                        let struct_id = self.get_struct_by_name(&ident_name)
-                            .ok_or_else(|| TypeError::UnknownType { span: ident.get_range(), name: ident_name })?
-                            .id;
-
                         let mut generic_ids = vec![];
                         if let Some(type_args) = type_args { // TODO: verify that struct expects to receive type arguments
                             for type_arg_identifier in type_args {
@@ -1442,7 +1600,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                         }
 
-                        Ok(self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids)))
+                        if let Some(struct_) = self.get_struct_by_name(&ident_name) {
+                            let struct_id = struct_.id;
+                            Ok(self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids)))
+                        } else if let Some(enum_) = self.get_enum_by_name(&ident_name) {
+                            let enum_id = enum_.id;
+                            Ok(self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, None)))
+                        } else {
+                            Err(TypeError::UnknownType { span: ident.get_range(), name: ident_name })
+                        }
                     }
                 }
             }
@@ -1553,16 +1719,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_id)
     }
 
+    fn verify_type_name_unique_in_module(&self, module: &TypedModule, name: &String, span: &Range) -> Result<(), TypeError> {
+        for struct_ in &module.structs {
+            if struct_.name == *name {
+                return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span: struct_.defined_span.clone(), kind: DuplicateNameKind::Type });
+            }
+        }
+
+        for enum_ in &module.enums {
+            if enum_.name == *name {
+                return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span: Some(enum_.defined_span.clone()), kind: DuplicateNameKind::Enum });
+            }
+        }
+
+        return Ok(());
+    }
+
     fn add_struct_to_current_module(&mut self, struct_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>) -> Result<StructId, TypeError> {
         let current_module = self.current_module();
 
         let name = Token::get_ident_name(name_token);
         let span = name_token.get_range();
-        for struct_ in &current_module.structs {
-            if struct_.name == name {
-                return Err(TypeError::DuplicateName { span, name, original_span: struct_.defined_span.clone(), kind: DuplicateNameKind::Type });
-            }
-        }
+        self.verify_type_name_unique_in_module(&current_module, &name, &span)?;
 
         let struct_id = StructId(current_module.id, current_module.structs.len());
         let self_type_id = self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids.clone()));
@@ -1583,9 +1761,40 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
         let struct_var_id = self.add_variable_to_current_scope(name, struct_type_id, false, true, &span, false)?;
         let variable = self.project.get_var_by_id_mut(&struct_var_id);
-        variable.alias = VariableAlias::Struct(struct_id);
+        variable.alias = VariableAlias::Type(Either::Left(struct_id));
 
         Ok(struct_id)
+    }
+
+    fn add_enum_to_current_module(&mut self, enum_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>) -> Result<EnumId, TypeError> {
+        let current_module = self.current_module();
+
+        let name = Token::get_ident_name(name_token);
+        let span = name_token.get_range();
+        self.verify_type_name_unique_in_module(&current_module, &name, &span)?;
+
+        let enum_id = EnumId(current_module.id, current_module.enums.len());
+        let self_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), None));
+
+        let enum_ = Enum {
+            id: enum_id,
+            enum_scope_id,
+            name: name.clone(),
+            defined_span: span.clone(),
+            generic_ids,
+            self_type_id,
+            variants: vec![],
+            methods: vec![],
+            static_methods: vec![],
+        };
+        self.current_module_mut().enums.push(enum_);
+
+        let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
+        let enum_var_id = self.add_variable_to_current_scope(name, enum_type_id, false, true, &span, false)?;
+        let variable = self.project.get_var_by_id_mut(&enum_var_id);
+        variable.alias = VariableAlias::Type(Either::Right(enum_id));
+
+        Ok(enum_id)
     }
 
     fn create_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
@@ -1666,7 +1875,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_prelude(&mut self) {
         debug_assert!(self.project.modules.is_empty());
 
-        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], code: vec![], scopes: vec![] };
+        let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![] };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
@@ -1759,6 +1968,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_ids: vec![],
             functions: vec![],
             structs: vec![],
+            enums: vec![],
             code: vec![],
             scopes: vec![root_scope],
         });
@@ -1779,7 +1989,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             match node {
                 AstNode::FunctionDecl(_, node) => func_decls.push(node),
                 AstNode::TypeDecl(_, node) => type_decls.push(node),
-                n @ AstNode::EnumDecl(_, _) => enum_decls.push(n),
+                AstNode::EnumDecl(_, node) => enum_decls.push(node),
                 _ => {}
             }
         }
@@ -1809,10 +2019,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             struct_ids.push(struct_id);
         }
 
+        let num_enum_decls = enum_decls.len();
+        let mut enum_ids = Vec::with_capacity(num_enum_decls);
+        for node in &enum_decls {
+            let enum_id = self.typecheck_enum_pass_0(node)?;
+            enum_ids.push(enum_id);
+        }
+
         let mut structs = VecDeque::with_capacity(num_type_decls);
         for (node, struct_id) in type_decls.iter().zip(struct_ids) {
             let method_func_ids = self.typecheck_struct_pass_1(node, &struct_id)?;
             structs.push_back((struct_id, method_func_ids));
+        }
+
+        let mut enums = VecDeque::with_capacity(num_enum_decls);
+        for (node, enum_id) in enum_decls.iter().zip(enum_ids) {
+            let method_func_ids = self.typecheck_enum_pass_1(node, &enum_id)?;
+            enums.push_back((enum_id, method_func_ids));
         }
 
         let mut func_ids = VecDeque::with_capacity(num_type_decls);
@@ -1821,8 +2044,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
             func_ids.push_back(func_id);
         }
-
-        debug_assert!(enum_decls.is_empty());
 
         for node in nodes {
             match node {
@@ -1835,6 +2056,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let (struct_id, method_func_ids) = structs.pop_front()
                         .expect("There should be Struct metadata for each declaration in this block");
                     self.typecheck_struct_pass_2(struct_id, method_func_ids, decl_node)?;
+                }
+                AstNode::EnumDecl(_, decl_node) => {
+                    let (enum_id, method_func_ids) = enums.pop_front()
+                        .expect("There should be Enum metadata for each declaration in this block");
+                    self.typecheck_enum_pass_2(enum_id, method_func_ids, decl_node)?;
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
@@ -2083,7 +2309,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn typecheck_struct_pass_2(&mut self, struct_id: StructId, method_func_ids: Vec<FuncId>, node: TypeDeclNode) -> Result<(), TypeError> {
         let TypeDeclNode { fields, methods, .. } = node;
-
         let struct_ = self.project.get_struct_by_id(&struct_id);
 
         let prev_scope_id = self.current_scope_id;
@@ -2110,7 +2335,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
         }
 
-        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (by pass 1)");
+        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (from pass 1)");
         for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
@@ -2121,6 +2346,91 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 self.project.get_struct_by_id_mut(&struct_id).methods.push(*func_id);
             } else {
                 self.project.get_struct_by_id_mut(&struct_id).static_methods.push(*func_id);
+            }
+        }
+
+        self.current_scope_id = prev_scope_id;
+
+        Ok(())
+    }
+
+    fn typecheck_enum_pass_0(&mut self, node: &EnumDeclNode) -> Result<EnumId, TypeError> {
+        let EnumDeclNode { export_token, name, type_args, .. } = node;
+
+        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+
+        let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+
+        // An enum's generics are scoped to the enum declaration, but the instance type should be scoped to the outer scope.
+        let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args)?;
+        let enum_id = self.add_enum_to_current_module(enum_scope_id, name, generic_ids)?;
+        debug_assert!(self.current_type_decl.is_none(), "At the moment, enums cannot be nested within other enums");
+
+        Ok(enum_id)
+    }
+
+    fn typecheck_enum_pass_1(&mut self, node: &EnumDeclNode, enum_id: &EnumId) -> Result<Vec<FuncId>, TypeError> {
+        let EnumDeclNode { variants, methods, .. } = node;
+
+        let enum_ = self.project.get_enum_by_id(enum_id);
+
+        self.current_scope_id = enum_.enum_scope_id;
+        self.current_type_decl = Some(enum_.self_type_id);
+
+        let mut seen_variants = HashMap::<String, &Token>::new();
+        for (variant_ident, variant_args) in variants {
+            debug_assert!(variant_args.is_none(), "Function variants not yet implemented");
+
+            let name = Token::get_ident_name(variant_ident);
+            let defined_span = variant_ident.get_range();
+            if let Some(seen_variant) = seen_variants.get(&name) {
+                return Err(TypeError::DuplicateName { span: defined_span, name, original_span: Some(seen_variant.get_range()), kind: DuplicateNameKind::EnumVariant });
+            }
+            seen_variants.insert(name.clone(), variant_ident);
+
+            let variant = EnumVariant { name, defined_span, kind: EnumVariantKind::Constant };
+            self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
+        }
+
+        let mut method_func_ids = vec![];
+        for method in methods {
+            let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
+            let func_id = self.typecheck_function_pass_1(decl_node, true)?;
+            method_func_ids.push(func_id);
+        }
+
+        self.current_type_decl = None;
+
+        self.end_child_scope();
+
+        Ok(method_func_ids)
+    }
+
+    fn typecheck_enum_pass_2(&mut self, enum_id: EnumId, method_func_ids: Vec<FuncId>, node: EnumDeclNode) -> Result<(), TypeError> {
+        let EnumDeclNode { methods, .. } = node;
+        let enum_ = self.project.get_enum_by_id(&enum_id);
+
+        let prev_scope_id = self.current_scope_id;
+        self.current_scope_id = enum_.enum_scope_id;
+
+        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (from pass 1)");
+        for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
+            let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
+            let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
+
+            let func_name_span = decl_node.name.get_range();
+            let func_name = Token::get_ident_name(&decl_node.name);
+            self.typecheck_function_pass_2(*func_id, decl_node)?;
+
+            if is_method {
+                self.project.get_enum_by_id_mut(&enum_id).methods.push(*func_id);
+            } else {
+                let enum_ = self.project.get_enum_by_id(&enum_id);
+                if let Some(variant) = enum_.variants.iter().find(|v| v.name == func_name) {
+                    return Err(TypeError::DuplicateName { span: func_name_span, name: func_name, original_span: Some(variant.defined_span.clone()), kind: DuplicateNameKind::StaticMethodOrVariant });
+                }
+
+                self.project.get_enum_by_id_mut(&enum_id).static_methods.push(*func_id);
             }
         }
 
@@ -2759,23 +3069,54 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         AssignmentKind::Identifier { var_id }
                     }
                     TypedNode::Accessor { target, kind, member_idx, .. } => {
-                        let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
+                        let ty = self.project.get_type_by_id(target.type_id());
 
-                        match kind {
-                            AccessorKind::Field => {
+                        match (ty, &kind) {
+                            (Type::GenericInstance(_, _), AccessorKind::Field) => {
+                                let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
+
                                 let field = &struct_.fields[member_idx];
                                 if field.is_readonly {
                                     let type_name = struct_.name.clone();
                                     return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: field.name.clone(), defined_span: Some(field.defined_span.clone()), kind: ImmutableAssignmentKind::Field(type_name) });
                                 }
                             }
-                            AccessorKind::Method => {
+                            (Type::GenericEnumInstance(_, _, _), AccessorKind::Field) => todo!(),
+                            (Type::GenericInstance(_, _), AccessorKind::Method) => {
+                                let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
                                 let type_name = struct_.name.clone();
                                 let func_id = &struct_.methods[member_idx];
                                 let function = self.project.get_func_by_id(func_id);
                                 return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::Method(type_name) });
                             }
-                            AccessorKind::StaticMethod => todo!()
+                            (Type::GenericEnumInstance(_, _, _), AccessorKind::Method) => {
+                                let (enum_, _, _) = self.project.get_enum_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
+                                let type_name = enum_.name.clone();
+                                let func_id = &enum_.methods[member_idx];
+                                let function = self.project.get_func_by_id(func_id);
+                                return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::Method(type_name) });
+                            }
+                            (Type::GenericInstance(_, _), AccessorKind::StaticMethod) => {
+                                let (struct_, _) = self.project.get_struct_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
+                                let type_name = struct_.name.clone();
+                                let func_id = &struct_.static_methods[member_idx];
+                                let function = self.project.get_func_by_id(func_id);
+                                return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::StaticMethod(type_name) });
+                            }
+                            (Type::GenericEnumInstance(_, _, _), AccessorKind::StaticMethod) => {
+                                let (enum_, _, _) = self.project.get_enum_by_type_id(target.type_id()).expect("Internal error: This should have been caught when typechecking the Accessor");
+                                let type_name = enum_.name.clone();
+                                let func_id = &enum_.static_methods[member_idx];
+                                let function = self.project.get_func_by_id(func_id);
+                                return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: function.name.clone(), defined_span: function.defined_span.clone(), kind: ImmutableAssignmentKind::StaticMethod(type_name) });
+                            }
+                            (Type::Type(Either::Right(enum_id)), AccessorKind::EnumVariant) => {
+                                let enum_ = self.project.get_enum_by_id(enum_id);
+                                let type_name = enum_.name.clone();
+                                let variant = &enum_.variants[member_idx];
+                                return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: variant.name.clone(), defined_span: Some(variant.defined_span.clone()), kind: ImmutableAssignmentKind::EnumVariant(type_name) });
+                            }
+                            _ => unreachable!()
                         };
 
                         AssignmentKind::Accessor { target, kind, member_idx }
@@ -2905,41 +3246,80 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let target_type_id = typed_target.type_id();
 
                 let mut field_data = None;
-                let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
-                    return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
-                };
-                let fields = struct_.fields.clone();
-                let methods = struct_.methods.clone();
-                for (idx, field) in fields.iter().enumerate() {
-                    if *field.name == field_name {
-                        let type_id = self.substitute_generics_with_known(&field.type_id, &generic_substitutions);
-                        field_data = Some((idx, type_id, AccessorKind::Field));
-                        break;
+                let target_type = self.project.get_type_by_id(target_type_id);
+                if let Type::Type(id) = target_type {
+                    match id {
+                        Either::Left(_struct_id) => todo!("Static methods/fields not yet implemented"),
+                        Either::Right(enum_id) => {
+                            let enum_ = self.project.get_enum_by_id(enum_id);
+
+                            let mut generic_ids = &enum_.generic_ids;
+                            if let Some(type_hint_id) = &type_hint {
+                                let ty = self.project.get_type_by_id(&type_hint_id);
+                                if let Type::GenericEnumInstance(_, hint_generic_ids, _) = ty {
+                                    generic_ids = hint_generic_ids;
+                                }
+                            }
+
+                            for (idx, variant) in enum_.variants.iter().enumerate() {
+                                if *variant.name == field_name {
+                                    match variant.kind {
+                                        EnumVariantKind::Constant => {
+                                            let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(*enum_id, generic_ids.clone(), Some(idx)));
+                                            field_data = Some((AccessorKind::EnumVariant, idx, type_id));
+                                            break;
+                                        }
+                                        EnumVariantKind::Function(_) => todo!()
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-                if field_data.is_none() {
-                    for (idx, func_id) in methods.iter().enumerate() {
+                } else if matches!(target_type, Type::GenericEnumInstance(_, _, _)) {
+                    let Some((enum_, generic_substitutions, _variant_idx)) = self.project.get_enum_by_type_id(target_type_id) else {
+                        return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                    };
+                    for (idx, func_id) in enum_.methods.iter().enumerate() {
                         let func = self.project.get_func_by_id(func_id);
                         if func.name == field_name {
-                            let mut func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
-                            func_type_id = self.substitute_generics_with_known(&func_type_id, &generic_substitutions);
-                            field_data = Some((idx, func_type_id, AccessorKind::Method));
+                            let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                            type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
+                            field_data = Some((AccessorKind::Method, idx, type_id));
                             break;
+                        }
+                    }
+                } else {
+                    let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
+                        return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                    };
+                    let methods = struct_.methods.clone();
+                    for (idx, field) in struct_.fields.iter().enumerate() {
+                        if *field.name == field_name {
+                            let mut type_id = field.type_id;
+                            type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
+                            field_data = Some((AccessorKind::Field, idx, type_id));
+                            break;
+                        }
+                    }
+
+                    if field_data.is_none() {
+                        for (idx, func_id) in methods.iter().enumerate() {
+                            let func = self.project.get_func_by_id(func_id);
+                            if func.name == field_name {
+                                let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
+                                field_data = Some((AccessorKind::Method, idx, type_id));
+                                break;
+                            }
                         }
                     }
                 }
 
-                let Some((field_idx, type_id, kind)) = field_data else {
-                    return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
-                };
-
-                Ok(TypedNode::Accessor {
-                    target: Box::new(typed_target),
-                    kind,
-                    member_idx: field_idx,
-                    member_span: field_ident.get_range(),
-                    type_id,
-                })
+                if let Some((kind, member_idx, type_id)) = field_data {
+                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, member_idx, member_span: field_ident.get_range(), type_id })
+                } else {
+                    Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id })
+                }
             }
             AstNode::Invocation(token, n) => {
                 let InvocationNode { target, args } = n;
@@ -2966,13 +3346,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            VariableAlias::Struct(alias_struct_id) => {
-                                let struct_ = self.project.get_struct_by_id(&alias_struct_id);
-                                // TODO: Struct fields default values
-                                generic_ids = &struct_.generic_ids;
-                                params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, false, false)).collect_vec();
-                                return_type_id = struct_.self_type_id;
-                                is_instantiation = true;
+                            VariableAlias::Type(id) => {
+                                match id {
+                                    Either::Left(alias_struct_id) => {
+                                        let struct_ = self.project.get_struct_by_id(&alias_struct_id);
+                                        // TODO: Struct fields default values
+                                        generic_ids = &struct_.generic_ids;
+                                        params_data = struct_.fields.iter().enumerate().map(|(idx, f)| (idx, f.name.clone(), f.type_id, false, false)).collect_vec();
+                                        return_type_id = struct_.self_type_id;
+                                        is_instantiation = true;
+                                    }
+                                    Either::Right(_alias_enum_id) => todo!("Should return an error, cannot construct enum directly"),
+                                }
                             }
                             VariableAlias::None => unreachable!("VariableAlias::None identifiers are excluded from this match case and are handled below"),
                         }
@@ -3018,11 +3403,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                         params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
                                         return_type_id = function.return_type_id;
                                     }
-                                    AccessorKind::StaticMethod => todo!()
+                                    AccessorKind::StaticMethod => todo!(),
+                                    AccessorKind::EnumVariant => unreachable!(),
                                 }
 
                                 for (generic_id, type_arg_id) in struct_.generic_ids.iter().zip(generic_ids.iter()) {
                                     filled_in_generic_types.insert(*generic_id, *type_arg_id);
+                                }
+                            }
+                            Type::GenericEnumInstance(enum_id, _generic_ids, _variant_idx) => {
+                                let enum_ = self.project.get_enum_by_id(enum_id);
+                                match kind {
+                                    AccessorKind::Field => todo!(),
+                                    AccessorKind::Method => {
+                                        let function = self.project.get_func_by_id(&enum_.methods[*member_idx]);
+                                        fn_is_variadic = function.is_variadic();
+                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                        return_type_id = function.return_type_id;
+                                    }
+                                    AccessorKind::StaticMethod => todo!(),
+                                    AccessorKind::EnumVariant => todo!(),
                                 }
                             }
                             Type::Primitive(primitive_type) => {
@@ -3041,7 +3441,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Generic(_, _) |
                             Type::Function(_, _, _, _) |
-                            Type::Struct(_) => todo!()
+                            Type::Type(_) => todo!()
                         }
                     }
                     _ => {
@@ -3136,7 +3536,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
 
                     // Fill in any known generics (ie. from the instance, for a method) before typechecking arg expression
-                    if self.type_contains_generics(&param_type_id) {
+                    if self.type_contains_generics(&param_type_id) && !filled_in_generic_types.is_empty() {
                         param_type_id = self.substitute_generics_with_known(&param_type_id, &filled_in_generic_types);
                     }
 

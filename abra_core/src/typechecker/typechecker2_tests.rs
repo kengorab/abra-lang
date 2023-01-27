@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind};
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -120,7 +120,39 @@ fn test_type_assignability() {
              val l = List(items: [1, 2])\n\
              val map: ((Int) => Float) => Float[] = l.map",
             true
-        )
+        ),
+        (
+            "enum Foo { Bar, Baz }\n\
+             val f: Foo = Foo.Bar",
+            true,
+        ),
+        (
+            "enum Foo<T> { Bar, Baz }\n\
+             val f = Foo.Bar",
+            false,
+        ),
+        (
+            "enum Foo<T> { Bar }\n\
+             func foo(f: Foo<Int>) {}\n\
+             foo(Foo.Bar)",
+            true,
+        ),
+        (
+            "enum Foo<T> { Bar }\n\
+             val f: Foo<Int> = Foo.Bar\n\
+             func fn<T>(foo: Foo<T>) {}\n\
+             fn(f)",
+            true
+        ),
+        (
+            "enum Foo<T> {\n\
+               Bar\n\
+               func foo(self, t: T) {}\n\
+             }\n\
+             val f: Foo<Int> = Foo.Bar\n\
+             f.foo(123)",
+            true,
+        ),
     ];
     for (code, should_be_assignable) in cases {
         if should_be_assignable {
@@ -1142,7 +1174,7 @@ fn typecheck_type_declaration() {
             is_initialized: true,
             defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
             is_captured: false,
-            alias: VariableAlias::Struct(struct_id),
+            alias: VariableAlias::Type(Either::Left(struct_id)),
             is_parameter: false,
         }
     ];
@@ -1262,6 +1294,18 @@ fn typecheck_failure_type_declaration() {
         kind: DuplicateNameKind::Type,
     };
     assert_eq!(expected, err);
+    // TODO: swapping the order of these two lines should result in the same error, but it doesn't since we process all `type`s' pass_0 _before_ all `enum`s'
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo {}\n\
+      enum Foo {}\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        name: "Foo".to_string(),
+        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        kind: DuplicateNameKind::Type,
+    };
+    assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("\
       type Foo {\n\
@@ -1332,6 +1376,88 @@ fn typecheck_failure_type_declaration() {
         name: "T".to_string(),
         original_span: Some(Range { start: Position::new(1, 11), end: Position::new(1, 11) }),
         kind: DuplicateNameKind::TypeArgument,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_enum_declaration() {
+    let project = test_typecheck("\
+      enum Foo {\n\
+        Bar\n\
+        Baz\n\
+      }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let enum_id = EnumId(ModuleId(1), 0);
+    let expected = vec![
+        Enum {
+            id: enum_id,
+            enum_scope_id: ScopeId(ModuleId(1), 1),
+            name: "Foo".to_string(),
+            defined_span: Range { start: Position::new(1, 6), end: Position::new(1, 8) },
+            generic_ids: vec![],
+            self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+            variants: vec![
+                EnumVariant { name: "Bar".to_string(), defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 3) }, kind: EnumVariantKind::Constant },
+                EnumVariant { name: "Baz".to_string(), defined_span: Range { start: Position::new(3, 1), end: Position::new(3, 3) }, kind: EnumVariantKind::Constant },
+            ],
+            methods: vec![],
+            static_methods: vec![],
+        }
+    ];
+    assert_eq!(expected, module.enums);
+    // Verify that the alias variable is inserted for the new type
+    let expected = vec![
+        Variable {
+            id: VarId(ScopeId(ModuleId(1), 0), 0),
+            name: "Foo".to_string(),
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.enum_type(enum_id)).unwrap(),
+            is_mutable: false,
+            is_initialized: true,
+            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            is_captured: false,
+            alias: VariableAlias::Type(Either::Right(enum_id)),
+            is_parameter: false,
+        }
+    ];
+    assert_eq!(expected, module.scopes[0].vars);
+}
+
+#[test]
+fn typecheck_failure_enum_declaration() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo {}\n\
+      enum Foo {}\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        name: "Foo".to_string(),
+        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        kind: DuplicateNameKind::Enum,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("enum Foo { Bar, Bar }").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Range { start: Position::new(1, 17), end: Position::new(1, 19) },
+        name: "Bar".to_string(),
+        original_span: Some(Range { start: Position::new(1, 12), end: Position::new(1, 14) }),
+        kind: DuplicateNameKind::EnumVariant,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo {\n\
+        Bar\n\
+        func Bar() {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Range { start: Position::new(3, 6), end: Position::new(3, 8) },
+        name: "Bar".to_string(),
+        original_span: Some(Range { start: Position::new(2, 1), end: Position::new(2, 3) }),
+        kind: DuplicateNameKind::StaticMethodOrVariant,
     };
     assert_eq!(expected, err);
 }
@@ -1844,6 +1970,45 @@ fn typecheck_invocation() {
     let accessor_invocation = &module.code[2];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
 
+    // Invoking method of enum variant
+    let project = test_typecheck("\
+      enum Foo {\n\
+        Bar\n\
+        func foo(self, a: Int, b = 4): Int = a\n\
+      }\n\
+      val f = Foo.Bar\n\
+      val foo = f.foo\n\
+      foo(1)\n\
+      f.foo(2)\n\
+      f.foo(a: 2)\n\
+      f.foo(b: 2, a: 6)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(6, 5), end: Position::new(6, 7) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, foo_var);
+    let var_invocation = &module.code[2];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *var_invocation.type_id());
+    let accessor_invocation = &module.code[3];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation.type_id());
+    let accessor_invocation_arg_label = &module.code[4];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_label.type_id());
+    let accessor_invocation_arg_labels = &module.code[5];
+    assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
+
     // Invoking variadic functions
     // The interesting thing here is in the arguments, so let's pull out the function declaration to cut down on noise
     let foo_fn = "func foo(a: Int, *args: Int[]) {}";
@@ -2120,7 +2285,7 @@ fn typecheck_invocation_instantiation() {
             token: Token::Ident(Position::new(2, 1), "Foo".to_string()),
             var_id: VarId(ScopeId(ModuleId(1), 0), 0),
             type_arg_ids: vec![],
-            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Struct(s_id) = ty { *s_id == struct_.id } else { false }).unwrap(),
+            type_id: project.find_type_id_by(&ScopeId(ModuleId(1), 0), |ty| if let Type::Type(Either::Left(s_id)) = ty { *s_id == struct_.id } else { false }).unwrap(),
         }),
         arguments: vec![
             Some(TypedNode::Literal {
@@ -2714,6 +2879,17 @@ fn typecheck_failure_assignment() {
         var_name: "x".to_string(),
         defined_span: Some(Range { start: Position::new(1, 13), end: Position::new(1, 13) }),
         kind: ImmutableAssignmentKind::Field("A".to_string()),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo { Bar }\n\
+      Foo.Bar = 12\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::AssignmentToImmutable {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 7) },
+        var_name: "Bar".to_string(),
+        defined_span: Some(Range { start: Position::new(1, 12), end: Position::new(1, 14) }),
+        kind: ImmutableAssignmentKind::EnumVariant("Foo".to_string()),
     };
     assert_eq!(expected, err);
 
