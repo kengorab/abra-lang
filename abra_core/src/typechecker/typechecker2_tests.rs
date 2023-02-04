@@ -3,7 +3,9 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span};
+
+const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
 struct TestModuleLoader {
     files: HashMap<String, String>,
@@ -22,7 +24,15 @@ impl LoadModule for TestModuleLoader {
         module_id.get_path(".")
     }
 
+    fn register(&mut self, _m_id: &parser::ast::ModuleId, _module_id: &ModuleId) {}
+
+    fn get_module_id(&self, _module_id: &ModuleId) -> &parser::ast::ModuleId { unreachable!("Test code should not call this function") }
+
     fn load_file(&self, file_name: &String) -> String {
+        if file_name == "prelude.stub.abra" {
+            return PRELUDE_STR.to_string();
+        }
+
         self.files.get(file_name)
             .expect(&format!("Internal error: missing file {} from test module loader", file_name))
             .clone()
@@ -34,12 +44,11 @@ const TEST_MODULE_NAME: &str = "test";
 fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
     let module_id = parser::ast::ModuleId::parse_module_path(&format!("{}", TEST_MODULE_NAME)).unwrap();
 
-    let loader = TestModuleLoader::new(vec![
+    let mut loader = TestModuleLoader::new(vec![
         (module_id.get_path(".").as_str(), input)
     ]);
-
     let mut project = Project::default();
-    let mut tc = Typechecker2::new(&loader, &mut project);
+    let mut tc = Typechecker2::new(&mut loader, &mut project);
     tc.typecheck_prelude();
 
     match tc.typecheck_module(&module_id) {
@@ -431,7 +440,7 @@ fn typecheck_unary() {
 fn typecheck_failure_unary() {
     let (_, Either::Right(err)) = test_typecheck("-true").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 5)),
         expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -439,7 +448,7 @@ fn typecheck_failure_unary() {
 
     let (_, Either::Right(err)) = test_typecheck("!1").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 2) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 2)),
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -629,7 +638,7 @@ fn typecheck_array() {
 fn typecheck_failure_array() {
     let (_, Either::Right(err)) = test_typecheck("[1, true, 3]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 5), end: Position::new(1, 8) },
+        span: Span::new(ModuleId(1), (1, 5), (1, 8)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -637,7 +646,7 @@ fn typecheck_failure_array() {
 
     let (_, Either::Right(err)) = test_typecheck("val a: Int[] = [true, false]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 17), end: Position::new(1, 20) },
+        span: Span::new(ModuleId(1), (1, 17), (1, 20)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -645,7 +654,7 @@ fn typecheck_failure_array() {
 
     let (_, Either::Right(err)) = test_typecheck("val a: Int[][] = [[true]]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 20), end: Position::new(1, 23) },
+        span: Span::new(ModuleId(1), (1, 20), (1, 23)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -654,7 +663,7 @@ fn typecheck_failure_array() {
     let (project, Either::Right(err)) = test_typecheck("val a = []").unwrap_err() else { unreachable!() };
     let array_struct = &project.prelude_module().structs[project.prelude_array_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 9)),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(array_struct.generic_ids[0])).unwrap(),
         purpose: "assignment",
     };
@@ -693,7 +702,7 @@ fn typecheck_failure_tuple() {
     let int_array_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let bool_int_tuple_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 16), end: Position::new(1, 24) },
+        span: Span::new(ModuleId(1), (1, 16), (1, 24)),
         expected: vec![int_array_type_id],
         received: bool_int_tuple_type_id,
     };
@@ -701,7 +710,7 @@ fn typecheck_failure_tuple() {
 
     let (_, Either::Right(err)) = test_typecheck("val a: (Bool, Float) = (true, 43)").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 31), end: Position::new(1, 32) },
+        span: Span::new(ModuleId(1), (1, 31), (1, 32)),
         expected: vec![PRELUDE_FLOAT_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -711,7 +720,7 @@ fn typecheck_failure_tuple() {
     let bool_float_bool_tuple_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID])).unwrap();
     let bool_float_tuple_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_BOOL_TYPE_ID, PRELUDE_FLOAT_TYPE_ID])).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 30), end: Position::new(1, 39) },
+        span: Span::new(ModuleId(1), (1, 30), (1, 39)),
         expected: vec![bool_float_bool_tuple_type_id],
         received: bool_float_tuple_type_id,
     };
@@ -769,7 +778,7 @@ fn typecheck_set() {
 fn typecheck_failure_set() {
     let (_, Either::Right(err)) = test_typecheck("#{1, true, 3}").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 6), end: Position::new(1, 9) },
+        span: Span::new(ModuleId(1), (1, 6), (1, 9)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -777,7 +786,7 @@ fn typecheck_failure_set() {
 
     let (_, Either::Right(err)) = test_typecheck("val s: Set<Int> = #{true, false}").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 21), end: Position::new(1, 24) },
+        span: Span::new(ModuleId(1), (1, 21), (1, 24)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -785,7 +794,7 @@ fn typecheck_failure_set() {
 
     let (_, Either::Right(err)) = test_typecheck("val s: Set<Set<Int>> = #{#{true}}").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 28), end: Position::new(1, 31) },
+        span: Span::new(ModuleId(1), (1, 28), (1, 31)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -794,7 +803,7 @@ fn typecheck_failure_set() {
     let (project, Either::Right(err)) = test_typecheck("val s = #{}").unwrap_err() else { unreachable!() };
     let set_struct_ = &project.prelude_module().structs[project.prelude_set_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 10)),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(set_struct_.generic_ids[0])).unwrap(),
         purpose: "assignment",
     };
@@ -873,7 +882,7 @@ fn typecheck_map() {
 fn typecheck_failure_map() {
     let (_, Either::Right(err)) = test_typecheck("{ a: 1, b: true }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 12), end: Position::new(1, 15) },
+        span: Span::new(ModuleId(1), (1, 12), (1, 15)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -881,7 +890,7 @@ fn typecheck_failure_map() {
 
     let (_, Either::Right(err)) = test_typecheck("val m: Map<String, Int> = { (true): 1 }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 30), end: Position::new(1, 33) },
+        span: Span::new(ModuleId(1), (1, 30), (1, 33)),
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -889,7 +898,7 @@ fn typecheck_failure_map() {
 
     let (_, Either::Right(err)) = test_typecheck("val m: Map<Int, Map<Int, Int>> = { 1: { 2: true } }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 44), end: Position::new(1, 47) },
+        span: Span::new(ModuleId(1), (1, 44), (1, 47)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -898,7 +907,7 @@ fn typecheck_failure_map() {
     let (project, Either::Right(err)) = test_typecheck("val m = {}").unwrap_err() else { unreachable!() };
     let map_struct = &project.prelude_module().structs[project.prelude_map_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 9) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 9)),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.map_type(map_struct.generic_ids[0], map_struct.generic_ids[1])).unwrap(),
         purpose: "assignment",
     };
@@ -916,7 +925,7 @@ fn typecheck_none() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -933,7 +942,7 @@ fn typecheck_none() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -953,7 +962,7 @@ fn typecheck_none() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap())).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -978,7 +987,7 @@ fn typecheck_none() {
             ).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -991,7 +1000,7 @@ fn typecheck_none() {
 fn typecheck_failure_none() {
     let (project, Either::Right(err)) = test_typecheck("val x = None").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 12) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 12)),
         type_id: project.prelude_none_type_id,
         purpose: "assignment",
     };
@@ -999,7 +1008,7 @@ fn typecheck_failure_none() {
 
     let (project, Either::Right(err)) = test_typecheck("val x = [None]").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 13) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 13)),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(project.prelude_none_type_id)).unwrap(),
         purpose: "assignment",
     };
@@ -1007,7 +1016,7 @@ fn typecheck_failure_none() {
 
     let (project, Either::Right(err)) = test_typecheck("val x: Int = None").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 14), end: Position::new(1, 17) },
+        span: Span::new(ModuleId(1), (1, 14), (1, 17)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -1029,7 +1038,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 11), end: Position::new(2, 11) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 11), (2, 11))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1040,7 +1049,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_BOOL_TYPE_ID,
             is_mutable: true,
             is_initialized: false,
-            defined_span: Some(Range { start: Position::new(3, 11), end: Position::new(3, 11) }),
+            defined_span: Some(Span::new(ModuleId(1), (3, 11), (3, 11))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1051,7 +1060,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: true,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(4, 11), end: Position::new(4, 11) }),
+            defined_span: Some(Span::new(ModuleId(1), (4, 11), (4, 11))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1070,7 +1079,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 12), end: Position::new(2, 12) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 12), (2, 12))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1081,7 +1090,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_FLOAT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 15), end: Position::new(2, 15) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 15), (2, 15))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1092,7 +1101,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 19), end: Position::new(2, 19) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 19), (2, 19))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1103,7 +1112,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_BOOL_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 23), end: Position::new(2, 23) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 23), (2, 23))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1114,7 +1123,7 @@ fn typecheck_binding_declaration() {
             type_id: PRELUDE_STRING_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 28), end: Position::new(2, 28) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 28), (2, 28))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1125,7 +1134,7 @@ fn typecheck_binding_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID])).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 31), end: Position::new(2, 31) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 31), (2, 31))),
             is_captured: false,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1138,35 +1147,35 @@ fn typecheck_binding_declaration() {
 fn typecheck_failure_binding_declaration() {
     let (_, Either::Right(err)) = test_typecheck("val x: Bogus = 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownType {
-        span: Range { start: Position::new(1, 8), end: Position::new(1, 12) },
+        span: Span::new(ModuleId(1), (1, 8), (1, 12)),
         name: "Bogus".to_string(),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("val x = 1\nval x = 4").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
+        span: Span::new(ModuleId(1), (2, 5), (2, 5)),
         name: "x".to_string(),
-        original_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
         kind: DuplicateNameKind::Variable,
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("val x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
-        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 5), (1, 5)),
         is_mutable: false,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val x: Int").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
-        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 5), (1, 5)),
         is_mutable: false,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("var x").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingBindingInitializer {
-        span: Range { start: Position::new(1, 5), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 5), (1, 5)),
         is_mutable: true,
     };
     assert_eq!(expected, err);
@@ -1187,12 +1196,12 @@ fn typecheck_type_declaration() {
             id: StructId(ModuleId(1), 0),
             struct_scope_id: ScopeId(ModuleId(1), 1),
             name: "Foo".to_string(),
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             generic_ids: vec![],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 1) } },
-                StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Range { start: Position::new(3, 1), end: Position::new(3, 1) } },
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)) },
+                StructField { name: "b".to_string(), type_id: PRELUDE_INT_TYPE_ID, is_readonly: false, defined_span: Span::new(ModuleId(1), (3, 1), (3, 1)) },
             ],
             methods: vec![],
             static_methods: vec![],
@@ -1207,7 +1216,7 @@ fn typecheck_type_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.struct_type(struct_id)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             is_captured: false,
             alias: VariableAlias::Type(Either::Left(struct_id)),
             is_parameter: false,
@@ -1229,11 +1238,11 @@ fn typecheck_type_declaration() {
             id: struct_id,
             struct_scope_id: ScopeId(ModuleId(1), 1),
             name: "Foo".to_string(),
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             generic_ids: vec![],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 1) } },
+                StructField { name: "a".to_string(), type_id: PRELUDE_STRING_TYPE_ID, is_readonly: true, defined_span: Span::new(ModuleId(1), (2, 1), (2, 1)) },
             ],
             methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
             static_methods: vec![FuncId(ScopeId(ModuleId(1), 1), 1)],
@@ -1251,13 +1260,13 @@ fn typecheck_type_declaration() {
                 FunctionParam {
                     name: "self".to_string(),
                     type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap(),
-                    defined_span: Some(Range { start: Position::new(3, 10), end: Position::new(3, 13) }),
+                    defined_span: Some(Span::new(ModuleId(1), (3, 10), (3, 13))),
                     default_value: None,
                     is_variadic: false,
                 }
             ],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(3, 6), end: Position::new(3, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (3, 6), (3, 8))),
             body: vec![
                 TypedNode::Literal {
                     token: Token::Int(Position::new(3, 23), 12),
@@ -1275,7 +1284,7 @@ fn typecheck_type_declaration() {
             has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(4, 6), end: Position::new(4, 14) }),
+            defined_span: Some(Span::new(ModuleId(1), (4, 6), (4, 14))),
             body: vec![
                 TypedNode::Literal {
                     token: Token::Int(Position::new(4, 25), 24),
@@ -1303,11 +1312,11 @@ fn typecheck_type_declaration() {
             id: struct_id,
             struct_scope_id,
             name: "Node".to_string(),
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 9) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 9))),
             generic_ids: vec![TypeId(struct_scope_id, 0)],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             fields: vec![
-                StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 5) } },
+                StructField { name: "value".to_string(), type_id: TypeId(struct_scope_id, 0), is_readonly: false, defined_span: Span::new(ModuleId(1), (2, 1), (2, 5)) },
             ],
             methods: vec![FuncId(ScopeId(ModuleId(1), 1), 0)],
             static_methods: vec![],
@@ -1323,9 +1332,9 @@ fn typecheck_failure_type_declaration() {
       type Foo {}\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 6), (2, 8)),
         name: "Foo".to_string(),
-        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
         kind: DuplicateNameKind::Type,
     };
     assert_eq!(expected, err);
@@ -1335,9 +1344,9 @@ fn typecheck_failure_type_declaration() {
       enum Foo {}\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 6), (2, 8)),
         name: "Foo".to_string(),
-        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
         kind: DuplicateNameKind::Type,
     };
     assert_eq!(expected, err);
@@ -1348,7 +1357,7 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownType {
-        span: Range { start: Position::new(2, 4), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 4), (2, 8)),
         name: "Bogus".to_string(),
     };
     assert_eq!(expected, err);
@@ -1360,9 +1369,9 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(3, 6), end: Position::new(3, 8) },
+        span: Span::new(ModuleId(1), (3, 6), (3, 8)),
         name: "foo".to_string(),
-        original_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+        original_span: Some(Span::new(ModuleId(1), (2, 6), (2, 8))),
         kind: DuplicateNameKind::Method,
     };
     assert_eq!(expected, err);
@@ -1374,7 +1383,7 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidSelfParamPosition {
-        span: Range { start: Position::new(2, 16), end: Position::new(2, 19) },
+        span: Span::new(ModuleId(1), (2, 16), (2, 19)),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -1383,7 +1392,7 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidSelfParamPosition {
-        span: Range { start: Position::new(2, 18), end: Position::new(2, 21) },
+        span: Span::new(ModuleId(1), (2, 18), (2, 21)),
     };
     assert_eq!(expected, err);
 
@@ -1394,7 +1403,7 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 18), end: Position::new(2, 22) },
+        span: Span::new(ModuleId(1), (2, 18), (2, 22)),
         expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -1407,9 +1416,9 @@ fn typecheck_failure_type_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 10), end: Position::new(2, 10) },
+        span: Span::new(ModuleId(1), (2, 10), (2, 10)),
         name: "T".to_string(),
-        original_span: Some(Range { start: Position::new(1, 11), end: Position::new(1, 11) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 11), (1, 11))),
         kind: DuplicateNameKind::TypeArgument,
     };
     assert_eq!(expected, err);
@@ -1431,12 +1440,12 @@ fn typecheck_enum_declaration() {
             id: enum_id,
             enum_scope_id: ScopeId(ModuleId(1), 1),
             name: "Foo".to_string(),
-            defined_span: Range { start: Position::new(1, 6), end: Position::new(1, 8) },
+            defined_span: Span::new(ModuleId(1), (1, 6), (1, 8)),
             generic_ids: vec![],
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             variants: vec![
-                EnumVariant { name: "Bar".to_string(), defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 3) }, kind: EnumVariantKind::Constant },
-                EnumVariant { name: "Baz".to_string(), defined_span: Range { start: Position::new(3, 1), end: Position::new(3, 3) }, kind: EnumVariantKind::Container(baz_func_id) },
+                EnumVariant { name: "Bar".to_string(), defined_span: Span::new(ModuleId(1), (2, 1), (2, 3)), kind: EnumVariantKind::Constant },
+                EnumVariant { name: "Baz".to_string(), defined_span: Span::new(ModuleId(1), (3, 1), (3, 3)), kind: EnumVariantKind::Container(baz_func_id) },
             ],
             methods: vec![],
             static_methods: vec![],
@@ -1451,7 +1460,7 @@ fn typecheck_enum_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.enum_type(enum_id)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             is_captured: false,
             alias: VariableAlias::Type(Either::Right(enum_id)),
             is_parameter: false,
@@ -1469,13 +1478,13 @@ fn typecheck_enum_declaration() {
             FunctionParam {
                 name: "x".to_string(),
                 type_id: PRELUDE_INT_TYPE_ID,
-                defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 5)}),
+                defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 5))),
                 default_value: None,
                 is_variadic: false,
             }
         ],
         return_type_id: project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(1))).unwrap(),
-        defined_span: Some(Range { start: Position::new(3, 1), end: Position::new(3, 3)}),
+        defined_span: Some(Span::new(ModuleId(1), (3, 1), (3, 3))),
         body: vec![],
         captured_vars: vec![],
     };
@@ -1489,18 +1498,18 @@ fn typecheck_failure_enum_declaration() {
       enum Foo {}\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 6), (2, 8)),
         name: "Foo".to_string(),
-        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
         kind: DuplicateNameKind::Enum,
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("enum Foo { Bar, Bar }").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(1, 17), end: Position::new(1, 19) },
+        span: Span::new(ModuleId(1), (1, 17), (1, 19)),
         name: "Bar".to_string(),
-        original_span: Some(Range { start: Position::new(1, 12), end: Position::new(1, 14) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 12), (1, 14))),
         kind: DuplicateNameKind::EnumVariant,
     };
     assert_eq!(expected, err);
@@ -1512,9 +1521,9 @@ fn typecheck_failure_enum_declaration() {
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(3, 6), end: Position::new(3, 8) },
+        span: Span::new(ModuleId(1), (3, 6), (3, 8)),
         name: "Bar".to_string(),
-        original_span: Some(Range { start: Position::new(2, 1), end: Position::new(2, 3) }),
+        original_span: Some(Span::new(ModuleId(1), (2, 1), (2, 3))),
         kind: DuplicateNameKind::StaticMethodOrVariant,
     };
     assert_eq!(expected, err);
@@ -1525,7 +1534,7 @@ fn typecheck_failure_enum_declaration() {
       }\n\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateParameter {
-        span: Range { start: Position::new(2, 13), end: Position::new(2, 13) },
+        span: Span::new(ModuleId(1), (2, 13), (2, 13)),
         name: "x".to_string(),
     };
     assert_eq!(expected, err);
@@ -1545,7 +1554,7 @@ fn typecheck_function_declaration() {
             has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![
                 TypedNode::Literal {
                     token: Token::Int(Position::new(1, 19), 24),
@@ -1577,13 +1586,13 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "x".to_string(),
                     type_id: PRELUDE_BOOL_TYPE_ID,
-                    defined_span: Some(Range { start: Position::new(2, 10), end: Position::new(2, 10) }),
+                    defined_span: Some(Span::new(ModuleId(1), (2, 10), (2, 10))),
                     default_value: None,
                     is_variadic: false,
                 }
             ],
             return_type_id: PRELUDE_UNIT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 6), (2, 8))),
             body: vec![
                 TypedNode::BindingDeclaration {
                     token: Token::Val(Position::new(3, 1)),
@@ -1629,7 +1638,7 @@ fn typecheck_function_declaration() {
             has_self: false,
             params: vec![],
             return_type_id: bool_bool_tuple_array_type_id,
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![
                 TypedNode::Array {
                     token: Token::LBrack(Position::new(1, 30), false),
@@ -1657,7 +1666,7 @@ fn typecheck_function_declaration() {
             has_self: false,
             params: vec![],
             return_type_id: PRELUDE_INT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 6), (2, 8))),
             body: vec![
                 TypedNode::Identifier {
                     token: Token::Ident(Position::new(2, 19), "x".to_string()),
@@ -1679,7 +1688,7 @@ fn typecheck_function_declaration() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![], 0, false, PRELUDE_INT_TYPE_ID)).unwrap(),
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(2, 6), end: Position::new(2, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (2, 6), (2, 8))),
             is_captured: false,
             alias: VariableAlias::Function(FuncId(ScopeId(ModuleId(1), 0), 0)),
             is_parameter: false,
@@ -1690,7 +1699,7 @@ fn typecheck_function_declaration() {
             type_id: PRELUDE_INT_TYPE_ID,
             is_mutable: false,
             is_initialized: true,
-            defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
             is_captured: true,
             alias: VariableAlias::None,
             is_parameter: false,
@@ -1714,13 +1723,13 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "a".to_string(),
                     type_id: t_type_id,
-                    defined_span: Some(Range { start: Position::new(1, 13), end: Position::new(1, 13) }),
+                    defined_span: Some(Span::new(ModuleId(1), (1, 13), (1, 13))),
                     default_value: None,
                     is_variadic: false,
                 }
             ],
             return_type_id: project.find_type_id(&fn_scope_id, &project.array_type(t_type_id)).unwrap(),
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![
                 TypedNode::Array {
                     token: Token::LBrack(Position::new(1, 26), false),
@@ -1755,13 +1764,13 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "a".to_string(),
                     type_id: PRELUDE_INT_TYPE_ID,
-                    defined_span: Some(Range { start: Position::new(1, 11), end: Position::new(1, 11) }),
+                    defined_span: Some(Span::new(ModuleId(1), (1, 11), (1, 11))),
                     default_value: None,
                     is_variadic: true,
                 }
             ],
             return_type_id: PRELUDE_UNIT_TYPE_ID,
-            defined_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+            defined_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
             body: vec![],
             captured_vars: vec![],
         }
@@ -1780,23 +1789,23 @@ fn typecheck_failure_function_declaration() {
       func foo(b: Bool): Bool = b\n\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(2, 6), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 6), (2, 8)),
         name: "foo".to_string(),
-        original_span: Some(Range { start: Position::new(1, 6), end: Position::new(1, 8) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 6), (1, 8))),
         kind: DuplicateNameKind::Function,
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(a: Int, a: Bool) = a").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateParameter {
-        span: Range { start: Position::new(1, 18), end: Position::new(1, 18) },
+        span: Span::new(ModuleId(1), (1, 18), (1, 18)),
         name: "a".to_string(),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(a: Bool): Int = a").unwrap_err() else { unreachable!() };
     let expected = TypeError::ReturnTypeMismatch {
-        span: Range { start: Position::new(1, 26), end: Position::new(1, 26) },
+        span: Span::new(ModuleId(1), (1, 26), (1, 26)),
         func_name: "foo".to_string(),
         expected: PRELUDE_INT_TYPE_ID,
         received: PRELUDE_BOOL_TYPE_ID,
@@ -1807,14 +1816,14 @@ fn typecheck_failure_function_declaration() {
 
     let (_, Either::Right(err)) = test_typecheck("func foo(a = x) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownIdentifier {
-        span: Range { start: Position::new(1, 14), end: Position::new(1, 14) },
+        span: Span::new(ModuleId(1), (1, 14), (1, 14)),
         token: Token::Ident(Position::new(1, 14), "x".to_string()),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(a: Bool[] = [1, 2]) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 23), end: Position::new(1, 23) },
+        span: Span::new(ModuleId(1), (1, 23), (1, 23)),
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -1822,7 +1831,7 @@ fn typecheck_failure_function_declaration() {
 
     let (project, Either::Right(err)) = test_typecheck("func foo(a: Bool = [1, 2]) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 20), end: Position::new(1, 24) },
+        span: Span::new(ModuleId(1), (1, 20), (1, 24)),
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -1832,7 +1841,7 @@ fn typecheck_failure_function_declaration() {
 
     let (_, Either::Right(err)) = test_typecheck("func foo(self) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidSelfParam {
-        span: Range { start: Position::new(1, 10), end: Position::new(1, 13) },
+        span: Span::new(ModuleId(1), (1, 10), (1, 13)),
     };
     assert_eq!(expected, err);
 
@@ -1840,9 +1849,9 @@ fn typecheck_failure_function_declaration() {
 
     let (_, Either::Right(err)) = test_typecheck("func foo<T, T>(a: T): T = a").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateName {
-        span: Range { start: Position::new(1, 13), end: Position::new(1, 13) },
+        span: Span::new(ModuleId(1), (1, 13), (1, 13)),
         name: "T".to_string(),
-        original_span: Some(Range { start: Position::new(1, 10), end: Position::new(1, 10) }),
+        original_span: Some(Span::new(ModuleId(1), (1, 10), (1, 10))),
         kind: DuplicateNameKind::TypeArgument,
     };
     assert_eq!(expected, err);
@@ -1851,7 +1860,7 @@ fn typecheck_failure_function_declaration() {
     let t_type_id = project.find_type_id_by(&ScopeId(ModuleId(1), 1), |ty| if let Type::Generic(_, name) = ty { name == "T" } else { false }).unwrap();
     let u_type_id = project.find_type_id_by(&ScopeId(ModuleId(1), 1), |ty| if let Type::Generic(_, name) = ty { name == "U" } else { false }).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 39), end: Position::new(1, 39) },
+        span: Span::new(ModuleId(1), (1, 39), (1, 39)),
         expected: vec![t_type_id],
         received: u_type_id,
     };
@@ -1861,26 +1870,26 @@ fn typecheck_failure_function_declaration() {
 
     let (_, Either::Right(err)) = test_typecheck("func foo(*a: Int) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidVarargType {
-        span: Range { start: Position::new(1, 11), end: Position::new(1, 11) },
+        span: Span::new(ModuleId(1), (1, 11), (1, 11)),
         type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(*a: Int[], b: Int) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidVarargPosition {
-        span: Range { start: Position::new(1, 11), end: Position::new(1, 11) },
+        span: Span::new(ModuleId(1), (1, 11), (1, 11)),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(*a: Int[], b = 6) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidVarargPosition {
-        span: Range { start: Position::new(1, 11), end: Position::new(1, 11) },
+        span: Span::new(ModuleId(1), (1, 11), (1, 11)),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("func foo(b = 6, *a: Int[]) {}").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidRequiredParamPosition {
-        span: Range { start: Position::new(1, 18), end: Position::new(1, 18) },
+        span: Span::new(ModuleId(1), (1, 18), (1, 18)),
         is_variadic: true,
     };
     assert_eq!(expected, err);
@@ -1997,7 +2006,7 @@ fn typecheck_invocation() {
         ).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 7))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2030,7 +2039,7 @@ fn typecheck_invocation() {
         ).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 7))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2063,7 +2072,7 @@ fn typecheck_invocation() {
         ).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(6, 5), end: Position::new(6, 7) }),
+        defined_span: Some(Span::new(ModuleId(1), (6, 5), (6, 7))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2097,12 +2106,12 @@ fn typecheck_invocation() {
                 vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
                 2,
                 false,
-                project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap()
+                project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap(),
             ),
         ).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(2, 5), end: Position::new(2, 5) }),
+        defined_span: Some(Span::new(ModuleId(1), (2, 5), (2, 5))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2115,7 +2124,7 @@ fn typecheck_invocation() {
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 7))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2214,7 +2223,7 @@ fn typecheck_failure_invocation() {
       a()\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::IllegalInvocation {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 1)),
         type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
@@ -2224,7 +2233,7 @@ fn typecheck_failure_invocation() {
       foo(1, b: true)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::MixedArgumentType {
-        span: Range { start: Position::new(2, 8), end: Position::new(2, 8) },
+        span: Span::new(ModuleId(1), (2, 8), (2, 8)),
     };
     assert_eq!(expected, err);
 
@@ -2233,7 +2242,7 @@ fn typecheck_failure_invocation() {
       foo(a: 1, true)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::MixedArgumentType {
-        span: Range { start: Position::new(2, 11), end: Position::new(2, 14) },
+        span: Span::new(ModuleId(1), (2, 11), (2, 14)),
     };
     assert_eq!(expected, err);
 
@@ -2242,7 +2251,7 @@ fn typecheck_failure_invocation() {
       foo(a: 1, a: 2)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateArgumentLabel {
-        span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+        span: Span::new(ModuleId(1), (2, 11), (2, 11)),
         name: "a".to_string(),
     };
     assert_eq!(expected, err);
@@ -2252,7 +2261,7 @@ fn typecheck_failure_invocation() {
       foo(a: 1, d: 2)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnexpectedArgumentName {
-        span: Range { start: Position::new(2, 11), end: Position::new(2, 11) },
+        span: Span::new(ModuleId(1), (2, 11), (2, 11)),
         arg_name: "d".to_string(),
         is_instantiation: false,
     };
@@ -2263,7 +2272,7 @@ fn typecheck_failure_invocation() {
       foo(123, true, 456, false)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 4)),
         num_possible_args: 3,
         num_required_args: 2,
         num_provided_args: 4,
@@ -2274,7 +2283,7 @@ fn typecheck_failure_invocation() {
       foo(123)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 4)),
         num_possible_args: 3,
         num_required_args: 2,
         num_provided_args: 1,
@@ -2286,7 +2295,7 @@ fn typecheck_failure_invocation() {
       foo(a: 123)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidArity {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 4) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 4)),
         num_possible_args: 3,
         num_required_args: 2,
         num_provided_args: 1,
@@ -2298,7 +2307,7 @@ fn typecheck_failure_invocation() {
       val x = foo(foo([]))\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
+        span: Span::new(ModuleId(1), (2, 9), (2, 17)),
         type_id: project.find_type_id(
             &ScopeId(ModuleId(1), 0),
             &project.array_type(project.find_type_id_for_generic(&ScopeId(ModuleId(1), 1), "T").unwrap()),
@@ -2312,7 +2321,7 @@ fn typecheck_failure_invocation() {
       foo(1, None)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 8), end: Position::new(2, 11) },
+        span: Span::new(ModuleId(1), (2, 8), (2, 11)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -2325,7 +2334,7 @@ fn typecheck_failure_invocation() {
       foo<Bogus>(1, None)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownType {
-        span: Range { start: Position::new(2, 5), end: Position::new(2, 9) },
+        span: Span::new(ModuleId(1), (2, 5), (2, 9)),
         name: "Bogus".to_string(),
     };
     assert_eq!(expected, err);
@@ -2334,7 +2343,7 @@ fn typecheck_failure_invocation() {
       foo<Int>(1)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidTypeArgumentArity {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 3) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 3)),
         num_required_args: 2,
         num_provided_args: 1,
     };
@@ -2344,7 +2353,7 @@ fn typecheck_failure_invocation() {
       foo<Int, String, Bool>(1)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidTypeArgumentArity {
-        span: Range { start: Position::new(2, 18), end: Position::new(2, 21) },
+        span: Span::new(ModuleId(1), (2, 18), (2, 21)),
         num_required_args: 2,
         num_provided_args: 3,
     };
@@ -2354,7 +2363,7 @@ fn typecheck_failure_invocation() {
       val a = foo2<String>(1, 2)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 22), end: Position::new(2, 22) },
+        span: Span::new(ModuleId(1), (2, 22), (2, 22)),
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -2367,7 +2376,7 @@ fn typecheck_failure_invocation() {
       f.foo(a: 1)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnexpectedArgumentName {
-        span: Range { start: Position::new(3, 7), end: Position::new(3, 7) },
+        span: Span::new(ModuleId(1), (3, 7), (3, 7)),
         arg_name: "a".to_string(),
         is_instantiation: false,
     };
@@ -2379,7 +2388,7 @@ fn typecheck_failure_invocation() {
       fn(a: 4)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnexpectedArgumentName {
-        span: Range { start: Position::new(2, 4), end: Position::new(2, 4) },
+        span: Span::new(ModuleId(1), (2, 4), (2, 4)),
         arg_name: "a".to_string(),
         is_instantiation: false,
     };
@@ -2391,7 +2400,7 @@ fn typecheck_failure_invocation() {
       Foo.Bar()
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::IllegalEnumVariantConstruction {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 7) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 7)),
         enum_id: EnumId(ModuleId(1), 0),
         variant_idx: 0,
     };
@@ -2476,7 +2485,7 @@ fn typecheck_failure_invocation_instantiation() {
       val f = Foo(\"asdf\")\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::MissingRequiredArgumentLabels {
-        span: Range { start: Position::new(2, 13), end: Position::new(2, 18) },
+        span: Span::new(ModuleId(1), (2, 13), (2, 18)),
     };
     assert_eq!(expected, err);
 
@@ -2485,7 +2494,7 @@ fn typecheck_failure_invocation_instantiation() {
       Foo(b: 12)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnexpectedArgumentName {
-        span: Range { start: Position::new(2, 5), end: Position::new(2, 5) },
+        span: Span::new(ModuleId(1), (2, 5), (2, 5)),
         arg_name: "b".to_string(),
         is_instantiation: true,
     };
@@ -2499,7 +2508,7 @@ fn typecheck_failure_invocation_instantiation() {
     let node_struct = project.find_struct_by_name(&ModuleId(1), &"Node".to_string()).unwrap();
     let array_struct = &project.prelude_module().structs[project.prelude_array_struct_id.1];
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(2, 9), end: Position::new(2, 17) },
+        span: Span::new(ModuleId(1), (2, 9), (2, 17)),
         type_id: project.find_type_id(
             &ScopeId(ModuleId(1), 0),
             &Type::GenericInstance(
@@ -2517,7 +2526,7 @@ fn typecheck_failure_invocation_instantiation() {
       val n = Node<Int>(v: true)\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 22), end: Position::new(2, 25) },
+        span: Span::new(ModuleId(1), (2, 22), (2, 25)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -2598,7 +2607,7 @@ fn typecheck_accessor() {
 fn typecheck_failure_accessor() {
     let (project, Either::Right(err)) = test_typecheck("[1].size").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownMember {
-        span: Range { start: Position::new(1, 5), end: Position::new(1, 8) },
+        span: Span::new(ModuleId(1), (1, 5), (1, 8)),
         field_name: "size".to_string(),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -2611,7 +2620,7 @@ fn typecheck_failure_accessor() {
     ").unwrap_err() else { unreachable!() };
     let struct_ = &project.modules[1].structs[0];
     let expected = TypeError::UnknownMember {
-        span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
+        span: Span::new(ModuleId(1), (3, 3), (3, 3)),
         field_name: "b".to_string(),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
     };
@@ -2628,7 +2637,7 @@ fn typecheck_failure_accessor() {
 
     let u_type_id = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 2), "U").unwrap();
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(6, 11), end: Position::new(6, 15) },
+        span: Span::new(ModuleId(1), (6, 11), (6, 15)),
         type_id: project.find_type_id(
             &ScopeId(ModuleId(1), 0),
             &project.function_type(
@@ -2659,7 +2668,7 @@ fn typecheck_lambda() {
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], 2, false, PRELUDE_FLOAT_TYPE_ID)).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2675,7 +2684,7 @@ fn typecheck_lambda() {
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_FLOAT_TYPE_ID)).unwrap(),
         is_mutable: false,
         is_initialized: true,
-        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
         is_captured: false,
         alias: VariableAlias::None,
         is_parameter: false,
@@ -2691,33 +2700,33 @@ fn typecheck_lambda() {
 fn typecheck_failure_lambda() {
     let (_, Either::Right(err)) = test_typecheck("a => 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownTypeForParameter {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 1) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 1)),
         param_name: "a".to_string(),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("(a: Int, b) => 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownTypeForParameter {
-        span: Range { start: Position::new(1, 10), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 10), (1, 10)),
         param_name: "b".to_string(),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a, b) => 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownTypeForParameter {
-        span: Range { start: Position::new(1, 27), end: Position::new(1, 27) },
+        span: Span::new(ModuleId(1), (1, 27), (1, 27)),
         param_name: "b".to_string(),
     };
     assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a: Float) => 123").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 24), end: Position::new(1, 24) },
+        span: Span::new(ModuleId(1), (1, 24), (1, 24)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_FLOAT_TYPE_ID,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val f: (Int) => Int = (a) => a + 0.1").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 30), end: Position::new(1, 36) },
+        span: Span::new(ModuleId(1), (1, 30), (1, 36)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_FLOAT_TYPE_ID,
     };
@@ -2725,14 +2734,14 @@ fn typecheck_failure_lambda() {
 
     let (_, Either::Right(err)) = test_typecheck("val _: String[] = [1, 2, 3].map(x => x + 1)").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 38), end: Position::new(1, 42) },
+        span: Span::new(ModuleId(1), (1, 38), (1, 42)),
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("[1, 2, 3].map((x: String) => x)").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 16), end: Position::new(1, 16) },
+        span: Span::new(ModuleId(1), (1, 16), (1, 16)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_STRING_TYPE_ID,
     };
@@ -2741,7 +2750,7 @@ fn typecheck_failure_lambda() {
     let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.function_type(vec![PRELUDE_INT_TYPE_ID], 1, false, PRELUDE_INT_TYPE_ID)).unwrap();
     let received_type_id = project.find_type_id(&ScopeId(ModuleId(1), 1), &project.function_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID], 2, false, PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 16), end: Position::new(1, 35) },
+        span: Span::new(ModuleId(1), (1, 16), (1, 35)),
         expected: vec![expected_type_id],
         received: received_type_id,
     };
@@ -2810,14 +2819,14 @@ fn typecheck_indexing() {
 fn typechecking_failure_indexing() {
     let (project, Either::Right(err)) = test_typecheck("#{1, 2}[4]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidIndexableType {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 6)),
         is_range: false,
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
     let (project, Either::Right(err)) = test_typecheck("#{1, 2}[1:4]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidIndexableType {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 6)),
         is_range: true,
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.set_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -2825,14 +2834,14 @@ fn typechecking_failure_indexing() {
 
     let (_, Either::Right(err)) = test_typecheck("[1, 2][\"a\"]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 8), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 8), (1, 10)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_STRING_TYPE_ID,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("[1, 2][1:\"a\"]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 10), end: Position::new(1, 12) },
+        span: Span::new(ModuleId(1), (1, 10), (1, 12)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_STRING_TYPE_ID,
     };
@@ -2840,7 +2849,7 @@ fn typechecking_failure_indexing() {
 
     let (_, Either::Right(err)) = test_typecheck("\"asdf\"[\"a\"]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 8), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 8), (1, 10)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_STRING_TYPE_ID,
     };
@@ -2848,21 +2857,21 @@ fn typechecking_failure_indexing() {
 
     let (project, Either::Right(err)) = test_typecheck("(1, 2)[-1]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidTupleIndex {
-        span: Range { start: Position::new(1, 8), end: Position::new(1, 9) },
+        span: Span::new(ModuleId(1), (1, 8), (1, 9)),
         kind: InvalidTupleIndexKind::NonConstant,
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
     };
     assert_eq!(expected, err);
     let (project, Either::Right(err)) = test_typecheck("(1, 2)[3]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidTupleIndex {
-        span: Range { start: Position::new(1, 8), end: Position::new(1, 8) },
+        span: Span::new(ModuleId(1), (1, 8), (1, 8)),
         kind: InvalidTupleIndexKind::OutOfBounds(3),
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
     };
     assert_eq!(expected, err);
     let (project, Either::Right(err)) = test_typecheck("(1, 2)[1:3]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidIndexableType {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 5)),
         is_range: true,
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.tuple_type(vec![PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID])).unwrap(),
     };
@@ -2870,14 +2879,14 @@ fn typechecking_failure_indexing() {
 
     let (_, Either::Right(err)) = test_typecheck("{ a: 1 }[1]").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 10), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 10), (1, 10)),
         expected: vec![PRELUDE_STRING_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
     let (project, Either::Right(err)) = test_typecheck("{ a: 1 }[1:2]").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidIndexableType {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 6) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 6)),
         is_range: true,
         type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.map_type(PRELUDE_STRING_TYPE_ID, PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -2957,17 +2966,17 @@ fn typecheck_failure_assignment() {
     // Mutability
     let (_, Either::Right(err)) = test_typecheck("val a = 12\na = 34").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 1)),
         var_name: "a".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 5), end: Position::new(1, 5) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 5), (1, 5))),
         kind: ImmutableAssignmentKind::Variable,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("func foo(a: Int) { a = 12 }").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(1, 20), end: Position::new(1, 20) },
+        span: Span::new(ModuleId(1), (1, 20), (1, 20)),
         var_name: "a".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 10), end: Position::new(1, 10) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 10), (1, 10))),
         kind: ImmutableAssignmentKind::Parameter,
     };
     assert_eq!(expected, err);
@@ -2977,9 +2986,9 @@ fn typecheck_failure_assignment() {
       f.foo = 16\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(3, 1), end: Position::new(3, 5) },
+        span: Span::new(ModuleId(1), (3, 1), (3, 5)),
         var_name: "foo".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 12), end: Position::new(1, 14) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 12), (1, 14))),
         kind: ImmutableAssignmentKind::Field("Foo".to_string()),
     };
     assert_eq!(expected, err);
@@ -2989,9 +2998,9 @@ fn typecheck_failure_assignment() {
       f.foo = 16\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(3, 1), end: Position::new(3, 5) },
+        span: Span::new(ModuleId(1), (3, 1), (3, 5)),
         var_name: "foo".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 17), end: Position::new(1, 19) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 17), (1, 19))),
         kind: ImmutableAssignmentKind::Method("Foo".to_string()),
     };
     assert_eq!(expected, err);
@@ -3002,9 +3011,9 @@ fn typecheck_failure_assignment() {
       b.a.x = 16\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(4, 1), end: Position::new(4, 5) },
+        span: Span::new(ModuleId(1), (4, 1), (4, 5)),
         var_name: "x".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 13), end: Position::new(1, 13) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 13), (1, 13))),
         kind: ImmutableAssignmentKind::Field("A".to_string()),
     };
     assert_eq!(expected, err);
@@ -3013,9 +3022,9 @@ fn typecheck_failure_assignment() {
       Foo.Bar = 12\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::AssignmentToImmutable {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 7) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 7)),
         var_name: "Bar".to_string(),
-        defined_span: Some(Range { start: Position::new(1, 12), end: Position::new(1, 14) }),
+        defined_span: Some(Span::new(ModuleId(1), (1, 12), (1, 14))),
         kind: ImmutableAssignmentKind::EnumVariant("Foo".to_string()),
     };
     assert_eq!(expected, err);
@@ -3023,7 +3032,7 @@ fn typecheck_failure_assignment() {
     // Mismatches in assignment type
     let (_, Either::Right(err)) = test_typecheck("var a = 12\na = false").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 5), end: Position::new(2, 9) },
+        span: Span::new(ModuleId(1), (2, 5), (2, 9)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -3034,7 +3043,7 @@ fn typecheck_failure_assignment() {
       f.foo = true\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(3, 9), end: Position::new(3, 12) },
+        span: Span::new(ModuleId(1), (3, 9), (3, 12)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -3045,7 +3054,7 @@ fn typecheck_failure_assignment() {
     ").unwrap_err() else { unreachable!() };
     let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 10), end: Position::new(2, 13) },
+        span: Span::new(ModuleId(1), (2, 10), (2, 13)),
         expected: vec![expected_type_id],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -3056,7 +3065,7 @@ fn typecheck_failure_assignment() {
     ").unwrap_err() else { unreachable!() };
     let expected_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap();
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(2, 12), end: Position::new(2, 15) },
+        span: Span::new(ModuleId(1), (2, 12), (2, 15)),
         expected: vec![expected_type_id],
         received: PRELUDE_BOOL_TYPE_ID,
     };
@@ -3065,31 +3074,31 @@ fn typecheck_failure_assignment() {
     // Invalid assignment targets
     let (_, Either::Right(err)) = test_typecheck("(0, 1)[0] = 1").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidAssignmentTarget {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 8) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 8)),
         kind: InvalidAssignmentTargetKind::IndexingTuple,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\"asdf\"[0] = \"A\"").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidAssignmentTarget {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 8) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 8)),
         kind: InvalidAssignmentTargetKind::IndexingString,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\"asdf\"[0:3] = \"A\"").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidAssignmentTarget {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 10) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 10)),
         kind: InvalidAssignmentTargetKind::IndexingRange,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("[1, 2, 3][0:3] = 1").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidAssignmentTarget {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 13) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 13)),
         kind: InvalidAssignmentTargetKind::IndexingRange,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("1 + 2 = 3").unwrap_err() else { unreachable!() };
     let expected = TypeError::InvalidAssignmentTarget {
-        span: Range { start: Position::new(1, 1), end: Position::new(1, 5) },
+        span: Span::new(ModuleId(1), (1, 1), (1, 5)),
         kind: InvalidAssignmentTargetKind::UnsupportedAssignmentTarget,
     };
     assert_eq!(expected, err);
@@ -3176,7 +3185,7 @@ fn typecheck_if_statement() {
 fn typecheck_failure_if_statement() {
     let (_, Either::Right(err)) = test_typecheck("if 123 { }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 4), end: Position::new(1, 6) },
+        span: Span::new(ModuleId(1), (1, 4), (1, 6)),
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -3185,13 +3194,13 @@ fn typecheck_failure_if_statement() {
     // Verify variables in block scopes don't leak to outside
     let (_, Either::Right(err)) = test_typecheck("if true { val a = 1 }\na + 1").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownIdentifier {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 1)),
         token: Token::Ident(Position::new(2, 1), "a".to_string()),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("if true { } else { val a = 1 }\na + 1").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnknownIdentifier {
-        span: Range { start: Position::new(2, 1), end: Position::new(2, 1) },
+        span: Span::new(ModuleId(1), (2, 1), (2, 1)),
         token: Token::Ident(Position::new(2, 1), "a".to_string()),
     };
     assert_eq!(expected, err);
@@ -3219,7 +3228,7 @@ fn typecheck_if_expression() {
 fn typecheck_failure_if_expression() {
     let (project, Either::Right(err)) = test_typecheck("val _ = if true { }").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 15) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 15)),
         type_id: project.prelude_none_type_id,
         purpose: "assignment",
     };
@@ -3229,7 +3238,7 @@ fn typecheck_failure_if_expression() {
     let array_t_type_id = project.get_struct_by_id(&project.prelude_array_struct_id).generic_ids[0];
     let option_t_type_id = project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(array_t_type_id)).unwrap();
     let expected = TypeError::ForbiddenAssignment {
-        span: Range { start: Position::new(1, 9), end: Position::new(1, 22) },
+        span: Span::new(ModuleId(1), (1, 9), (1, 22)),
         type_id: option_t_type_id,
         purpose: "assignment",
     };
@@ -3237,7 +3246,7 @@ fn typecheck_failure_if_expression() {
 
     let (_, Either::Right(err)) = test_typecheck("val _: Bool = if true { 1 }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 25), end: Position::new(1, 25) },
+        span: Span::new(ModuleId(1), (1, 25), (1, 25)),
         expected: vec![PRELUDE_BOOL_TYPE_ID],
         received: PRELUDE_INT_TYPE_ID,
     };
@@ -3245,7 +3254,7 @@ fn typecheck_failure_if_expression() {
 
     let (project, Either::Right(err)) = test_typecheck("val _: Int = if true { 1 }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 14), end: Position::new(1, 24) },
+        span: Span::new(ModuleId(1), (1, 14), (1, 24)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: project.find_type_id(&ScopeId(ModuleId(1), 1), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
     };
@@ -3253,15 +3262,15 @@ fn typecheck_failure_if_expression() {
 
     let (_, Either::Right(err)) = test_typecheck("val _ = if true { 1 } else { true }").unwrap_err() else { unreachable!() };
     let expected = TypeError::BranchTypeMismatch {
-        span: Range { start: Position::new(1, 30), end: Position::new(1, 33) },
-        orig_span: Range { start: Position::new(1, 19), end: Position::new(1, 19) },
+        span: Span::new(ModuleId(1), (1, 30), (1, 33)),
+        orig_span: Span::new(ModuleId(1), (1, 19), (1, 19)),
         expected: PRELUDE_INT_TYPE_ID,
         received: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("val _: Int? = if true { } else { true }").unwrap_err() else { unreachable!() };
     let expected = TypeError::TypeMismatch {
-        span: Range { start: Position::new(1, 34), end: Position::new(1, 37) },
+        span: Span::new(ModuleId(1), (1, 34), (1, 37)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: PRELUDE_BOOL_TYPE_ID,
     };

@@ -104,27 +104,30 @@ fn cmd_typecheck2(opts: RunOpts) -> Result<(), ()> {
     let module_name = file_path.file_name().unwrap().to_str().unwrap().to_string();
     let module_id = ModuleId::parse_module_path(&format!("./{}", module_name)).unwrap();
 
-    let module_loader = ModuleLoader::new(&root);
+    let mut module_loader = ModuleLoader::new(&root);
     let mut project = Project::default();
-    let mut tc = Typechecker2::new(&module_loader, &mut project);
+    let mut tc = Typechecker2::new(&mut module_loader, &mut project);
     tc.typecheck_prelude();
 
     match tc.typecheck_module(&module_id) {
         Ok(_) => {}
         Err(e) => {
-            let file_name = module_loader.resolve_path(&module_id);
-            let contents = std::fs::read_to_string(&file_name).unwrap();
-
             match e {
-                Either::Left(Either::Left(e)) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Either::Left(Either::Right(e)) => eprintln!("{}", e.get_message(&file_name, &contents)),
-                Either::Right(e) => eprintln!("{}", e.message(&project, &file_name, &contents)),
+                Either::Left(Either::Left(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id);
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                },
+                Either::Left(Either::Right(e)) => {
+                    let file_name = module_loader.resolve_path(&module_id);
+                    let contents = std::fs::read_to_string(&file_name).unwrap();
+                    eprintln!("{}", e.get_message(&file_name, &contents))
+                },
+                Either::Right(e) => eprintln!("{}", e.message(&module_loader, &project)),
             }
             std::process::exit(1);
         }
     }
-
-    // dbg!(&project);
 
     Ok(())
 }

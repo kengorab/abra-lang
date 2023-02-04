@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::BufRead;
 use std::path::PathBuf;
 use itertools::{Either, EitherOrBoth, Itertools};
 use crate::{parser, tokenize_and_parse_stub};
@@ -10,9 +11,9 @@ use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
     fn resolve_path(&self, module_id: &parser::ast::ModuleId) -> String;
-
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId);
+    fn get_module_id(&self, module_id: &ModuleId) -> &parser::ast::ModuleId;
     fn load_file(&self, file_name: &String) -> String;
-
     fn load_untyped_ast(&self, module_id: &parser::ast::ModuleId) -> Result<(String, ParseResult), Either<LexerError, ParseError>> {
         use crate::{lexer::lexer, parser::parser};
 
@@ -31,11 +32,19 @@ pub trait LoadModule {
 
 pub struct ModuleLoader<'a> {
     program_root: &'a PathBuf,
+    module_id_map: HashMap::<ModuleId, parser::ast::ModuleId>,
+    prelude_raw: &'static str,
 }
 
 impl<'a> ModuleLoader<'a> {
     pub fn new(program_root: &'a PathBuf) -> ModuleLoader {
-        ModuleLoader { program_root }
+        let prelude_raw = include_str!("prelude.stub.abra");
+
+        ModuleLoader {
+            program_root,
+            module_id_map: HashMap::new(),
+            prelude_raw,
+        }
     }
 }
 
@@ -45,7 +54,19 @@ impl<'a> LoadModule for ModuleLoader<'a> {
         path.to_str().unwrap().to_string()
     }
 
+    fn register(&mut self, m_id: &parser::ast::ModuleId, module_id: &ModuleId) {
+        self.module_id_map.insert(*module_id, m_id.clone());
+    }
+
+    fn get_module_id(&self, module_id: &ModuleId) -> &parser::ast::ModuleId {
+        self.module_id_map.get(module_id).expect(&format!("Internal error: expected module for {:?}", module_id))
+    }
+
     fn load_file(&self, file_name: &String) -> String {
+        if file_name == "prelude.stub.abra" {
+            return self.prelude_raw.to_string();
+        }
+
         std::fs::read_to_string(file_name).map_err(|err| {
             eprintln!("Could not read file {}: {}", file_name, err);
             std::process::exit(1);
@@ -420,6 +441,39 @@ impl ModuleId {
     pub const BOGUS: ModuleId = ModuleId(usize::MAX);
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct Span {
+    module_id: ModuleId,
+    range: Range,
+}
+
+impl Span {
+    #[cfg(test)]
+    pub(crate) fn new(module_id: ModuleId, (start_line, start_col): (usize, usize), (end_line, end_col): (usize, usize)) -> Span {
+        use crate::lexer::tokens::Position;
+
+        Span {
+            module_id,
+            range: Range { start: Position { line: start_line, col: start_col }, end: Position { line: end_line, col: end_col } },
+        }
+    }
+
+    fn from_range(module_id: ModuleId, range: Range) -> Span {
+        Span { module_id, range }
+    }
+
+    pub fn expand(&self, other: &Span) -> Span {
+        self.expand_range(&other.range)
+    }
+
+    pub fn expand_range(&self, other: &Range) -> Span {
+        Span {
+            module_id: self.module_id,
+            range: self.range.expand(&other),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
@@ -432,7 +486,7 @@ pub struct Struct {
     pub struct_scope_id: ScopeId,
     pub name: String,
     // Structs with no defined_span are builtins
-    pub defined_span: Option<Range>,
+    pub defined_span: Option<Span>,
     pub generic_ids: Vec<TypeId>,
     pub self_type_id: TypeId,
     pub fields: Vec<StructField>,
@@ -444,7 +498,7 @@ pub struct Struct {
 pub struct StructField {
     pub name: String,
     pub type_id: TypeId,
-    pub defined_span: Range,
+    pub defined_span: Span,
     pub is_readonly: bool,
 }
 
@@ -453,7 +507,7 @@ pub struct Enum {
     pub id: EnumId,
     pub enum_scope_id: ScopeId,
     pub name: String,
-    pub defined_span: Range,
+    pub defined_span: Span,
     pub generic_ids: Vec<TypeId>,
     pub self_type_id: TypeId,
     pub variants: Vec<EnumVariant>,
@@ -464,7 +518,7 @@ pub struct Enum {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumVariant {
     pub name: String,
-    pub defined_span: Range,
+    pub defined_span: Span,
     pub kind: EnumVariantKind,
 }
 
@@ -544,7 +598,7 @@ pub struct Variable {
     pub is_mutable: bool,
     pub is_initialized: bool,
     // Variables with no defined_span are builtins
-    pub defined_span: Option<Range>,
+    pub defined_span: Option<Span>,
     pub is_captured: bool,
     pub alias: VariableAlias,
     pub is_parameter: bool,
@@ -568,7 +622,7 @@ pub struct Function {
     pub params: Vec<FunctionParam>,
     pub return_type_id: TypeId,
     // Functions with no defined_span are builtins or lambdas (since they can't have name collisions anyway)
-    pub defined_span: Option<Range>,
+    pub defined_span: Option<Span>,
     pub body: Vec<TypedNode>,
     pub captured_vars: Vec<VarId>,
 }
@@ -584,7 +638,7 @@ pub struct FunctionParam {
     pub name: String,
     pub type_id: TypeId,
     // Params with no defined_span are for builtin functions
-    pub defined_span: Option<Range>,
+    pub defined_span: Option<Span>,
     pub default_value: Option<TypedNode>,
     pub is_variadic: bool,
 }
@@ -815,38 +869,38 @@ pub enum InvalidAssignmentTargetKind {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
-    TypeMismatch { span: Range, expected: Vec<TypeId>, received: TypeId },
-    BranchTypeMismatch { span: Range, orig_span: Range, expected: TypeId, received: TypeId },
-    IllegalOperator { span: Range, op: BinaryOp, left: TypeId, right: TypeId },
-    UnknownType { span: Range, name: String },
-    UnknownIdentifier { span: Range, token: Token },
-    MissingBindingInitializer { span: Range, is_mutable: bool },
-    DuplicateName { span: Range, name: String, original_span: Option<Range>, kind: DuplicateNameKind },
-    ForbiddenAssignment { span: Range, type_id: TypeId, purpose: &'static str },
-    DestructuringMismatch { span: Range, kind: DestructuringMismatchKind, type_id: TypeId },
-    DuplicateSplat { span: Range },
-    DuplicateParameter { span: Range, name: String },
-    ReturnTypeMismatch { span: Range, func_name: String, expected: TypeId, received: TypeId },
-    IllegalInvocation { span: Range, type_id: TypeId },
-    IllegalEnumVariantConstruction { span: Range, enum_id: EnumId, variant_idx: usize },
-    UnexpectedArgumentName { span: Range, arg_name: String, is_instantiation: bool },
-    MixedArgumentType { span: Range },
-    DuplicateArgumentLabel { span: Range, name: String },
-    InvalidArity { span: Range, num_possible_args: usize, num_required_args: usize, num_provided_args: usize },
-    InvalidSelfParam { span: Range },
-    InvalidSelfParamPosition { span: Range },
-    InvalidRequiredParamPosition { span: Range, is_variadic: bool },
-    InvalidVarargPosition { span: Range },
-    InvalidVarargType { span: Range, type_id: TypeId },
-    InvalidTypeArgumentArity { span: Range, num_required_args: usize, num_provided_args: usize },
-    UnknownMember { span: Range, field_name: String, type_id: TypeId },
-    MissingRequiredArgumentLabels { span: Range },
-    UnknownTypeForParameter { span: Range, param_name: String },
-    AssignmentToImmutable { span: Range, var_name: String, defined_span: Option<Range>, kind: ImmutableAssignmentKind },
-    InvalidIndexableType { span: Range, is_range: bool, type_id: TypeId },
-    InvalidIndexType { span: Range, required_type_id: TypeId, provided_type_id: TypeId },
-    InvalidTupleIndex { span: Range, kind: InvalidTupleIndexKind, type_id: TypeId },
-    InvalidAssignmentTarget { span: Range, kind: InvalidAssignmentTargetKind },
+    TypeMismatch { span: Span, expected: Vec<TypeId>, received: TypeId },
+    BranchTypeMismatch { span: Span, orig_span: Span, expected: TypeId, received: TypeId },
+    IllegalOperator { span: Span, op: BinaryOp, left: TypeId, right: TypeId },
+    UnknownType { span: Span, name: String },
+    UnknownIdentifier { span: Span, token: Token },
+    MissingBindingInitializer { span: Span, is_mutable: bool },
+    DuplicateName { span: Span, name: String, original_span: Option<Span>, kind: DuplicateNameKind },
+    ForbiddenAssignment { span: Span, type_id: TypeId, purpose: &'static str },
+    DestructuringMismatch { span: Span, kind: DestructuringMismatchKind, type_id: TypeId },
+    DuplicateSplat { span: Span },
+    DuplicateParameter { span: Span, name: String },
+    ReturnTypeMismatch { span: Span, func_name: String, expected: TypeId, received: TypeId },
+    IllegalInvocation { span: Span, type_id: TypeId },
+    IllegalEnumVariantConstruction { span: Span, enum_id: EnumId, variant_idx: usize },
+    UnexpectedArgumentName { span: Span, arg_name: String, is_instantiation: bool },
+    MixedArgumentType { span: Span },
+    DuplicateArgumentLabel { span: Span, name: String },
+    InvalidArity { span: Span, num_possible_args: usize, num_required_args: usize, num_provided_args: usize },
+    InvalidSelfParam { span: Span },
+    InvalidSelfParamPosition { span: Span },
+    InvalidRequiredParamPosition { span: Span, is_variadic: bool },
+    InvalidVarargPosition { span: Span },
+    InvalidVarargType { span: Span, type_id: TypeId },
+    InvalidTypeArgumentArity { span: Span, num_required_args: usize, num_provided_args: usize },
+    UnknownMember { span: Span, field_name: String, type_id: TypeId },
+    MissingRequiredArgumentLabels { span: Span },
+    UnknownTypeForParameter { span: Span, param_name: String },
+    AssignmentToImmutable { span: Span, var_name: String, defined_span: Option<Span>, kind: ImmutableAssignmentKind },
+    InvalidIndexableType { span: Span, is_range: bool, type_id: TypeId },
+    InvalidIndexType { span: Span, required_type_id: TypeId, provided_type_id: TypeId },
+    InvalidTupleIndex { span: Span, kind: InvalidTupleIndexKind, type_id: TypeId },
+    InvalidAssignmentTarget { span: Span, kind: InvalidAssignmentTargetKind },
 }
 
 impl TypeError {
@@ -860,17 +914,55 @@ impl TypeError {
         " ".repeat(Self::INDENT_AMOUNT)
     }
 
-    fn get_underlined_line(lines: &Vec<&str>, span: &Range) -> String {
-        debug_assert!(span.start.line == span.end.line, "TODO: Displaying errors for multi-line spans");
+    fn get_underlined_line(loader: &ModuleLoader, span: &Span) -> String {
+        let lines = if &span.module_id == &PRELUDE_MODULE_ID {
+            std::io::BufReader::new(loader.prelude_raw.as_bytes())
+                .lines()
+                .skip(span.range.start.line - 1)
+                .take(span.range.end.line - span.range.start.line + 1)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        } else {
+            let file_name = loader.resolve_path(loader.get_module_id(&span.module_id));
+            let file = std::fs::File::open(&file_name).unwrap();
+            std::io::BufReader::new(file)
+                .lines()
+                .skip(span.range.start.line - 1)
+                .take(span.range.end.line - span.range.start.line + 1)
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
 
-        let line = lines.get(span.start.line - 1).expect("There should be a line");
-        let length = span.end.col - span.start.col + 1;
-        let underline = Self::get_underline(2 * Self::INDENT_AMOUNT + span.start.col, length);
-        let indent = Self::indent();
-        format!("{}|{}{}\n{}", indent, indent, line, underline)
+        let num_lines = lines.len();
+        if num_lines == 1 {
+            let line = &lines[0];
+            let length = span.range.end.col - span.range.start.col + 1;
+            let underline = Self::get_underline(2 * Self::INDENT_AMOUNT + span.range.start.col, length);
+            let indent = Self::indent();
+            format!("{}|{}{}\n{}", indent, indent, line, underline)
+        } else {
+            lines.into_iter()
+                .enumerate()
+                .flat_map(|(idx, line)| {
+                    let cursor_line = if idx == 0 {
+                        Self::get_underline(span.range.start.col - 1, line.len() - span.range.start.col + 1)
+                    } else if idx == num_lines - 1 {
+                        Self::get_underline(0, span.range.end.col + 1)
+                    } else {
+                        Self::get_underline(0, line.len())
+                    };
+
+                    let indent = Self::indent();
+                    vec![
+                        format!("{}|{}{}", indent, indent, line),
+                        format!("{} {}{}", indent, indent, cursor_line),
+                    ]
+                })
+                .join("\n")
+        }
     }
 
-    pub fn message(&self, project: &Project, file_name: &String, source: &String) -> String {
+    pub fn message(&self, loader: &ModuleLoader, project: &Project) -> String {
         let span = match self {
             TypeError::TypeMismatch { span, .. } |
             TypeError::BranchTypeMismatch { span, .. } |
@@ -885,7 +977,7 @@ impl TypeError {
             TypeError::DuplicateParameter { span, .. } |
             TypeError::ReturnTypeMismatch { span, .. } |
             TypeError::IllegalInvocation { span, .. } |
-            TypeError::IllegalEnumVariantConstruction { span,.. } |
+            TypeError::IllegalEnumVariantConstruction { span, .. } |
             TypeError::UnexpectedArgumentName { span, .. } |
             TypeError::MixedArgumentType { span, .. } |
             TypeError::DuplicateArgumentLabel { span, .. } |
@@ -905,8 +997,7 @@ impl TypeError {
             TypeError::InvalidTupleIndex { span, .. } |
             TypeError::InvalidAssignmentTarget { span, .. } => span,
         };
-        let lines: Vec<&str> = source.split("\n").collect();
-        let cursor_line = Self::get_underlined_line(&lines, span);
+        let cursor_line = Self::get_underlined_line(loader, span);
 
         let msg = match self {
             TypeError::TypeMismatch { expected, received, .. } => {
@@ -937,7 +1028,7 @@ impl TypeError {
                     Found type {}, but expected type {} because of prior branch\n{}",
                     cursor_line,
                     project.type_repr(received), project.type_repr(expected),
-                    Self::get_underlined_line(&lines, orig_span)
+                    Self::get_underlined_line(loader, orig_span)
                 )
             }
             TypeError::IllegalOperator { op, left, right, .. } => {
@@ -989,8 +1080,8 @@ impl TypeError {
                     let first_msg = format!("Duplicate member '{}'\n{}", &name, cursor_line);
 
                     let Some(original_span) = original_span else { unreachable!() };
-                    let pos = &original_span.start;
-                    let cursor_line = Self::get_underlined_line(&lines, original_span);
+                    let pos = &original_span.range.start;
+                    let cursor_line = Self::get_underlined_line(loader, original_span);
                     format!(
                         "{}\n\
                         There is already a variant declared in this enum with that name at ({}:{})\n{}",
@@ -1013,8 +1104,8 @@ impl TypeError {
                     let first_msg = format!("Duplicate {} '{}'\n{}", &kind, &name, cursor_line);
 
                     let second_msg = if let Some(original_span) = original_span {
-                        let pos = &original_span.start;
-                        let cursor_line = Self::get_underlined_line(&lines, original_span);
+                        let pos = &original_span.range.start;
+                        let cursor_line = Self::get_underlined_line(loader, original_span);
                         format!("This {} is already declared at ({}:{})\n{}", kind, pos.line, pos.col, cursor_line)
                     } else {
                         format!("This {} is already declared as built-in value", kind)
@@ -1088,7 +1179,7 @@ impl TypeError {
                     cursor_line, project.type_repr(type_id)
                 )
             }
-            TypeError::IllegalEnumVariantConstruction { enum_id, variant_idx,.. }  => {
+            TypeError::IllegalEnumVariantConstruction { enum_id, variant_idx, .. } => {
                 let enum_ = project.get_enum_by_id(enum_id);
                 let enum_name = &enum_.name;
                 let variant_name = &enum_.variants[*variant_idx].name;
@@ -1237,7 +1328,7 @@ impl TypeError {
                 let second_line = format!(
                     "{}{}",
                     second_line,
-                    defined_span.as_ref().map(|span| format!("\n{}", Self::get_underlined_line(&lines, span))).unwrap_or("".to_string())
+                    defined_span.as_ref().map(|span| format!("\n{}", Self::get_underlined_line(loader, span))).unwrap_or("".to_string())
                 );
 
                 format!(
@@ -1288,13 +1379,14 @@ impl TypeError {
             }
         };
 
-        let error_line = format!("Error at {}:{}:{}", file_name, span.start.line, span.start.col);
+        let file_name = loader.resolve_path(loader.get_module_id(&span.module_id));
+        let error_line = format!("Error at {}:{}:{}", file_name, span.range.start.line, span.range.start.col);
         format!("{}\n{}", error_line, msg)
     }
 }
 
 pub struct Typechecker2<'a, L: LoadModule> {
-    module_loader: &'a L,
+    module_loader: &'a mut L,
     project: &'a mut Project,
     current_scope_id: ScopeId,
     current_type_decl: Option<TypeId>,
@@ -1302,7 +1394,7 @@ pub struct Typechecker2<'a, L: LoadModule> {
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
-    pub fn new(module_loader: &'a L, project: &'a mut Project) -> Typechecker2<'a, L> {
+    pub fn new(module_loader: &'a mut L, project: &'a mut Project) -> Typechecker2<'a, L> {
         Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None }
     }
 
@@ -1314,6 +1406,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
     fn current_module(&self) -> &TypedModule {
         self.project.modules.last().expect("Internal error: there must always be a module being typechecked")
+    }
+
+    fn make_span(&self, range: &Range) -> Span {
+        Span::from_range(self.current_module().id, range.clone())
     }
 
     fn current_scope_mut(&mut self) -> &mut Scope {
@@ -1644,7 +1740,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         if let Some(generic_type_id) = self.project.find_type_id_for_generic(&self.current_scope_id, &ident_name) {
                             if let Some(type_args) = type_args {
                                 if let Some(first) = type_args.get(0) {
-                                    let span = first.get_ident().get_range();
+                                    let span = self.make_span(&first.get_ident().get_range());
                                     return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: 0, num_provided_args: type_args.len() });
                                 }
                             }
@@ -1667,7 +1763,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             let enum_id = enum_.id;
                             Ok(self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids, None)))
                         } else {
-                            Err(TypeError::UnknownType { span: ident.get_range(), name: ident_name })
+                            Err(TypeError::UnknownType { span: self.make_span(&ident.get_range()), name: ident_name })
                         }
                     }
                 }
@@ -1701,7 +1797,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Range, is_parameter: bool) -> Result<VarId, TypeError> {
+    fn add_variable_to_current_scope(&mut self, name: String, type_id: TypeId, is_mutable: bool, is_initialized: bool, span: &Span, is_parameter: bool) -> Result<VarId, TypeError> {
         let current_scope = self.current_scope_mut();
 
         for var in &current_scope.vars {
@@ -1720,7 +1816,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn add_function_variable_alias_to_current_scope(&mut self, ident: &Token, func_id: &FuncId) -> Result<(), TypeError> {
         let func = self.project.get_func_by_id(func_id);
         let name = Token::get_ident_name(ident);
-        let span = ident.get_range();
+        let span = self.make_span(&ident.get_range());
 
         let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
         let fn_var_id = self.add_variable_to_current_scope(name, fn_type_id, false, true, &span, false)?;
@@ -1735,7 +1831,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_scope = self.current_scope_mut();
 
         let name = Token::get_ident_name(name_token);
-        let span = name_token.get_range();
+        let span = Span::from_range(current_scope.id.0, name_token.get_range());
         for func in &current_scope.funcs {
             if func.name == name {
                 let kind = if is_method { DuplicateNameKind::Method } else { DuplicateNameKind::Function };
@@ -1779,15 +1875,17 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(func_id)
     }
 
-    fn verify_type_name_unique_in_module(&self, module: &TypedModule, name: &String, span: &Range) -> Result<(), TypeError> {
+    fn verify_type_name_unique_in_module(&self, module: &TypedModule, name: &String, range: &Range) -> Result<(), TypeError> {
         for struct_ in &module.structs {
             if struct_.name == *name {
+                let span = self.make_span(range);
                 return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span: struct_.defined_span.clone(), kind: DuplicateNameKind::Type });
             }
         }
 
         for enum_ in &module.enums {
             if enum_.name == *name {
+                let span = self.make_span(range);
                 return Err(TypeError::DuplicateName { span: span.clone(), name: name.clone(), original_span: Some(enum_.defined_span.clone()), kind: DuplicateNameKind::Enum });
             }
         }
@@ -1799,8 +1897,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_module = self.current_module();
 
         let name = Token::get_ident_name(name_token);
-        let span = name_token.get_range();
-        self.verify_type_name_unique_in_module(&current_module, &name, &span)?;
+        self.verify_type_name_unique_in_module(&current_module, &name, &name_token.get_range())?;
+        let span = Span::from_range(current_module.id, name_token.get_range());
 
         let struct_id = StructId(current_module.id, current_module.structs.len());
         let self_type_id = self.add_or_find_type_id(Type::GenericInstance(struct_id, generic_ids.clone()));
@@ -1809,7 +1907,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             id: struct_id,
             struct_scope_id,
             name: name.clone(),
-            defined_span: Some(name_token.get_range()),
+            defined_span: Some(span.clone()),
             generic_ids,
             self_type_id,
             fields: vec![],
@@ -1830,8 +1928,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_module = self.current_module();
 
         let name = Token::get_ident_name(name_token);
-        let span = name_token.get_range();
-        self.verify_type_name_unique_in_module(&current_module, &name, &span)?;
+        self.verify_type_name_unique_in_module(&current_module, &name, &name_token.get_range())?;
+        let span = Span::from_range(current_module.id, name_token.get_range());
 
         let enum_id = EnumId(current_module.id, current_module.enums.len());
         let self_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), None));
@@ -1935,6 +2033,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn typecheck_prelude(&mut self) {
         debug_assert!(self.project.modules.is_empty());
 
+        self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![] };
         let mut prelude_scope = Scope { label: "prelude.root".to_string(), id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
@@ -1992,8 +2091,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.current_scope_id = PRELUDE_SCOPE_ID;
 
-        let prelude_stub_file = include_str!("prelude.stub.abra");
-        let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file.to_string())
+        let prelude_stub_file = self.module_loader.load_file(&"prelude.stub.abra".to_string());
+        let parse_result = tokenize_and_parse_stub(&parser::ast::ModuleId::External("prelude".to_string()), &prelude_stub_file)
             .expect("There should not be a problem parsing the prelude file");
         self.typecheck_block(parse_result.nodes)
             .expect("There should not be a problem typechecking the prelude file");
@@ -2019,6 +2118,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
 
         let module_id = ModuleId(self.project.modules.len());
+        self.module_loader.register(m_id, &module_id);
+
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
         let root_scope = Scope { label, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
@@ -2142,8 +2243,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 .find_type_id_for_generic(&scope_id, &generic_name)
                 .map(|type_id| self.project.get_type_by_id(&type_id));
             if let Some(ty) = possible_match {
-                let span = generic_ident.get_range();
-                let Type::Generic(original_span, name) = ty.clone() else { unreachable!("We know it's a generic since it was identified as such") };
+                let span = self.make_span(&generic_ident.get_range());
+                let Type::Generic(orig_range, name) = ty.clone() else { unreachable!("We know it's a generic since it was identified as such") };
+                let original_span = orig_range.map(|orig_range| self.make_span(&orig_range));
                 return Err(TypeError::DuplicateName { span, name: name.clone(), original_span, kind: DuplicateNameKind::TypeArgument });
             }
 
@@ -2161,8 +2263,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut params = vec![];
         let num_params = parameters.len();
         for (idx, (Parameter { ident, type_ident, is_vararg, default_value }, type_hint)) in parameters.iter().enumerate() {
+            let ident_span = self.make_span(&ident.get_range());
+
             if *is_vararg && idx != num_params - 1 {
-                return Err(TypeError::InvalidVarargPosition { span: ident.get_range() });
+                return Err(TypeError::InvalidVarargPosition { span: ident_span });
             }
 
             let param_name = Token::get_ident_name(ident);
@@ -2170,18 +2274,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             if let Token::Self_(_) = &ident {
                 let self_type_id = match &self.current_type_decl {
                     Some(type_id) if allow_self => type_id,
-                    _ => return Err(TypeError::InvalidSelfParam { span: ident.get_range() }),
+                    _ => return Err(TypeError::InvalidSelfParam { span: ident_span }),
                 };
 
                 if seen_self || idx != 0 {
-                    return Err(TypeError::InvalidSelfParamPosition { span: ident.get_range() });
+                    return Err(TypeError::InvalidSelfParamPosition { span: ident_span });
                 }
                 seen_self = true;
 
                 params.push(FunctionParam {
                     name: param_name,
                     type_id: *self_type_id,
-                    defined_span: Some(ident.get_range()),
+                    defined_span: Some(ident_span.clone()),
                     default_value: None,
                     is_variadic: false,
                 });
@@ -2190,7 +2294,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
 
             if seen_param_names.contains(&param_name) {
-                return Err(TypeError::DuplicateParameter { span: ident.get_range(), name: param_name });
+                return Err(TypeError::DuplicateParameter { span: ident_span, name: param_name });
             }
             seen_param_names.insert(param_name.clone());
 
@@ -2201,7 +2305,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             if let Some(type_hint) = type_hint {
                 if let Some(param_type_id) = param_type_id {
                     if !self.type_satisfies_other(&param_type_id, type_hint) {
-                        return Err(TypeError::TypeMismatch { span: ident.get_range(), expected: vec![*type_hint], received: param_type_id });
+                        let span = self.make_span(&ident.get_range());
+                        return Err(TypeError::TypeMismatch { span, expected: vec![*type_hint], received: param_type_id });
                     }
                 } else {
                     param_type_id = Some(*type_hint);
@@ -2217,19 +2322,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
             } else {
                 if seen_default_valued_params {
-                    return Err(TypeError::InvalidRequiredParamPosition { span: ident.get_range(), is_variadic: *is_vararg });
+                    return Err(TypeError::InvalidRequiredParamPosition { span: ident_span, is_variadic: *is_vararg });
                 }
                 None
             };
             let mut type_id = match (param_type_id, &typed_default_value_expr) {
-                (None, None) => return Err(TypeError::UnknownTypeForParameter { span: ident.get_range(), param_name }),
+                (None, None) => return Err(TypeError::UnknownTypeForParameter { span: ident_span, param_name }),
                 (Some(param_type_id), None) => param_type_id,
                 (None, Some(typed_default_value_expr)) => *typed_default_value_expr.type_id(),
                 (Some(param_type_id), Some(typed_default_value_expr)) => {
                     let default_value_type_id = typed_default_value_expr.type_id();
                     if !self.type_satisfies_other(default_value_type_id, &param_type_id) {
                         return Err(TypeError::TypeMismatch {
-                            span: typed_default_value_expr.span(),
+                            span: self.make_span(&typed_default_value_expr.span()),
                             expected: vec![param_type_id],
                             received: *default_value_type_id,
                         });
@@ -2239,7 +2344,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             };
             if *is_vararg {
                 let Some(inner_type_id) = self.type_is_array(&type_id) else {
-                    return Err(TypeError::InvalidVarargType { span: ident.get_range(), type_id });
+                    return Err(TypeError::InvalidVarargType { span: ident_span, type_id });
                 };
                 type_id = inner_type_id;
             }
@@ -2247,7 +2352,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             params.push(FunctionParam {
                 name: param_name,
                 type_id,
-                defined_span: Some(ident.get_range()),
+                defined_span: Some(ident_span),
                 default_value: typed_default_value_expr,
                 is_variadic: *is_vararg,
             });
@@ -2315,7 +2420,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let type_id = typed_node.type_id();
 
             if (is_last && return_type_id != PRELUDE_UNIT_TYPE_ID) && !self.type_satisfies_other(type_id, &return_type_id) {
-                return Err(TypeError::ReturnTypeMismatch { span: typed_node.span(), func_name, expected: return_type_id, received: *type_id });
+                let span = self.make_span(&typed_node.span());
+                return Err(TypeError::ReturnTypeMismatch { span, func_name, expected: return_type_id, received: *type_id });
             }
 
             body.push(typed_node);
@@ -2381,7 +2487,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             let field_name = Token::get_ident_name(&ident);
             if let Some(orig_field) = seen_fields.get(&field_name) {
-                return Err(TypeError::DuplicateName { span: ident.get_range(), name: field_name, original_span: Some(orig_field.get_range()), kind: DuplicateNameKind::Field });
+                let span = self.make_span(&ident.get_range());
+                let original_span = Some(self.make_span(&orig_field.get_range()));
+                return Err(TypeError::DuplicateName { span, name: field_name, original_span, kind: DuplicateNameKind::Field });
             }
             seen_fields.insert(field_name.clone(), ident.clone());
 
@@ -2389,7 +2497,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let field = StructField {
                 name: field_name,
                 type_id: field_type_id,
-                defined_span: ident.get_range(),
+                defined_span: self.make_span(&ident.get_range()),
                 is_readonly,
             };
             self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
@@ -2440,13 +2548,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut seen_variants = HashMap::<String, &Token>::new();
         for (variant_ident, variant_args) in variants {
             let name = Token::get_ident_name(variant_ident);
-            let defined_span = variant_ident.get_range();
+            let variant_ident_range = variant_ident.get_range();
             if let Some(seen_variant) = seen_variants.get(&name) {
-                return Err(TypeError::DuplicateName { span: defined_span, name, original_span: Some(seen_variant.get_range()), kind: DuplicateNameKind::EnumVariant });
+                let span = self.make_span(&variant_ident_range);
+                let original_span = Some(self.make_span(&seen_variant.get_range()));
+                return Err(TypeError::DuplicateName { span, name, original_span, kind: DuplicateNameKind::EnumVariant });
             }
             seen_variants.insert(name.clone(), variant_ident);
 
             let kind = if variant_args.is_some() { EnumVariantKind::Container(FuncId::BOGUS) } else { EnumVariantKind::Constant };
+            let defined_span = self.make_span(&variant_ident_range);
             let variant = EnumVariant { name, defined_span, kind };
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
@@ -2497,7 +2608,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
 
-            let func_name_span = decl_node.name.get_range();
+            let func_name_span = self.make_span(&decl_node.name.get_range());
             let func_name = Token::get_ident_name(&decl_node.name);
             self.typecheck_function_pass_2(*func_id, decl_node)?;
 
@@ -2530,10 +2641,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let mut var_ids = vec![];
                 let typed_expr = match (type_hint_id, expr) {
-                    (None, None) => return Err(TypeError::MissingBindingInitializer { span: binding.get_span(), is_mutable }),
+                    (None, None) => {
+                        let span = self.make_span(&binding.get_span());
+                        return Err(TypeError::MissingBindingInitializer { span, is_mutable });
+                    }
                     (Some(type_hint_id), None) => {
                         if !is_mutable {
-                            return Err(TypeError::MissingBindingInitializer { span: binding.get_span(), is_mutable });
+                            let span = self.make_span(&binding.get_span());
+                            return Err(TypeError::MissingBindingInitializer { span, is_mutable });
                         }
                         self.typecheck_binding_pattern(is_mutable, false, &binding, &type_hint_id, &mut var_ids)?;
 
@@ -2543,7 +2658,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let typed_expr = self.typecheck_expression(*expr, None)?;
                         let type_id = typed_expr.type_id();
                         if *type_id == PRELUDE_UNIT_TYPE_ID || self.type_contains_generics(type_id) {
-                            return Err(TypeError::ForbiddenAssignment { span: typed_expr.span(), type_id: *type_id, purpose: "assignment" });
+                            let span = self.make_span(&typed_expr.span());
+                            return Err(TypeError::ForbiddenAssignment { span, type_id: *type_id, purpose: "assignment" });
                         }
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_id, &mut var_ids)?;
 
@@ -2557,7 +2673,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             type_id = self.substitute_generics(&type_hint_id, &type_id);
                         }
                         if !self.type_satisfies_other(&type_id, &type_hint_id) {
-                            let span = typed_expr.span();
+                            let span = self.make_span(&typed_expr.span());
                             return Err(TypeError::TypeMismatch { span, expected: vec![type_hint_id], received: type_id });
                         };
                         self.typecheck_binding_pattern(is_mutable, true, &binding, &type_hint_id, &mut var_ids)?;
@@ -2591,7 +2707,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let typed_condition = self.typecheck_expression(*condition, None)?;
         let condition_type_id = typed_condition.type_id();
         if !self.type_satisfies_other(condition_type_id, &PRELUDE_BOOL_TYPE_ID) {
-            return Err(TypeError::TypeMismatch { span: typed_condition.span(), expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
+            let span = self.make_span(&typed_condition.span());
+            return Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_BOOL_TYPE_ID], received: *condition_type_id });
         }
 
         let mut type_id = None;
@@ -2620,7 +2737,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
                         }
                         if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
-                            let span = typed_node.span();
+                            let span = self.make_span(&typed_node.span());
                             return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
                         };
                     }
@@ -2658,9 +2775,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     type_id = if let Some(hint_type_id) = &type_id {
                         let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
-                            let span = typed_node.span();
+                            let span = self.make_span(&typed_node.span());
                             return if let Some(last_if_block_expr) = typed_if_block.last() {
-                                let orig_span = last_if_block_expr.span();
+                                let orig_span = self.make_span(&last_if_block_expr.span());
                                 Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
                             } else {
                                 let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
@@ -2706,7 +2823,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             BindingPattern::Variable(var_token) => {
                 let var_name = Token::get_ident_name(&var_token);
 
-                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, &var_token.get_range(), false)?;
+                let span = self.make_span(&var_token.get_range());
+                let var_id = self.add_variable_to_current_scope(var_name, *type_id, is_mutable, is_initialized, &span, false)?;
                 var_ids.push(var_id);
             }
             BindingPattern::Tuple(_, patterns) => {
@@ -2726,7 +2844,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     err_kind = Some(DestructuringMismatchKind::CannotDestructureAsTuple);
                 };
                 if let Some(kind) = err_kind {
-                    return Err(TypeError::DestructuringMismatch { span: pattern.get_span(), kind, type_id: *type_id });
+                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&pattern.get_span()), kind, type_id: *type_id });
                 }
             }
             BindingPattern::Array(_, patterns, _) => {
@@ -2743,7 +2861,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     err_kind = Some(DestructuringMismatchKind::CannotDestructureAsArray);
                 };
                 if let Some(kind) = err_kind {
-                    return Err(TypeError::DestructuringMismatch { span: pattern.get_span(), kind, type_id: *type_id });
+                    return Err(TypeError::DestructuringMismatch { span: self.make_span(&pattern.get_span()), kind, type_id: *type_id });
                 }
 
                 let is_string = *type_id == PRELUDE_STRING_TYPE_ID;
@@ -2753,7 +2871,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 for (pattern, is_splat) in patterns {
                     let type_id = if *is_splat {
                         if seen_splat {
-                            let span = pattern.get_token().get_range();
+                            let span = self.make_span(&pattern.get_token().get_range());
                             return Err(TypeError::DuplicateSplat { span });
                         }
                         seen_splat = true;
@@ -2789,7 +2907,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let typed_expr = self.typecheck_expression(*expr, None)?;
                 let type_id = typed_expr.type_id();
 
-                let span = token.get_range().expand(&typed_expr.span());
+                let span = self.make_span(&token.get_range().expand(&typed_expr.span()));
                 match op {
                     UnaryOp::Minus if *type_id != PRELUDE_INT_TYPE_ID && *type_id != PRELUDE_FLOAT_TYPE_ID => {
                         Err(TypeError::TypeMismatch { span, expected: vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID], received: *type_id })
@@ -2833,7 +2951,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
                         (_, PRELUDE_STRING_TYPE_ID) | (PRELUDE_STRING_TYPE_ID, _) => PRELUDE_STRING_TYPE_ID,
                         (left, right) => {
-                            let span = typed_left.span().expand(&typed_right.span());
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
@@ -2841,7 +2959,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) => PRELUDE_INT_TYPE_ID,
                         (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
                         (left, right) => {
-                            let span = typed_left.span().expand(&typed_right.span());
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
@@ -2849,7 +2967,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         (PRELUDE_INT_TYPE_ID, PRELUDE_INT_TYPE_ID) |
                         (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) => PRELUDE_FLOAT_TYPE_ID,
                         (left, right) => {
-                            let span = typed_left.span().expand(&typed_right.span());
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
@@ -2863,7 +2981,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             inner = self.substitute_generics(r_type_id, &inner);
                         }
                         if !self.type_satisfies_other(r_type_id, &inner) {
-                            return Err(TypeError::TypeMismatch { span: typed_right.span(), expected: vec![inner], received: *r_type_id });
+                            let span = self.make_span(&typed_right.span());
+                            return Err(TypeError::TypeMismatch { span, expected: vec![inner], received: *r_type_id });
                         }
                         *r_type_id
                     }
@@ -2872,7 +2991,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         (PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_INT_TYPE_ID) | (PRELUDE_FLOAT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID) |
                         (PRELUDE_STRING_TYPE_ID, PRELUDE_STRING_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
                         (left, right) => {
-                            let span = typed_left.span().expand(&typed_right.span());
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
@@ -2882,7 +3001,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => match (*l_type_id, *r_type_id) {
                         (PRELUDE_BOOL_TYPE_ID, PRELUDE_BOOL_TYPE_ID) => PRELUDE_BOOL_TYPE_ID,
                         (left, right) => {
-                            let span = typed_left.span().expand(&typed_right.span());
+                            let span = self.make_span(&typed_left.span().expand(&typed_right.span()));
                             return Err(TypeError::IllegalOperator { span, op, left, right });
                         }
                     }
@@ -2919,7 +3038,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         None => inner_type_id = Some(*current_value_type_id),
                         Some(type_id) => {
                             let Some(unified_type) = self.unify_types(&type_id, current_value_type_id) else {
-                                let span = typed_item.span();
+                                let span = self.make_span(&typed_item.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
                             };
                             inner_type_id = Some(unified_type);
@@ -2960,7 +3079,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         None => inner_type_id = Some(*current_value_type_id),
                         Some(type_id) => {
                             let Some(unified_type) = self.unify_types(&type_id, current_value_type_id) else {
-                                let span = typed_item.span();
+                                let span = self.make_span(&typed_item.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
                             };
                             inner_type_id = Some(unified_type);
@@ -3003,7 +3122,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         None => key_type_id = Some(key_node_type_id),
                         Some(type_id) => {
                             let Some(unified_type) = self.unify_types(&type_id, &key_node_type_id) else {
-                                let span = typed_key_node.span();
+                                let span = self.make_span(&typed_key_node.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: key_node_type_id });
                             };
                             key_type_id = Some(unified_type);
@@ -3016,7 +3135,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         None => val_type_id = Some(val_node_type_id),
                         Some(type_id) => {
                             let Some(unified_type) = self.unify_types(&type_id, &val_node_type_id) else {
-                                let span = typed_val_node.span();
+                                let span = self.make_span(&typed_val_node.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: val_node_type_id });
                             };
                             val_type_id = Some(unified_type);
@@ -3059,7 +3178,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             let typed_item = self.typecheck_expression(item, Some(type_id))?;
                             let current_value_type_id = typed_item.type_id();
                             if type_id != *current_value_type_id {
-                                let span = typed_item.span();
+                                let span = self.make_span(&typed_item.span());
                                 return Err(TypeError::TypeMismatch { span, expected: vec![type_id], received: *current_value_type_id });
                             }
 
@@ -3075,8 +3194,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 if let Some(inner_type_ids) = &inner_type_ids {
                     if typed_items.len() != inner_type_ids.len() {
-                        let span = token.get_range().expand(&typed_items.last().map(|i| i.span()).unwrap_or(token.get_range()));
-                        let expected = self.add_or_find_type_id(self.project.tuple_type(inner_type_ids.clone()));//Type::GenericInstance(self.project.prelude_tuple_struct_id, inner_type_ids.clone()));
+                        let range = token.get_range().expand(&typed_items.last().map(|i| i.span()).unwrap_or(token.get_range()));
+                        let span = self.make_span(&range);
+                        let expected = self.add_or_find_type_id(self.project.tuple_type(inner_type_ids.clone()));
                         return Err(TypeError::TypeMismatch { span, expected: vec![expected], received: type_id });
                     }
                 }
@@ -3096,7 +3216,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let name = Token::get_ident_name(&token);
                 let variable = self.project.find_variable_by_name(&self.current_scope_id, &name);
                 let Some(Variable { id, type_id, .. }) = variable else {
-                    return Err(TypeError::UnknownIdentifier { span: token.get_range(), token });
+                    let span = self.make_span(&token.get_range());
+                    return Err(TypeError::UnknownIdentifier { span, token });
                 };
                 let var_id = *id;
                 let mut var_type_id = *type_id;
@@ -3133,7 +3254,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let AssignmentNode { target, expr } = n;
 
                 let typed_target = self.typecheck_expression(*target, type_hint)?;
-                let target_span = typed_target.span();
+                let target_span = self.make_span(&typed_target.span());
                 let target_type_id = *typed_target.type_id();
                 let typed_expr = self.typecheck_expression(*expr, Some(target_type_id))?;
 
@@ -3142,7 +3263,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let variable = self.project.get_var_by_id(&var_id);
                         if !variable.is_mutable {
                             let kind = if variable.is_parameter { ImmutableAssignmentKind::Parameter } else { ImmutableAssignmentKind::Variable };
-                            return Err(TypeError::AssignmentToImmutable { span: typed_target.span(), var_name: variable.name.clone(), defined_span: variable.defined_span.clone(), kind });
+                            return Err(TypeError::AssignmentToImmutable { span: target_span, var_name: variable.name.clone(), defined_span: variable.defined_span.clone(), kind });
                         }
 
                         AssignmentKind::Identifier { var_id }
@@ -3222,10 +3343,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     type_id = self.substitute_generics(&target_type_id, &type_id);
                 }
                 if !self.type_satisfies_other(&type_id, &target_type_id) {
-                    return Err(TypeError::TypeMismatch { span: typed_expr.span(), expected: vec![target_type_id], received: type_id });
+                    return Err(TypeError::TypeMismatch { span: self.make_span(&typed_expr.span()), expected: vec![target_type_id], received: type_id });
                 }
 
-                let span = target_span.expand(&typed_expr.span());
+                let span = target_span.range.expand(&typed_expr.span());
                 Ok(TypedNode::Assignment { span, kind, type_id })
             }
             AstNode::Indexing(_, n) => {
@@ -3233,7 +3354,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let typed_target = self.typecheck_expression(*target, None)?;
                 let target_type_id = *typed_target.type_id();
-                let target_span = typed_target.span();
+                let target_span = self.make_span(&typed_target.span());
                 let target_ty = self.project.get_type_by_id(&target_type_id);
 
                 // Handle tuples separately, since they have a special Literal requirement
@@ -3245,11 +3366,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             return Err(TypeError::InvalidIndexableType { span: target_span, is_range: true, type_id: target_type_id });
                         };
                         let typed_idx_node = self.typecheck_expression(*idx_node, Some(PRELUDE_INT_TYPE_ID))?;
+                        let typed_idx_node_span = self.make_span(&typed_idx_node.span());
                         let TypedNode::Literal { value: TypedLiteral::Int(idx), .. } = typed_idx_node else {
-                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node.span(), kind: InvalidTupleIndexKind::NonConstant, type_id: target_type_id });
+                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node_span, kind: InvalidTupleIndexKind::NonConstant, type_id: target_type_id });
                         };
                         let Some(type_id) = tuple_items.get(idx as usize) else {
-                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node.span(), kind: InvalidTupleIndexKind::OutOfBounds(idx), type_id: target_type_id });
+                            return Err(TypeError::InvalidTupleIndex { span: typed_idx_node_span, kind: InvalidTupleIndexKind::OutOfBounds(idx), type_id: target_type_id });
                         };
 
                         return Ok(TypedNode::Indexing { target: Box::new(typed_target), index: IndexingMode::Index(Box::new(typed_idx_node)), type_id: *type_id });
@@ -3284,7 +3406,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             type_id = self.substitute_generics(&required_index_type_id, &type_id);
                         }
                         if !self.type_satisfies_other(&type_id, &required_index_type_id) {
-                            return Err(TypeError::TypeMismatch { span: typed_idx_node.span(), expected: vec![required_index_type_id], received: type_id });
+                            return Err(TypeError::TypeMismatch { span: self.make_span(&typed_idx_node.span()), expected: vec![required_index_type_id], received: type_id });
                         };
 
                         IndexingMode::Index(Box::new(typed_idx_node))
@@ -3299,7 +3421,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     type_id = self.substitute_generics(&required_index_type_id, &type_id);
                                 }
                                 if !self.type_satisfies_other(&type_id, &required_index_type_id) {
-                                    return Err(TypeError::TypeMismatch { span: typed_node.span(), expected: vec![required_index_type_id], received: type_id });
+                                    return Err(TypeError::TypeMismatch { span: self.make_span(&typed_node.span()), expected: vec![required_index_type_id], received: type_id });
                                 };
                                 typed_nodes.push(Some(Box::new(typed_node)));
                             } else {
@@ -3320,6 +3442,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let AstNode::Identifier(field_ident, _) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
                 let field_name = Token::get_ident_name(&field_ident);
+                let field_span = self.make_span(&field_ident.get_range());
 
                 let typed_target = self.typecheck_expression(*n.target, None)?;
                 let target_type_id = typed_target.type_id();
@@ -3367,7 +3490,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 } else if matches!(target_type, Type::GenericEnumInstance(_, _, _)) {
                     let Some((enum_, generic_substitutions, _variant_idx)) = self.project.get_enum_by_type_id(target_type_id) else {
-                        return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
                     };
                     for (idx, func_id) in enum_.methods.iter().enumerate() {
                         let func = self.project.get_func_by_id(func_id);
@@ -3380,7 +3503,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 } else {
                     let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
-                        return Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id });
+                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
                     };
                     let methods = struct_.methods.clone();
                     for (idx, field) in struct_.fields.iter().enumerate() {
@@ -3408,7 +3531,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 if let Some((kind, member_idx, type_id)) = field_data {
                     Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, member_idx, member_span: field_ident.get_range(), type_id })
                 } else {
-                    Err(TypeError::UnknownMember { span: field_ident.get_range(), field_name, type_id: *target_type_id })
+                    Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id })
                 }
             }
             AstNode::Invocation(token, n) => {
@@ -3458,6 +3581,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             } else {
                                 typed_target.span()
                             };
+                            let span = self.make_span(&span);
                             return Err(TypeError::InvalidTypeArgumentArity { span, num_required_args: generic_ids.len(), num_provided_args: type_args.len() });
                         }
                         for (generic_id, (type_arg_id, _)) in generic_ids.iter().zip(type_args.iter()) {
@@ -3474,7 +3598,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Field => {
                                         let field_ty = self.project.get_type_by_id(&struct_.fields[*member_idx].type_id);
                                         let Type::Function(param_type_ids, num_required_args, is_variadic, ret_type_id) = field_ty else {
-                                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *target_type_id });
+                                            return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: *target_type_id });
                                         };
                                         fn_is_variadic = *is_variadic;
                                         let num_param_type_ids = param_type_ids.len();
@@ -3534,7 +3658,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let variant = &enum_.variants[*member_idx];
                                 let EnumVariantKind::Container(func_id) = variant.kind else {
-                                    return Err(TypeError::IllegalEnumVariantConstruction { span: typed_target.span(), enum_id: *enum_id, variant_idx: *member_idx });
+                                    return Err(TypeError::IllegalEnumVariantConstruction { span: self.make_span(&typed_target.span()), enum_id: *enum_id, variant_idx: *member_idx });
                                 };
                                 let function = self.project.get_func_by_id(&func_id);
                                 fn_is_variadic = function.is_variadic();
@@ -3549,7 +3673,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         let target_type_id = typed_target.type_id();
                         let target_ty = self.project.get_type_by_id(target_type_id);
                         let Type::Function(param_type_ids, num_required_args, is_variadic, ret_type_id) = target_ty else {
-                            return Err(TypeError::IllegalInvocation { span: typed_target.span(), type_id: *target_type_id });
+                            return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: *target_type_id });
                         };
                         fn_is_variadic = *is_variadic;
                         let num_param_type_ids = param_type_ids.len();
@@ -3573,7 +3697,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let mut variadic_arguments = Vec::new();
                 for (idx, (label, arg_node)) in args.into_iter().enumerate() {
                     if is_instantiation && label.is_none() && !forbid_labels {
-                        return Err(TypeError::MissingRequiredArgumentLabels { span: arg_node.get_token().get_range() });
+                        return Err(TypeError::MissingRequiredArgumentLabels { span: self.make_span(&arg_node.get_token().get_range()) });
                     }
 
                     let param_idx;
@@ -3581,25 +3705,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let gather_variadic_arguments;
                     if let Some(label) = label {
                         let label_name = Token::get_ident_name(&label);
+                        let label_span = self.make_span(&label.get_range());
 
                         if forbid_labels {
                             debug_assert!(!is_instantiation, "We should always require labels if we're instantiating");
-                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name, is_instantiation });
+                            return Err(TypeError::UnexpectedArgumentName { span: label_span, arg_name: label_name, is_instantiation });
                         }
 
                         if idx > 0 && seen_labels.is_empty() {
-                            return Err(TypeError::MixedArgumentType { span: label.get_range() });
+                            return Err(TypeError::MixedArgumentType { span: label_span });
                         }
 
                         if seen_labels.contains(&label_name) {
-                            return Err(TypeError::DuplicateArgumentLabel { span: label.get_range(), name: label_name });
+                            return Err(TypeError::DuplicateArgumentLabel { span: label_span, name: label_name });
                         }
                         let Some(param_data) = params_data.iter().find(|(_, param_name, _, _, _)| *param_name == label_name) else {
-                            return Err(TypeError::UnexpectedArgumentName { span: label.get_range(), arg_name: label_name, is_instantiation });
+                            return Err(TypeError::UnexpectedArgumentName { span: label_span, arg_name: label_name, is_instantiation });
                         };
                         if idx >= params_data.len() {
                             // This _should_ be unreachable given the two cases above, but just in case let's return an error here as well
-                            return Err(TypeError::InvalidArity { span: label.get_range(), num_possible_args, num_required_args, num_provided_args });
+                            return Err(TypeError::InvalidArity { span: label_span, num_possible_args, num_required_args, num_provided_args });
                         }
 
                         seen_labels.insert(label_name);
@@ -3611,13 +3736,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                         gather_variadic_arguments = false;
                     } else if idx > 0 && !seen_labels.is_empty() {
-                        return Err(TypeError::MixedArgumentType { span: arg_node.get_token().get_range() });
+                        return Err(TypeError::MixedArgumentType { span: self.make_span(&arg_node.get_token().get_range()) });
                     } else {
                         gather_variadic_arguments = idx >= params_data.len().saturating_sub(1) && fn_is_variadic;
 
                         if idx >= params_data.len() {
                             if !fn_is_variadic {
-                                let span = typed_target.span().expand(&token.get_range());
+                                let span = self.make_span(&typed_target.span().expand(&token.get_range()));
                                 return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                             }
 
@@ -3645,7 +3770,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let arg_type_id = *typed_arg_value.type_id();
 
                     if arg_type_id == PRELUDE_UNIT_TYPE_ID {
-                        return Err(TypeError::ForbiddenAssignment { span: typed_arg_value.span(), type_id: arg_type_id, purpose: "parameter" });
+                        return Err(TypeError::ForbiddenAssignment { span: self.make_span(&typed_arg_value.span()), type_id: arg_type_id, purpose: "parameter" });
                     }
 
                     // Fill in any resolved generics that are only determined after typechecking arg expression (ie. function return types)
@@ -3656,7 +3781,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
 
                     if !self.type_satisfies_other(&arg_type_id, &param_type_id) {
-                        return Err(TypeError::TypeMismatch { span: typed_arg_value.span(), expected: vec![param_type_id], received: arg_type_id });
+                        return Err(TypeError::TypeMismatch { span: self.make_span(&typed_arg_value.span()), expected: vec![param_type_id], received: arg_type_id });
                     }
 
                     if gather_variadic_arguments {
@@ -3679,7 +3804,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             })
                         }
                     } else if typed_arguments[param_idx].is_none() && !param_is_optional {
-                        let span = typed_target.span().expand(&token.get_range());
+                        let span = self.make_span(&typed_target.span().expand(&token.get_range()));
                         return Err(TypeError::InvalidArity { span, num_possible_args, num_required_args, num_provided_args });
                     }
                 }
@@ -3746,7 +3871,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if is_last {
                         if let Some(type_hint) = type_hint {
                             if !self.type_contains_generics(&type_hint) && !self.type_satisfies_other(&last_type_id, &type_hint) {
-                                return Err(TypeError::TypeMismatch { span: typed_node.span(), expected: vec![type_hint], received: last_type_id });
+                                return Err(TypeError::TypeMismatch { span: self.make_span(&typed_node.span()), expected: vec![type_hint], received: last_type_id });
                             }
                         }
                     }
@@ -3760,7 +3885,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let func = self.project.get_func_by_id(&lambda_func_id);
                 let span = func.params.first()
-                    .and_then(|p| p.defined_span.as_ref()).unwrap_or(&token.get_range())
+                    .and_then(|p| p.defined_span.as_ref().map(|s| &s.range)).unwrap_or(&token.get_range())
                     .expand(&func.body.last().map(|n| n.span()).unwrap_or(token.get_range()));
                 let func_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
 

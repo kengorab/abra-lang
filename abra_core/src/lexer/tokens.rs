@@ -1,7 +1,10 @@
-use std::cmp::{max, min};
+use std::cmp::{max, min, Ordering};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Position { pub line: usize, pub col: usize }
+#[derive(Debug, Clone, Eq, PartialEq, Ord)]
+pub struct Position {
+    pub line: usize,
+    pub col: usize,
+}
 
 pub const POSITION_BOGUS: Position = Position { line: 0, col: 0 };
 
@@ -11,6 +14,24 @@ impl Position {
 
 impl Default for Position {
     fn default() -> Self { Position { line: 0, col: 0 } }
+}
+
+impl PartialOrd<Self> for Position {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(if self.line < other.line {
+            Ordering::Less
+        } else if self.line > other.line {
+            Ordering::Greater
+        } else {
+            if self.col < other.col {
+                Ordering::Less
+            } else if self.col > other.col {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -28,8 +49,8 @@ impl Range {
     }
 
     pub fn expand(&self, other: &Range) -> Range {
-        let start = Position::new(min(self.start.line, other.start.line), min(self.start.col, other.start.col));
-        let end = Position::new(max(self.end.line, other.end.line), max(self.end.col, other.end.col));
+        let start = min(&self.start, &other.start).clone();
+        let end = max(&self.end, &other.end).clone();
 
         Self { start, end }
     }

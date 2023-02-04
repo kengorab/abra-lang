@@ -3,29 +3,10 @@
 // func bar(): Int = 123
 
 // TODO: This should successfully output an error message (currently it panics)
-//[].length = 3
+[].length = 3
 
-enum Foo { Bar(x: Int, y: Float) }
-val foo = Foo.Bar(x: 1, y: 2.3)
-
-//enum Foo<T> { Bar(x: T), Baz }
-//func makeFoo<T>(t: T, fn: (T) => Foo<T>): Foo<T> = Foo.Baz // fn(t)
-//
-//val i: (Int, Float) => Foo<Int> = Foo.Bar
-//
-//func fooBar<T>(x: T): Foo<T> = Foo.Baz
-////func fn<T>(t: T): T = t
-//
-//val f1 = makeFoo(12, Foo.Bar)
-//val _: Int = f1
-////val f2 = makeFoo(x => Foo.Bar(x), 12)
-
-//func a<X>(x: X): X = x
-//func c(i: Int): Int = i
-//func b<T>(fn: (T) => T, t: T): T = t
-//b(a, 12)
-//b(c, 12)
-
-//func push<X>(arr: X[], item: X): X[] = arr
-//val a = push([], 1)
-//val _: Bool[] = a
+val x: Int = [
+  "a",
+  "b",
+  "c"
+]
