@@ -246,6 +246,11 @@ pub struct Parameter<'a> {
     pub default_value: &'a Option<AstNode>,
 }
 
+pub fn args_to_parameters(raw_arg_tuple: &(Token, Option<TypeIdentifier>, bool, Option<AstNode>)) -> Parameter {
+    let (arg_ident, type_ident, is_vararg, default_value) = raw_arg_tuple;
+    Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclNode {
     pub export_token: Option<Token>,
@@ -261,9 +266,7 @@ pub struct FunctionDeclNode {
 
 impl FunctionDeclNode {
     pub fn parameters(&self) -> Vec<Parameter> {
-        self.args.iter()
-            .map(|(arg_ident, type_ident, is_vararg, default_value)| Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value })
-            .collect()
+        self.args.iter().map(args_to_parameters).collect()
     }
 }
 
@@ -275,9 +278,7 @@ pub struct LambdaNode {
 
 impl LambdaNode {
     pub fn parameters(&self) -> Vec<Parameter> {
-        self.args.iter()
-            .map(|(arg_ident, type_ident, is_vararg, default_value)| Parameter { ident: arg_ident, type_ident, is_vararg: *is_vararg, default_value })
-            .collect()
+        self.args.iter().map(args_to_parameters).collect()
     }
 }
 
@@ -308,7 +309,7 @@ pub struct EnumDeclNode {
     // Must be Token::Idents
     pub type_args: Vec<Token>,
     // Tokens represent arg idents, and must be Token::Ident
-    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(Token, Option<TypeIdentifier>, bool, Option<AstNode>)>>)>,
+    pub variants: Vec<(/* ident: */ Token, /* args: */ Option<Vec<(/* arg_ident: */ Token, /* type_ident: */ Option<TypeIdentifier>, /* is_varargs: */ bool, /* default_value */ Option<AstNode>)>>)>,
     pub methods: Vec<AstNode>,
 }
 

@@ -5,7 +5,7 @@ use crate::{parser, tokenize_and_parse_stub};
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -172,7 +172,7 @@ impl Project {
             }
             Type::Type(_) => return None,
             Type::Generic(_, _) |
-            Type::Function(_, _, _, _) => todo!()
+            Type::Function(_, _, _, _) => todo!(),
         };
 
         Some((struct_, generic_substitutions))
@@ -416,6 +416,10 @@ impl Project {
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ModuleId(/* idx: */ pub usize);
 
+impl ModuleId {
+    pub const BOGUS: ModuleId = ModuleId(usize::MAX);
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
@@ -457,21 +461,33 @@ pub struct Enum {
     pub static_methods: Vec<FuncId>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnumVariant {
     pub name: String,
     pub defined_span: Range,
     pub kind: EnumVariantKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EnumVariantKind {
     Constant,
-    Function(FuncId),
+    Container(FuncId),
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct TypeId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
+
+impl TypeId {
+    const PLACEHOLDER_SLOT_MARKER: ScopeId = ScopeId::BOGUS;
+
+    fn placeholder_slot(idx: usize) -> TypeId {
+        TypeId(Self::PLACEHOLDER_SLOT_MARKER, idx)
+    }
+
+    fn is_placeholder_slot(&self) -> bool {
+        self.0 == Self::PLACEHOLDER_SLOT_MARKER
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PrimitiveType {
@@ -495,6 +511,10 @@ pub enum Type {
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ScopeId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
+
+impl ScopeId {
+    pub const BOGUS: ScopeId = ScopeId(ModuleId::BOGUS, usize::MAX);
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Scope {
@@ -532,6 +552,10 @@ pub struct Variable {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct FuncId(/* scope_id: */ pub ScopeId, /* idx: */ pub usize);
+
+impl FuncId {
+    pub const BOGUS: FuncId = FuncId(ScopeId::BOGUS, usize::MAX);
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Function {
@@ -804,6 +828,7 @@ pub enum TypeError {
     DuplicateParameter { span: Range, name: String },
     ReturnTypeMismatch { span: Range, func_name: String, expected: TypeId, received: TypeId },
     IllegalInvocation { span: Range, type_id: TypeId },
+    IllegalEnumVariantConstruction { span: Range, enum_id: EnumId, variant_idx: usize },
     UnexpectedArgumentName { span: Range, arg_name: String, is_instantiation: bool },
     MixedArgumentType { span: Range },
     DuplicateArgumentLabel { span: Range, name: String },
@@ -860,6 +885,7 @@ impl TypeError {
             TypeError::DuplicateParameter { span, .. } |
             TypeError::ReturnTypeMismatch { span, .. } |
             TypeError::IllegalInvocation { span, .. } |
+            TypeError::IllegalEnumVariantConstruction { span,.. } |
             TypeError::UnexpectedArgumentName { span, .. } |
             TypeError::MixedArgumentType { span, .. } |
             TypeError::DuplicateArgumentLabel { span, .. } |
@@ -1060,6 +1086,17 @@ impl TypeError {
                     "Cannot invoke target as function\n{}\n\
                     Type {} is not callable",
                     cursor_line, project.type_repr(type_id)
+                )
+            }
+            TypeError::IllegalEnumVariantConstruction { enum_id, variant_idx,.. }  => {
+                let enum_ = project.get_enum_by_id(enum_id);
+                let enum_name = &enum_.name;
+                let variant_name = &enum_.variants[*variant_idx].name;
+                format!(
+                    "Cannot invoke target as function\n{}\n\
+                    Variant {} of enum {} cannot be constructed",
+                    cursor_line,
+                    variant_name, enum_name,
                 )
             }
             TypeError::UnexpectedArgumentName { arg_name, is_instantiation, .. } => {
@@ -1317,73 +1354,93 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn type_satisfies_other(&self, base_type: &TypeId, target_type: &TypeId) -> bool {
-        let base_ty = self.project.get_type_by_id(base_type);
-        let target_ty = self.project.get_type_by_id(target_type);
+    fn type_satisfies_other(&mut self, base_type: &TypeId, target_type: &TypeId) -> bool {
+        #[inline]
+        fn type_satisfies_other_impl<L: LoadModule>(zelf: &Typechecker2<L>, base_type_id: &TypeId, target_type_id: &TypeId, substitutions: &HashMap<TypeId, TypeId>) -> bool {
+            let base_type_id = substitutions.get(&base_type_id).unwrap_or(&base_type_id);
+            let target_type_id = substitutions.get(&target_type_id).unwrap_or(&target_type_id);
 
-        match (base_ty, target_ty) {
-            (_, Type::Primitive(PrimitiveType::Any)) => true,
-            (Type::Generic(_, _), Type::Generic(_, _)) => base_type == target_type,
-            (_, Type::Generic(_, _)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
-            (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
-            (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
-                if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
-                    return false;
-                }
-                for (generic_type_id_1, generic_type_id_2) in generic_ids_1.iter().zip(generic_ids_2.iter()) {
-                    if !self.type_satisfies_other(generic_type_id_1, generic_type_id_2) {
+            if base_type_id.is_placeholder_slot() && target_type_id.is_placeholder_slot() {
+                return base_type_id.1 == target_type_id.1;
+            }
+
+            let base_ty = zelf.project.get_type_by_id(base_type_id);
+            let target_ty = zelf.project.get_type_by_id(target_type_id);
+
+            match (base_ty, target_ty) {
+                (_, Type::Primitive(PrimitiveType::Any)) => true,
+                (Type::Generic(_, _), Type::Generic(_, _)) => base_type_id == target_type_id,
+                (_, Type::Generic(_, _)) => unreachable!("Test: we shouldn't reach here because before any attempt to test types, we should substitute generics. See if this assumption is true (there will surely be a counterexample someday)"),
+                (Type::Primitive(idx1), Type::Primitive(idx2)) => idx1 == idx2,
+                (Type::GenericInstance(struct_id_1, generic_ids_1), Type::GenericInstance(struct_id_2, generic_ids_2)) => {
+                    if struct_id_1 != struct_id_2 || generic_ids_1.len() != generic_ids_2.len() {
                         return false;
                     }
+                    for (generic_type_id_1, generic_type_id_2) in generic_ids_1.iter().zip(generic_ids_2.iter()) {
+                        if !type_satisfies_other_impl(zelf, generic_type_id_1, generic_type_id_2, substitutions) {
+                            return false;
+                        }
+                    }
+
+                    true
                 }
-
-                true
-            }
-            (Type::GenericInstance(struct_id, _), _) if *struct_id == self.project.prelude_option_struct_id => {
-                false
-            }
-            (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == self.project.prelude_option_struct_id => {
-                self.type_satisfies_other(base_type, &generic_ids[0])
-            }
-            (Type::GenericEnumInstance(enum_id, generic_ids, _), Type::GenericEnumInstance(target_enum_id, target_generic_ids, _)) => {
-                if enum_id != target_enum_id || generic_ids.len() != target_generic_ids.len() { return false; }
-
-                for (generic_type_id_1, generic_type_id_2) in generic_ids.iter().zip(target_generic_ids.iter()) {
-                    if !self.type_satisfies_other(generic_type_id_1, generic_type_id_2) { return false; }
+                (Type::GenericInstance(struct_id, _), _) if *struct_id == zelf.project.prelude_option_struct_id => {
+                    false
                 }
-
-                true
-            }
-            (Type::Function(base_param_type_ids, base_num_req, _is_variadic, base_return_type_id), Type::Function(target_param_type_ids, _, __is_variadic, target_return_type_id)) => {
-                if !self.type_satisfies_other(base_return_type_id, target_return_type_id) {
-                    return false;
+                (_, Type::GenericInstance(struct_id, generic_ids)) if *struct_id == zelf.project.prelude_option_struct_id => {
+                    type_satisfies_other_impl(zelf, base_type_id, &generic_ids[0], substitutions)
                 }
+                (Type::GenericEnumInstance(enum_id, generic_ids, _), Type::GenericEnumInstance(target_enum_id, target_generic_ids, _)) => {
+                    if enum_id != target_enum_id || generic_ids.len() != target_generic_ids.len() { return false; }
 
-                // Cannot assign a function to a type with fewer parameters, eg:
-                //   val f: (Int) => Int = (a, b) => a + b
-                // When calling `f` (eg. `f(12)`) the parameter `b` will not receive a value. And since it has no default value, this would be undefined behavior
-                if *base_num_req > target_param_type_ids.len() { return false; }
+                    for (generic_type_id_1, generic_type_id_2) in generic_ids.iter().zip(target_generic_ids.iter()) {
+                        if !type_satisfies_other_impl(zelf, generic_type_id_1, generic_type_id_2, substitutions) { return false; }
+                    }
 
-                // 1. If the number of parameters is the same in both, that's ok as long as their types match, eg:
-                //      val f: (Int, Int) => Int = (a: Int, b: Int) => a + b
-                //      val f: (Int, Int) => Int = (a: Int, b = 12) => a + b // Even though the second parameter here is optional, its type still has to match
-                // 2. If there are more parameters in the type being assigned to than in the provided type, that's ok, as long as their types match, eg:
-                //      val f: (Int, Int) => Int = (a: Int) => a
-                //    Values passed into `f` when calling will just be ignored since the assigned function only cares about the first argument.
-                // 3. If there are fewer parameters in the type being assigned to than in the provided type, that's ok as long as the overlapping types
-                //    match AND the remainder of the parameters in the provided type have default values, eg:
-                //      val f: (Int) => Int = (a: Int, b = 4) => a + b
-                //    The value of the `b` parameter will be its default value when the function executes.
-                debug_assert!(*base_num_req <= target_param_type_ids.len());
-                for (base_param_type_id, target_param_type_id) in base_param_type_ids.iter().zip(target_param_type_ids) {
-                    if !self.type_satisfies_other(base_param_type_id, target_param_type_id) {
+                    true
+                }
+                (Type::Function(base_param_type_ids, base_num_req, _, base_return_type_id), Type::Function(target_param_type_ids, _, _, target_return_type_id)) => {
+                    let mut base_generics = zelf.extract_generic_slots(base_type_id);
+                    let mut target_generics = zelf.extract_generic_slots(target_type_id);
+                    let mut new_substitutions = substitutions.clone();
+                    if !base_generics.is_empty() && !target_generics.is_empty() {
+                        base_generics.drain(..).enumerate().for_each(|(idx, type_id)| { new_substitutions.insert(type_id, TypeId::placeholder_slot(idx)); });
+                        target_generics.drain(..).enumerate().for_each(|(idx, type_id)| { new_substitutions.insert(type_id, TypeId::placeholder_slot(idx)); });
+                    }
+
+                    if !type_satisfies_other_impl(zelf, base_return_type_id, target_return_type_id, &new_substitutions) {
                         return false;
                     }
-                }
 
-                true
+                    // Cannot assign a function to a type with fewer parameters, eg:
+                    //   val f: (Int) => Int = (a, b) => a + b
+                    // When calling `f` (eg. `f(12)`) the parameter `b` will not receive a value. And since it has no default value, this would be undefined behavior
+                    if *base_num_req > target_param_type_ids.len() { return false; }
+
+                    // 1. If the number of parameters is the same in both, that's ok as long as their types match, eg:
+                    //      val f: (Int, Int) => Int = (a: Int, b: Int) => a + b
+                    //      val f: (Int, Int) => Int = (a: Int, b = 12) => a + b // Even though the second parameter here is optional, its type still has to match
+                    // 2. If there are more parameters in the type being assigned to than in the provided type, that's ok, as long as their types match, eg:
+                    //      val f: (Int, Int) => Int = (a: Int) => a
+                    //    Values passed into `f` when calling will just be ignored since the assigned function only cares about the first argument.
+                    // 3. If there are fewer parameters in the type being assigned to than in the provided type, that's ok as long as the overlapping types
+                    //    match AND the remainder of the parameters in the provided type have default values, eg:
+                    //      val f: (Int) => Int = (a: Int, b = 4) => a + b
+                    //    The value of the `b` parameter will be its default value when the function executes.
+                    debug_assert!(*base_num_req <= target_param_type_ids.len());
+                    for (base_param_type_id, target_param_type_id) in base_param_type_ids.iter().zip(target_param_type_ids) {
+                        if !type_satisfies_other_impl(zelf, base_param_type_id, target_param_type_id, &new_substitutions) {
+                            return false;
+                        }
+                    }
+
+                    true
+                }
+                _ => false
             }
-            _ => false
         }
+
+        type_satisfies_other_impl(self, base_type, target_type, &HashMap::new())
     }
 
     fn substitute_generics(&mut self, hint_type_id: &TypeId, var_type_id: &TypeId) -> TypeId {
@@ -1527,46 +1584,49 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
     }
 
-    fn type_contains_generics(&self, type_id: &TypeId) -> bool {
-        let ty = self.project.get_type_by_id(type_id);
-        match ty {
-            Type::Primitive(_) => false,
-            Type::Generic(_, _) => true,
-            Type::GenericInstance(_, generic_ids) => {
-                for type_id in generic_ids {
-                    if self.type_contains_generics(type_id) {
-                        return true;
+    fn extract_generic_slots(&self, type_id: &TypeId) -> Vec<TypeId> {
+        #[inline]
+        fn extract_generic_slots_impl<L: LoadModule>(zelf: &Typechecker2<L>, type_id: &TypeId, generics: &mut Vec<TypeId>) {
+            match zelf.project.get_type_by_id(type_id) {
+                Type::Primitive(_) => {}
+                Type::Generic(_, _) => {
+                    generics.push(*type_id);
+                }
+                Type::GenericInstance(_, generic_ids) => {
+                    for type_id in generic_ids {
+                        extract_generic_slots_impl(zelf, type_id, generics);
                     }
                 }
-
-                false
-            }
-            Type::GenericEnumInstance(_, generic_ids, _) => {
-                for type_id in generic_ids {
-                    if self.type_contains_generics(type_id) {
-                        return true;
+                Type::GenericEnumInstance(_, generic_ids, _) => {
+                    for type_id in generic_ids {
+                        extract_generic_slots_impl(zelf, type_id, generics);
                     }
                 }
-
-                false
-            }
-            Type::Function(param_type_ids, _, _, return_type_id) => {
-                for type_id in param_type_ids {
-                    if self.type_contains_generics(type_id) {
-                        return true;
+                Type::Function(param_type_ids, _, _, return_type_id) => {
+                    for type_id in param_type_ids {
+                        extract_generic_slots_impl(zelf, type_id, generics);
+                    }
+                    extract_generic_slots_impl(zelf, return_type_id, generics);
+                }
+                Type::Type(id) => {
+                    let generic_ids = match id {
+                        Either::Left(struct_id) => &zelf.project.get_struct_by_id(struct_id).generic_ids,
+                        Either::Right(enum_id) => &zelf.project.get_enum_by_id(enum_id).generic_ids,
+                    };
+                    for type_id in generic_ids {
+                        extract_generic_slots_impl(zelf, type_id, generics);
                     }
                 }
-
-                self.type_contains_generics(return_type_id)
-            }
-            Type::Type(id) => {
-                let generic_ids = match id {
-                    Either::Left(struct_id) => &self.project.get_struct_by_id(struct_id).generic_ids,
-                    Either::Right(enum_id) => &self.project.get_enum_by_id(enum_id).generic_ids,
-                };
-                !generic_ids.is_empty()
             }
         }
+
+        let mut generics = Vec::new();
+        extract_generic_slots_impl(self, type_id, &mut generics);
+        generics.into_iter().unique().collect()
+    }
+
+    fn type_contains_generics(&self, type_id: &TypeId) -> bool {
+        !self.extract_generic_slots(type_id).is_empty()
     }
 
     fn resolve_type_identifier(&mut self, type_identifier: &TypeIdentifier) -> Result<TypeId, TypeError> {
@@ -2364,7 +2424,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         // An enum's generics are scoped to the enum declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args)?;
         let enum_id = self.add_enum_to_current_module(enum_scope_id, name, generic_ids)?;
-        debug_assert!(self.current_type_decl.is_none(), "At the moment, enums cannot be nested within other enums");
+        debug_assert!(self.current_type_decl.is_none(), "At the moment, types cannot be nested within other types");
 
         Ok(enum_id)
     }
@@ -2379,8 +2439,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut seen_variants = HashMap::<String, &Token>::new();
         for (variant_ident, variant_args) in variants {
-            debug_assert!(variant_args.is_none(), "Function variants not yet implemented");
-
             let name = Token::get_ident_name(variant_ident);
             let defined_span = variant_ident.get_range();
             if let Some(seen_variant) = seen_variants.get(&name) {
@@ -2388,7 +2446,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             seen_variants.insert(name.clone(), variant_ident);
 
-            let variant = EnumVariant { name, defined_span, kind: EnumVariantKind::Constant };
+            let kind = if variant_args.is_some() { EnumVariantKind::Container(FuncId::BOGUS) } else { EnumVariantKind::Constant };
+            let variant = EnumVariant { name, defined_span, kind };
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
 
@@ -2407,11 +2466,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_enum_pass_2(&mut self, enum_id: EnumId, method_func_ids: Vec<FuncId>, node: EnumDeclNode) -> Result<(), TypeError> {
-        let EnumDeclNode { methods, .. } = node;
+        let EnumDeclNode { variants, methods, .. } = node;
         let enum_ = self.project.get_enum_by_id(&enum_id);
+        let enum_variants = enum_.variants.clone(); // Need to clone, sadly :/
+        let generic_ids = enum_.generic_ids.clone();
 
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = enum_.enum_scope_id;
+
+        debug_assert!(enum_.variants.len() == variants.len());
+        for (idx, ((variant_decl_token, variant_decl_args), variant)) in variants.iter().zip(&enum_variants).enumerate() {
+            if let EnumVariantKind::Container(_) = variant.kind {
+                let Some(variant_decl_args) = variant_decl_args else { unreachable!("Internal error: incorrectly assigned EnumVariantKind::Container") };
+                let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
+
+                let params = variant_decl_args.iter().map(|arg| (args_to_parameters(arg), None)).collect_vec();
+                let params = self.typecheck_function_parameters(false, &params)?;
+
+                let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
+                self.end_child_scope();
+
+                let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, vec![], false, params, return_type_id)?;
+                let EnumVariantKind::Container(func_id) = &mut self.project.get_enum_by_id_mut(&enum_id).variants[idx].kind else { unreachable!() };
+                *func_id = variant_func_id;
+            }
+        }
 
         debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (from pass 1)");
         for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
@@ -3253,23 +3332,34 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         Either::Right(enum_id) => {
                             let enum_ = self.project.get_enum_by_id(enum_id);
 
-                            let mut generic_ids = &enum_.generic_ids;
-                            if let Some(type_hint_id) = &type_hint {
-                                let ty = self.project.get_type_by_id(&type_hint_id);
-                                if let Type::GenericEnumInstance(_, hint_generic_ids, _) = ty {
-                                    generic_ids = hint_generic_ids;
-                                }
-                            }
-
                             for (idx, variant) in enum_.variants.iter().enumerate() {
                                 if *variant.name == field_name {
                                     match variant.kind {
                                         EnumVariantKind::Constant => {
+                                            let mut generic_ids = &enum_.generic_ids;
+                                            if let Some(type_hint_id) = &type_hint {
+                                                let ty = self.project.get_type_by_id(&type_hint_id);
+                                                if let Type::GenericEnumInstance(_, hint_generic_ids, _) = ty {
+                                                    generic_ids = hint_generic_ids;
+                                                }
+                                            }
+
                                             let type_id = self.add_or_find_type_id(Type::GenericEnumInstance(*enum_id, generic_ids.clone(), Some(idx)));
                                             field_data = Some((AccessorKind::EnumVariant, idx, type_id));
                                             break;
                                         }
-                                        EnumVariantKind::Function(_) => todo!()
+                                        EnumVariantKind::Container(func_id) => {
+                                            let function = self.project.get_func_by_id(&func_id);
+                                            let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(function, false));
+                                            if let Some(type_hint_id) = &type_hint {
+                                                let ty = self.project.get_type_by_id(type_hint_id);
+                                                if matches!(ty, Type::Function(_, _, _, _)) {
+                                                    type_id = self.substitute_generics(type_hint_id, &type_id);
+                                                }
+                                            }
+                                            field_data = Some((AccessorKind::EnumVariant, idx, type_id));
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -3439,9 +3529,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
+                            Type::Type(Either::Left(_struct_id)) => unimplemented!("Static methods on types"),
+                            Type::Type(Either::Right(enum_id)) => {
+                                let enum_ = self.project.get_enum_by_id(enum_id);
+                                let variant = &enum_.variants[*member_idx];
+                                let EnumVariantKind::Container(func_id) = variant.kind else {
+                                    return Err(TypeError::IllegalEnumVariantConstruction { span: typed_target.span(), enum_id: *enum_id, variant_idx: *member_idx });
+                                };
+                                let function = self.project.get_func_by_id(&func_id);
+                                fn_is_variadic = function.is_variadic();
+                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                return_type_id = function.return_type_id;
+                            }
                             Type::Generic(_, _) |
-                            Type::Function(_, _, _, _) |
-                            Type::Type(_) => todo!()
+                            Type::Function(_, _, _, _) => todo!(),
                         }
                     }
                     _ => {

@@ -104,6 +104,12 @@ fn test_type_assignability() {
             true
         ),
         (
+            "func a<X>(x: X): X = x\n\
+             func b<T>(fn: (T) => T, t: T): T = t\n\
+             b(a, 12)",
+            true
+        ),
+        (
             "type Foo<T> {\n\
                t: T\n\
                func foo<U>(self, u: U): (T, U) = (self.t, u)\n\
@@ -132,6 +138,16 @@ fn test_type_assignability() {
             false,
         ),
         (
+            "enum Foo { Bar(x: Int) }\n\
+             val f: (Int) => Foo = Foo.Bar",
+            true,
+        ),
+        (
+            "enum Foo { Bar(x: Int) }\n\
+             val f: (Int, Float) => Foo = Foo.Bar",
+            true,
+        ),
+        (
             "enum Foo<T> { Bar }\n\
              func foo(f: Foo<Int>) {}\n\
              foo(Foo.Bar)",
@@ -152,6 +168,25 @@ fn test_type_assignability() {
              val f: Foo<Int> = Foo.Bar\n\
              f.foo(123)",
             true,
+        ),
+        (
+            "enum Foo<T> { Bar(x: T), Baz }\n\
+             func makeFoo<T>(t: T, fn: (T) => Foo<T>): Foo<T> = Foo.Baz\n\
+             val f1 = makeFoo(12, Foo.Bar)\n\
+             val _: Foo<Int> = f1",
+            true
+        ),
+        (
+            "enum Foo<T> { Bar(x: T), Baz }\n\
+             func makeFoo<T>(fn: (T) => Foo<T>): Foo<T> = Foo.Baz\n\
+             val f = makeFoo(Foo.Bar)",
+            false // Fails because of unbound generic T
+        ),
+        (
+            "enum Foo<T> { Bar(x: T), Baz }\n\
+             func makeFoo<T>(fn: (T) => Foo<T>): Foo<T> = Foo.Baz\n\
+             val f: Foo<Int> = makeFoo(Foo.Bar)",
+            true
         ),
     ];
     for (code, should_be_assignable) in cases {
@@ -1385,11 +1420,12 @@ fn typecheck_enum_declaration() {
     let project = test_typecheck("\
       enum Foo {\n\
         Bar\n\
-        Baz\n\
+        Baz(x: Int)\n\
       }\
     ").unwrap();
     let module = &project.modules[1];
     let enum_id = EnumId(ModuleId(1), 0);
+    let baz_func_id = FuncId(ScopeId(ModuleId(1), 1), 0);
     let expected = vec![
         Enum {
             id: enum_id,
@@ -1400,7 +1436,7 @@ fn typecheck_enum_declaration() {
             self_type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
             variants: vec![
                 EnumVariant { name: "Bar".to_string(), defined_span: Range { start: Position::new(2, 1), end: Position::new(2, 3) }, kind: EnumVariantKind::Constant },
-                EnumVariant { name: "Baz".to_string(), defined_span: Range { start: Position::new(3, 1), end: Position::new(3, 3) }, kind: EnumVariantKind::Constant },
+                EnumVariant { name: "Baz".to_string(), defined_span: Range { start: Position::new(3, 1), end: Position::new(3, 3) }, kind: EnumVariantKind::Container(baz_func_id) },
             ],
             methods: vec![],
             static_methods: vec![],
@@ -1422,6 +1458,28 @@ fn typecheck_enum_declaration() {
         }
     ];
     assert_eq!(expected, module.scopes[0].vars);
+    // Verify that the `Baz` variant has a function definition
+    let baz_variant_func = Function {
+        id: baz_func_id,
+        fn_scope_id: ScopeId(ModuleId(1), 2),
+        name: "Baz".to_string(),
+        generic_ids: vec![],
+        has_self: false,
+        params: vec![
+            FunctionParam {
+                name: "x".to_string(),
+                type_id: PRELUDE_INT_TYPE_ID,
+                defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 5)}),
+                default_value: None,
+                is_variadic: false,
+            }
+        ],
+        return_type_id: project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(1))).unwrap(),
+        defined_span: Some(Range { start: Position::new(3, 1), end: Position::new(3, 3)}),
+        body: vec![],
+        captured_vars: vec![],
+    };
+    assert_eq!(baz_variant_func, module.scopes[1].funcs[0]);
 }
 
 #[test]
@@ -1458,6 +1516,17 @@ fn typecheck_failure_enum_declaration() {
         name: "Bar".to_string(),
         original_span: Some(Range { start: Position::new(2, 1), end: Position::new(2, 3) }),
         kind: DuplicateNameKind::StaticMethodOrVariant,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo {\n\
+        Bar(x: Int, x: Int)\n\
+      }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateParameter {
+        span: Range { start: Position::new(2, 13), end: Position::new(2, 13) },
+        name: "x".to_string(),
     };
     assert_eq!(expected, err);
 }
@@ -2009,6 +2078,52 @@ fn typecheck_invocation() {
     let accessor_invocation_arg_labels = &module.code[5];
     assert_eq!(PRELUDE_INT_TYPE_ID, *accessor_invocation_arg_labels.type_id());
 
+    // Invoking enum variant constructor
+    let project = test_typecheck("\
+      enum Foo { Bar(x: Int, y: Float) }\n\
+      val f = Foo.Bar\n\
+      val foo = Foo.Bar(1, 2.3)\n\
+      f(1, 2.3)\
+    ").unwrap();
+    let module = &project.modules[1];
+    let enum_id = EnumId(ModuleId(1), 0);
+    let f_var = &module.scopes[0].vars[1];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 1),
+        name: "f".to_string(),
+        type_id: project.find_type_id(
+            &ScopeId(ModuleId(1), 0),
+            &project.function_type(
+                vec![PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID],
+                2,
+                false,
+                project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap()
+            ),
+        ).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(2, 5), end: Position::new(2, 5) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, f_var);
+    let foo_var = &module.scopes[0].vars[2];
+    let expected = Variable {
+        id: VarId(ScopeId(ModuleId(1), 0), 2),
+        name: "foo".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap(),
+        is_mutable: false,
+        is_initialized: true,
+        defined_span: Some(Range { start: Position::new(3, 5), end: Position::new(3, 7) }),
+        is_captured: false,
+        alias: VariableAlias::None,
+        is_parameter: false,
+    };
+    assert_eq!(&expected, foo_var);
+    let f_invocation = &module.code[2];
+    assert_eq!(project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(0))).unwrap(), *f_invocation.type_id());
+
     // Invoking variadic functions
     // The interesting thing here is in the arguments, so let's pull out the function declaration to cut down on noise
     let foo_fn = "func foo(a: Int, *args: Int[]) {}";
@@ -2267,6 +2382,18 @@ fn typecheck_failure_invocation() {
         span: Range { start: Position::new(2, 4), end: Position::new(2, 4) },
         arg_name: "a".to_string(),
         is_instantiation: false,
+    };
+    assert_eq!(expected, err);
+
+    // Test invocation of constant enum variant
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo { Bar }\n\
+      Foo.Bar()
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::IllegalEnumVariantConstruction {
+        span: Range { start: Position::new(2, 1), end: Position::new(2, 7) },
+        enum_id: EnumId(ModuleId(1), 0),
+        variant_idx: 0,
     };
     assert_eq!(expected, err);
 }
