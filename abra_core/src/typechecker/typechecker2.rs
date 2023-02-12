@@ -1813,7 +1813,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(id)
     }
 
-    fn add_function_variable_alias_to_current_scope(&mut self, ident: &Token, func_id: &FuncId) -> Result<(), TypeError> {
+    fn add_function_variable_alias_to_current_scope(&mut self, ident: &Token, func_id: &FuncId) -> Result<VarId, TypeError> {
         let func = self.project.get_func_by_id(func_id);
         let name = Token::get_ident_name(ident);
         let span = self.make_span(&ident.get_range());
@@ -1823,7 +1823,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let variable = self.project.get_var_by_id_mut(&fn_var_id);
         variable.alias = VariableAlias::Function(*func_id);
 
-        Ok(())
+        Ok(fn_var_id)
     }
 
     fn add_function_to_current_scope(&mut self, fn_scope_id: ScopeId, name_token: &Token, generic_ids: Vec<TypeId>, has_self: bool, params: Vec<FunctionParam>, return_type_id: TypeId) -> Result<FuncId, TypeError> {
@@ -2155,6 +2155,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
+        // --- BEGIN PASS 0 for types, enums, and functions
+
         let num_type_decls = type_decls.len();
         let mut struct_ids = Vec::with_capacity(num_type_decls);
         for node in &type_decls {
@@ -2187,41 +2189,53 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             enum_ids.push(enum_id);
         }
 
-        let mut structs = VecDeque::with_capacity(num_type_decls);
-        for (node, struct_id) in type_decls.iter().zip(struct_ids) {
-            let method_func_ids = self.typecheck_struct_pass_1(node, &struct_id)?;
-            structs.push_back((struct_id, method_func_ids));
+        let mut func_ids = Vec::with_capacity(func_decls.len());
+        for node in &func_decls {
+            let func_id = self.typecheck_function_pass_0(node)?;
+            let func_var_id = self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
+            func_ids.push((func_id, func_var_id));
         }
 
-        let mut enums = VecDeque::with_capacity(num_enum_decls);
-        for (node, enum_id) in enum_decls.iter().zip(enum_ids) {
-            let method_func_ids = self.typecheck_enum_pass_1(node, &enum_id)?;
-            enums.push_back((enum_id, method_func_ids));
+        // --- END PASS 0 for types, enums, and functions
+        // --- BEGIN PASS 1 for types, enums, and functions
+
+        let mut struct_ids = VecDeque::from(struct_ids);
+        debug_assert!(num_type_decls == struct_ids.len());
+        for (node, struct_id) in type_decls.iter().zip(&struct_ids) {
+            self.typecheck_struct_pass_1(node, &struct_id)?;
         }
 
-        let mut func_ids = VecDeque::with_capacity(num_type_decls);
-        for node in func_decls {
-            let func_id = self.typecheck_function_pass_1(node, false)?;
-            self.add_function_variable_alias_to_current_scope(&node.name, &func_id)?;
-            func_ids.push_back(func_id);
+        let mut enum_ids = VecDeque::from(enum_ids);
+        debug_assert!(num_enum_decls == enum_ids.len());
+        for (node, enum_id) in enum_decls.iter().zip(&enum_ids) {
+            self.typecheck_enum_pass_1(node, &enum_id)?;
         }
+
+        let mut func_ids = VecDeque::from(func_ids);
+        debug_assert!(func_decls.len() == func_ids.len());
+        for (node, (func_id, func_var_id)) in func_decls.iter().zip(&func_ids) {
+            self.typecheck_function_pass_1(func_id, node, false)?;
+
+            let func = self.project.get_func_by_id(func_id);
+            let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+            self.project.get_var_by_id_mut(func_var_id).type_id = fn_type_id;
+        }
+
+        // --- END PASS 1 for types, enums, and functions
 
         for node in nodes {
             match node {
                 AstNode::FunctionDecl(_, decl_node) => {
-                    let func_id = func_ids.pop_front()
-                        .expect("There should be a FuncId for each function declaration");
+                    let (func_id, _) = func_ids.pop_front().expect("There should be a func_id for each function declaration in this block");
                     self.typecheck_function_pass_2(func_id, decl_node)?;
                 }
                 AstNode::TypeDecl(_, decl_node) => {
-                    let (struct_id, method_func_ids) = structs.pop_front()
-                        .expect("There should be Struct metadata for each declaration in this block");
-                    self.typecheck_struct_pass_2(struct_id, method_func_ids, decl_node)?;
+                    let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
+                    self.typecheck_struct_pass_2(struct_id, decl_node)?;
                 }
                 AstNode::EnumDecl(_, decl_node) => {
-                    let (enum_id, method_func_ids) = enums.pop_front()
-                        .expect("There should be Enum metadata for each declaration in this block");
-                    self.typecheck_enum_pass_2(enum_id, method_func_ids, decl_node)?;
+                    let enum_id = enum_ids.pop_front().expect("There should be an enum_id for each enum declaration in this block");
+                    self.typecheck_enum_pass_2(enum_id, decl_node)?;
                 }
                 node => {
                     let typed_node = self.typecheck_statement(node, None)?;
@@ -2273,7 +2287,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
             if let Token::Self_(_) = &ident {
                 let self_type_id = match &self.current_type_decl {
-                    Some(type_id) if allow_self => type_id,
+                    Some(type_id) if allow_self => *type_id,
                     _ => return Err(TypeError::InvalidSelfParam { span: ident_span }),
                 };
 
@@ -2282,13 +2296,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 seen_self = true;
 
-                params.push(FunctionParam {
-                    name: param_name,
-                    type_id: *self_type_id,
-                    defined_span: Some(ident_span.clone()),
-                    default_value: None,
-                    is_variadic: false,
-                });
+                self.add_variable_to_current_scope(param_name.clone(), self_type_id, false, true, &ident_span, true)?;
+                params.push(FunctionParam { name: param_name, type_id: self_type_id, defined_span: Some(ident_span.clone()), default_value: None, is_variadic: false });
 
                 continue;
             }
@@ -2349,29 +2358,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 type_id = inner_type_id;
             }
 
-            params.push(FunctionParam {
-                name: param_name,
-                type_id,
-                defined_span: Some(ident_span),
-                default_value: typed_default_value_expr,
-                is_variadic: *is_vararg,
-            });
+            self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+            params.push(FunctionParam { name: param_name, type_id, defined_span: Some(ident_span), default_value: typed_default_value_expr, is_variadic: *is_vararg });
         }
 
         Ok(params)
     }
 
-    fn typecheck_function_pass_1(&mut self, node: &FunctionDeclNode, allow_self: bool) -> Result<FuncId, TypeError> {
-        let FunctionDeclNode { export_token, name, type_args, ret_type, .. } = node;
-
+    fn typecheck_function_pass_0(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
+        let FunctionDeclNode { export_token, name, type_args,args,  ret_type, .. } = node;
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
         let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
 
         let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
-        let node_parameters = node.parameters().into_iter().map(|p| (p, None)).collect();
-        let params = self.typecheck_function_parameters(allow_self, &node_parameters)?;
-
+        let has_self = args.first().map(|(tok, _, _, _)| matches!(tok, Token::Self_(_))).unwrap_or(false);
         let mut return_type_id = PRELUDE_UNIT_TYPE_ID;
         if let Some(ret_type) = ret_type {
             return_type_id = self.resolve_type_identifier(ret_type)?;
@@ -2379,11 +2380,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.end_child_scope();
 
-        let has_self = params.first().map(|p| p.name == "self").unwrap_or(false);
-        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, has_self, params, return_type_id)?;
+        let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, has_self, vec![], return_type_id)?;
         self.current_module_mut().functions.push(func_id);
 
         Ok(func_id)
+    }
+
+    fn typecheck_function_pass_1(&mut self, func_id: &FuncId, node: &FunctionDeclNode, allow_self: bool) -> Result<(), TypeError> {
+        let func = self.project.get_func_by_id(&func_id);
+        let prev_scope_id = self.current_scope_id;
+        self.current_scope_id = func.fn_scope_id;
+
+        let node_parameters = node.parameters().into_iter().map(|p| (p, None)).collect();
+        let params = self.typecheck_function_parameters(allow_self, &node_parameters)?;
+
+        debug_assert!(self.project.get_func_by_id(func_id).params.is_empty(), "In pass 0, an empty list of parameters should have been inserted, which we here overwrite");
+        self.project.get_func_by_id_mut(func_id).params = params;
+
+        self.current_scope_id = prev_scope_id;
+
+        Ok(())
     }
 
     fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
@@ -2396,14 +2412,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let func_name = func.name.clone();
         let return_type_id = func.return_type_id;
-        // Why: rust cannot guarantee that `add_variable_to_current_scope` won't modify `func`; intermediate variable solves
-        let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
-        for (name, type_id, defined_span, ..) in params {
-            let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
-            let defined_span = defined_span.clone();
-
-            self.add_variable_to_current_scope(name, type_id, false, true, &defined_span, true)?;
-        }
 
         let mut body = vec![];
         let num_nodes = node.body.len();
@@ -2451,7 +2459,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(struct_id)
     }
 
-    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<Vec<FuncId>, TypeError> {
+    fn typecheck_struct_pass_1(&mut self, node: &TypeDeclNode, struct_id: &StructId) -> Result<(), TypeError> {
         let TypeDeclNode { methods, .. } = node;
 
         let struct_ = self.project.get_struct_by_id(struct_id);
@@ -2459,21 +2467,28 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = struct_.struct_scope_id;
         self.current_type_decl = Some(struct_.self_type_id);
 
-        let mut method_func_ids = vec![];
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
-            let func_id = self.typecheck_function_pass_1(decl_node, true)?;
-            method_func_ids.push(func_id);
+            let func_id = self.typecheck_function_pass_0(decl_node)?;
+
+            let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
+            if is_method {
+                self.project.get_struct_by_id_mut(struct_id).methods.push(func_id);
+            } else {
+                self.project.get_struct_by_id_mut(struct_id).static_methods.push(func_id);
+            }
+
+            self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
 
         self.current_type_decl = None;
 
         self.end_child_scope();
 
-        Ok(method_func_ids)
+        Ok(())
     }
 
-    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, method_func_ids: Vec<FuncId>, node: TypeDeclNode) -> Result<(), TypeError> {
+    fn typecheck_struct_pass_2(&mut self, struct_id: StructId, node: TypeDeclNode) -> Result<(), TypeError> {
         let TypeDeclNode { fields, methods, .. } = node;
         let struct_ = self.project.get_struct_by_id(&struct_id);
 
@@ -2503,18 +2518,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.project.get_struct_by_id_mut(&struct_id).fields.push(field);
         }
 
-        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (from pass 1)");
-        for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
+        let mut method_func_id_idx = 0;
+        let mut static_method_func_id_idx = 0;
+        for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: a type's methods must be of type AstNode::FunctionDecl") };
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
 
-            self.typecheck_function_pass_2(*func_id, decl_node)?;
-
-            if is_method {
-                self.project.get_struct_by_id_mut(&struct_id).methods.push(*func_id);
+            let struct_ = self.project.get_struct_by_id(&struct_id);
+            let func_id = if is_method {
+                method_func_id_idx += 1;
+                struct_.methods[method_func_id_idx - 1]
             } else {
-                self.project.get_struct_by_id_mut(&struct_id).static_methods.push(*func_id);
-            }
+                static_method_func_id_idx += 1;
+                struct_.static_methods[static_method_func_id_idx - 1]
+            };
+
+            self.typecheck_function_pass_2(func_id, decl_node)?;
         }
 
         self.current_scope_id = prev_scope_id;
@@ -2537,7 +2556,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(enum_id)
     }
 
-    fn typecheck_enum_pass_1(&mut self, node: &EnumDeclNode, enum_id: &EnumId) -> Result<Vec<FuncId>, TypeError> {
+    fn typecheck_enum_pass_1(&mut self, node: &EnumDeclNode, enum_id: &EnumId) -> Result<(), TypeError> {
         let EnumDeclNode { variants, methods, .. } = node;
 
         let enum_ = self.project.get_enum_by_id(enum_id);
@@ -2562,21 +2581,35 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.project.get_enum_by_id_mut(enum_id).variants.push(variant);
         }
 
-        let mut method_func_ids = vec![];
         for method in methods {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
-            let func_id = self.typecheck_function_pass_1(decl_node, true)?;
-            method_func_ids.push(func_id);
+            let func_id = self.typecheck_function_pass_0(decl_node)?;
+
+            let is_method = decl_node.args.get(0).map(|(token, _, _, _)| matches!(token, Token::Self_(_))).unwrap_or(false);
+            if is_method {
+                self.project.get_enum_by_id_mut(enum_id).methods.push(func_id);
+            } else {
+                let enum_ = self.project.get_enum_by_id(&enum_id);
+                let func_name = Token::get_ident_name(&decl_node.name);
+                if let Some(variant) = enum_.variants.iter().find(|v| v.name == func_name) {
+                    let func_name_span = self.make_span(&decl_node.name.get_range());
+                    return Err(TypeError::DuplicateName { span: func_name_span, name: func_name, original_span: Some(variant.defined_span.clone()), kind: DuplicateNameKind::StaticMethodOrVariant });
+                }
+
+                self.project.get_enum_by_id_mut(enum_id).static_methods.push(func_id);
+            }
+
+            self.typecheck_function_pass_1(&func_id, decl_node, true)?;
         }
 
         self.current_type_decl = None;
 
         self.end_child_scope();
 
-        Ok(method_func_ids)
+        Ok(())
     }
 
-    fn typecheck_enum_pass_2(&mut self, enum_id: EnumId, method_func_ids: Vec<FuncId>, node: EnumDeclNode) -> Result<(), TypeError> {
+    fn typecheck_enum_pass_2(&mut self, enum_id: EnumId, node: EnumDeclNode) -> Result<(), TypeError> {
         let EnumDeclNode { variants, methods, .. } = node;
         let enum_ = self.project.get_enum_by_id(&enum_id);
         let enum_variants = enum_.variants.clone(); // Need to clone, sadly :/
@@ -2603,25 +2636,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        debug_assert!(methods.len() == method_func_ids.len(), "There should be a FuncId for each method (from pass 1)");
-        for (func_id, method) in method_func_ids.iter().zip(methods.into_iter()) {
+        let mut method_func_id_idx = 0;
+        let mut static_method_func_id_idx = 0;
+        for method in methods.into_iter() {
             let AstNode::FunctionDecl(_, decl_node) = method else { unreachable!("Internal error: an enum's methods must be of type AstNode::FunctionDecl") };
             let is_method = decl_node.args.get(0).map(|(token, _, _, _)| if let Token::Self_(_) = token { true } else { false }).unwrap_or(false);
 
-            let func_name_span = self.make_span(&decl_node.name.get_range());
-            let func_name = Token::get_ident_name(&decl_node.name);
-            self.typecheck_function_pass_2(*func_id, decl_node)?;
-
-            if is_method {
-                self.project.get_enum_by_id_mut(&enum_id).methods.push(*func_id);
+            let enum_ = self.project.get_enum_by_id(&enum_id);
+            let func_id = if is_method {
+                method_func_id_idx += 1;
+                enum_.methods[method_func_id_idx - 1]
             } else {
-                let enum_ = self.project.get_enum_by_id(&enum_id);
-                if let Some(variant) = enum_.variants.iter().find(|v| v.name == func_name) {
-                    return Err(TypeError::DuplicateName { span: func_name_span, name: func_name, original_span: Some(variant.defined_span.clone()), kind: DuplicateNameKind::StaticMethodOrVariant });
-                }
-
-                self.project.get_enum_by_id_mut(&enum_id).static_methods.push(*func_id);
-            }
+                static_method_func_id_idx += 1;
+                enum_.static_methods[static_method_func_id_idx - 1]
+            };
+            self.typecheck_function_pass_2(func_id, decl_node)?;
         }
 
         self.current_scope_id = prev_scope_id;
@@ -3846,15 +3875,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let lambda_func_id = self.add_lambda_function_to_current_scope(fn_scope_id, parameters)?;
                 let prev_func_id = self.current_function;
                 self.current_function = Some(lambda_func_id);
-
-                let func = self.project.get_func_by_id(&lambda_func_id);
-                let params = func.params.iter().map(|p| (p.name.clone(), p.type_id, p.defined_span.clone())).collect_vec();
-                for (name, type_id, defined_span, ..) in params {
-                    let Some(defined_span) = defined_span else { unreachable!("Internal error: when typechecking a user-defined function, parameters' spans will always be known"); };
-                    let defined_span = defined_span.clone();
-
-                    self.add_variable_to_current_scope(name, type_id, false, true, &defined_span, true)?;
-                }
 
                 let mut body = vec![];
                 let mut last_type_id = PRELUDE_UNIT_TYPE_ID;

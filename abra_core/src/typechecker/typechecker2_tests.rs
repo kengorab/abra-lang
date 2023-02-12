@@ -57,6 +57,12 @@ fn test_typecheck(input: &str) -> Result<Project, (Project, TypecheckError)> {
     }
 }
 
+fn assert_typecheck_ok(input: &str) {
+    let res = test_typecheck(input);
+    if res.is_err() { dbg!(&res.as_ref().unwrap_err().1); }
+    assert!(res.is_ok());
+}
+
 #[test]
 fn test_type_assignability() {
     let cases = [
@@ -1893,6 +1899,44 @@ fn typecheck_failure_function_declaration() {
         is_variadic: true,
     };
     assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_function_default_param_values() {
+    // Simple case 1, `foo` can discover function `bar`
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b: Bool, c = bar()): Int = 1
+      func bar(): Int = 1
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b: Bool, c = bar): Int {
+        val _: () => Int = c
+        1
+      }
+      func bar(): Int = 1
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b: Bool, c: () => Int = bar): Int = 1
+      func bar(): Int = 1
+    "#);
+
+    // Simple case 2, `foo` can discover method `bar`
+    assert_typecheck_ok(r#"
+      type Foo { func bar(self): Int = 12 }
+      func foo(f: Foo, b = f.bar()): Int = b
+    "#);
+    assert_typecheck_ok(r#"
+      type Foo { func bar(self): Int = 12 }
+      func foo(f: Foo, b = f.bar): Int = b()
+    "#);
+    assert_typecheck_ok(r#"
+      enum Foo { func bar(self): Int = 12 }
+      func foo(f: Foo, b = f.bar()): Int = b
+    "#);
+    assert_typecheck_ok(r#"
+      enum Foo { func bar(self): Int = 12 }
+      func foo(f: Foo, b = f.bar): Int = b()
+    "#);
 }
 
 #[test]
