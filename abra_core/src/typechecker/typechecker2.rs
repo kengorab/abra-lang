@@ -2437,16 +2437,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let Some(default_value) = default_value else {
                 unreachable!("Internal error: misalignment attempting to hydrate parameter's default value");
             };
-            let param_type_id = param.type_id;
+            let mut param_type_id = param.type_id;
             let typed_default_value = self.typecheck_expression(default_value, Some(param_type_id))?;
             let type_id = *typed_default_value.type_id();
 
+            // If the default value expression contains an unbound generic, this is an unacceptable state.
+            if self.type_contains_generics(&type_id) {
+                return Err(TypeError::ForbiddenAssignment { span: self.make_span(&typed_default_value.span()), type_id, purpose: "parameter" });
+            }
+            if self.type_contains_generics(&param_type_id) {
+                param_type_id = self.substitute_generics(&type_id, &param_type_id);
+            }
+
             if !self.type_satisfies_other(&type_id, &param_type_id) {
-                return Err(TypeError::TypeMismatch {
-                    span: self.make_span(&typed_default_value.span()),
-                    expected: vec![param_type_id],
-                    received: type_id,
-                });
+                return Err(TypeError::TypeMismatch { span: self.make_span(&typed_default_value.span()), expected: vec![param_type_id], received: type_id });
             }
 
             let mut param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];

@@ -1,9 +1,9 @@
-func foo(a: Int, b = 1 + bar(123)): Int = -1
-func bar<T>(t: T): T = t
+func foo(a: Int, b = bar()): Int = 1
+func bar<T>(): T? = None
 
 
 /*
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = bar()): Int = -1
   func bar(): Int = 123
@@ -20,7 +20,7 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = bar): Int = -1
   func bar(): Int = 123
@@ -37,7 +37,7 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = bar()): Int = -1
   func bar(a: Int): Int = 123
@@ -57,7 +57,7 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = bar()): Int = -1
   func bar<T>(): T? = None
@@ -100,7 +100,7 @@ Pass 2:
     - Typecheck fails, since `foo` has 2 required arguments but 0 were provided
 
 ------------------------------
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = 1 + bar()): Int = -1
   func bar(): Int = 1
@@ -121,7 +121,7 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-
+[next]
 Given code:
   func foo(a: Int, b: Bool, c = 1 + bar(1)): Int = -1
   func bar<T>(t: T): T = t

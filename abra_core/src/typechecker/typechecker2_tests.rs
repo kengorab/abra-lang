@@ -1967,6 +1967,12 @@ fn typecheck_function_default_param_values() {
       func foo(a: Int, b = 1 + bar(123)): Int = -1
       func bar(i: Int): Int = i
     "#);
+
+    // Case 5, `bar` contains generics
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = bar(123)): Int = a + b
+      func bar<T>(t: T): T = t
+    "#);
 }
 
 #[test]
@@ -2044,6 +2050,18 @@ fn typecheck_failure_function_default_param_values() {
         op: BinaryOp::And,
         left: PRELUDE_BOOL_TYPE_ID,
         right: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Case 5, `bar` contains generics
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = bar()): Int = 1\n\
+      func bar<T>(): T? = None\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Span::new(ModuleId(1), (1, 22), (1, 24)),
+        type_id: TypeId(ScopeId(ModuleId(1), 1), 0),
+        purpose: "parameter",
     };
     assert_eq!(expected, err);
 }
