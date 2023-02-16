@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
-use crate::parser::ast::{BindingPattern, UnaryOp};
+use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
 use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
@@ -1266,9 +1266,11 @@ fn typecheck_type_declaration() {
                 FunctionParam {
                     name: "self".to_string(),
                     type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_id, vec![])).unwrap(),
+                    var_id: VarId(ScopeId(ModuleId(1), 2), 0),
                     defined_span: Some(Span::new(ModuleId(1), (3, 10), (3, 13))),
                     default_value: None,
                     is_variadic: false,
+                    is_incomplete: false,
                 }
             ],
             return_type_id: PRELUDE_INT_TYPE_ID,
@@ -1484,9 +1486,11 @@ fn typecheck_enum_declaration() {
             FunctionParam {
                 name: "x".to_string(),
                 type_id: PRELUDE_INT_TYPE_ID,
+                var_id: VarId(ScopeId(ModuleId(1), 2), 0),
                 defined_span: Some(Span::new(ModuleId(1), (3, 5), (3, 5))),
                 default_value: None,
                 is_variadic: false,
+                is_incomplete: false,
             }
         ],
         return_type_id: project.find_type_id(&ScopeId(ModuleId(1), 2), &Type::GenericEnumInstance(enum_id, vec![], Some(1))).unwrap(),
@@ -1592,9 +1596,11 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "x".to_string(),
                     type_id: PRELUDE_BOOL_TYPE_ID,
+                    var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                     defined_span: Some(Span::new(ModuleId(1), (2, 10), (2, 10))),
                     default_value: None,
                     is_variadic: false,
+                    is_incomplete: false,
                 }
             ],
             return_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -1729,9 +1735,11 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "a".to_string(),
                     type_id: t_type_id,
+                    var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                     defined_span: Some(Span::new(ModuleId(1), (1, 13), (1, 13))),
                     default_value: None,
                     is_variadic: false,
+                    is_incomplete: false,
                 }
             ],
             return_type_id: project.find_type_id(&fn_scope_id, &project.array_type(t_type_id)).unwrap(),
@@ -1770,9 +1778,11 @@ fn typecheck_function_declaration() {
                 FunctionParam {
                     name: "a".to_string(),
                     type_id: PRELUDE_INT_TYPE_ID,
+                    var_id: VarId(ScopeId(ModuleId(1), 1), 0),
                     defined_span: Some(Span::new(ModuleId(1), (1, 11), (1, 11))),
                     default_value: None,
                     is_variadic: true,
+                    is_incomplete: false,
                 }
             ],
             return_type_id: PRELUDE_UNIT_TYPE_ID,
@@ -1903,24 +1913,24 @@ fn typecheck_failure_function_declaration() {
 
 #[test]
 fn typecheck_function_default_param_values() {
-    // Simple case 1, `foo` can discover function `bar`
+    // Case 1, `foo` can discover function `bar`
     assert_typecheck_ok(r#"
-      func foo(a: Int, b: Bool, c = bar()): Int = 1
+      func foo(a: Int, b = bar()): Int = 1
       func bar(): Int = 1
     "#);
     assert_typecheck_ok(r#"
-      func foo(a: Int, b: Bool, c = bar): Int {
-        val _: () => Int = c
+      func foo(a: Int, b = bar): Int {
+        val _: () => Int = b
         1
       }
       func bar(): Int = 1
     "#);
     assert_typecheck_ok(r#"
-      func foo(a: Int, b: Bool, c: () => Int = bar): Int = 1
+      func foo(a: Int, b: () => Int = bar): Int = 1
       func bar(): Int = 1
     "#);
 
-    // Simple case 2, `foo` can discover method `bar`
+    // Case 2, `foo` can discover method `bar`
     assert_typecheck_ok(r#"
       type Foo { func bar(self): Int = 12 }
       func foo(f: Foo, b = f.bar()): Int = b
@@ -1937,6 +1947,105 @@ fn typecheck_function_default_param_values() {
       enum Foo { func bar(self): Int = 12 }
       func foo(f: Foo, b = f.bar): Int = b()
     "#);
+
+    // Case 3, `bar` has required arguments
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = bar(123)): Int = -1
+      func bar(i: Int): Int = i
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = bar(i: a)): Int = -1 // Referencing prior arg in expression
+      func bar(i: Int): Int = i
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, c: (Int, Int) => Int = bar): Int = 1
+      func bar(a: Int): Int = a
+    "#);
+
+    // Case 4, invocation of `bar` in sub-expression
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = 1 + bar(123)): Int = -1
+      func bar(i: Int): Int = i
+    "#);
+}
+
+#[test]
+fn typecheck_failure_function_default_param_values() {
+    // Case 1, `foo` wants function `bar` but it doesn't exist
+    let (_, Either::Right(err)) = test_typecheck("func foo(a: Int, b = bar()): Int = 1").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownIdentifier {
+        span: Span::new(ModuleId(1), (1, 22), (1, 24)),
+        token: Token::Ident(Position::new(1, 22), "bar".to_string()),
+    };
+    assert_eq!(expected, err);
+
+    // Case 2, `foo` wants method `bar` but it doesn't exist
+    let (_, Either::Right(err)) = test_typecheck("\
+      type Foo { }\n\
+      func foo(f: Foo, b = f.bar()): Int = b\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownMember {
+        span: Span::new(ModuleId(1), (2, 24), (2, 26)),
+        field_name: "bar".to_string(),
+        type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Foo { }\n\
+      func foo(f: Foo, b = f.bar()): Int = b\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownMember {
+        span: Span::new(ModuleId(1), (2, 24), (2, 26)),
+        field_name: "bar".to_string(),
+        type_id: TypeId(ScopeId(ModuleId(1), 0), 0),
+    };
+    assert_eq!(expected, err);
+
+    // Case 3, `bar` has required arguments
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = bar()): Int = -1\n\
+      func bar(i: Int): Int = i\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidArity {
+        span: Span::new(ModuleId(1), (1, 22), (1, 25)),
+        num_possible_args: 1,
+        num_required_args: 1,
+        num_provided_args: 0,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = bar(false)): Int = -1\n\
+      func bar(i: Int): Int = i\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (1, 26), (1, 30)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = bar(z: 123)): Int = -1\n\
+      func bar(i: Int): Int = i\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnexpectedArgumentName {
+        span: Span::new(ModuleId(1), (1, 26), (1, 26)),
+        arg_name: "z".to_string(),
+        is_instantiation: false,
+    };
+    assert_eq!(expected, err);
+
+    // Case 4, invocation of `bar` in sub-expression
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = true && bar()): Int = -1\n\
+      func bar(): Int = 1\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::IllegalOperator {
+        span: Span::new(ModuleId(1), (1, 22), (1, 32)),
+        op: BinaryOp::And,
+        left: PRELUDE_BOOL_TYPE_ID,
+        right: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]

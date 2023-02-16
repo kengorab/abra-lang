@@ -637,10 +637,12 @@ impl Function {
 pub struct FunctionParam {
     pub name: String,
     pub type_id: TypeId,
+    pub var_id: VarId,
     // Params with no defined_span are for builtin functions
     pub defined_span: Option<Span>,
     pub default_value: Option<TypedNode>,
     pub is_variadic: bool,
+    pub is_incomplete: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1391,11 +1393,12 @@ pub struct Typechecker2<'a, L: LoadModule> {
     current_scope_id: ScopeId,
     current_type_decl: Option<TypeId>,
     current_function: Option<FuncId>,
+    functions_pass_1: bool,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a mut L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None }
+        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, functions_pass_1: false }
     }
 
     /* UTILITIES */
@@ -2214,7 +2217,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut func_ids = VecDeque::from(func_ids);
         debug_assert!(func_decls.len() == func_ids.len());
         for (node, (func_id, func_var_id)) in func_decls.iter().zip(&func_ids) {
+            self.functions_pass_1 = true;
             self.typecheck_function_pass_1(func_id, node, false)?;
+            self.functions_pass_1 = false;
 
             let func = self.project.get_func_by_id(func_id);
             let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
@@ -2226,8 +2231,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         for node in nodes {
             match node {
                 AstNode::FunctionDecl(_, decl_node) => {
-                    let (func_id, _) = func_ids.pop_front().expect("There should be a func_id for each function declaration in this block");
+                    let (func_id, func_var_id) = func_ids.pop_front().expect("There should be a func_id for each function declaration in this block");
                     self.typecheck_function_pass_2(func_id, decl_node)?;
+
+                    let func = self.project.get_func_by_id(&func_id);
+                    let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
+                    self.project.get_var_by_id_mut(&func_var_id).type_id = fn_type_id;
                 }
                 AstNode::TypeDecl(_, decl_node) => {
                     let struct_id = struct_ids.pop_front().expect("There should be a struct_id for each type declaration in this block");
@@ -2270,7 +2279,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(generic_ids)
     }
 
-    fn typecheck_function_parameters(&mut self, allow_self: bool, parameters: &Vec<(Parameter, Option<TypeId>)>) -> Result<Vec<FunctionParam>, TypeError> {
+    fn typecheck_function_parameters_pass_1(&mut self, allow_self: bool, parameters: &Vec<(Parameter, Option<TypeId>)>, do_partial_completion: bool) -> Result<Vec<FunctionParam>, TypeError> {
         let mut seen_self = false;
         let mut seen_param_names = HashSet::new();
         let mut seen_default_valued_params = false;
@@ -2296,8 +2305,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
                 seen_self = true;
 
-                self.add_variable_to_current_scope(param_name.clone(), self_type_id, false, true, &ident_span, true)?;
-                params.push(FunctionParam { name: param_name, type_id: self_type_id, defined_span: Some(ident_span.clone()), default_value: None, is_variadic: false });
+                let var_id = self.add_variable_to_current_scope(param_name.clone(), self_type_id, false, true, &ident_span, true)?;
+                params.push(FunctionParam { name: param_name, type_id: self_type_id, var_id, defined_span: Some(ident_span.clone()), default_value: None, is_variadic: false, is_incomplete: false });
 
                 continue;
             }
@@ -2323,11 +2332,6 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             let typed_default_value_expr = if let Some(default_value) = default_value {
                 seen_default_valued_params = true;
-                // TODO: Handling retries for first-pass function declaration typechecking with default-value expressions which reference code that hasn't been visited yet
-                // For example:
-                //   func foo(bar = baz()) = ...
-                //   func baz() = ...
-                // This would fail because `baz` doesn't yet exist when typechecking `foo`.
                 Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
             } else {
                 if seen_default_valued_params {
@@ -2358,8 +2362,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 type_id = inner_type_id;
             }
 
-            self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
-            params.push(FunctionParam { name: param_name, type_id, defined_span: Some(ident_span), default_value: typed_default_value_expr, is_variadic: *is_vararg });
+            let is_incomplete = do_partial_completion && typed_default_value_expr.is_some();
+            let default_value = if do_partial_completion { None } else { typed_default_value_expr };
+            let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+            params.push(FunctionParam {
+                name: param_name,
+                type_id,
+                var_id,
+                defined_span: Some(ident_span),
+                default_value,
+                is_variadic: *is_vararg,
+                is_incomplete,
+            });
         }
 
         Ok(params)
@@ -2392,7 +2406,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.current_scope_id = func.fn_scope_id;
 
         let node_parameters = node.parameters().into_iter().map(|p| (p, None)).collect();
-        let params = self.typecheck_function_parameters(allow_self, &node_parameters)?;
+        let params = self.typecheck_function_parameters_pass_1(allow_self, &node_parameters, true)?;
 
         debug_assert!(self.project.get_func_by_id(func_id).params.is_empty(), "In pass 0, an empty list of parameters should have been inserted, which we here overwrite");
         self.project.get_func_by_id_mut(func_id).params = params;
@@ -2412,6 +2426,38 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let func_name = func.name.clone();
         let return_type_id = func.return_type_id;
+
+        let node_parameters = node.args;
+        debug_assert!(node_parameters.len() == func.params.len());
+        for (param_idx, (_, _, _, default_value)) in (0..func.params.len()).zip(node_parameters) {
+            let param = &self.project.get_func_by_id(&func_id).params[param_idx];
+            if !param.is_incomplete { continue; }
+
+            debug_assert!(param.default_value.is_none(), "At the moment, there should be no reason for incompleteness other than lack of fully-typed default value");
+            let Some(default_value) = default_value else {
+                unreachable!("Internal error: misalignment attempting to hydrate parameter's default value");
+            };
+            let param_type_id = param.type_id;
+            let typed_default_value = self.typecheck_expression(default_value, Some(param_type_id))?;
+            let type_id = *typed_default_value.type_id();
+
+            if !self.type_satisfies_other(&type_id, &param_type_id) {
+                return Err(TypeError::TypeMismatch {
+                    span: self.make_span(&typed_default_value.span()),
+                    expected: vec![param_type_id],
+                    received: type_id,
+                });
+            }
+
+            let mut param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
+            param.default_value = Some(typed_default_value);
+            param.type_id = type_id;
+            param.is_incomplete = false;
+
+            let param_var_id = param.var_id;
+            let param_var = self.project.get_var_by_id_mut(&param_var_id);
+            param_var.type_id = type_id;
+        }
 
         let mut body = vec![];
         let num_nodes = node.body.len();
@@ -2625,7 +2671,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
 
                 let params = variant_decl_args.iter().map(|arg| (args_to_parameters(arg), None)).collect_vec();
-                let params = self.typecheck_function_parameters(false, &params)?;
+                let params = self.typecheck_function_parameters_pass_1(false, &params, false)?;
 
                 let return_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_id, generic_ids.clone(), Some(idx)));
                 self.end_child_scope();
@@ -3717,6 +3763,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
+                if self.functions_pass_1 {
+                    return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
+                }
+
                 let num_possible_args = params_data.len();
                 let num_required_args = params_data.iter().filter(|(_, _, _, is_optional, _)| !*is_optional).count();
                 let num_provided_args = args.len();
@@ -3870,7 +3920,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     .collect();
 
                 let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()));
-                let parameters = self.typecheck_function_parameters(false, &parameters)?;
+                let parameters = self.typecheck_function_parameters_pass_1(false, &parameters, false)?;
 
                 let lambda_func_id = self.add_lambda_function_to_current_scope(fn_scope_id, parameters)?;
                 let prev_func_id = self.current_function;

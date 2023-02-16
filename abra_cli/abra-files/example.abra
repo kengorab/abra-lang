@@ -1,5 +1,6 @@
-func foo(a: Int, b: Bool, c = bar()): Int = -1
-func bar(a: Int): Int = a
+func foo(a: Int, b = 1 + bar(123)): Int = -1
+func bar<T>(t: T): T = t
+
 
 /*
 
