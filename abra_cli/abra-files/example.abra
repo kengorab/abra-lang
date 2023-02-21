@@ -1,6 +1,5 @@
-func foo(a: Int, b = bar()): Int = 1
-func bar<T>(): T? = None
-
+//func foo(a: Int, b: Bool, c = bar()): Int = -1
+//func bar(a = foo()): Int = 1
 
 /*
 ✅
@@ -121,9 +120,9 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-[next]
+✅
 Given code:
-  func foo(a: Int, b: Bool, c = 1 + bar(1)): Int = -1
+  func foo(a: Int, b = 1 + bar(1)): Int = -1
   func bar<T>(t: T): T = t
 Pass 0:
   - We know about a function called `foo` which returns `Int`

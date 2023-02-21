@@ -1973,6 +1973,10 @@ fn typecheck_function_default_param_values() {
       func foo(a: Int, b = bar(123)): Int = a + b
       func bar<T>(t: T): T = t
     "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = 1 + bar(1)): Int = a + b
+      func bar<T>(t: T): T = t
+    "#);
 }
 
 #[test]
@@ -2062,6 +2066,17 @@ fn typecheck_failure_function_default_param_values() {
         span: Span::new(ModuleId(1), (1, 22), (1, 24)),
         type_id: TypeId(ScopeId(ModuleId(1), 1), 0),
         purpose: "parameter",
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = 1 + bar(true)): Int = 1\n\
+      func bar<T>(t: T): T = t\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::IllegalOperator {
+        span: Span::new(ModuleId(1), (1, 22), (1, 33)),
+        op: BinaryOp::Add,
+        left: PRELUDE_INT_TYPE_ID,
+        right: PRELUDE_BOOL_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

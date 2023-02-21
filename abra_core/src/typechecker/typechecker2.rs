@@ -1394,11 +1394,12 @@ pub struct Typechecker2<'a, L: LoadModule> {
     current_type_decl: Option<TypeId>,
     current_function: Option<FuncId>,
     functions_pass_1: bool,
+    encountered_fn_call_during_function_pass_1: bool,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a mut L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, functions_pass_1: false }
+        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, functions_pass_1: false, encountered_fn_call_during_function_pass_1: false }
     }
 
     /* UTILITIES */
@@ -2332,7 +2333,31 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             let typed_default_value_expr = if let Some(default_value) = default_value {
                 seen_default_valued_params = true;
-                Some(self.typecheck_expression(default_value.clone(), param_type_id)?)
+
+                debug_assert!(!self.encountered_fn_call_during_function_pass_1, "This flag should be un-set after each possible param default value");
+                match self.typecheck_expression(default_value.clone(), param_type_id) {
+                    Ok(typed_expr) => {
+                        self.encountered_fn_call_during_function_pass_1 = false;
+                        Some(typed_expr)
+                    },
+                    Err(_) if do_partial_completion && self.encountered_fn_call_during_function_pass_1 => {
+                        self.encountered_fn_call_during_function_pass_1 = false;
+
+                        let type_id = PRELUDE_ANY_TYPE_ID;
+                        let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
+                        params.push(FunctionParam {
+                            name: param_name,
+                            type_id,
+                            var_id,
+                            defined_span: Some(ident_span),
+                            default_value: None,
+                            is_variadic: *is_vararg,
+                            is_incomplete: true,
+                        });
+                        continue;
+                    }
+                    Err(e) => return Err(e)
+                }
             } else {
                 if seen_default_valued_params {
                     return Err(TypeError::InvalidRequiredParamPosition { span: ident_span, is_variadic: *is_vararg });
@@ -2380,7 +2405,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_function_pass_0(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
-        let FunctionDeclNode { export_token, name, type_args,args,  ret_type, .. } = node;
+        let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
         let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
@@ -2433,24 +2458,29 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let param = &self.project.get_func_by_id(&func_id).params[param_idx];
             if !param.is_incomplete { continue; }
 
-            debug_assert!(param.default_value.is_none(), "At the moment, there should be no reason for incompleteness other than lack of fully-typed default value");
+            debug_assert!(param.default_value.is_none(), "There should be no reason for incompleteness other than lack of fully-typed default value");
             let Some(default_value) = default_value else {
                 unreachable!("Internal error: misalignment attempting to hydrate parameter's default value");
             };
+
             let mut param_type_id = param.type_id;
-            let typed_default_value = self.typecheck_expression(default_value, Some(param_type_id))?;
+            let type_hint = if param_type_id == PRELUDE_ANY_TYPE_ID { None } else { Some(param_type_id) };
+            let typed_default_value = self.typecheck_expression(default_value, type_hint)?;
             let type_id = *typed_default_value.type_id();
 
             // If the default value expression contains an unbound generic, this is an unacceptable state.
             if self.type_contains_generics(&type_id) {
                 return Err(TypeError::ForbiddenAssignment { span: self.make_span(&typed_default_value.span()), type_id, purpose: "parameter" });
             }
-            if self.type_contains_generics(&param_type_id) {
-                param_type_id = self.substitute_generics(&type_id, &param_type_id);
-            }
 
-            if !self.type_satisfies_other(&type_id, &param_type_id) {
-                return Err(TypeError::TypeMismatch { span: self.make_span(&typed_default_value.span()), expected: vec![param_type_id], received: type_id });
+            // If the param's known type is the sentinel value `Any`, then don't perform any typechecks.
+            if param_type_id != PRELUDE_ANY_TYPE_ID {
+                if self.type_contains_generics(&param_type_id) {
+                    param_type_id = self.substitute_generics(&type_id, &param_type_id);
+                }
+                if !self.type_satisfies_other(&type_id, &param_type_id) {
+                    return Err(TypeError::TypeMismatch { span: self.make_span(&typed_default_value.span()), expected: vec![param_type_id], received: type_id });
+                }
             }
 
             let mut param = &mut self.project.get_func_by_id_mut(&func_id).params[param_idx];
@@ -3768,6 +3798,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 }
 
                 if self.functions_pass_1 {
+                    self.encountered_fn_call_during_function_pass_1 = true;
                     return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
                 }
 
