@@ -1387,19 +1387,26 @@ impl TypeError {
     }
 }
 
+#[derive(Debug)]
+enum FunctionPass {
+    NotStarted,
+    Pass0,
+    Pass1 { just_saw_function_call: bool },
+    Pass2,
+}
+
 pub struct Typechecker2<'a, L: LoadModule> {
     module_loader: &'a mut L,
     project: &'a mut Project,
     current_scope_id: ScopeId,
     current_type_decl: Option<TypeId>,
     current_function: Option<FuncId>,
-    functions_pass_1: bool,
-    encountered_fn_call_during_function_pass_1: bool,
+    function_pass: FunctionPass,
 }
 
 impl<'a, L: LoadModule> Typechecker2<'a, L> {
     pub fn new(module_loader: &'a mut L, project: &'a mut Project) -> Typechecker2<'a, L> {
-        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, functions_pass_1: false, encountered_fn_call_during_function_pass_1: false }
+        Typechecker2 { module_loader, project, current_scope_id: PRELUDE_SCOPE_ID, current_type_decl: None, current_function: None, function_pass: FunctionPass::NotStarted }
     }
 
     /* UTILITIES */
@@ -2218,9 +2225,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut func_ids = VecDeque::from(func_ids);
         debug_assert!(func_decls.len() == func_ids.len());
         for (node, (func_id, func_var_id)) in func_decls.iter().zip(&func_ids) {
-            self.functions_pass_1 = true;
             self.typecheck_function_pass_1(func_id, node, false)?;
-            self.functions_pass_1 = false;
 
             let func = self.project.get_func_by_id(func_id);
             let fn_type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, false));
@@ -2334,14 +2339,19 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             let typed_default_value_expr = if let Some(default_value) = default_value {
                 seen_default_valued_params = true;
 
-                debug_assert!(!self.encountered_fn_call_during_function_pass_1, "This flag should be un-set after each possible param default value");
+                debug_assert!(if let FunctionPass::Pass1 { just_saw_function_call } = &self.function_pass { *just_saw_function_call == false } else { true }, "This flag should be un-set after each possible param default value");
                 match self.typecheck_expression(default_value.clone(), param_type_id) {
                     Ok(typed_expr) => {
-                        self.encountered_fn_call_during_function_pass_1 = false;
+                        if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
+                            *just_saw_function_call = false;
+                        };
+
                         Some(typed_expr)
-                    },
-                    Err(_) if do_partial_completion && self.encountered_fn_call_during_function_pass_1 => {
-                        self.encountered_fn_call_during_function_pass_1 = false;
+                    }
+                    Err(_) if do_partial_completion && matches!(self.function_pass, FunctionPass::Pass1 { just_saw_function_call: true }) => {
+                        if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
+                            *just_saw_function_call = false;
+                        };
 
                         let type_id = PRELUDE_ANY_TYPE_ID;
                         let var_id = self.add_variable_to_current_scope(param_name.clone(), type_id, false, true, &ident_span, true)?;
@@ -2405,6 +2415,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_function_pass_0(&mut self, node: &FunctionDeclNode) -> Result<FuncId, TypeError> {
+        self.function_pass = FunctionPass::Pass0;
+
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
@@ -2426,6 +2438,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_function_pass_1(&mut self, func_id: &FuncId, node: &FunctionDeclNode, allow_self: bool) -> Result<(), TypeError> {
+        self.function_pass = FunctionPass::Pass1 { just_saw_function_call: false };
+
         let func = self.project.get_func_by_id(&func_id);
         let prev_scope_id = self.current_scope_id;
         self.current_scope_id = func.fn_scope_id;
@@ -2442,6 +2456,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_function_pass_2(&mut self, func_id: FuncId, node: FunctionDeclNode) -> Result<(), TypeError> {
+        self.function_pass = FunctionPass::Pass2;
         let prev_func_id = self.current_function;
         self.current_function = Some(func_id);
 
@@ -3650,6 +3665,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 let mut filled_in_generic_types = HashMap::new();
 
+                let is_param_optional = |p: &FunctionParam| {
+                    // A parameter is optional if it has a default value; if we're currently in function pass 2, then the default values will be
+                    // temporarily set to None and is_incomplete will be set instead.
+                    p.default_value.is_some() || (matches!(self.function_pass, FunctionPass::Pass2) && p.is_incomplete)
+                };
+
                 let params_data;
                 let mut return_type_id;
                 let mut is_instantiation = false;
@@ -3665,7 +3686,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 let function = self.project.get_func_by_id(&alias_func_id);
                                 fn_is_variadic = function.is_variadic();
                                 generic_ids = &function.generic_ids;
-                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
                             VariableAlias::Type(id) => {
@@ -3723,7 +3744,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
                                         fn_is_variadic = function.is_variadic();
-                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                         return_type_id = function.return_type_id;
                                     }
                                     AccessorKind::StaticMethod => todo!(),
@@ -3741,7 +3762,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Method => {
                                         let function = self.project.get_func_by_id(&enum_.methods[*member_idx]);
                                         fn_is_variadic = function.is_variadic();
-                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                        params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                         return_type_id = function.return_type_id;
                                     }
                                     AccessorKind::StaticMethod => todo!(),
@@ -3759,7 +3780,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 let struct_ = self.project.get_struct_by_id(&struct_id);
                                 let function = self.project.get_func_by_id(&struct_.methods[*member_idx]);
                                 fn_is_variadic = function.is_variadic();
-                                params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
                             Type::Type(Either::Left(_struct_id)) => unimplemented!("Static methods on types"),
@@ -3771,7 +3792,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 };
                                 let function = self.project.get_func_by_id(&func_id);
                                 fn_is_variadic = function.is_variadic();
-                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, p.default_value.is_some(), p.is_variadic)).collect_vec();
+                                params_data = function.params.iter().enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
                             Type::Generic(_, _) |
@@ -3797,8 +3818,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                if self.functions_pass_1 {
-                    self.encountered_fn_call_during_function_pass_1 = true;
+                if let FunctionPass::Pass1 { just_saw_function_call } = &mut self.function_pass {
+                    *just_saw_function_call = true;
                     return Ok(TypedNode::Invocation { target: Box::new(typed_target), arguments: vec![], type_id: return_type_id });
                 }
 

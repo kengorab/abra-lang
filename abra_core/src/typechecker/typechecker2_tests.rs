@@ -1977,6 +1977,15 @@ fn typecheck_function_default_param_values() {
       func foo(a: Int, b = 1 + bar(1)): Int = a + b
       func bar<T>(t: T): T = t
     "#);
+
+    // Case 6, recursive references
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = foo(1)): Int = -1
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(a: Int, b = bar()): Int = -1
+      func bar(a = foo(1)): Int = 1
+    "#);
 }
 
 #[test]
@@ -2077,6 +2086,37 @@ fn typecheck_failure_function_default_param_values() {
         op: BinaryOp::Add,
         left: PRELUDE_INT_TYPE_ID,
         right: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    // Case 6, recursive/mutually-recursive references
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = foo(1, true)): Int = -1\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (1, 29), (1, 32)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(a: Int, b = bar()): Int = -1\n\
+      func bar(a = foo(true)): Int = 1\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (2, 18), (2, 21)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo<T>(a: T, b = 1 + baz(1)): T = a\n\
+      func baz<T>(t: T, f = 1 + foo(1, \"b\")): T = t\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (2, 34), (2, 36)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: PRELUDE_STRING_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

@@ -1,5 +1,5 @@
-//func foo(a: Int, b: Bool, c = bar()): Int = -1
-//func bar(a = foo()): Int = 1
+func baz<T>(t: T, f = 1 + foo(1, "b")): T = t
+func foo<T>(a: T, b = 1 + baz(1)): T = a
 
 /*
 ✅
@@ -76,10 +76,10 @@ Pass 2:
   - Check any default-valued args & body of `bar`
 
 ------------------------------
-
+✅
 Given code:
   func foo(a: Int, b: Bool, c = bar()): Int = -1
-  func bar(a = foo()): Int = 1
+  func bar(a = foo(1)): Int = 1
 Pass 0:
   - We know about a function called `foo` which returns `Int`
   - We know about a function called `bar` which returns `Int`
