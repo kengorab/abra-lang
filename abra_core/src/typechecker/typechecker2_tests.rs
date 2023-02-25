@@ -3451,6 +3451,59 @@ fn typecheck_if_expression() {
 }
 
 #[test]
+fn typecheck_match_expression() {
+    let project = test_typecheck("val x = match true { _ => 1 }").unwrap();
+    let node = &project.modules[1].code[0];
+    let TypedNode::BindingDeclaration { expr, .. } = node.clone() else { panic!() };
+    assert!(matches!(**expr.as_ref().unwrap(), TypedNode::Match { is_statement: false, .. }));
+    let var_x = &project.modules[1].scopes[0].vars[0];
+    assert_eq!("x", var_x.name);
+    assert_eq!(PRELUDE_INT_TYPE_ID, var_x.type_id);
+
+    assert_typecheck_ok(r#"
+      val x = match 123 { _ x => x + 1 }
+      val _: Int = x
+    "#);
+    assert_typecheck_ok(r#"
+      val x: Int[] = match 123 { _ x => [x] }
+    "#);
+    assert_typecheck_ok(r#"
+      val x: Int[] = match 123 { _ => [] }
+    "#);
+    assert_typecheck_ok(r#"
+      val x: Int? = match 123 { _ x => x + 1 }
+    "#);
+    assert_typecheck_ok(r#"
+      val x: Int? = match 123 { _ => None }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_match_expression() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match 123 {\n\
+        _ => 1\n\
+        _ => 2\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (3, 1), (3, 1)),
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 1))
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match 123 {\n\
+        _ => {}\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::EmptyMatchBlock {
+        span: Span::new(ModuleId(1), (2, 1), (2, 1)),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
 fn typecheck_failure_if_expression() {
     let (project, Either::Right(err)) = test_typecheck("val _ = if true { }").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
