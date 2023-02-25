@@ -674,6 +674,11 @@ pub enum AssignmentKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct TypedMatchCase {
+    pub body: Vec<TypedNode>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypedNode {
     // Expressions
     Literal { token: Token, value: TypedLiteral, type_id: TypeId },
@@ -692,7 +697,7 @@ pub enum TypedNode {
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
     If { if_token: Token, condition: Box<TypedNode>, condition_binding: Option<BindingPattern>, if_block: Vec<TypedNode>, else_block: Vec<TypedNode>, is_statement: bool, type_id: TypeId },
-    Match { match_token: Token, target: Box<TypedNode>, is_statement: bool, type_id: TypeId },
+    Match { match_token: Token, target: Box<TypedNode>, cases: Vec<TypedMatchCase>, is_statement: bool, type_id: TypeId },
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
@@ -911,6 +916,7 @@ pub enum TypeError {
     InvalidAssignmentTarget { span: Span, kind: InvalidAssignmentTargetKind },
     DuplicateMatchCase { span: Span, orig_span: Span },
     EmptyMatchBlock { span: Span },
+    UnreachableMatchCase { span: Span },
 }
 
 impl TypeError {
@@ -1007,7 +1013,8 @@ impl TypeError {
             TypeError::InvalidTupleIndex { span, .. } |
             TypeError::InvalidAssignmentTarget { span, .. } |
             TypeError::DuplicateMatchCase { span, .. } |
-            TypeError::EmptyMatchBlock { span } => span,
+            TypeError::EmptyMatchBlock { span } |
+            TypeError::UnreachableMatchCase { span } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1402,6 +1409,13 @@ impl TypeError {
                 format!(
                     "Empty block for match case\n{}\n\
                     Each case in a match must result in a value",
+                    cursor_line,
+                )
+            }
+            TypeError::UnreachableMatchCase { .. } => {
+                format!(
+                    "Unreachable match case\n{}\n\
+                    This case has already been covered in a previous case, or has no overlap with match target",
                     cursor_line,
                 )
             }
@@ -2838,8 +2852,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             AstNode::ForLoop(_, _) |
             AstNode::WhileLoop(_, _) |
             AstNode::Break(_) |
-            AstNode::Continue(_) |
-            AstNode::MatchStatement(_, _) |
+            AstNode::Continue(_) => todo!(),
+            AstNode::MatchStatement(token, match_node) => self.typecheck_match_node(token, match_node, false, type_hint),
             AstNode::ReturnStatement(_, _) => todo!(),
             AstNode::FunctionDecl(_, _) |
             AstNode::TypeDecl(_, _) |
@@ -2892,7 +2906,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         };
                     }
 
-                    type_id = Some(node_type_id);
+                    if !is_statement {
+                        type_id = Some(node_type_id);
+                    }
 
                     typed_node
                 } else {
@@ -2904,7 +2920,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             // If there is no if-block body and there is a provided type_hint, then the working type for
             // the expression becomes the hint type wrapped in an option.
             type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
-        } else {
+        } else if !is_statement {
             // If there is no if-block body and there is also no provided type_hint, we can't make any
             // assumptions about what the type should be, so we default to the type of the `None` builtin.
             type_id = Some(self.project.prelude_none_type_id);
@@ -2923,21 +2939,25 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let node_type_id = *typed_node.type_id();
 
-                    type_id = if let Some(hint_type_id) = &type_id {
-                        let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
-                            let span = self.make_span(&typed_node.span());
-                            return if let Some(last_if_block_expr) = typed_if_block.last() {
-                                let orig_span = self.make_span(&last_if_block_expr.span());
-                                Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
-                            } else {
-                                let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
-                                Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
+                    if !is_statement {
+                        type_id = if let Some(hint_type_id) = &type_id {
+                            let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
+                                let span = self.make_span(&typed_node.span());
+                                return if let Some(last_if_block_expr) = typed_if_block.last() {
+                                    let orig_span = self.make_span(&last_if_block_expr.span());
+                                    Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
+                                } else if !is_statement {
+                                    let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                    Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
+                                } else {
+                                    unreachable!("asdfbc");
+                                };
                             };
+                            Some(unified_type_id)
+                        } else {
+                            Some(node_type_id)
                         };
-                        Some(unified_type_id)
-                    } else {
-                        Some(node_type_id)
-                    };
+                    }
 
                     typed_node
                 } else {
@@ -2973,7 +2993,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let MatchNode { target, branches } = match_node;
 
         let typed_target = self.typecheck_expression(*target, None)?;
-        let target_type_id = typed_target.type_id();
+        let mut target_type_id = *typed_target.type_id();
 
         let mut type_id = None;
         if !is_statement {
@@ -2982,13 +3002,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
+        let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
         let mut seen_wildcard_token: Option<Token> = None;
-        for (idx, (MatchCase { token: match_case_token, match_type, case_binding }, match_case_body)) in branches.into_iter().enumerate() {
-            let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", idx));
+        for (match_case_idx, (match_case, match_case_body)) in branches.into_iter().enumerate() {
+            let MatchCase { token: match_case_token, match_type, case_binding } = match_case;
+            let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", match_case_idx));
 
             let case_type_id;
             match match_type {
-                MatchCaseType::None(_) => todo!(),
+                MatchCaseType::None(none_token) => {
+                    let Some(unwrapped_type) = self.type_is_option(&target_type_id) else {
+                        return Err(TypeError::UnreachableMatchCase { span: self.make_span(&none_token.get_range()) });
+                    };
+                    debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
+
+                    target_type_id = unwrapped_type;
+                    case_type_id = self.project.prelude_none_type_id;
+                }
                 MatchCaseType::Ident(_, _) => todo!(),
                 MatchCaseType::Compound(_, _) => todo!(),
                 MatchCaseType::Wildcard(wildcard_token) => {
@@ -2996,7 +3026,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&wildcard_token.get_range()), orig_span: self.make_span(&seen_wildcard_token.get_range()) });
                     }
                     seen_wildcard_token = Some(wildcard_token);
-                    case_type_id = *target_type_id;
+                    case_type_id = target_type_id;
                 }
                 MatchCaseType::Constant(_) => todo!(),
                 MatchCaseType::Tuple(_, _) => todo!(),
@@ -3020,17 +3050,38 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let mut node_type_id = *typed_node.type_id();
 
-                    if let Some(hint_type_id) = &type_id {
-                        if self.type_contains_generics(&node_type_id) {
-                            node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
-                        }
-                        if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
-                            let span = self.make_span(&typed_node.span());
-                            return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
+                    if !is_statement {
+                        type_id = if match_case_idx == 0 {
+                            if let Some(hint_type_id) = &type_id {
+                                if self.type_contains_generics(&node_type_id) {
+                                    node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
+                                }
+                                if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
+                                    let span = self.make_span(&typed_node.span());
+                                    return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
+                                };
+                            }
+
+                            Some(node_type_id)
+                        } else {
+                            if let Some(hint_type_id) = &type_id {
+                                let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
+                                    let span = self.make_span(&typed_node.span());
+
+                                    return if let Some(last_match_block_expr) = typed_match_cases.last().and_then(|case| case.body.last()) {
+                                        let orig_span = self.make_span(&last_match_block_expr.span());
+                                        Err(TypeError::BranchTypeMismatch { span, orig_span, expected: *hint_type_id, received: node_type_id })
+                                    } else {
+                                        let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
+                                        Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
+                                    };
+                                };
+                                Some(unified_type_id)
+                            } else {
+                                Some(node_type_id)
+                            }
                         };
                     }
-
-                    type_id = Some(node_type_id);
 
                     typed_node
                 } else {
@@ -3040,6 +3091,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
 
             self.end_child_scope();
+
+            typed_match_cases.push(TypedMatchCase { body: typed_body })
         }
 
         let type_id = if is_statement {
@@ -3051,6 +3104,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(TypedNode::Match {
             match_token,
             target: Box::new(typed_target),
+            cases: typed_match_cases,
             is_statement,
             type_id,
         })

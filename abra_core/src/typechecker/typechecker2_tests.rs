@@ -3375,7 +3375,7 @@ fn typecheck_if_statement() {
     };
     assert_eq!(&expected, node);
 
-    let project = test_typecheck("if true { 1 } else { 2 }").unwrap();
+    let project = test_typecheck("if true { 1 } else { false }").unwrap();
     let node = &project.modules[1].code[0];
     let expected = TypedNode::If {
         if_token: Token::If(Position::new(1, 1)),
@@ -3389,7 +3389,7 @@ fn typecheck_if_statement() {
             TypedNode::Literal { token: Token::Int(Position::new(1, 11), 1), value: TypedLiteral::Int(1), type_id: PRELUDE_INT_TYPE_ID }
         ],
         else_block: vec![
-            TypedNode::Literal { token: Token::Int(Position::new(1, 22), 2), value: TypedLiteral::Int(2), type_id: PRELUDE_INT_TYPE_ID }
+            TypedNode::Literal { token: Token::Bool(Position::new(1, 22), false), value: TypedLiteral::Bool(false), type_id: PRELUDE_BOOL_TYPE_ID }
         ],
         is_statement: true,
         type_id: PRELUDE_UNIT_TYPE_ID,
@@ -3451,7 +3451,14 @@ fn typecheck_if_expression() {
 }
 
 #[test]
-fn typecheck_match_expression() {
+fn typecheck_match_statement_and_expression() {
+    assert_typecheck_ok(r#"
+      match [1, 2][3] {
+        None => 123
+        _ => "abc"
+      }
+    "#);
+
     let project = test_typecheck("val x = match true { _ => 1 }").unwrap();
     let node = &project.modules[1].code[0];
     let TypedNode::BindingDeclaration { expr, .. } = node.clone() else { panic!() };
@@ -3476,6 +3483,13 @@ fn typecheck_match_expression() {
     assert_typecheck_ok(r#"
       val x: Int? = match 123 { _ => None }
     "#);
+
+    assert_typecheck_ok(r#"
+      val x: Int? = match [1, 2][0] {
+        None => 123
+        _ => None
+      }
+    "#);
 }
 
 #[test]
@@ -3499,6 +3513,39 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::EmptyMatchBlock {
         span: Span::new(ModuleId(1), (2, 1), (2, 1)),
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("\
+      val x = match [1, 2][0] { None n => n, _ => 123 }\n\
+      val _: Int = x\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::TypeMismatch {
+        span: Span::new(ModuleId(1), (2, 14), (2, 14)),
+        expected: vec![PRELUDE_INT_TYPE_ID],
+        received: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _ = match 123 { None => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (1, 21), (1, 24)),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match [1, 2][0] {\n\
+        None => \"asd\"\n\
+        _ => 123\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::BranchTypeMismatch {
+        span: Span::new(ModuleId(1), (3, 6), (3, 8)),
+        orig_span: Span::new(ModuleId(1), (2, 9), (2, 13)),
+        expected: PRELUDE_STRING_TYPE_ID,
+        received: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

@@ -1,6 +1,16 @@
-val i: Int? = 12
-
-val x: String? = match i {
-  _ i2 => None
+match [1, 2][0] {
+  None => "asd"
+  _ => 123
 }
+
+
+//val i: Int?? = 12
+//
+//val x = match i {
+//  None => 0
+//  _ i2 => {
+//    val _: Int = i2
+//    1
+//  }
+//}
 //val _: String = x
