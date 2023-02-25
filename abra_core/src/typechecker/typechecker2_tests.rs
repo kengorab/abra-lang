@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -3490,6 +3490,15 @@ fn typecheck_match_statement_and_expression() {
         _ => None
       }
     "#);
+
+    assert_typecheck_ok(r#"
+      val x = match [1, 2][0] {
+        None => 1
+        1 => 2
+        2 => 3
+        _ => None
+      }
+    "#);
 }
 
 #[test]
@@ -3498,6 +3507,18 @@ fn typecheck_failure_match_expression() {
       val x = match 123 {\n\
         _ => 1\n\
         _ => 2\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (3, 1), (3, 1)),
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 1))
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match 123 {\n\
+        1 => 1\n\
+        1 => 2\n\
+        _ => 3\n\
       }\
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateMatchCase {
@@ -3532,6 +3553,23 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnreachableMatchCase {
         span: Span::new(ModuleId(1), (1, 21), (1, 24)),
+        kind: UnreachableMatchCaseKind::NoTypeOverlap {
+            case_type: None,
+            target_type: PRELUDE_INT_TYPE_ID,
+            target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
+        }
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _ = match 123 { \"foo\" => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (1, 21), (1, 25)),
+        kind: UnreachableMatchCaseKind::NoTypeOverlap {
+            case_type: Some(PRELUDE_STRING_TYPE_ID),
+            target_type: PRELUDE_INT_TYPE_ID,
+            target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
+        }
     };
     assert_eq!(expected, err);
 

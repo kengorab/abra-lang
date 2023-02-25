@@ -1,8 +1,9 @@
-match [1, 2][0] {
-  None => "asd"
-  _ => 123
+val s = "abcd"
+match s {
+  "abc" => 1
+  "abcd" => 2
+  _ => 0
 }
-
 
 //val i: Int?? = 12
 //

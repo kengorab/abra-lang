@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::io::BufRead;
 use std::path::PathBuf;
 use itertools::{Either, EitherOrBoth, Itertools};
 use crate::{parser, tokenize_and_parse_stub};
+use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
@@ -825,6 +827,17 @@ pub enum TypedLiteral {
 
 impl Eq for TypedLiteral {}
 
+impl Hash for TypedLiteral {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        match self {
+            TypedLiteral::Int(i) => i.hash(hasher),
+            TypedLiteral::Float(f) => integer_decode(*f).hash(hasher),
+            TypedLiteral::Bool(b) => b.hash(hasher),
+            TypedLiteral::String(s) => s.hash(hasher),
+        }
+    }
+}
+
 pub const PRELUDE_MODULE_ID: ModuleId = ModuleId(0);
 pub const PRELUDE_SCOPE_ID: ScopeId = ScopeId(PRELUDE_MODULE_ID, 0);
 pub const PRELUDE_UNIT_TYPE_ID: TypeId = TypeId(PRELUDE_SCOPE_ID, 0);
@@ -881,6 +894,12 @@ pub enum InvalidAssignmentTargetKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum UnreachableMatchCaseKind {
+    AlreadyCovered,
+    NoTypeOverlap { case_type: Option<TypeId>, target_type: TypeId, target_span: Span },
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     TypeMismatch { span: Span, expected: Vec<TypeId>, received: TypeId },
     BranchTypeMismatch { span: Span, orig_span: Span, expected: TypeId, received: TypeId },
@@ -916,7 +935,7 @@ pub enum TypeError {
     InvalidAssignmentTarget { span: Span, kind: InvalidAssignmentTargetKind },
     DuplicateMatchCase { span: Span, orig_span: Span },
     EmptyMatchBlock { span: Span },
-    UnreachableMatchCase { span: Span },
+    UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
 }
 
 impl TypeError {
@@ -1014,7 +1033,7 @@ impl TypeError {
             TypeError::InvalidAssignmentTarget { span, .. } |
             TypeError::DuplicateMatchCase { span, .. } |
             TypeError::EmptyMatchBlock { span } |
-            TypeError::UnreachableMatchCase { span } => span,
+            TypeError::UnreachableMatchCase { span, .. } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1412,11 +1431,27 @@ impl TypeError {
                     cursor_line,
                 )
             }
-            TypeError::UnreachableMatchCase { .. } => {
+            TypeError::UnreachableMatchCase { kind, .. } => {
+                let message = match kind {
+                    UnreachableMatchCaseKind::AlreadyCovered => "This case has already been covered by a previous case".to_string(),
+                    UnreachableMatchCaseKind::NoTypeOverlap { case_type, target_type, target_span } => {
+                        let target_type_repr = project.type_repr(target_type);
+                        let target_underline = Self::get_underlined_line(loader, target_span);
+
+                        if let Some(case_type_id) = case_type {
+                            format!(
+                                "No overlap between case type '{}' and match target type '{}'\n{}",
+                                project.type_repr(case_type_id), target_type_repr,
+                                target_underline
+                            )
+                        } else {
+                            format!("Match target type '{}' can never be None\n{}", target_type_repr, target_underline)
+                        }
+                    }
+                };
                 format!(
-                    "Unreachable match case\n{}\n\
-                    This case has already been covered in a previous case, or has no overlap with match target",
-                    cursor_line,
+                    "Unreachable match case\n{}\n{}",
+                    cursor_line, message
                 )
             }
         };
@@ -3004,6 +3039,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
         let mut seen_wildcard_token: Option<Token> = None;
+        let mut seen_constant_values = HashMap::<TypedLiteral, Token>::new();
         for (match_case_idx, (match_case, match_case_body)) in branches.into_iter().enumerate() {
             let MatchCase { token: match_case_token, match_type, case_binding } = match_case;
             let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", match_case_idx));
@@ -3012,7 +3048,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             match match_type {
                 MatchCaseType::None(none_token) => {
                     let Some(unwrapped_type) = self.type_is_option(&target_type_id) else {
-                        return Err(TypeError::UnreachableMatchCase { span: self.make_span(&none_token.get_range()) });
+                        let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: None, target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
+                        return Err(TypeError::UnreachableMatchCase { span: self.make_span(&none_token.get_range()), kind });
                     };
                     debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
 
@@ -3028,7 +3065,23 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     seen_wildcard_token = Some(wildcard_token);
                     case_type_id = target_type_id;
                 }
-                MatchCaseType::Constant(_) => todo!(),
+                MatchCaseType::Constant(const_node) => {
+                    let typed_const_node = self.typecheck_expression(const_node, None)?;
+                    let node_type_id = *typed_const_node.type_id();
+                    if !self.type_satisfies_other(&node_type_id, &target_type_id) {
+                        let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(node_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
+                        return Err(TypeError::UnreachableMatchCase { span: self.make_span(&typed_const_node.span()), kind });
+                    }
+                    let TypedNode::Literal { token: const_token, value: const_val, .. } = typed_const_node else {
+                        unreachable!("Internal error: constant case expressions must be int, float, bool, or string")
+                    };
+                    if let Some(orig_token) = seen_constant_values.get(&const_val) {
+                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&const_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
+                    }
+                    seen_constant_values.insert(const_val, const_token);
+
+                    case_type_id = node_type_id;
+                }
                 MatchCaseType::Tuple(_, _) => todo!(),
             }
 
