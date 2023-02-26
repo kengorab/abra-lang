@@ -1,8 +1,6 @@
-val s = "abcd"
-match s {
-  "abc" => 1
-  "abcd" => 2
-  _ => 0
+match [1, 2][0] {
+  None => 1
+  Int i => 0
 }
 
 //val i: Int?? = 12

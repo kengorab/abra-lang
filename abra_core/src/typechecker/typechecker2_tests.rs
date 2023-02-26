@@ -3499,6 +3499,23 @@ fn typecheck_match_statement_and_expression() {
         _ => None
       }
     "#);
+    assert_typecheck_ok(r#"
+      val x = match 1 > 2 {
+        false => 0
+        true => 1
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      val x = match 123 {
+        Int i => i * 2
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      val x = match [1, 2][0] { Int i => 0, None => 1 }
+    "#);
+    assert_typecheck_ok(r#"
+      val x = match [1, 2][0] { None => 1, Int i => 0 }
+    "#);
 }
 
 #[test]
@@ -3506,12 +3523,12 @@ fn typecheck_failure_match_expression() {
     let (_, Either::Right(err)) = test_typecheck("\
       val x = match 123 {\n\
         _ => 1\n\
-        _ => 2\n\
+        Int i => 2\n\
       }\
     ").unwrap_err() else { unreachable!() };
-    let expected = TypeError::DuplicateMatchCase {
-        span: Span::new(ModuleId(1), (3, 1), (3, 1)),
-        orig_span: Span::new(ModuleId(1), (2, 1), (2, 1))
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+        kind: UnreachableMatchCaseKind::AlreadyCovered,
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3572,6 +3589,18 @@ fn typecheck_failure_match_expression() {
         }
     };
     assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _ = match 123 { String => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (1, 21), (1, 26)),
+        kind: UnreachableMatchCaseKind::NoTypeOverlap {
+            case_type: Some(PRELUDE_STRING_TYPE_ID),
+            target_type: PRELUDE_INT_TYPE_ID,
+            target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
+        }
+    };
+    assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("\
       val x = match [1, 2][0] {\n\
@@ -3584,6 +3613,32 @@ fn typecheck_failure_match_expression() {
         orig_span: Span::new(ModuleId(1), (2, 9), (2, 13)),
         expected: PRELUDE_STRING_TYPE_ID,
         received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _ = match 123 { String(s) => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnimplementedFeature {
+        span: Span::new(ModuleId(1), (1, 28), (1, 28)),
+        desc: "destructuring of non-enum type in match case",
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck("\
+      val _ = match [0, 1][0] { Int => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::NonExhaustiveMatch {
+        span: Span::new(ModuleId(1), (1, 9), (1, 13)),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _ = match 123 { 1 => 1, 2 => 2 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::NonExhaustiveMatch {
+        span: Span::new(ModuleId(1), (1, 9), (1, 13)),
+        type_id: PRELUDE_INT_TYPE_ID,
     };
     assert_eq!(expected, err);
 }

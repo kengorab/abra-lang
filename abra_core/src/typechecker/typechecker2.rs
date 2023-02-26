@@ -8,7 +8,7 @@ use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -901,6 +901,7 @@ pub enum UnreachableMatchCaseKind {
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
+    UnimplementedFeature { span: Span, desc: &'static str },
     TypeMismatch { span: Span, expected: Vec<TypeId>, received: TypeId },
     BranchTypeMismatch { span: Span, orig_span: Span, expected: TypeId, received: TypeId },
     IllegalOperator { span: Span, op: BinaryOp, left: TypeId, right: TypeId },
@@ -936,6 +937,7 @@ pub enum TypeError {
     DuplicateMatchCase { span: Span, orig_span: Span },
     EmptyMatchBlock { span: Span },
     UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
+    NonExhaustiveMatch { span: Span, type_id: TypeId },
 }
 
 impl TypeError {
@@ -999,6 +1001,7 @@ impl TypeError {
 
     pub fn message(&self, loader: &ModuleLoader, project: &Project) -> String {
         let span = match self {
+            TypeError::UnimplementedFeature { span, .. } |
             TypeError::TypeMismatch { span, .. } |
             TypeError::BranchTypeMismatch { span, .. } |
             TypeError::IllegalOperator { span, .. } => span,
@@ -1033,11 +1036,15 @@ impl TypeError {
             TypeError::InvalidAssignmentTarget { span, .. } |
             TypeError::DuplicateMatchCase { span, .. } |
             TypeError::EmptyMatchBlock { span } |
-            TypeError::UnreachableMatchCase { span, .. } => span,
+            TypeError::UnreachableMatchCase { span, .. } |
+            TypeError::NonExhaustiveMatch { span, .. } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
         let msg = match self {
+            TypeError::UnimplementedFeature { desc, .. } => {
+                format!("Unimplemented feature: {}\n{}", desc, cursor_line)
+            }
             TypeError::TypeMismatch { expected, received, .. } => {
                 if *received == PRELUDE_UNIT_TYPE_ID {
                     format!(
@@ -1452,6 +1459,14 @@ impl TypeError {
                 format!(
                     "Unreachable match case\n{}\n{}",
                     cursor_line, message
+                )
+            }
+            TypeError::NonExhaustiveMatch { type_id, .. } => {
+                format!(
+                    "Non-exhaustive match\n{}\n\
+                    Match target type '{}' is not covered by all match cases.\n\
+                    You can use a wildcard to capture remaining cases.",
+                    cursor_line, project.type_repr(type_id),
                 )
             }
         };
@@ -3028,7 +3043,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let MatchNode { target, branches } = match_node;
 
         let typed_target = self.typecheck_expression(*target, None)?;
-        let mut target_type_id = *typed_target.type_id();
+        let target_type_id = *typed_target.type_id();
 
         let mut type_id = None;
         if !is_statement {
@@ -3040,8 +3055,16 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
         let mut seen_wildcard_token: Option<Token> = None;
         let mut seen_constant_values = HashMap::<TypedLiteral, Token>::new();
+        let mut none_case_covered = self.type_is_option(&target_type_id).is_none();
+        let mut type_case_covered = false;
+        let mut all_cases_covered = false;
         for (match_case_idx, (match_case, match_case_body)) in branches.into_iter().enumerate() {
             let MatchCase { token: match_case_token, match_type, case_binding } = match_case;
+
+            if all_cases_covered {
+                return Err(TypeError::UnreachableMatchCase { span: self.make_span(&match_case_token.get_range()), kind: UnreachableMatchCaseKind::AlreadyCovered });
+            }
+
             let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", match_case_idx));
 
             let case_type_id;
@@ -3053,16 +3076,50 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
                     debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
 
-                    target_type_id = unwrapped_type;
+                    none_case_covered = true;
+
+                    if type_case_covered {
+                        all_cases_covered = true;
+                    }
+
                     case_type_id = self.project.prelude_none_type_id;
                 }
-                MatchCaseType::Ident(_, _) => todo!(),
+                MatchCaseType::Ident(ident_token, args) => {
+                    if let Some(destructured_arg) = args.as_ref().and_then(|args| args.first()) {
+                        let tok = match destructured_arg {
+                            MatchCaseArgument::Pattern(p) => p.get_token(),
+                            MatchCaseArgument::Literal(n) => n.get_token(),
+                        };
+                        return Err(TypeError::UnimplementedFeature { span: self.make_span(&tok.get_range()), desc: "destructuring of non-enum type in match case" });
+                    }
+                    let resolved_case_type_id = self.resolve_type_identifier(&TypeIdentifier::Normal { ident: ident_token.clone(), type_args: None })?;
+                    if !self.type_satisfies_other(&resolved_case_type_id, &target_type_id) {
+                        let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
+                        return Err(TypeError::UnreachableMatchCase { span: self.make_span(&ident_token.get_range()), kind });
+                    }
+                    if resolved_case_type_id == target_type_id {
+                        type_case_covered = true;
+                    }
+                    if let Some(unwrapped_opt_type) = self.type_is_option(&target_type_id) {
+                        if resolved_case_type_id == unwrapped_opt_type {
+                            type_case_covered = true;
+                        }
+                        if type_case_covered && none_case_covered {
+                            all_cases_covered = true;
+                        }
+                    } else if type_case_covered {
+                        all_cases_covered = true;
+                    }
+
+                    case_type_id = resolved_case_type_id;
+                }
                 MatchCaseType::Compound(_, _) => todo!(),
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&wildcard_token.get_range()), orig_span: self.make_span(&seen_wildcard_token.get_range()) });
                     }
                     seen_wildcard_token = Some(wildcard_token);
+                    all_cases_covered = true;
                     case_type_id = target_type_id;
                 }
                 MatchCaseType::Constant(const_node) => {
@@ -3077,6 +3134,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
                     if let Some(orig_token) = seen_constant_values.get(&const_val) {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&const_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
+                    }
+                    if target_type_id == PRELUDE_BOOL_TYPE_ID {
+                        if const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
+                            const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
+                            all_cases_covered = true;
+                        }
                     }
                     seen_constant_values.insert(const_val, const_token);
 
@@ -3146,6 +3209,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             self.end_child_scope();
 
             typed_match_cases.push(TypedMatchCase { body: typed_body })
+        }
+
+        if !all_cases_covered {
+            return Err(TypeError::NonExhaustiveMatch { span: self.make_span(&match_token.get_range()), type_id: target_type_id });
         }
 
         let type_id = if is_statement {
