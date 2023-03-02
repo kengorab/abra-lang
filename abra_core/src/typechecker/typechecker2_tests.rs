@@ -3516,6 +3516,16 @@ fn typecheck_match_statement_and_expression() {
     assert_typecheck_ok(r#"
       val x = match [1, 2][0] { None => 1, Int i => 0 }
     "#);
+
+    assert_typecheck_ok(r#"
+      enum Color { Red, Green, Blue }
+      match [Color.Red][0] {
+        Color.Red => 1
+        Color.Green => 2
+        Color.Blue => 3
+        None => 4
+      }
+    "#);
 }
 
 #[test]
@@ -3531,6 +3541,7 @@ fn typecheck_failure_match_expression() {
         kind: UnreachableMatchCaseKind::AlreadyCovered,
     };
     assert_eq!(expected, err);
+
     let (_, Either::Right(err)) = test_typecheck("\
       val x = match 123 {\n\
         1 => 1\n\
@@ -3541,6 +3552,44 @@ fn typecheck_failure_match_expression() {
     let expected = TypeError::DuplicateMatchCase {
         span: Span::new(ModuleId(1), (3, 1), (3, 1)),
         orig_span: Span::new(ModuleId(1), (2, 1), (2, 1))
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match 123 {\n\
+        Int => 1\n\
+        Int => 2\n\
+        _ => 3\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 3))
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      val x = match [1, 2][0] {\n\
+        None => 1\n\
+        None => 2\n\
+        _ => 3\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (3, 1), (3, 4)),
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 4))
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Color { Red, Green, Blue }\n\
+      match [Color.Red][0] {\n\
+        Color.Red => 1\n\
+        Color.Green => 2\n\
+        Color.Red => 3\n\
+        None => 4\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateMatchCase {
+        span: Span::new(ModuleId(1), (5, 1), (5, 9)),
+        orig_span: Span::new(ModuleId(1), (3, 1), (3, 9))
     };
     assert_eq!(expected, err);
 
@@ -3601,6 +3650,35 @@ fn typecheck_failure_match_expression() {
         }
     };
     assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      enum Color { Red, Green, Blue }\n\
+      val _ = match 123 { Color.Red => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (2, 21), (2, 29)),
+        kind: UnreachableMatchCaseKind::NoTypeOverlap {
+            case_type: Some(TypeId(ScopeId(ModuleId(1), 0), 0)),
+            target_type: PRELUDE_INT_TYPE_ID,
+            target_span: Span::new(ModuleId(1), (2, 15), (2, 17)),
+        }
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("\
+      enum Color { Red, Green, Blue }\n\
+      enum Color2 { Purple, Pink, Orange }\n\
+      val _ = match Color.Green { Color2.Purple => 123, _ => 123 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let color_enum = project.find_enum_by_name(&ModuleId(1), &"Color".to_string()).unwrap();
+    let color2_enum = project.find_enum_by_name(&ModuleId(1), &"Color2".to_string()).unwrap();
+    let expected = TypeError::UnreachableMatchCase {
+        span: Span::new(ModuleId(1), (3, 29), (3, 41)),
+        kind: UnreachableMatchCaseKind::NoTypeOverlap {
+            case_type: Some(project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color2_enum.id, vec![], None)).unwrap()),
+            target_type: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color_enum.id, vec![], Some(1))).unwrap(),
+            target_span: Span::new(ModuleId(1), (3, 15), (3, 25)),
+        }
+    };
+    assert_eq!(expected, err);
 
     let (_, Either::Right(err)) = test_typecheck("\
       val x = match [1, 2][0] {\n\
@@ -3639,6 +3717,16 @@ fn typecheck_failure_match_expression() {
     let expected = TypeError::NonExhaustiveMatch {
         span: Span::new(ModuleId(1), (1, 9), (1, 13)),
         type_id: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (project, Either::Right(err)) = test_typecheck("\
+      enum Color { Red, Green, Blue }\n\
+      val _ = match Color.Red { Color.Red => 0, Color.Blue => 1 }\n\
+    ").unwrap_err() else { unreachable!() };
+    let color_enum = project.find_enum_by_name(&ModuleId(1), &"Color".to_string()).unwrap();
+    let expected = TypeError::NonExhaustiveMatch {
+        span: Span::new(ModuleId(1), (2, 9), (2, 13)),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color_enum.id, vec![], Some(0))).unwrap(),
     };
     assert_eq!(expected, err);
 }

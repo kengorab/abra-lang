@@ -479,7 +479,7 @@ impl Span {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct StructId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EnumId(/* module_id: */ pub ModuleId, /* idx: */ pub usize);
 
 #[derive(Debug, PartialEq)]
@@ -3052,12 +3052,21 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
+        // Keep track of all possibilities, and whether they've been completed
         let mut seen_wildcard_token: Option<Token> = None;
         let mut seen_constant_values = HashMap::<TypedLiteral, Token>::new();
+        let mut seen_none_token: Option<Token> = None;
         let mut none_case_covered = self.type_is_option(&target_type_id).is_none();
-        let mut type_case_covered = false;
+        let mut seen_type_token: Option<Token> = None;
+        let mut type_case_covered = match self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)) {
+            Type::GenericInstance(_, _) | Type::Primitive(_) => false,
+            _ => true
+        };
+        let mut seen_enum_variants = HashMap::<(EnumId, usize), Range>::new();
+        let mut enum_variants_covered = !matches!(self.project.get_type_by_id(&self.type_is_option(&target_type_id).unwrap_or(target_type_id)), Type::GenericEnumInstance(_, _, _));
         let mut all_cases_covered = false;
+
+        let mut typed_match_cases = Vec::<TypedMatchCase>::with_capacity(branches.len());
         for (match_case_idx, (match_case, match_case_body)) in branches.into_iter().enumerate() {
             let MatchCase { token: match_case_token, match_type, case_binding } = match_case;
 
@@ -3076,11 +3085,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     };
                     debug_assert!(self.type_is_option(&unwrapped_type).is_none(), "A nested Option type should be fully unwrapped");
 
-                    none_case_covered = true;
-
-                    if type_case_covered {
-                        all_cases_covered = true;
+                    if let Some(orig_token) = seen_none_token {
+                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&none_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
                     }
+                    seen_none_token = Some(none_token);
+                    none_case_covered = true;
 
                     case_type_id = self.project.prelude_none_type_id;
                 }
@@ -3092,28 +3101,57 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         };
                         return Err(TypeError::UnimplementedFeature { span: self.make_span(&tok.get_range()), desc: "destructuring of non-enum type in match case" });
                     }
+                    if let Some(orig_token) = seen_type_token {
+                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&ident_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
+                    }
+                    seen_type_token = Some(ident_token.clone());
+
                     let resolved_case_type_id = self.resolve_type_identifier(&TypeIdentifier::Normal { ident: ident_token.clone(), type_args: None })?;
                     if !self.type_satisfies_other(&resolved_case_type_id, &target_type_id) {
                         let kind = UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(resolved_case_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) };
                         return Err(TypeError::UnreachableMatchCase { span: self.make_span(&ident_token.get_range()), kind });
                     }
-                    if resolved_case_type_id == target_type_id {
+                    if resolved_case_type_id == target_type_id || matches!(self.type_is_option(&target_type_id), Some(unwrapped_opt_type) if unwrapped_opt_type == resolved_case_type_id) {
                         type_case_covered = true;
-                    }
-                    if let Some(unwrapped_opt_type) = self.type_is_option(&target_type_id) {
-                        if resolved_case_type_id == unwrapped_opt_type {
-                            type_case_covered = true;
-                        }
-                        if type_case_covered && none_case_covered {
-                            all_cases_covered = true;
-                        }
-                    } else if type_case_covered {
-                        all_cases_covered = true;
                     }
 
                     case_type_id = resolved_case_type_id;
                 }
-                MatchCaseType::Compound(_, _) => todo!(),
+                MatchCaseType::Compound(path_tokens, args) => {
+                    debug_assert!(args.is_none(), "Destructuring enum variants not implemented yet");
+                    let mut path_tokens_iter = path_tokens.into_iter();
+                    let enum_name_token = path_tokens_iter.next().expect("There should be at least 2 tokens in the path");
+                    let enum_name = Token::get_ident_name(&enum_name_token);
+                    let Some(enum_) = self.get_enum_by_name(&enum_name) else {
+                        return Err(TypeError::UnknownType { span: self.make_span(&enum_name_token.get_range()), name: enum_name });
+                    };
+
+                    let variant_name_token = path_tokens_iter.next().expect("There should be 2 tokens in the path");
+                    let match_case_range = enum_name_token.get_range().expand(&variant_name_token.get_range());
+
+                    let variant_name = Token::get_ident_name(&variant_name_token);
+                    let Some((variant_idx, _variant)) = enum_.variants.iter().enumerate().find(|(_, v)| v.name == variant_name) else {
+                        return Err(TypeError::UnknownMember { span: self.make_span(&variant_name_token.get_range()), field_name: variant_name, type_id: enum_.self_type_id });
+                    };
+                    let inner_type_id = self.type_is_option(&target_type_id).unwrap_or(target_type_id);
+                    let target_ty = self.project.get_type_by_id(&inner_type_id);
+                    let generic_ids = match target_ty {
+                        Type::GenericEnumInstance(enum_id, generic_ids, _) if *enum_id == enum_.id => generic_ids,
+                        _ => return Err(TypeError::UnreachableMatchCase {
+                            span: self.make_span(&match_case_range),
+                            kind: UnreachableMatchCaseKind::NoTypeOverlap { case_type: Some(enum_.self_type_id), target_type: target_type_id, target_span: self.make_span(&typed_target.span()) },
+                        }),
+                    };
+                    if let Some(orig_range) = seen_enum_variants.get(&(enum_.id, variant_idx)) {
+                        return Err(TypeError::DuplicateMatchCase { span: self.make_span(&match_case_range), orig_span: self.make_span(orig_range) });
+                    }
+                    seen_enum_variants.insert((enum_.id, variant_idx), match_case_range);
+                    if enum_.variants.iter().enumerate().all(|(v_idx, _)| seen_enum_variants.contains_key(&(enum_.id, v_idx))) {
+                        enum_variants_covered = true;
+                    }
+
+                    case_type_id = self.add_or_find_type_id(Type::GenericEnumInstance(enum_.id, generic_ids.clone(), Some(variant_idx)));
+                }
                 MatchCaseType::Wildcard(wildcard_token) => {
                     if let Some(seen_wildcard_token) = seen_wildcard_token {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&wildcard_token.get_range()), orig_span: self.make_span(&seen_wildcard_token.get_range()) });
@@ -3135,6 +3173,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     if let Some(orig_token) = seen_constant_values.get(&const_val) {
                         return Err(TypeError::DuplicateMatchCase { span: self.make_span(&const_token.get_range()), orig_span: self.make_span(&orig_token.get_range()) });
                     }
+
+                    // Handle the special case where, if we're matching on a Bool and we have `true` and `false` literal match cases, then we know we have an exhaustive match.
                     if target_type_id == PRELUDE_BOOL_TYPE_ID {
                         if const_val == TypedLiteral::Bool(true) && seen_constant_values.contains_key(&TypedLiteral::Bool(false)) ||
                             const_val == TypedLiteral::Bool(false) && seen_constant_values.contains_key(&TypedLiteral::Bool(true)) {
@@ -3211,6 +3251,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             typed_match_cases.push(TypedMatchCase { body: typed_body })
         }
 
+        all_cases_covered |= none_case_covered && type_case_covered && enum_variants_covered;
         if !all_cases_covered {
             return Err(TypeError::NonExhaustiveMatch { span: self.make_span(&match_token.get_range()), type_id: target_type_id });
         }

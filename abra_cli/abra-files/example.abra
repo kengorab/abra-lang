@@ -1,7 +1,5 @@
-match [1, 2][0] {
-  None => 1
-  Int i => 0
-}
+enum Color { Red, Green, Blue }
+val _ = match Color.Red { Color.Red => 0, Color.Blue => 1 }
 
 //val i: Int?? = 12
 //
