@@ -3185,7 +3185,18 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                     case_type_id = node_type_id;
                 }
-                MatchCaseType::Tuple(_, _) => todo!(),
+                MatchCaseType::Tuple(_, _) => {
+                    // I think I want this to work slightly differently (better?) in this version. For example:
+                    //   val arr = [1, 2, 3]
+                    //   match arr[0], arr[1] {
+                    //     None, 2 | 2, None => println("here")
+                    //     _ => {}
+                    //   }
+                    // This "multi-match" syntax allows for tuple-like matching without the need to construct (and
+                    // allocate) a tuple, and I think it's a little nicer to read and implement. If a tuple instance
+                    // were passed to the "single-match" syntax, it'd desugar to the above.
+                    todo!()
+                },
             }
 
             if let Some(case_binding_tok) = case_binding {
@@ -3942,42 +3953,53 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
                 } else if matches!(target_type, Type::GenericEnumInstance(_, _, _)) {
-                    let Some((enum_, generic_substitutions, _variant_idx)) = self.project.get_enum_by_type_id(target_type_id) else {
+                    let Some((enum_, generic_substitutions, variant_idx)) = self.project.get_enum_by_type_id(target_type_id) else {
                         return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
                     };
-                    for (idx, func_id) in enum_.methods.iter().enumerate() {
-                        let func = self.project.get_func_by_id(func_id);
-                        if func.name == field_name {
-                            let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
-                            type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
-                            field_data = Some((AccessorKind::Method, idx, type_id));
-                            break;
+
+                    if let Some(variant_idx) = variant_idx {
+                        let variant = &enum_.variants[variant_idx];
+                        if let EnumVariantKind::Container(func_id) = &variant.kind {
+                            let variant_constructor = self.project.get_func_by_id(func_id);
+
+                            field_data = variant_constructor.params.iter().enumerate().find_map(|(param_idx, param)| {
+                                if param.name == field_name { Some((AccessorKind::Field, param_idx, param.type_id)) } else { None }
+                            });
                         }
+                    }
+                    if field_data.is_none() {
+                        for (idx, func_id) in enum_.methods.iter().enumerate() {
+                            let func = self.project.get_func_by_id(func_id);
+                            if func.name == field_name {
+                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
+                                field_data = Some((AccessorKind::Method, idx, type_id));
+                                break;
+                            }
+                        }
+                    }
+                    if let Some((_, _, type_id)) = &mut field_data {
+                        *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
                 } else {
                     let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
                         return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
                     };
-                    let methods = struct_.methods.clone();
-                    for (idx, field) in struct_.fields.iter().enumerate() {
-                        if *field.name == field_name {
-                            let mut type_id = field.type_id;
-                            type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
-                            field_data = Some((AccessorKind::Field, idx, type_id));
-                            break;
-                        }
-                    }
 
+                    field_data = struct_.fields.iter().enumerate().find_map(|(idx, field)| {
+                        if *field.name == field_name { Some((AccessorKind::Field, idx, field.type_id)) } else { None }
+                    });
                     if field_data.is_none() {
-                        for (idx, func_id) in methods.iter().enumerate() {
+                        for (idx, func_id) in struct_.methods.iter().enumerate() {
                             let func = self.project.get_func_by_id(func_id);
                             if func.name == field_name {
-                                let mut type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
-                                type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
+                                let type_id = self.add_or_find_type_id(self.project.function_type_for_function(&func, true));
                                 field_data = Some((AccessorKind::Method, idx, type_id));
                                 break;
                             }
                         }
+                    }
+                    if let Some((_, _, type_id)) = &mut field_data {
+                        *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
                 }
 

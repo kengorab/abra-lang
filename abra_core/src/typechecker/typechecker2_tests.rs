@@ -3526,6 +3526,13 @@ fn typecheck_match_statement_and_expression() {
         None => 4
       }
     "#);
+    assert_typecheck_ok(r#"
+      enum Color { Red, Green, Blue, RGB(r: Int, g: Int, b: Int) }
+      match Color.Red {
+        Color.RGB c => c.r + c.b + c.b
+        _ => 0
+      }
+    "#);
 }
 
 #[test]
@@ -3551,7 +3558,7 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateMatchCase {
         span: Span::new(ModuleId(1), (3, 1), (3, 1)),
-        orig_span: Span::new(ModuleId(1), (2, 1), (2, 1))
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 1)),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3563,7 +3570,7 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateMatchCase {
         span: Span::new(ModuleId(1), (3, 1), (3, 3)),
-        orig_span: Span::new(ModuleId(1), (2, 1), (2, 3))
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 3)),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3575,7 +3582,7 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateMatchCase {
         span: Span::new(ModuleId(1), (3, 1), (3, 4)),
-        orig_span: Span::new(ModuleId(1), (2, 1), (2, 4))
+        orig_span: Span::new(ModuleId(1), (2, 1), (2, 4)),
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3589,7 +3596,7 @@ fn typecheck_failure_match_expression() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::DuplicateMatchCase {
         span: Span::new(ModuleId(1), (5, 1), (5, 9)),
-        orig_span: Span::new(ModuleId(1), (3, 1), (3, 9))
+        orig_span: Span::new(ModuleId(1), (3, 1), (3, 9)),
     };
     assert_eq!(expected, err);
 
@@ -3623,7 +3630,7 @@ fn typecheck_failure_match_expression() {
             case_type: None,
             target_type: PRELUDE_INT_TYPE_ID,
             target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
-        }
+        },
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3635,7 +3642,7 @@ fn typecheck_failure_match_expression() {
             case_type: Some(PRELUDE_STRING_TYPE_ID),
             target_type: PRELUDE_INT_TYPE_ID,
             target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
-        }
+        },
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3647,7 +3654,7 @@ fn typecheck_failure_match_expression() {
             case_type: Some(PRELUDE_STRING_TYPE_ID),
             target_type: PRELUDE_INT_TYPE_ID,
             target_span: Span::new(ModuleId(1), (1, 15), (1, 17)),
-        }
+        },
     };
     assert_eq!(expected, err);
     let (_, Either::Right(err)) = test_typecheck("\
@@ -3660,7 +3667,7 @@ fn typecheck_failure_match_expression() {
             case_type: Some(TypeId(ScopeId(ModuleId(1), 0), 0)),
             target_type: PRELUDE_INT_TYPE_ID,
             target_span: Span::new(ModuleId(1), (2, 15), (2, 17)),
-        }
+        },
     };
     assert_eq!(expected, err);
     let (project, Either::Right(err)) = test_typecheck("\
@@ -3676,7 +3683,7 @@ fn typecheck_failure_match_expression() {
             case_type: Some(project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color2_enum.id, vec![], None)).unwrap()),
             target_type: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericEnumInstance(color_enum.id, vec![], Some(1))).unwrap(),
             target_span: Span::new(ModuleId(1), (3, 15), (3, 25)),
-        }
+        },
     };
     assert_eq!(expected, err);
 
