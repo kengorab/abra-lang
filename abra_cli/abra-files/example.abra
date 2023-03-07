@@ -1,0 +1,5 @@
+val x = 1
+
+val _ = x + 1
+val _ = x + 2
+val y = _ + 1

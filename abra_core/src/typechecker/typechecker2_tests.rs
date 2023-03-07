@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -1025,6 +1025,81 @@ fn typecheck_failure_none() {
         span: Span::new(ModuleId(1), (1, 14), (1, 17)),
         expected: vec![PRELUDE_INT_TYPE_ID],
         received: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_for_loop() {
+    let project = test_typecheck("\
+      val arr = [1, 2, 3]\n\
+      for i in arr { val a = i }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = TypedNode::ForLoop {
+        token: Token::For(Position::new(2, 1)),
+        binding: BindingPattern::Variable(Token::Ident(Position::new(2, 5), "i".to_string())),
+        binding_var_ids: vec![VarId(ScopeId(ModuleId(1), 1), 0)],
+        index_var_id: None,
+        iterator: Box::new(TypedNode::Identifier {
+            token: Token::Ident(Position::new(2, 10), "arr".to_string()),
+            var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+            type_arg_ids: vec![],
+            type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
+        }),
+        body: vec![
+            TypedNode::BindingDeclaration {
+                token: Token::Val(Position::new(2, 16)),
+                pattern: BindingPattern::Variable(Token::Ident(Position::new(2, 20), "a".to_string())),
+                vars: vec![VarId(ScopeId(ModuleId(1), 1), 1)],
+                expr: Some(Box::new(TypedNode::Identifier {
+                    token: Token::Ident(Position::new(2, 24), "i".to_string()),
+                    var_id: VarId(ScopeId(ModuleId(1), 1), 0),
+                    type_arg_ids: vec![],
+                    type_id: PRELUDE_INT_TYPE_ID,
+                })),
+            }
+        ],
+    };
+    assert_eq!(expected, module.code[1]);
+
+    assert_typecheck_ok(r#"
+      for str, idx in ["a", "b", "c"] {
+        val _: String = str
+        val _: Int = idx
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      for str, idx in #{"a", "b", "c"} {
+        val _: String = str
+        val _: Int = idx
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      for k, v in { a: 1, b: 2 } {
+        val _: String = k
+        val _: Int = v
+      }
+    "#);
+
+    assert_typecheck_ok(r#"
+      for (x, y), idx in [(0, 0), (1, 1)] {
+        val _: Int = x
+        val _: Int = y
+        val _: Int = idx
+      }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_for_loop() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      for _ in \"abc\" {}
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidLoopTarget {
+        span: Span::new(ModuleId(1), (1, 10), (1, 14)),
+        type_id: PRELUDE_STRING_TYPE_ID,
+        kind: InvalidLoopTargetKind::For,
     };
     assert_eq!(expected, err);
 }

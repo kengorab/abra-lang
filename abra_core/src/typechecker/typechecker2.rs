@@ -8,7 +8,7 @@ use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -280,6 +280,8 @@ impl Project {
     }
 
     pub fn find_variable_by_name(&self, scope_id: &ScopeId, name: &String) -> Option<&Variable> {
+        if name == "_" { return None; }
+
         self.walk_scope_chain_with(scope_id, |scope| {
             for var in &scope.vars {
                 if var.name == *name {
@@ -703,6 +705,7 @@ pub enum TypedNode {
 
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
+    ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
 }
 
 impl TypedNode {
@@ -728,7 +731,8 @@ impl TypedNode {
             TypedNode::Match { type_id, .. } => type_id,
 
             // Statements
-            TypedNode::BindingDeclaration { .. } => &PRELUDE_UNIT_TYPE_ID,
+            TypedNode::BindingDeclaration { .. } |
+            TypedNode::ForLoop { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
@@ -812,6 +816,11 @@ impl TypedNode {
                         BindingPattern::Array(_, _, _) => todo!()
                     }
                 }
+            }
+            TypedNode::ForLoop { token, iterator, body, .. } => {
+                let start = token.get_range();
+                let end = body.last().map(|n| n.span()).unwrap_or_else(|| iterator.span());
+                start.expand(&end)
             }
         }
     }
@@ -900,6 +909,12 @@ pub enum UnreachableMatchCaseKind {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum InvalidLoopTargetKind {
+    For,
+    While,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum TypeError {
     UnimplementedFeature { span: Span, desc: &'static str },
     TypeMismatch { span: Span, expected: Vec<TypeId>, received: TypeId },
@@ -938,6 +953,7 @@ pub enum TypeError {
     EmptyMatchBlock { span: Span },
     UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
     NonExhaustiveMatch { span: Span, type_id: TypeId },
+    InvalidLoopTarget { span: Span, type_id: TypeId, kind: InvalidLoopTargetKind },
 }
 
 impl TypeError {
@@ -1038,6 +1054,7 @@ impl TypeError {
             TypeError::EmptyMatchBlock { span } |
             TypeError::UnreachableMatchCase { span, .. } |
             TypeError::NonExhaustiveMatch { span, .. } => span,
+            TypeError::InvalidLoopTarget { span, .. } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1467,6 +1484,19 @@ impl TypeError {
                     Match target type '{}' is not covered by all match cases.\n\
                     You can use a wildcard to capture remaining cases.",
                     cursor_line, project.type_repr(type_id),
+                )
+            }
+            TypeError::InvalidLoopTarget { type_id, kind, .. } => {
+                let type_repr = project.type_repr(type_id);
+                let (loop_type, message) = match kind {
+                    InvalidLoopTargetKind::For => ("for", format!("Type '{}' is not iterable", type_repr)),
+                    InvalidLoopTargetKind::While => ("while", format!("Expected Bool or T?, got '{}'", type_repr)),
+                };
+
+                format!(
+                    "Invalid type for {}-loop target\n{}\n{}",
+                    loop_type, cursor_line,
+                    message
                 )
             }
         };
@@ -1902,7 +1932,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let current_scope = self.current_scope_mut();
 
         for var in &current_scope.vars {
-            if var.name == name {
+            if var.name == name && name != "_" {
                 return Err(TypeError::DuplicateName { span: span.clone(), name, original_span: var.defined_span.clone(), kind: DuplicateNameKind::Variable });
             }
         }
@@ -2899,15 +2929,46 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::BindingDeclaration { token, pattern: binding, vars: var_ids, expr: typed_expr })
             }
             AstNode::IfStatement(token, if_node) => self.typecheck_if_node(token, if_node, false, type_hint),
-            AstNode::ForLoop(_, _) |
+            AstNode::ForLoop(token, for_loop_node) => {
+                let ForLoopNode { binding, index_ident, iterator, body } = for_loop_node;
+
+                let typed_iterator = self.typecheck_expression(*iterator, None)?;
+                let iterator_type_id = typed_iterator.type_id();
+                let iterator_type = self.project.get_type_by_id(iterator_type_id);
+                let (iteratee_type_id, index_type_id) = match iterator_type {
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_array_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_set_struct_id => (generic_ids[0], PRELUDE_INT_TYPE_ID),
+                    Type::GenericInstance(struct_id, generic_ids) if *struct_id == self.project.prelude_map_struct_id => (generic_ids[0], generic_ids[1]),
+                    _ => return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidLoopTargetKind::For }),
+                };
+
+                self.begin_child_scope("for_loop_block");
+                let mut binding_var_ids = vec![];
+                self.typecheck_binding_pattern(false, true, &binding, &iteratee_type_id, &mut binding_var_ids)?;
+                let index_var_id = if let Some(index_ident) = index_ident {
+                    let var_name = Token::get_ident_name(&index_ident);
+                    let span = self.make_span(&index_ident.get_range());
+                    let var_id = self.add_variable_to_current_scope(var_name, index_type_id, false, true, &span, false)?;
+                    Some(var_id)
+                } else {
+                    None
+                };
+
+                let mut typed_body = Vec::with_capacity(body.len());
+                for node in body {
+                    typed_body.push(self.typecheck_statement(node, None)?);
+                }
+
+                self.end_child_scope();
+
+                Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body })
+            }
             AstNode::WhileLoop(_, _) |
             AstNode::Break(_) |
             AstNode::Continue(_) => todo!(),
             AstNode::MatchStatement(token, match_node) => self.typecheck_match_node(token, match_node, false, type_hint),
             AstNode::ReturnStatement(_, _) => todo!(),
-            AstNode::FunctionDecl(_, _) |
-            AstNode::TypeDecl(_, _) |
-            AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
+            AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
             AstNode::ImportStatement(_, _) => unreachable!("Internal error: imports should have been handled before typechecking the body"),
             n => self.typecheck_expression(n, type_hint)
         }
@@ -3196,7 +3257,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     // allocate) a tuple, and I think it's a little nicer to read and implement. If a tuple instance
                     // were passed to the "single-match" syntax, it'd desugar to the above.
                     todo!()
-                },
+                }
             }
 
             if let Some(case_binding_tok) = case_binding {
