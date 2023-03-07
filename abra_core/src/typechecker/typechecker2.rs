@@ -8,7 +8,7 @@ use crate::common::util::integer_decode;
 use crate::parser::parser::{ParseResult};
 use crate::lexer::lexer_error::LexerError;
 use crate::lexer::tokens::{POSITION_BOGUS, Range, Token};
-use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp};
+use crate::parser::ast::{args_to_parameters, AssignmentNode, AstLiteralNode, AstNode, BinaryNode, BinaryOp, BindingDeclNode, BindingPattern, EnumDeclNode, ForLoopNode, FunctionDeclNode, IfNode, IndexingMode, IndexingNode, InvocationNode, MatchCase, MatchCaseArgument, MatchCaseType, MatchNode, Parameter, TypeDeclField, TypeDeclNode, TypeIdentifier, UnaryNode, UnaryOp, WhileLoopNode};
 use crate::parser::parse_error::ParseError;
 
 pub trait LoadModule {
@@ -706,6 +706,7 @@ pub enum TypedNode {
     // Statements
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
+    WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
 }
 
 impl TypedNode {
@@ -732,7 +733,8 @@ impl TypedNode {
 
             // Statements
             TypedNode::BindingDeclaration { .. } |
-            TypedNode::ForLoop { .. } => &PRELUDE_UNIT_TYPE_ID,
+            TypedNode::ForLoop { .. } |
+            TypedNode::WhileLoop { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
@@ -820,6 +822,11 @@ impl TypedNode {
             TypedNode::ForLoop { token, iterator, body, .. } => {
                 let start = token.get_range();
                 let end = body.last().map(|n| n.span()).unwrap_or_else(|| iterator.span());
+                start.expand(&end)
+            }
+            TypedNode::WhileLoop { token, condition, body, .. } => {
+                let start = token.get_range();
+                let end = body.last().map(|n| n.span()).unwrap_or_else(|| condition.span());
                 start.expand(&end)
             }
         }
@@ -1490,7 +1497,7 @@ impl TypeError {
                 let type_repr = project.type_repr(type_id);
                 let (loop_type, message) = match kind {
                     InvalidLoopTargetKind::For => ("for", format!("Type '{}' is not iterable", type_repr)),
-                    InvalidLoopTargetKind::While => ("while", format!("Expected Bool or T?, got '{}'", type_repr)),
+                    InvalidLoopTargetKind::While => ("while", format!("Expected Bool or Option type, got '{}'", type_repr)),
                 };
 
                 format!(
@@ -2963,7 +2970,36 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body })
             }
-            AstNode::WhileLoop(_, _) |
+            AstNode::WhileLoop(token, while_loop_node) => {
+                let WhileLoopNode { condition, condition_binding, body } = while_loop_node;
+
+                let typed_condition = self.typecheck_expression(*condition, None)?;
+                let condition_type_id = typed_condition.type_id();
+                if *condition_type_id != PRELUDE_BOOL_TYPE_ID && self.type_is_option(condition_type_id).is_none() {
+                    return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidLoopTargetKind::While });
+                }
+
+                self.begin_child_scope("while_loop_block");
+                let condition_var_id = if let Some(condition_binding) = condition_binding {
+                    let condition_type_id = self.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
+
+                    let var_name = Token::get_ident_name(&condition_binding);
+                    let span = self.make_span(&condition_binding.get_range());
+                    let var_id = self.add_variable_to_current_scope(var_name, condition_type_id, false, true, &span, false)?;
+                    Some(var_id)
+                } else {
+                    None
+                };
+
+                let mut typed_body = Vec::with_capacity(body.len());
+                for node in body {
+                    typed_body.push(self.typecheck_statement(node, None)?);
+                }
+
+                self.end_child_scope();
+
+                Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body })
+            }
             AstNode::Break(_) |
             AstNode::Continue(_) => todo!(),
             AstNode::MatchStatement(token, match_node) => self.typecheck_match_node(token, match_node, false, type_hint),

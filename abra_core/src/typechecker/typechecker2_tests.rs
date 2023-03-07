@@ -1105,6 +1105,60 @@ fn typecheck_failure_for_loop() {
 }
 
 #[test]
+fn typecheck_while_loop() {
+    let project = test_typecheck("\
+      val cond = 1 < 2\n\
+      while cond |c| { val a = c }\
+    ").unwrap();
+    let module = &project.modules[1];
+    let expected = TypedNode::WhileLoop {
+        token: Token::While(Position::new(2, 1)),
+        condition: Box::new(
+            TypedNode::Identifier {
+                token: Token::Ident(Position::new(2, 7), "cond".to_string()),
+                var_id: VarId(ScopeId(ModuleId(1), 0), 0),
+                type_arg_ids: vec![],
+                type_id: PRELUDE_BOOL_TYPE_ID,
+            }
+        ),
+        condition_var_id: Some(VarId(ScopeId(ModuleId(1), 1), 0)),
+        body: vec![
+            TypedNode::BindingDeclaration {
+                token: Token::Val(Position::new(2, 18)),
+                pattern: BindingPattern::Variable(Token::Ident(Position::new(2, 22), "a".to_string())),
+                vars: vec![VarId(ScopeId(ModuleId(1), 1), 1)],
+                expr: Some(Box::new(TypedNode::Identifier {
+                    token: Token::Ident(Position::new(2, 26), "c".to_string()),
+                    var_id: VarId(ScopeId(ModuleId(1), 1), 0),
+                    type_arg_ids: vec![],
+                    type_id: PRELUDE_BOOL_TYPE_ID,
+                })),
+            }
+        ],
+    };
+    assert_eq!(expected, module.code[1]);
+
+    assert_typecheck_ok(r#"
+      while [1, 2][0] |num| {
+        val _: Int = num
+      }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_while_loop() {
+    let (_, Either::Right(err)) = test_typecheck("\
+      while \"abc\" { }
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidLoopTarget {
+        span: Span::new(ModuleId(1), (1, 7), (1, 11)),
+        type_id: PRELUDE_STRING_TYPE_ID,
+        kind: InvalidLoopTargetKind::While,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
 fn typecheck_binding_declaration() {
     let project = test_typecheck(r#"
       val x = 24
