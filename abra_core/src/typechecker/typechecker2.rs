@@ -119,6 +119,16 @@ impl Project {
         &self.modules[PRELUDE_MODULE_ID.0]
     }
 
+    pub fn get_scope_by_id(&self, scope_id: &ScopeId) -> &Scope {
+        let ScopeId(ModuleId(module_idx), idx) = scope_id;
+        &self.modules[*module_idx].scopes[*idx]
+    }
+
+    pub fn get_scope_by_id_mut(&mut self, scope_id: &ScopeId) -> &mut Scope {
+        let ScopeId(ModuleId(module_idx), idx) = scope_id;
+        &mut self.modules[*module_idx].scopes[*idx]
+    }
+
     pub fn get_type_by_id(&self, type_id: &TypeId) -> &Type {
         let TypeId(ScopeId(ModuleId(module_idx), scope_idx), idx) = type_id;
         let scope = &self.modules[*module_idx].scopes[*scope_idx];
@@ -436,6 +446,10 @@ impl Project {
 
         None
     }
+
+    fn find_parent_scope_of_kind(&self, starting_scope_id: &ScopeId, kind: &ScopeKind) -> Option<&Scope> {
+        self.walk_scope_chain_with(starting_scope_id, |sc| if &sc.kind == kind { Some(sc) } else { None })
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -575,8 +589,27 @@ impl ScopeId {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum ScopeKind {
+    Module(ModuleId),
+    Function(FuncId),
+    Type,
+    If,
+    Match,
+    Loop,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ControlFlowTerminator {
+    Break,
+    Continue,
+    Return,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Scope {
     pub label: String,
+    pub kind: ScopeKind,
+    pub terminator: Option<(ControlFlowTerminator, Range)>,
     pub id: ScopeId,
     pub parent: Option<ScopeId>,
     pub types: Vec<Type>,
@@ -707,6 +740,8 @@ pub enum TypedNode {
     BindingDeclaration { token: Token, pattern: BindingPattern, vars: Vec<VarId>, expr: Option<Box<TypedNode>> },
     ForLoop { token: Token, binding: BindingPattern, binding_var_ids: Vec<VarId>, index_var_id: Option<VarId>, iterator: Box<TypedNode>, body: Vec<TypedNode> },
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
+    Break { token: Token },
+    Continue { token: Token },
 }
 
 impl TypedNode {
@@ -734,7 +769,9 @@ impl TypedNode {
             // Statements
             TypedNode::BindingDeclaration { .. } |
             TypedNode::ForLoop { .. } |
-            TypedNode::WhileLoop { .. } => &PRELUDE_UNIT_TYPE_ID,
+            TypedNode::WhileLoop { .. } |
+            TypedNode::Break { .. } |
+            TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
         }
     }
 
@@ -829,6 +866,8 @@ impl TypedNode {
                 let end = body.last().map(|n| n.span()).unwrap_or_else(|| condition.span());
                 start.expand(&end)
             }
+            TypedNode::Break { token } |
+            TypedNode::Continue { token } => token.get_range(),
         }
     }
 }
@@ -961,6 +1000,8 @@ pub enum TypeError {
     UnreachableMatchCase { span: Span, kind: UnreachableMatchCaseKind },
     NonExhaustiveMatch { span: Span, type_id: TypeId },
     InvalidLoopTarget { span: Span, type_id: TypeId, kind: InvalidLoopTargetKind },
+    InvalidControlFlowTerminator { span: Span, terminator: ControlFlowTerminator },
+    UnreachableCode { span: Span },
 }
 
 impl TypeError {
@@ -1060,8 +1101,10 @@ impl TypeError {
             TypeError::DuplicateMatchCase { span, .. } |
             TypeError::EmptyMatchBlock { span } |
             TypeError::UnreachableMatchCase { span, .. } |
-            TypeError::NonExhaustiveMatch { span, .. } => span,
-            TypeError::InvalidLoopTarget { span, .. } => span,
+            TypeError::NonExhaustiveMatch { span, .. } |
+            TypeError::InvalidLoopTarget { span, .. } |
+            TypeError::InvalidControlFlowTerminator { span, .. } |
+            TypeError::UnreachableCode { span } => span,
         };
         let cursor_line = Self::get_underlined_line(loader, span);
 
@@ -1505,6 +1548,21 @@ impl TypeError {
                     loop_type, cursor_line,
                     message
                 )
+            }
+            TypeError::InvalidControlFlowTerminator { terminator, .. } => {
+                let (keyword, msg) = match terminator {
+                    ControlFlowTerminator::Break => ("break", "A break keyword cannot appear outside of a loop"),
+                    ControlFlowTerminator::Continue => ("continue", "A continue keyword cannot appear outside of a loop"),
+                    ControlFlowTerminator::Return => ("return", "A return keyword cannot appear outside of a function"),
+                };
+
+                format!(
+                    "Unexpected {} keyword\n{}\n{}",
+                    keyword, cursor_line, msg
+                )
+            }
+            TypeError::UnreachableCode { .. } => {
+                format!("Unreachable code\n{}", cursor_line)
             }
         };
 
@@ -2093,13 +2151,15 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         Ok(enum_id)
     }
 
-    fn create_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
+    fn create_child_scope<S: AsRef<str>>(&mut self, label: S, kind: ScopeKind) -> ScopeId {
         let parent_scope = self.current_scope_id;
         let current_module = self.current_module_mut();
         let new_scope_id = ScopeId(current_module.id, current_module.scopes.len());
 
         let child_scope = Scope {
             label: label.as_ref().to_string(),
+            kind,
+            terminator: None,
             id: new_scope_id,
             parent: Some(parent_scope),
             types: vec![],
@@ -2111,8 +2171,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         new_scope_id
     }
 
-    fn begin_child_scope<S: AsRef<str>>(&mut self, label: S) -> ScopeId {
-        self.current_scope_id = self.create_child_scope(label);
+    fn begin_child_scope<S: AsRef<str>>(&mut self, label: S, kind: ScopeKind) -> ScopeId {
+        self.current_scope_id = self.create_child_scope(label, kind);
 
         self.current_scope_id
     }
@@ -2173,7 +2233,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![] };
-        let mut prelude_scope = Scope { label: "prelude.root".to_string(), id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
+        let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
             (PRELUDE_UNIT_TYPE_ID, PrimitiveType::Unit),
@@ -2205,7 +2265,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_module.scopes.len());
-            let scope = Scope { label: "prelude.Option".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            let scope = Scope { label: "prelude.Option".to_string(), kind: ScopeKind::Type, terminator: None, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
@@ -2220,7 +2280,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_module.scopes.len());
-            let scope = Scope { label: "prelude.None".to_string(), id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            let scope = Scope { label: "prelude.None".to_string(), kind: ScopeKind::Type, terminator: None, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
@@ -2260,7 +2320,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
-        let root_scope = Scope { label, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
+        let root_scope = Scope { label, kind: ScopeKind::Module(module_id), terminator: None, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
@@ -2547,7 +2607,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
-        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
+        let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
 
         let generic_ids = self.add_generics_to_scope(&fn_scope_id, type_args)?;
         let has_self = args.first().map(|(tok, _, _, _)| matches!(tok, Token::Self_(_))).unwrap_or(false);
@@ -2560,6 +2620,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let func_id = self.add_function_to_current_scope(fn_scope_id, name, generic_ids, has_self, vec![], return_type_id)?;
         self.current_module_mut().functions.push(func_id);
+        let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
+        *id = func_id;
 
         Ok(func_id)
     }
@@ -2671,7 +2733,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
-        let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+        let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
 
         // A struct's generics are scoped to the struct declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&struct_scope_id, type_args)?;
@@ -2768,7 +2830,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
 
-        let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)));
+        let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
 
         // An enum's generics are scoped to the enum declaration, but the instance type should be scoped to the outer scope.
         let generic_ids = self.add_generics_to_scope(&enum_scope_id, type_args)?;
@@ -2844,7 +2906,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         for (idx, ((variant_decl_token, variant_decl_args), variant)) in variants.iter().zip(&enum_variants).enumerate() {
             if let EnumVariantKind::Container(_) = variant.kind {
                 let Some(variant_decl_args) = variant_decl_args else { unreachable!("Internal error: incorrectly assigned EnumVariantKind::Container") };
-                let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)));
+                let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
 
                 let params = variant_decl_args.iter().map(|arg| (args_to_parameters(arg), None)).collect_vec();
                 let params = self.typecheck_function_parameters_pass_1(false, &params, false)?;
@@ -2855,6 +2917,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let variant_func_id = self.add_function_to_current_scope(fn_scope_id, variant_decl_token, vec![], false, params, return_type_id)?;
                 let EnumVariantKind::Container(func_id) = &mut self.project.get_enum_by_id_mut(&enum_id).variants[idx].kind else { unreachable!() };
                 *func_id = variant_func_id;
+                let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
+                *id = variant_func_id;
             }
         }
 
@@ -2881,6 +2945,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_statement(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
+        if self.current_scope().terminator.is_some() {
+            return Err(TypeError::UnreachableCode { span: self.make_span(&node.get_token().get_range()) });
+        }
+
         match node {
             AstNode::BindingDecl(token, n) => {
                 let BindingDeclNode { export_token, binding, type_ann, expr, is_mutable } = n;
@@ -2949,7 +3017,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     _ => return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_iterator.span()), type_id: *iterator_type_id, kind: InvalidLoopTargetKind::For }),
                 };
 
-                self.begin_child_scope("for_loop_block");
+                self.begin_child_scope("for_loop_block", ScopeKind::Loop);
                 let mut binding_var_ids = vec![];
                 self.typecheck_binding_pattern(false, true, &binding, &iteratee_type_id, &mut binding_var_ids)?;
                 let index_var_id = if let Some(index_ident) = index_ident {
@@ -2979,7 +3047,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return Err(TypeError::InvalidLoopTarget { span: self.make_span(&typed_condition.span()), type_id: *condition_type_id, kind: InvalidLoopTargetKind::While });
                 }
 
-                self.begin_child_scope("while_loop_block");
+                self.begin_child_scope("while_loop_block", ScopeKind::Loop);
                 let condition_var_id = if let Some(condition_binding) = condition_binding {
                     let condition_type_id = self.type_is_option(condition_type_id).unwrap_or(PRELUDE_BOOL_TYPE_ID);
 
@@ -3000,8 +3068,26 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
                 Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body })
             }
-            AstNode::Break(_) |
-            AstNode::Continue(_) => todo!(),
+            AstNode::Break(token) => {
+                let Some(_) = self.project.find_parent_scope_of_kind(&self.current_scope_id, &ScopeKind::Loop) else {
+                    let span = self.make_span(&token.get_range());
+                    return Err(TypeError::InvalidControlFlowTerminator { span, terminator: ControlFlowTerminator::Break });
+                };
+
+                self.current_scope_mut().terminator = Some((ControlFlowTerminator::Break, token.get_range()));
+
+                Ok(TypedNode::Break { token })
+            }
+            AstNode::Continue(token) => {
+                let Some(_) = self.project.find_parent_scope_of_kind(&self.current_scope_id, &ScopeKind::Loop) else {
+                    let span = self.make_span(&token.get_range());
+                    return Err(TypeError::InvalidControlFlowTerminator { span, terminator: ControlFlowTerminator::Continue });
+                };
+
+                self.current_scope_mut().terminator = Some((ControlFlowTerminator::Continue, token.get_range()));
+
+                Ok(TypedNode::Continue { token })
+            }
             AstNode::MatchStatement(token, match_node) => self.typecheck_match_node(token, match_node, false, type_hint),
             AstNode::ReturnStatement(_, _) => todo!(),
             AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
@@ -3029,7 +3115,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        self.begin_child_scope("if_block");
+        self.begin_child_scope("if_block", ScopeKind::If);
         if let Some(condition_binding) = &condition_binding {
             self.typecheck_binding_pattern(false, true, condition_binding, condition_type_id, &mut vec![])?;
         }
@@ -3080,7 +3166,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         if else_block_len != 0 {
             // If the else-block has a body, typecheck it. The type of the last node should be compared
             // against the working type to determine a match.
-            self.begin_child_scope("else_block");
+            self.begin_child_scope("else_block", ScopeKind::If);
             for (idx, node) in else_block.into_iter().enumerate() {
                 let typed_node = if idx == else_block_len - 1 {
                     let typed_node = self.typecheck_statement(node, type_id)?;
@@ -3171,7 +3257,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 return Err(TypeError::UnreachableMatchCase { span: self.make_span(&match_case_token.get_range()), kind: UnreachableMatchCaseKind::AlreadyCovered });
             }
 
-            let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", match_case_idx));
+            let _match_case_scope_id = self.begin_child_scope(&format!("match_case_{}", match_case_idx), ScopeKind::Match);
 
             let case_type_id;
             match match_type {
@@ -4423,10 +4509,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     })
                     .collect();
 
-                let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()));
+                let fn_scope_id = self.begin_child_scope(format!("{:?}.lambda_{}", &self.current_module().id, self.new_lambda_fn_name()), ScopeKind::Function(FuncId::BOGUS));
                 let parameters = self.typecheck_function_parameters_pass_1(false, &parameters, false)?;
 
                 let lambda_func_id = self.add_lambda_function_to_current_scope(fn_scope_id, parameters)?;
+                let ScopeKind::Function(id) = &mut self.project.get_scope_by_id_mut(&fn_scope_id).kind else { unreachable!() };
+                *id = lambda_func_id;
                 let prev_func_id = self.current_function;
                 self.current_function = Some(lambda_func_id);
 

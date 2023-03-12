@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -1154,6 +1154,96 @@ fn typecheck_failure_while_loop() {
         span: Span::new(ModuleId(1), (1, 7), (1, 11)),
         type_id: PRELUDE_STRING_TYPE_ID,
         kind: InvalidLoopTargetKind::While,
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_break() {
+    let project = test_typecheck("while true { break }").unwrap();
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some((ControlFlowTerminator::Break, Token::Break(Position::new(1, 14)).get_range())), project.modules[1].scopes[1].terminator);
+
+    let project = test_typecheck("for i in [1, 2] { break }").unwrap();
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some((ControlFlowTerminator::Break, Token::Break(Position::new(1, 19)).get_range())), project.modules[1].scopes[1].terminator);
+
+    assert_typecheck_ok(r#"
+      while true {
+        if true { break }
+        val a = 3
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      for i in [1, 2] {
+        if true { break }
+        val a = 3
+      }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_break() {
+    let (_, Either::Right(err)) = test_typecheck("break").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidControlFlowTerminator {
+        span: Span::new(ModuleId(1), (1, 1), (1, 5)),
+        terminator: ControlFlowTerminator::Break,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        break\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_continue() {
+    let project = test_typecheck("while true { continue }").unwrap();
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some((ControlFlowTerminator::Continue, Token::Continue(Position::new(1, 14)).get_range())), project.modules[1].scopes[1].terminator);
+
+    let project = test_typecheck("for i in [1, 2] { continue }").unwrap();
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some((ControlFlowTerminator::Continue, Token::Continue(Position::new(1, 19)).get_range())), project.modules[1].scopes[1].terminator);
+
+    assert_typecheck_ok(r#"
+      while true {
+        if true { continue }
+        val a = 3
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      for i in [1, 2] {
+        if true { continue }
+        val a = 3
+      }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_continue() {
+    let (_, Either::Right(err)) = test_typecheck("continue").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidControlFlowTerminator {
+        span: Span::new(ModuleId(1), (1, 1), (1, 8)),
+        terminator: ControlFlowTerminator::Continue,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        continue\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
     };
     assert_eq!(expected, err);
 }
