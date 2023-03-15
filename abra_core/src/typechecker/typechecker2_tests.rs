@@ -1161,12 +1161,12 @@ fn typecheck_failure_while_loop() {
 #[test]
 fn typecheck_break() {
     let project = test_typecheck("while true { break }").unwrap();
-    assert_eq!(None, project.modules[1].scopes[0].terminator);
-    assert_eq!(Some((ControlFlowTerminator::Break, Token::Break(Position::new(1, 14)).get_range())), project.modules[1].scopes[1].terminator);
+    assert!(!project.modules[1].scopes[0].is_terminated);
+    assert!(project.modules[1].scopes[1].is_terminated);
 
     let project = test_typecheck("for i in [1, 2] { break }").unwrap();
-    assert_eq!(None, project.modules[1].scopes[0].terminator);
-    assert_eq!(Some((ControlFlowTerminator::Break, Token::Break(Position::new(1, 19)).get_range())), project.modules[1].scopes[1].terminator);
+    assert!(!project.modules[1].scopes[0].is_terminated);
+    assert!(project.modules[1].scopes[1].is_terminated);
 
     assert_typecheck_ok(r#"
       while true {
@@ -1201,17 +1201,38 @@ fn typecheck_failure_break() {
         span: Span::new(ModuleId(1), (3, 1), (3, 3)),
     };
     assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        if true { break } else { break }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        match [1, 2, 3][0] { Int => break, _ => break }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]
 fn typecheck_continue() {
     let project = test_typecheck("while true { continue }").unwrap();
-    assert_eq!(None, project.modules[1].scopes[0].terminator);
-    assert_eq!(Some((ControlFlowTerminator::Continue, Token::Continue(Position::new(1, 14)).get_range())), project.modules[1].scopes[1].terminator);
+    assert!(!project.modules[1].scopes[0].is_terminated);
+    assert!(project.modules[1].scopes[1].is_terminated);
 
     let project = test_typecheck("for i in [1, 2] { continue }").unwrap();
-    assert_eq!(None, project.modules[1].scopes[0].terminator);
-    assert_eq!(Some((ControlFlowTerminator::Continue, Token::Continue(Position::new(1, 19)).get_range())), project.modules[1].scopes[1].terminator);
+    assert!(!project.modules[1].scopes[0].is_terminated);
+    assert!(project.modules[1].scopes[1].is_terminated);
 
     assert_typecheck_ok(r#"
       while true {
@@ -1239,6 +1260,27 @@ fn typecheck_failure_continue() {
     let (_, Either::Right(err)) = test_typecheck("\
       while true {\n\
         continue\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        if true { continue } else { continue }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        match [1, 2, 3][0] { Int => continue, _ => continue }\n\
         val a = 1\n\
       }\
     ").unwrap_err() else { unreachable!() };
