@@ -3129,18 +3129,20 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let mut node_type_id = *typed_node.type_id();
 
-                    if let Some(hint_type_id) = &type_id {
-                        if self.type_contains_generics(&node_type_id) {
-                            node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
+                    if !self.current_scope().is_terminated {
+                        if let Some(hint_type_id) = &type_id {
+                            if self.type_contains_generics(&node_type_id) {
+                                node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
+                            }
+                            if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
+                                let span = self.make_span(&typed_node.span());
+                                return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
+                            };
                         }
-                        if !self.type_satisfies_other(&node_type_id, &hint_type_id) {
-                            let span = self.make_span(&typed_node.span());
-                            return Err(TypeError::TypeMismatch { span, expected: vec![*hint_type_id], received: node_type_id });
-                        };
-                    }
 
-                    if !is_statement {
-                        type_id = Some(node_type_id);
+                        if !is_statement {
+                            type_id = Some(node_type_id);
+                        }
                     }
 
                     typed_node
@@ -3174,7 +3176,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let node_type_id = *typed_node.type_id();
 
-                    if !is_statement {
+                    if !is_statement && !self.current_scope().is_terminated {
                         type_id = if let Some(hint_type_id) = &type_id {
                             let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
                                 let span = self.make_span(&typed_node.span());
@@ -3409,7 +3411,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let mut node_type_id = *typed_node.type_id();
 
-                    if !is_statement {
+                    if !is_statement && !self.current_scope().is_terminated {
                         type_id = if match_case_idx == 0 {
                             if let Some(hint_type_id) = &type_id {
                                 if self.type_contains_generics(&node_type_id) {

@@ -1170,14 +1170,39 @@ fn typecheck_break() {
 
     assert_typecheck_ok(r#"
       while true {
-        if true { break }
+        if true break
         val a = 3
       }
     "#);
     assert_typecheck_ok(r#"
       for i in [1, 2] {
-        if true { break }
+        if true break
         val a = 3
+      }
+    "#);
+
+    assert_typecheck_ok(r#"
+      while true {
+        val b = match [1, 2][0] { Int => break, _ => 123 }
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = match [1, 2][0] { Int => 123, _ => break }
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = if true break else 123
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = if true 123 else break
+        val _: Int = b
       }
     "#);
 }
@@ -1222,6 +1247,17 @@ fn typecheck_failure_break() {
         span: Span::new(ModuleId(1), (3, 1), (3, 3)),
     };
     assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        val a = match [1, 2, 3][0] { Int => break, _ => break }\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Span::new(ModuleId(1), (2, 9), (2, 25)),
+        type_id: PRELUDE_UNIT_TYPE_ID,
+        purpose: "assignment",
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]
@@ -1236,14 +1272,39 @@ fn typecheck_continue() {
 
     assert_typecheck_ok(r#"
       while true {
-        if true { continue }
+        if true continue
         val a = 3
       }
     "#);
     assert_typecheck_ok(r#"
       for i in [1, 2] {
-        if true { continue }
+        if true continue
         val a = 3
+      }
+    "#);
+
+    assert_typecheck_ok(r#"
+      while true {
+        val b = match [1, 2][0] { Int => 123, _ => continue }
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = match [1, 2][0] { Int => continue, _ => 123 }
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = if true continue else 123
+        val _: Int = b
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      while true {
+        val b = if true 123 else continue
+        val _: Int = b
       }
     "#);
 }
@@ -1286,6 +1347,17 @@ fn typecheck_failure_continue() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::UnreachableCode {
         span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      while true {\n\
+        val a = match [1, 2, 3][0] { Int => continue, _ => continue }\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Span::new(ModuleId(1), (2, 9), (2, 25)),
+        type_id: PRELUDE_UNIT_TYPE_ID,
+        purpose: "assignment",
     };
     assert_eq!(expected, err);
 }
