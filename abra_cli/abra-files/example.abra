@@ -1,6 +1,3 @@
-func foo() {
-  while true {
-    val b = if true break else "asdf"
-    val _: Int = b
-  }
-}
+val _: Int[] = [1, 2, 3].map(i => {
+  return "foo"
+})

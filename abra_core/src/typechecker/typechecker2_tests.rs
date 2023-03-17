@@ -3,7 +3,7 @@ use itertools::Either;
 use crate::lexer::tokens::{Position, POSITION_BOGUS, Range, Token};
 use crate::parser;
 use crate::parser::ast::{BinaryOp, BindingPattern, UnaryOp};
-use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator};
+use crate::typechecker::typechecker2::{LoadModule, ModuleId, Project, Typechecker2, TypecheckError, PRELUDE_MODULE_ID, Type, PRELUDE_INT_TYPE_ID, PRELUDE_FLOAT_TYPE_ID, PRELUDE_BOOL_TYPE_ID, PRELUDE_STRING_TYPE_ID, TypedNode, TypedLiteral, TypeError, Variable, VarId, ScopeId, Struct, StructId, PRELUDE_UNIT_TYPE_ID, TypeId, Function, FuncId, FunctionParam, StructField, VariableAlias, DuplicateNameKind, AccessorKind, AssignmentKind, ImmutableAssignmentKind, InvalidTupleIndexKind, InvalidAssignmentTargetKind, Enum, EnumId, EnumVariant, EnumVariantKind, Span, UnreachableMatchCaseKind, InvalidLoopTargetKind, ControlFlowTerminator, TerminatorKind};
 
 const PRELUDE_STR: &str = include_str!("prelude.stub.abra");
 
@@ -1161,12 +1161,12 @@ fn typecheck_failure_while_loop() {
 #[test]
 fn typecheck_break() {
     let project = test_typecheck("while true { break }").unwrap();
-    assert!(!project.modules[1].scopes[0].is_terminated);
-    assert!(project.modules[1].scopes[1].is_terminated);
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some(TerminatorKind::NonReturning), project.modules[1].scopes[1].terminator);
 
     let project = test_typecheck("for i in [1, 2] { break }").unwrap();
-    assert!(!project.modules[1].scopes[0].is_terminated);
-    assert!(project.modules[1].scopes[1].is_terminated);
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some(TerminatorKind::NonReturning), project.modules[1].scopes[1].terminator);
 
     assert_typecheck_ok(r#"
       while true {
@@ -1263,12 +1263,12 @@ fn typecheck_failure_break() {
 #[test]
 fn typecheck_continue() {
     let project = test_typecheck("while true { continue }").unwrap();
-    assert!(!project.modules[1].scopes[0].is_terminated);
-    assert!(project.modules[1].scopes[1].is_terminated);
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some(TerminatorKind::NonReturning), project.modules[1].scopes[1].terminator);
 
     let project = test_typecheck("for i in [1, 2] { continue }").unwrap();
-    assert!(!project.modules[1].scopes[0].is_terminated);
-    assert!(project.modules[1].scopes[1].is_terminated);
+    assert_eq!(None, project.modules[1].scopes[0].terminator);
+    assert_eq!(Some(TerminatorKind::NonReturning), project.modules[1].scopes[1].terminator);
 
     assert_typecheck_ok(r#"
       while true {
@@ -1356,6 +1356,217 @@ fn typecheck_failure_continue() {
     ").unwrap_err() else { unreachable!() };
     let expected = TypeError::ForbiddenAssignment {
         span: Span::new(ModuleId(1), (2, 9), (2, 25)),
+        type_id: PRELUDE_UNIT_TYPE_ID,
+        purpose: "assignment",
+    };
+    assert_eq!(expected, err);
+}
+
+#[test]
+fn typecheck_return() {
+    assert_typecheck_ok(r#"
+      func foo(): Int {
+        return 123
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(): Int? {
+        if true return None
+        else return 123
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(): Int[] {
+        return []
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      val _: Int[] = [1, 2, 3].map(i => {
+        return i * 2
+      })
+    "#);
+
+    assert_typecheck_ok(r#"
+      func foo(): Int {
+        val a = if true { return 6 } else 12
+        return a + 1
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(): Int {
+        var a = 1
+        while true {
+          a += if true { return 6 } else 12
+        }
+        return a
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo(): Int {
+        var a = 1
+        for i in [1, 2] {
+          a += if true { return 6 } else i
+        }
+        return a
+      }
+    "#);
+
+    assert_typecheck_ok(r#"
+      func foo() {
+        while true {
+          if true break else return
+        }
+        val a = 1
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo() {
+        for i in [1, 2] {
+          if true break else return
+        }
+        val a = 1
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo() {
+        while true {
+          if true continue else return
+        }
+        val a = 1
+      }
+    "#);
+    assert_typecheck_ok(r#"
+      func foo() {
+        for i in [1, 2] {
+          if true continue else return
+        }
+        val a = 1
+      }
+    "#);
+}
+
+#[test]
+fn typecheck_failure_return() {
+    let (_, Either::Right(err)) = test_typecheck("return 123").unwrap_err() else { unreachable!() };
+    let expected = TypeError::InvalidControlFlowTerminator {
+        span: Span::new(ModuleId(1), (1, 1), (1, 6)),
+        terminator: ControlFlowTerminator::Return,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(): String {\n\
+        return 24\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ReturnTypeMismatch {
+        span: Span::new(ModuleId(1), (2, 8), (2, 9)),
+        func_name: "foo".to_string(),
+        expected: PRELUDE_STRING_TYPE_ID,
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        return 24\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ReturnTypeMismatch {
+        span: Span::new(ModuleId(1), (2, 8), (2, 9)),
+        func_name: "foo".to_string(),
+        expected: PRELUDE_UNIT_TYPE_ID,
+        received: PRELUDE_INT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(): Int {\n\
+        return\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ReturnTypeMismatch {
+        span: Span::new(ModuleId(1), (2, 1), (2, 6)),
+        func_name: "foo".to_string(),
+        expected: PRELUDE_INT_TYPE_ID,
+        received: PRELUDE_UNIT_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      val _: Int[] = [1, 2, 3].map(i => {\n\
+        if true { return i } else { return true }\n\
+      })\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ReturnTypeMismatch {
+        span: Span::new(ModuleId(1), (2, 36), (2, 39)),
+        func_name: "lambda_1_0_0_1_0".to_string(),
+        expected: PRELUDE_INT_TYPE_ID,
+        received: PRELUDE_BOOL_TYPE_ID,
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        return\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        while true { return }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        while true {\n\
+          if true return else return\n\
+        }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (5, 1), (5, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        for i in [1, 2] { return }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (3, 1), (3, 3)),
+    };
+    assert_eq!(expected, err);
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo() {\n\
+        for i in [1, 2] {\n\
+          if true return else return\n\
+        }\n\
+        val a = 1\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnreachableCode {
+        span: Span::new(ModuleId(1), (5, 1), (5, 3)),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck("\
+      func foo(): Int {\n\
+        val a = if true return 2 else return 1\n\
+        return 21\n\
+      }\
+    ").unwrap_err() else { unreachable!() };
+    let expected = TypeError::ForbiddenAssignment {
+        span: Span::new(ModuleId(1), (2, 9), (2, 38)),
         type_id: PRELUDE_UNIT_TYPE_ID,
         purpose: "assignment",
     };

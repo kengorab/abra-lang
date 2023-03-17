@@ -450,6 +450,10 @@ impl Project {
     fn find_parent_scope_of_kind(&self, starting_scope_id: &ScopeId, kind: &ScopeKind) -> Option<&Scope> {
         self.walk_scope_chain_with(starting_scope_id, |sc| if &sc.kind == kind { Some(sc) } else { None })
     }
+
+    fn find_parent_fn_scope(&self, starting_scope_id: &ScopeId) -> Option<&Scope> {
+        self.walk_scope_chain_with(starting_scope_id, |sc| if matches!(&sc.kind, ScopeKind::Function(_)) { Some(sc) } else { None })
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -605,11 +609,25 @@ pub enum ControlFlowTerminator {
     Return,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TerminatorKind {
+    NonReturning,
+    Returning,
+}
+
+fn compound_terminator_kinds(tk1: Option<TerminatorKind>, tk2: Option<TerminatorKind>) -> Option<TerminatorKind> {
+    match (tk1, tk2) {
+        (Some(TerminatorKind::Returning), Some(TerminatorKind::Returning)) => Some(TerminatorKind::Returning),
+        (Some(TerminatorKind::NonReturning), Some(_)) | (Some(_), Some(TerminatorKind::NonReturning)) => Some(TerminatorKind::NonReturning),
+        (None, _) | (_, None) => None,
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Scope {
     pub label: String,
     pub kind: ScopeKind,
-    pub is_terminated: bool,
+    pub terminator: Option<TerminatorKind>,
     pub id: ScopeId,
     pub parent: Option<ScopeId>,
     pub types: Vec<Type>,
@@ -742,6 +760,7 @@ pub enum TypedNode {
     WhileLoop { token: Token, condition: Box<TypedNode>, condition_var_id: Option<VarId>, body: Vec<TypedNode> },
     Break { token: Token },
     Continue { token: Token },
+    Return { token: Token, expr: Option<Box<TypedNode>> },
 }
 
 impl TypedNode {
@@ -772,6 +791,7 @@ impl TypedNode {
             TypedNode::WhileLoop { .. } |
             TypedNode::Break { .. } |
             TypedNode::Continue { .. } => &PRELUDE_UNIT_TYPE_ID,
+            TypedNode::Return { expr, .. } => expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id()),
         }
     }
 
@@ -868,6 +888,14 @@ impl TypedNode {
             }
             TypedNode::Break { token } |
             TypedNode::Continue { token } => token.get_range(),
+            TypedNode::Return { token, expr } => {
+                let start = token.get_range();
+                if let Some(expr) = expr {
+                    start.expand(&expr.span())
+                } else {
+                    start
+                }
+            }
         }
     }
 }
@@ -1275,11 +1303,17 @@ impl TypeError {
                 let expected_repr = project.type_repr(expected);
                 let received_repr = project.type_repr(received);
 
+                let first_line = if is_lambda_fn(&func_name) {
+                    "Return type mismatch for lambda function".to_string()
+                } else {
+                    format!("Return type mismatch for function '{}'", func_name)
+                };
+
                 format!(
-                    "Return type mismatch for function '{}'\n{}\n\
+                    "{}\n{}\n\
                     Expected: {}\n\
                     but instead saw: {}",
-                    func_name, cursor_line,
+                    first_line, cursor_line,
                     expected_repr,
                     received_repr,
                 )
@@ -1578,6 +1612,12 @@ enum FunctionPass {
     Pass0,
     Pass1 { just_saw_function_call: bool },
     Pass2,
+}
+
+const LAMBDA_FN_NAME_PREFIX: &str = "lambda_";
+
+fn is_lambda_fn(name: &String) -> bool {
+    name.starts_with(LAMBDA_FN_NAME_PREFIX)
 }
 
 pub struct Typechecker2<'a, L: LoadModule> {
@@ -2055,7 +2095,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         }
 
         let current_scope = self.current_scope();
-        format!("lambda_{}_{}_{}", self.current_module().id.0, name.into_iter().join("_"), current_scope.funcs.len())
+        format!("{}{}_{}_{}", LAMBDA_FN_NAME_PREFIX, self.current_module().id.0, name.into_iter().join("_"), current_scope.funcs.len())
     }
 
     fn add_lambda_function_to_current_scope(&mut self, fn_scope_id: ScopeId, params: Vec<FunctionParam>) -> Result<FuncId, TypeError> {
@@ -2159,7 +2199,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let child_scope = Scope {
             label: label.as_ref().to_string(),
             kind,
-            is_terminated: false,
+            terminator: None,
             id: new_scope_id,
             parent: Some(parent_scope),
             types: vec![],
@@ -2233,7 +2273,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         self.module_loader.register(&parser::ast::ModuleId::prelude(), &PRELUDE_MODULE_ID);
         let mut prelude_module = TypedModule { id: PRELUDE_MODULE_ID, name: "prelude".to_string(), type_ids: vec![], functions: vec![], structs: vec![], enums: vec![], code: vec![], scopes: vec![] };
-        let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), is_terminated: false, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
+        let mut prelude_scope = Scope { label: "prelude.root".to_string(), kind: ScopeKind::Module(PRELUDE_MODULE_ID), terminator: None, id: PRELUDE_SCOPE_ID, parent: None, types: vec![], vars: vec![], funcs: vec![] };
 
         let primitives = [
             (PRELUDE_UNIT_TYPE_ID, PrimitiveType::Unit),
@@ -2265,7 +2305,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_module.scopes.len());
-            let scope = Scope { label: "prelude.Option".to_string(), kind: ScopeKind::Type, is_terminated: false, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            let scope = Scope { label: "prelude.Option".to_string(), kind: ScopeKind::Type, terminator: None, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
@@ -2280,7 +2320,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         {
             let prelude_module = &mut self.project.modules[PRELUDE_MODULE_ID.0];
             let scope_id = ScopeId(PRELUDE_MODULE_ID, prelude_module.scopes.len());
-            let scope = Scope { label: "prelude.None".to_string(), kind: ScopeKind::Type, is_terminated: false, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
+            let scope = Scope { label: "prelude.None".to_string(), kind: ScopeKind::Type, terminator: None, id: scope_id, parent: Some(PRELUDE_SCOPE_ID), types: vec![], vars: vec![], funcs: vec![] };
             prelude_module.scopes.push(scope);
             let generic_t_type_id = self.project.add_type_id(&scope_id, Type::Generic(None, "T".to_string()));
 
@@ -2320,7 +2360,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let scope_id = ScopeId(module_id, 0);
         let label = format!("{:?}.root", &module_id);
-        let root_scope = Scope { label, kind: ScopeKind::Module(module_id), is_terminated: false, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
+        let root_scope = Scope { label, kind: ScopeKind::Module(module_id), terminator: None, id: scope_id, parent: Some(prelude_scope_id), types: vec![], vars: vec![], funcs: vec![] };
         self.project.modules.push(TypedModule {
             id: module_id,
             name: file_name,
@@ -2945,7 +2985,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     }
 
     fn typecheck_statement(&mut self, node: AstNode, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {
-        if self.current_scope().is_terminated {
+        if self.current_scope().terminator.is_some() {
             return Err(TypeError::UnreachableCode { span: self.make_span(&node.get_token().get_range()) });
         }
 
@@ -3034,7 +3074,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     typed_body.push(self.typecheck_statement(node, None)?);
                 }
 
+                let loop_scope_terminator = self.current_scope().terminator;
                 self.end_child_scope();
+                if let Some(TerminatorKind::Returning) = loop_scope_terminator {
+                    self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
+                }
 
                 Ok(TypedNode::ForLoop { token, binding, binding_var_ids, index_var_id, iterator: Box::new(typed_iterator), body: typed_body })
             }
@@ -3064,7 +3108,11 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     typed_body.push(self.typecheck_statement(node, None)?);
                 }
 
+                let loop_scope_terminator = self.current_scope().terminator;
                 self.end_child_scope();
+                if let Some(TerminatorKind::Returning) = loop_scope_terminator {
+                    self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
+                }
 
                 Ok(TypedNode::WhileLoop { token, condition: Box::new(typed_condition), condition_var_id, body: typed_body })
             }
@@ -3074,7 +3122,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return Err(TypeError::InvalidControlFlowTerminator { span, terminator: ControlFlowTerminator::Break });
                 };
 
-                self.current_scope_mut().is_terminated = true;
+                self.current_scope_mut().terminator = Some(TerminatorKind::NonReturning);
 
                 Ok(TypedNode::Break { token })
             }
@@ -3084,12 +3132,55 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     return Err(TypeError::InvalidControlFlowTerminator { span, terminator: ControlFlowTerminator::Continue });
                 };
 
-                self.current_scope_mut().is_terminated = true;
+                self.current_scope_mut().terminator = Some(TerminatorKind::NonReturning);
 
                 Ok(TypedNode::Continue { token })
             }
             AstNode::MatchStatement(token, match_node) => self.typecheck_match_node(token, match_node, false, type_hint),
-            AstNode::ReturnStatement(_, _) => todo!(),
+            AstNode::ReturnStatement(token, ret_expr) => {
+                let Some(sc) = self.project.find_parent_fn_scope(&self.current_scope_id) else {
+                    let span = self.make_span(&token.get_range());
+                    return Err(TypeError::InvalidControlFlowTerminator { span, terminator: ControlFlowTerminator::Return });
+                };
+
+                let ScopeKind::Function(parent_func_id) = sc.kind else { unreachable!() };
+                self.current_scope_mut().terminator = Some(TerminatorKind::Returning);
+
+                let parent_func = self.project.get_func_by_id(&parent_func_id);
+                let func_name = parent_func.name.clone();
+
+                let return_type_id = parent_func.return_type_id;
+                let typed_ret_expr = if let Some(ret_expr) = ret_expr {
+                    let expr = self.typecheck_expression(*ret_expr, Some(return_type_id))?;
+                    Some(Box::new(expr))
+                } else {
+                    None
+                };
+
+                if let Some(typed_ret_expr) = &typed_ret_expr {
+                    let mut expr_type_id = *typed_ret_expr.type_id();
+                    if self.type_contains_generics(&expr_type_id) {
+                        expr_type_id = self.substitute_generics(&return_type_id, &expr_type_id);
+                    }
+                    if !self.type_satisfies_other(&expr_type_id, &return_type_id) {
+                        let span = self.make_span(&typed_ret_expr.span());
+                        return Err(TypeError::ReturnTypeMismatch { span, func_name, expected: return_type_id, received: expr_type_id });
+                    };
+                } else {
+                    if !self.type_satisfies_other(&PRELUDE_UNIT_TYPE_ID, &return_type_id) {
+                        let span = self.make_span(&token.get_range());
+                        return Err(TypeError::ReturnTypeMismatch { span, func_name, expected: return_type_id, received: PRELUDE_UNIT_TYPE_ID });
+                    };
+                }
+
+                let parent_func = self.project.get_func_by_id_mut(&parent_func_id);
+                if parent_func.return_type_id == PRELUDE_ANY_TYPE_ID {
+                    let type_id = typed_ret_expr.as_ref().map_or(&PRELUDE_UNIT_TYPE_ID, |expr| expr.type_id());
+                    parent_func.return_type_id = *type_id;
+                }
+
+                Ok(TypedNode::Return { token, expr: typed_ret_expr })
+            }
             AstNode::FunctionDecl(_, _) | AstNode::TypeDecl(_, _) | AstNode::EnumDecl(_, _) => unreachable!("Internal error: node should have been handled in typecheck_block"),
             AstNode::ImportStatement(_, _) => unreachable!("Internal error: imports should have been handled before typechecking the body"),
             n => self.typecheck_expression(n, type_hint)
@@ -3129,7 +3220,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let mut node_type_id = *typed_node.type_id();
 
-                    if !self.current_scope().is_terminated {
+                    if self.current_scope().terminator.is_none() {
                         if let Some(hint_type_id) = &type_id {
                             if self.type_contains_generics(&node_type_id) {
                                 node_type_id = self.substitute_generics(&hint_type_id, &node_type_id);
@@ -3161,9 +3252,9 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             type_id = Some(self.project.prelude_none_type_id);
         }
         self.end_child_scope();
-        let if_block_terminates = self.project.get_scope_by_id(&if_block_scope_id).is_terminated;
+        let if_block_terminator = self.project.get_scope_by_id(&if_block_scope_id).terminator;
 
-        let mut else_block_terminates = false;
+        let mut else_block_terminator = None;
         let else_block = else_block.unwrap_or(vec![]);
         let else_block_len = else_block.len();
         let mut typed_else_block = Vec::with_capacity(else_block_len);
@@ -3176,7 +3267,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let node_type_id = *typed_node.type_id();
 
-                    if !is_statement && !self.current_scope().is_terminated {
+                    if !is_statement && self.current_scope().terminator.is_none() {
                         type_id = if let Some(hint_type_id) = &type_id {
                             let Some(unified_type_id) = self.unify_types(hint_type_id, &node_type_id) else {
                                 let span = self.make_span(&typed_node.span());
@@ -3186,9 +3277,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 } else if !is_statement {
                                     let hint_type_id = self.type_is_option(hint_type_id).unwrap_or(*hint_type_id);
                                     Err(TypeError::TypeMismatch { span, expected: vec![hint_type_id], received: node_type_id })
-                                } else {
-                                    unreachable!("asdfbc");
-                                };
+                                } else { unreachable!() };
                             };
                             Some(unified_type_id)
                         } else {
@@ -3204,14 +3293,12 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 typed_else_block.push(typed_node);
             }
             self.end_child_scope();
-            else_block_terminates = self.project.get_scope_by_id(&else_block_scope_id).is_terminated;
+            else_block_terminator = self.project.get_scope_by_id(&else_block_scope_id).terminator;
         } else if let Some(hint_type_id) = &type_id {
             type_id = Some(self.add_or_find_type_id(self.project.option_type(*hint_type_id)));
         }
 
-        if if_block_terminates && else_block_terminates {
-            self.current_scope_mut().is_terminated = true;
-        }
+        self.current_scope_mut().terminator = compound_terminator_kinds(if_block_terminator, else_block_terminator);
 
         let type_id = if is_statement {
             PRELUDE_UNIT_TYPE_ID
@@ -3244,7 +3331,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
         }
 
-        let mut all_branches_terminate = true;
+        // Start off assuming there will be a terminator in one of the branches (aka "true"). The branches' values will effectively be ANDed together.
+        let mut all_branches_terminator = Some(TerminatorKind::NonReturning);
 
         // Keep track of all possibilities, and whether they've been completed
         let mut seen_wildcard_token: Option<Token> = None;
@@ -3411,7 +3499,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     let typed_node = self.typecheck_statement(node, type_id)?;
                     let mut node_type_id = *typed_node.type_id();
 
-                    if !is_statement && !self.current_scope().is_terminated {
+                    if !is_statement && self.current_scope().terminator.is_none() {
                         type_id = if match_case_idx == 0 {
                             if let Some(hint_type_id) = &type_id {
                                 if self.type_contains_generics(&node_type_id) {
@@ -3451,13 +3539,13 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 typed_body.push(typed_node);
             }
 
-            all_branches_terminate = all_branches_terminate && self.current_scope().is_terminated;
+            all_branches_terminator = compound_terminator_kinds(all_branches_terminator, self.current_scope().terminator);
             self.end_child_scope();
 
             typed_match_cases.push(TypedMatchCase { body: typed_body })
         }
 
-        self.current_scope_mut().is_terminated = all_branches_terminate;
+        self.current_scope_mut().terminator = all_branches_terminator;
 
         all_cases_covered |= none_case_covered && type_case_covered && enum_variants_covered;
         if !all_cases_covered {
