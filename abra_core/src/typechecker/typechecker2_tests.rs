@@ -2984,6 +2984,16 @@ fn typecheck_invocation() {
     assert_eq!(&expected, &module.code[0]);
     // When an array is passed
     assert!(test_typecheck(&format!("{}\nval a = [1, 2, 3]\nfoo(args: a, a: 1)", &foo_fn)).is_ok());
+
+    // Option-chaining accessor
+    assert_typecheck_ok(r#"
+      val _: String = "foo"?.toLower()
+    "#);
+    assert_typecheck_ok(r#"
+      type Foo { name: String }
+      val arr: Foo[] = []
+      val _: String? = arr[0]?.name?.toLower()
+    "#);
 }
 
 #[test]
@@ -3175,6 +3185,14 @@ fn typecheck_failure_invocation() {
         variant_idx: 0,
     };
     assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck(r#"["a"][0].toLower()"#).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownMember {
+        span: Span::new(ModuleId(1), (1, 10), (1, 16)),
+        field_name: "toLower".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_STRING_TYPE_ID)).unwrap(),
+    };
+    assert_eq!(expected, err);
 }
 
 #[test]
@@ -3316,6 +3334,7 @@ fn typecheck_accessor() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.array_type(PRELUDE_INT_TYPE_ID)).unwrap(),
         }),
         kind: AccessorKind::Field,
+        is_opt_safe: false,
         member_idx: 0,
         member_span: Range { start: Position::new(2, 3), end: Position::new(2, 8) },
         type_id: PRELUDE_INT_TYPE_ID,
@@ -3338,6 +3357,7 @@ fn typecheck_accessor() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
         }),
         kind: AccessorKind::Field,
+        is_opt_safe: false,
         member_idx: 0,
         member_span: Range { start: Position::new(3, 3), end: Position::new(3, 3) },
         type_id: PRELUDE_INT_TYPE_ID,
@@ -3363,6 +3383,7 @@ fn typecheck_accessor() {
             type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &Type::GenericInstance(struct_.id, vec![])).unwrap(),
         }),
         kind: AccessorKind::Method,
+        is_opt_safe: false,
         member_idx: 0,
         member_span: Range { start: Position::new(6, 3), end: Position::new(6, 3) },
         type_id: {
@@ -3371,6 +3392,16 @@ fn typecheck_accessor() {
         },
     };
     assert_eq!(expected, module.code[1]);
+
+    // Option-chaining accessor
+    assert_typecheck_ok(r#"
+      val _: Int = "foo"?.length
+    "#);
+    assert_typecheck_ok(r#"
+      type Foo { name: String }
+      val arr: Foo[] = []
+      val _: Int? = arr[0]?.name?.length
+    "#);
 }
 
 #[test]
@@ -3404,7 +3435,6 @@ fn typecheck_failure_accessor() {
       val l = List(items: [1, 2, 3])\n\
       val map = l.map\
     ").unwrap_err() else { unreachable!() };
-
     let u_type_id = project.find_type_id_for_generic(&ScopeId(ModuleId(1), 2), "U").unwrap();
     let expected = TypeError::ForbiddenAssignment {
         span: Span::new(ModuleId(1), (6, 11), (6, 15)),
@@ -3423,6 +3453,14 @@ fn typecheck_failure_accessor() {
             ),
         ).unwrap(),
         purpose: "assignment",
+    };
+    assert_eq!(expected, err);
+
+    let (project, Either::Right(err)) = test_typecheck(r#"["a"][0].length"#).unwrap_err() else { unreachable!() };
+    let expected = TypeError::UnknownMember {
+        span: Span::new(ModuleId(1), (1, 10), (1, 15)),
+        field_name: "length".to_string(),
+        type_id: project.find_type_id(&ScopeId(ModuleId(1), 0), &project.option_type(PRELUDE_STRING_TYPE_ID)).unwrap(),
     };
     assert_eq!(expected, err);
 }

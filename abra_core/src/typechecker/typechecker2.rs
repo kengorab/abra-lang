@@ -747,7 +747,7 @@ pub enum TypedNode {
     Identifier { token: Token, var_id: VarId, type_arg_ids: Vec<(TypeId, Range)>, type_id: TypeId },
     NoneValue { token: Token, type_id: TypeId },
     Invocation { target: Box<TypedNode>, arguments: Vec<Option<TypedNode>>, type_id: TypeId },
-    Accessor { target: Box<TypedNode>, kind: AccessorKind, member_idx: usize, member_span: Range, type_id: TypeId },
+    Accessor { target: Box<TypedNode>, kind: AccessorKind, is_opt_safe: bool, member_idx: usize, member_span: Range, type_id: TypeId },
     Indexing { target: Box<TypedNode>, index: IndexingMode<TypedNode>, type_id: TypeId },
     Lambda { span: Range, func_id: FuncId, type_id: TypeId },
     Assignment { span: Range, kind: AssignmentKind, type_id: TypeId },
@@ -2350,7 +2350,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         let (file_name, parse_result) = self.module_loader.load_untyped_ast(&m_id).map_err(Either::Left)?;
 
         if !parse_result.imports.is_empty() {
-            unimplemented!("Typechecking imports");
+            todo!("Typechecking imports");
         }
 
         let prelude_scope_id = ScopeId(PRELUDE_MODULE_ID, 0);
@@ -2645,7 +2645,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         self.function_pass = FunctionPass::Pass0;
 
         let FunctionDeclNode { export_token, name, type_args, args, ret_type, .. } = node;
-        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+        if export_token.is_some() { todo!("Internal error: imports/exports") }
 
         let fn_scope_id = self.begin_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&node.name)), ScopeKind::Function(FuncId::BOGUS));
 
@@ -2771,7 +2771,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_struct_pass_0(&mut self, node: &TypeDeclNode) -> Result<StructId, TypeError> {
         let TypeDeclNode { export_token, name, type_args, .. } = node;
 
-        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+        if export_token.is_some() { todo!("Internal error: imports/exports") }
 
         let struct_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
 
@@ -2821,7 +2821,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
 
         let mut seen_fields: HashMap<String, Token> = HashMap::new();
         for TypeDeclField { ident, type_ident, default_value, readonly } in fields {
-            if default_value.is_some() { unimplemented!("Internal error: field default values") }
+            if default_value.is_some() { todo!("Internal error: field default values") }
             let is_readonly = readonly.is_some();
 
             let field_name = Token::get_ident_name(&ident);
@@ -2868,7 +2868,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
     fn typecheck_enum_pass_0(&mut self, node: &EnumDeclNode) -> Result<EnumId, TypeError> {
         let EnumDeclNode { export_token, name, type_args, .. } = node;
 
-        if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+        if export_token.is_some() { todo!("Internal error: imports/exports") }
 
         let enum_scope_id = self.create_child_scope(format!("{:?}.{}", &self.current_module().id, Token::get_ident_name(&name)), ScopeKind::Type);
 
@@ -2992,7 +2992,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
         match node {
             AstNode::BindingDecl(token, n) => {
                 let BindingDeclNode { export_token, binding, type_ann, expr, is_mutable } = n;
-                if export_token.is_some() { unimplemented!("Internal error: imports/exports") }
+                if export_token.is_some() { todo!("Internal error: imports/exports") }
 
                 let type_hint_id = if let Some(type_identifier) = type_ann {
                     Some(self.resolve_type_identifier(&type_identifier)?)
@@ -4187,17 +4187,22 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 Ok(TypedNode::Indexing { target: Box::new(typed_target), index: typed_index, type_id: result_type_id })
             }
             AstNode::Accessor(_, n) => {
-                if n.is_opt_safe { unimplemented!("Internal error: option-safe accessor") }
-
                 let AstNode::Identifier(field_ident, _) = *n.field else { unreachable!("Internal error: an accessor's `field` must be an identifier") };
                 let field_name = Token::get_ident_name(&field_ident);
                 let field_span = self.make_span(&field_ident.get_range());
 
                 let typed_target = self.typecheck_expression(*n.target, None)?;
-                let target_type_id = typed_target.type_id();
+                let mut target_type_id = *typed_target.type_id();
+                let mut target_is_option_type = false;
+                if n.is_opt_safe {
+                    if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                        target_type_id = inner_type_id;
+                        target_is_option_type = true;
+                    }
+                }
 
                 let mut field_data = None;
-                let target_type = self.project.get_type_by_id(target_type_id);
+                let target_type = self.project.get_type_by_id(&target_type_id);
                 if let Type::Type(id) = target_type {
                     match id {
                         Either::Left(_struct_id) => todo!("Static methods/fields not yet implemented"),
@@ -4238,8 +4243,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         }
                     }
                 } else if matches!(target_type, Type::GenericEnumInstance(_, _, _)) {
-                    let Some((enum_, generic_substitutions, variant_idx)) = self.project.get_enum_by_type_id(target_type_id) else {
-                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
+                    let Some((enum_, generic_substitutions, variant_idx)) = self.project.get_enum_by_type_id(&target_type_id) else {
+                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id });
                     };
 
                     if let Some(variant_idx) = variant_idx {
@@ -4266,8 +4271,8 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                         *type_id = self.substitute_generics_with_known(&type_id, &generic_substitutions);
                     }
                 } else {
-                    let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(target_type_id) else {
-                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id });
+                    let Some((struct_, generic_substitutions)) = self.project.get_struct_by_type_id(&target_type_id) else {
+                        return Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id });
                     };
 
                     field_data = struct_.fields.iter().enumerate().find_map(|(idx, field)| {
@@ -4288,10 +4293,14 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                     }
                 }
 
-                if let Some((kind, member_idx, type_id)) = field_data {
-                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, member_idx, member_span: field_ident.get_range(), type_id })
+                if let Some((kind, member_idx, mut type_id)) = field_data {
+                    if n.is_opt_safe && target_is_option_type {
+                        type_id = self.add_or_find_type_id(self.project.option_type(type_id))
+                    }
+
+                    Ok(TypedNode::Accessor { target: Box::new(typed_target), kind, is_opt_safe: n.is_opt_safe, member_idx, member_span: field_ident.get_range(), type_id })
                 } else {
-                    Err(TypeError::UnknownMember { span: field_span, field_name, type_id: *target_type_id })
+                    Err(TypeError::UnknownMember { span: field_span, field_name, type_id: target_type_id })
                 }
             }
             AstNode::Invocation(token, n) => {
@@ -4354,9 +4363,17 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             filled_in_generic_types.insert(*generic_id, *type_arg_id);
                         }
                     }
-                    TypedNode::Accessor { target, kind, member_idx, .. } => {
-                        let target_type_id = target.type_id();
-                        let target_ty = self.project.get_type_by_id(target_type_id);
+                    TypedNode::Accessor { target, kind, member_idx, is_opt_safe, .. } => {
+                        let mut target_type_id = *target.type_id();
+                        let mut target_is_option_type = false;
+                        if *is_opt_safe {
+                            if let Some(inner_type_id) = self.type_is_option(&target_type_id) {
+                                target_type_id = inner_type_id;
+                                target_is_option_type = true;
+                            }
+                        }
+                        let target_ty = self.project.get_type_by_id(&target_type_id);
+
                         match target_ty {
                             Type::GenericInstance(struct_id, generic_ids) => {
                                 let struct_ = self.project.get_struct_by_id(struct_id);
@@ -4364,7 +4381,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                     AccessorKind::Field => {
                                         let field_ty = self.project.get_type_by_id(&struct_.fields[*member_idx].type_id);
                                         let Type::Function(param_type_ids, num_required_args, is_variadic, ret_type_id) = field_ty else {
-                                            return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: *target_type_id });
+                                            return Err(TypeError::IllegalInvocation { span: self.make_span(&typed_target.span()), type_id: target_type_id });
                                         };
                                         fn_is_variadic = *is_variadic;
                                         let num_param_type_ids = param_type_ids.len();
@@ -4419,7 +4436,7 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                                 params_data = function.params.iter().skip(1).enumerate().map(|(idx, p)| (idx, p.name.clone(), p.type_id, is_param_optional(&p), p.is_variadic)).collect_vec();
                                 return_type_id = function.return_type_id;
                             }
-                            Type::Type(Either::Left(_struct_id)) => unimplemented!("Static methods on types"),
+                            Type::Type(Either::Left(_struct_id)) => todo!("Static methods on types"),
                             Type::Type(Either::Right(enum_id)) => {
                                 let enum_ = self.project.get_enum_by_id(enum_id);
                                 let variant = &enum_.variants[*member_idx];
@@ -4433,6 +4450,10 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                             }
                             Type::Generic(_, _) |
                             Type::Function(_, _, _, _) => todo!(),
+                        }
+
+                        if *is_opt_safe && target_is_option_type {
+                            return_type_id = self.add_or_find_type_id(self.project.option_type(return_type_id));
                         }
                     }
                     _ => {
