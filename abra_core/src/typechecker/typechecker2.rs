@@ -1174,7 +1174,7 @@ impl TypeError {
             TypeError::InvalidControlFlowTerminator { span, .. } |
             TypeError::UnreachableCode { span } |
             TypeError::InvalidExportScope { span } |
-            TypeError::CircularModuleImport { span }|
+            TypeError::CircularModuleImport { span } |
             TypeError::UnknownModule { span, .. } |
             TypeError::UnknownExport { span, .. } => span
         };
@@ -3319,42 +3319,24 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
                 let ModuleId(module_idx) = module_id;
 
                 match &kind {
-                    ImportKind::ImportAll(_) => todo!(),
+                    ImportKind::ImportAll(star_token) => {
+                        let import_module = &self.project.modules[module_idx];
+                        let exports = import_module.exports.values().map(|e| e.clone()).collect_vec();
+
+                        for export in exports {
+                            self.add_imported_value(export, star_token)?;
+                        }
+                    }
                     ImportKind::ImportList(imports) => {
                         for import_tok in imports {
-                            let span = self.make_span(&import_tok.get_range());
                             let import_name = Token::get_ident_name(import_tok);
                             let import_module = &self.project.modules[module_idx];
                             let Some(export) = import_module.exports.get(&import_name) else {
+                                let span = self.make_span(&import_tok.get_range());
                                 return Err(TypeError::UnknownExport { span, import_name });
                             };
 
-                            match *export {
-                                ExportedValue::Function(func_id) => {
-                                    self.add_function_variable_alias_to_current_scope(import_tok, &func_id)?;
-                                }
-                                ExportedValue::Type(type_kind) => match type_kind {
-                                    TypeKind::Struct(struct_id) => {
-                                        let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
-                                        let struct_var_id = self.add_variable_to_current_scope(import_name, struct_type_id, false, true, &span, false)?;
-                                        let variable = self.project.get_var_by_id_mut(&struct_var_id);
-                                        variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
-                                    }
-                                    TypeKind::Enum(enum_id) => {
-                                        let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
-                                        let enum_var_id = self.add_variable_to_current_scope(import_name, enum_type_id, false, true, &span, false)?;
-                                        let variable = self.project.get_var_by_id_mut(&enum_var_id);
-                                        variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
-                                    }
-                                }
-                                ExportedValue::Variable(var_id) => {
-                                    let imported_var = self.project.get_var_by_id(&var_id);
-                                    let is_captured = imported_var.is_captured;
-                                    let var_id = self.add_variable_to_current_scope(import_name, imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
-                                    let var = self.project.get_var_by_id_mut(&var_id);
-                                    var.is_captured = is_captured;
-                                }
-                            }
+                            self.add_imported_value(*export, import_tok)?;
                         }
                     }
                     ImportKind::Alias(_) => todo!()
@@ -3364,6 +3346,41 @@ impl<'a, L: LoadModule> Typechecker2<'a, L> {
             }
             n => self.typecheck_expression(n, type_hint)
         }
+    }
+
+    fn add_imported_value(&mut self, exported_value: ExportedValue, import_token: &Token) -> Result<(), TypeError> {
+        let span = self.make_span(&import_token.get_range());
+
+        match exported_value {
+            ExportedValue::Function(func_id) => {
+                self.add_function_variable_alias_to_current_scope(import_token, &func_id)?;
+            }
+            ExportedValue::Type(type_kind) => match type_kind {
+                TypeKind::Struct(struct_id) => {
+                    let struct_type_id = self.add_or_find_type_id(self.project.struct_type(struct_id));
+                    let struct_ = self.project.get_struct_by_id(&struct_id);
+                    let struct_var_id = self.add_variable_to_current_scope(struct_.name.clone(), struct_type_id, false, true, &span, false)?;
+                    let variable = self.project.get_var_by_id_mut(&struct_var_id);
+                    variable.alias = VariableAlias::Type(TypeKind::Struct(struct_id));
+                }
+                TypeKind::Enum(enum_id) => {
+                    let enum_type_id = self.add_or_find_type_id(self.project.enum_type(enum_id));
+                    let enum_ = self.project.get_enum_by_id(&enum_id);
+                    let enum_var_id = self.add_variable_to_current_scope(enum_.name.clone(), enum_type_id, false, true, &span, false)?;
+                    let variable = self.project.get_var_by_id_mut(&enum_var_id);
+                    variable.alias = VariableAlias::Type(TypeKind::Enum(enum_id));
+                }
+            }
+            ExportedValue::Variable(var_id) => {
+                let imported_var = self.project.get_var_by_id(&var_id);
+                let is_captured = imported_var.is_captured;
+                let var_id = self.add_variable_to_current_scope(imported_var.name.clone(), imported_var.type_id, false, imported_var.is_initialized, &span, false)?;
+                let var = self.project.get_var_by_id_mut(&var_id);
+                var.is_captured = is_captured;
+            }
+        }
+
+        Ok(())
     }
 
     fn typecheck_if_node(&mut self, if_token: Token, if_node: IfNode, is_expr: bool, type_hint: Option<TypeId>) -> Result<TypedNode, TypeError> {

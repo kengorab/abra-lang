@@ -1,3 +1,4 @@
-import a from "./example2"
+import * from "./example2"
+import a from "./example3"
 
-export val b = "b"
+export val b: (String, String) = (a, "b")

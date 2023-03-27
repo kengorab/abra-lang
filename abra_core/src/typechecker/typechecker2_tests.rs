@@ -498,6 +498,18 @@ fn typecheck_imports() {
             ),
         ],
     );
+    assert_typecheck_ok_modules(
+        r#"
+          import * from "./2"
+          import * from "./3"
+
+          val _: (String, String) = (a, b)
+        "#,
+        &[
+            ("2", "export val a = \"a\""),
+            ("3", "export val b = \"b\""),
+        ],
+    );
 }
 
 #[test]
@@ -559,6 +571,24 @@ fn typecheck_failure_imports() {
     ).unwrap_err() else { unreachable!() };
     let expected = TypeError::CircularModuleImport {
         span: Span::new(ModuleId(3), (1, 15), (1, 19)),
+    };
+    assert_eq!(expected, err);
+
+    let (_, Either::Right(err)) = test_typecheck_with_modules(
+        "\
+          import * from \"./2\"\n\
+          import * from \"./3\"\
+        ",
+        &[
+            ("2", "export val a = \"a\""),
+            ("3", "export val a = \"a\""),
+        ],
+    ).unwrap_err() else { unreachable!() };
+    let expected = TypeError::DuplicateName {
+        span: Span::new(ModuleId(1), (2, 8), (2, 8)),
+        name: "a".to_string(),
+        original_span: Some(Span::new(ModuleId(1), (1, 8), (1, 8))),
+        kind: DuplicateNameKind::Variable,
     };
     assert_eq!(expected, err);
 }
